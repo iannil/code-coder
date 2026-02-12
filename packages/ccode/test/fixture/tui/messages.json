@@ -1,0 +1,26 @@
+[
+  {
+    "id": "msg-1",
+    "role": "user",
+    "content": "Hello, how are you?",
+    "timestamp": 1704067200000
+  },
+  {
+    "id": "msg-2",
+    "role": "assistant",
+    "content": "I'm doing well, thank you!",
+    "timestamp": 1704067210000
+  },
+  {
+    "id": "msg-3",
+    "role": "user",
+    "content": "What is the capital of France?",
+    "timestamp": 1704067220000
+  },
+  {
+    "id": "msg-4",
+    "role": "assistant",
+    "content": "The capital of France is Paris.",
+    "timestamp": 1704067230000
+  }
+]

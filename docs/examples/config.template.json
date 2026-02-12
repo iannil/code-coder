@@ -1,0 +1,81 @@
+{
+  "$schema": "https://codecoder.ai/config.json",
+  "_comment": "CodeCoder 多提供商配置模板 - 复制此文件到 ~/.codecoder/config.json",
+
+  "provider": {
+    "_comment_openai": "OpenAI 兼容接口配置（DeepSeek、Qwen、Kimi 等）",
+    "openai-compatible": {
+      "options": {
+        "baseURL": "https://api.example.com/v1",
+        "apiKey": "sk-your-api-key-here",
+        "timeout": 120000
+      },
+      "models": {
+        "model-1": {
+          "id": "model-id-1",
+          "name": "Model Display Name",
+          "context": 128000,
+          "cost": {
+            "input": 0.0001,
+            "output": 0.0002
+          }
+        }
+      }
+    },
+
+    "_comment_anthropic": "Claude 兼容接口配置（百炼、火山等）",
+    "anthropic": {
+      "options": {
+        "baseURL": "https://api.example.com/v1",
+        "apiKey": "sk-your-api-key-here",
+        "timeout": 120000
+      },
+      "models": {
+        "model-2": {
+          "id": "model-id-2",
+          "name": "Model Display Name",
+          "context": 128000,
+          "cost": {
+            "input": 0.0001,
+            "output": 0.0002
+          }
+        }
+      }
+    }
+  },
+
+  "_comment_model": "默认模型，格式: provider-name/model-id",
+  "model": "openai-compatible/model-1",
+  "small_model": "anthropic/model-2",
+
+  "_comment_agent": "Agent 特定模型配置",
+  "agent": {
+    "plan": {
+      "model": "anthropic/model-2",
+      "temperature": 0.7
+    },
+    "build": {
+      "model": "openai-compatible/model-1",
+      "temperature": 0.3
+    },
+    "general": {
+      "model": "openai-compatible/model-1"
+    },
+    "explore": {
+      "model": "anthropic/model-2"
+    },
+    "code-reviewer": {
+      "model": "anthropic/model-2"
+    },
+    "security-reviewer": {
+      "model": "anthropic/model-2"
+    },
+    "tdd-guide": {
+      "model": "openai-compatible/model-1"
+    }
+  },
+
+  "theme": "github-dark",
+  "logLevel": "info",
+  "username": "Developer"
+}

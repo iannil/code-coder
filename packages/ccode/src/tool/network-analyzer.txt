@@ -1,0 +1,1 @@
+Analyzes network traffic and API endpoints for a given URL. Extracts information about server type, hosting provider, analytics tools, tracking pixels, frameworks, and detected API endpoints from both HTTP headers and HTML content. Returns a comprehensive analysis in the specified format (markdown, text, or JSON).

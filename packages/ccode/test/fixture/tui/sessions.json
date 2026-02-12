@@ -1,0 +1,38 @@
+[
+  {
+    "id": "session-1",
+    "title": "Test Session 1",
+    "createdAt": 1704067200000,
+    "updatedAt": 1704067260000,
+    "messages": [
+      {
+        "id": "msg-1",
+        "role": "user",
+        "content": "Hello, how are you?"
+      },
+      {
+        "id": "msg-2",
+        "role": "assistant",
+        "content": "I'm doing well, thank you!"
+      }
+    ]
+  },
+  {
+    "id": "session-2",
+    "title": "Test Session 2",
+    "createdAt": 1704067270000,
+    "updatedAt": 1704067330000,
+    "messages": [
+      {
+        "id": "msg-3",
+        "role": "user",
+        "content": "What is the capital of France?"
+      },
+      {
+        "id": "msg-4",
+        "role": "assistant",
+        "content": "The capital of France is Paris."
+      }
+    ]
+  }
+]

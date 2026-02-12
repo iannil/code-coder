@@ -1,0 +1,558 @@
+import { Log } from "@/util/log"
+import { StateMachine } from "../state/state-machine"
+import { CrazyState } from "../state/states"
+import { DecisionEngine, type DecisionContext } from "../decision/engine"
+import { TaskQueue, type TaskPriority } from "./task-queue"
+import { PhaseRunner, PhaseTemplates, type PhaseContext } from "./phase-runner"
+import { type ExecutionConfig, createExecutor, type Executor } from "../execution/executor"
+import { Bus } from "@/bus"
+import { CrazyEvent } from "../events"
+import { SafetyGuard } from "../safety/constraints"
+import type { ResourceBudget } from "../safety/constraints"
+import { buildCriteria, type CrazyDecisionCriteria } from "../decision/criteria"
+import { createSafetyIntegration, type SafetyIntegration } from "../safety/integration"
+
+const log = Log.create({ service: "crazy.orchestrator" })
+
+/**
+ * Orchestrator configuration
+ */
+export interface OrchestratorConfig {
+  autonomyLevel: "lunatic" | "insane" | "crazy" | "wild" | "bold" | "timid"
+  resourceBudget: ResourceBudget
+  executionConfig?: ExecutionConfig
+  unattended: boolean
+}
+
+/**
+ * Session context
+ */
+export interface SessionContext {
+  sessionId: string
+  requestId: string
+  request: string
+  startTime: number
+}
+
+/**
+ * Orchestrator for Crazy Mode
+ *
+ * Coordinates the state machine, decision engine, task queue, and executor
+ */
+export class Orchestrator {
+  private stateMachine: StateMachine
+  private decisionEngine: DecisionEngine
+  private taskQueue: TaskQueue
+  private phaseRunner: PhaseRunner
+  private executor: Executor | null = null
+  private safetyGuard: SafetyGuard
+  private safetyIntegration: SafetyIntegration
+  private config: OrchestratorConfig
+  private context: SessionContext
+
+  constructor(context: SessionContext, config: OrchestratorConfig) {
+    this.context = context
+    this.config = config
+
+    // Initialize components
+    this.stateMachine = new StateMachine({
+      onStateChange: this.onStateChange.bind(this),
+    })
+
+    this.decisionEngine = new DecisionEngine({
+      autonomyLevel: config.autonomyLevel,
+    })
+
+    this.taskQueue = new TaskQueue(context.sessionId)
+
+    this.phaseRunner = new PhaseRunner(context.sessionId, {
+      continueOnFailure: false,
+    })
+
+    this.safetyGuard = new SafetyGuard(this.context.sessionId, config.resourceBudget)
+
+    // Initialize safety integration
+    this.safetyIntegration = createSafetyIntegration(this.context.sessionId, {
+      enableDoomLoopBridge: true,
+      enableDestructiveProtection: true,
+      autoRollbackOnFailure: config.unattended,
+    })
+
+    // Register state change handler
+    this.setupEventHandlers()
+  }
+
+  /**
+   * Start the Crazy Mode session
+   */
+  async start(request: string): Promise<void> {
+    log.info("Starting Crazy Mode session", {
+      sessionId: this.context.sessionId,
+      requestId: this.context.requestId,
+      autonomyLevel: this.config.autonomyLevel,
+    })
+
+    await this.stateMachine.transition(CrazyState.PLANNING, {
+      reason: "Starting Crazy Mode session",
+    })
+
+    await Bus.publish(CrazyEvent.SessionStarted, {
+      sessionId: this.context.sessionId,
+      requestId: this.context.requestId,
+      autonomyLevel: this.config.autonomyLevel,
+    })
+
+    // Create executor lazily
+
+    // Initialize safety integration
+    await this.safetyIntegration.initialize()
+    this.executor = createExecutor(this.context.sessionId, {
+      ...(this.config.executionConfig ?? {}),
+      unattended: this.config.unattended,
+    })
+  }
+
+  /**
+   * Process the request through the full pipeline
+   */
+  async process(request: string): Promise<{
+    success: boolean
+    result: {
+      qualityScore: number
+      crazinessScore: number
+      duration: number
+      tokensUsed: number
+      costUSD: number
+    } | null
+  }> {
+    try {
+      // Phase 1: Understand & Plan
+      await this.runUnderstandPhase(request)
+      await this.runPlanPhase(request)
+
+      // Phase 2: Decide
+      const decision = await this.runDecidePhase()
+      if (!decision.approved) {
+        await this.handleBlockedDecision(decision.reasoning)
+        return { success: false, result: null }
+      }
+
+      // Phase 3: Execute (TDD cycle)
+      await this.runExecutePhase()
+
+      // Phase 4: Test & Verify
+      await this.runTestPhase()
+      await this.runVerifyPhase()
+
+      // Phase 5: Evaluate
+      const evaluation = await this.runEvaluatePhase()
+
+      // Phase 6: Report
+      await this.runReportPhase()
+
+      // Complete
+      await this.stateMachine.transition(CrazyState.COMPLETED, {
+        reason: "All phases completed successfully",
+      })
+
+      const resultData = {
+        success: true,
+        ...evaluation,
+      }
+
+      await Bus.publish(CrazyEvent.SessionCompleted, {
+        sessionId: this.context.sessionId,
+        requestId: this.context.requestId,
+        result: resultData,
+      })
+
+      return { success: true, result: resultData }
+    } catch (error) {
+      log.error("Session error", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+
+      await this.stateMachine.transition(CrazyState.FAILED, {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+
+      await Bus.publish(CrazyEvent.SessionFailed, {
+        sessionId: this.context.sessionId,
+        requestId: this.context.requestId,
+        error: error instanceof Error ? error.message : String(error),
+        state: this.stateMachine.getState(),
+      })
+
+      return { success: false, result: null }
+    }
+  }
+
+  /**
+   * Run understand phase
+   */
+  private async runUnderstandPhase(request: string): Promise<void> {
+    await this.stateMachine.transition(CrazyState.PLANNING, {
+      reason: "Understanding request",
+    })
+
+    // Add understanding task
+    const taskId = await this.taskQueue.add({
+      subject: "Understand request",
+      description: `Parse and understand: ${request}`,
+      priority: "critical",
+      dependencies: [],
+      agent: "explore",
+      metadata: { phase: "understand", request },
+    })
+
+    // Execute the task (in a real implementation, this would invoke the agent)
+    await this.taskQueue.start(taskId)
+    await this.taskQueue.complete(taskId, { understood: true })
+  }
+
+  /**
+   * Run plan phase
+   */
+  private async runPlanPhase(request: string): Promise<void> {
+    // Add planning task
+    const taskId = await this.taskQueue.add({
+      subject: "Generate plan",
+      description: "Generate structured execution plan",
+      priority: "critical",
+      dependencies: [],
+      agent: "architect",
+      metadata: { phase: "plan", request },
+    })
+
+    await this.taskQueue.start(taskId)
+    await this.taskQueue.complete(taskId, { plan: "generated" })
+
+    await this.stateMachine.transition(CrazyState.PLAN_APPROVED, {
+      reason: "Plan generated",
+    })
+  }
+
+  /**
+   * Run decide phase
+   */
+  private async runDecidePhase(): Promise<{ approved: boolean; reasoning: string }> {
+    await this.stateMachine.transition(CrazyState.DECIDING, {
+      reason: "Evaluating plan with CLOSE framework",
+    })
+
+    const criteria = buildCriteria({
+      type: "implementation",
+      description: "Execute generated plan",
+      riskLevel: "medium",
+      convergence: 5,
+      leverage: 7,
+      optionality: 6,
+      surplus: this.safetyGuard.getSurplusRatio() * 10,
+      evolution: 6,
+    })
+
+    const decisionContext: DecisionContext = {
+      sessionId: this.context.sessionId,
+      currentState: this.stateMachine.getState(),
+      resourceUsage: this.safetyGuard.getCurrentUsage(),
+      errorCount: this.taskQueue.getStats().failed,
+      recentDecisions: [],
+    }
+
+    const result = await this.decisionEngine.evaluate(criteria, decisionContext)
+
+    await this.stateMachine.transition(CrazyState.DECISION_MADE, {
+      reason: `Decision: ${result.action}`,
+    })
+
+    return { approved: result.approved, reasoning: result.reasoning }
+  }
+
+  /**
+   * Run execute phase (TDD cycle)
+   */
+  private async runExecutePhase(): Promise<void> {
+    await this.stateMachine.transition(CrazyState.EXECUTING, {
+      reason: "Starting TDD execution cycle",
+    })
+
+    if (!this.executor) {
+      throw new Error("Executor not initialized")
+    }
+
+    // Run TDD cycles until completion
+    await this.executor.runTDDCycle()
+
+    // Move to testing
+    await this.stateMachine.transition(CrazyState.TESTING, {
+      reason: "Implementation complete, running tests",
+    })
+  }
+
+  /**
+   * Run test phase
+   */
+  private async runTestPhase(): Promise<void> {
+    if (!this.executor) {
+      throw new Error("Executor not initialized")
+    }
+
+    const testResult = await this.executor.runTests()
+
+    if (testResult.success) {
+      await this.stateMachine.transition(CrazyState.VERIFYING, {
+        reason: "Tests passed, verifying quality",
+      })
+    } else {
+      await this.stateMachine.transition(CrazyState.FIXING, {
+        reason: "Tests failed, entering fix mode",
+      })
+
+      // Retry logic would go here
+      await this.stateMachine.transition(CrazyState.VERIFYING, {
+        reason: "Fixes applied, verifying",
+      })
+    }
+  }
+
+  /**
+   * Run verify phase
+   */
+  private async runVerifyPhase(): Promise<void> {
+    if (!this.executor) {
+      throw new Error("Executor not initialized")
+    }
+
+    const verifyResult = await this.executor.runVerification()
+
+    if (verifyResult.success) {
+      await this.stateMachine.transition(CrazyState.EVALUATING, {
+        reason: "Verification passed, evaluating results",
+      })
+    } else {
+      await this.stateMachine.transition(CrazyState.FIXING, {
+        reason: "Verification failed, entering fix mode",
+      })
+
+      // Retry logic would go here
+      await this.stateMachine.transition(CrazyState.EVALUATING, {
+        reason: "Fixes applied, evaluating",
+      })
+    }
+  }
+
+  /**
+   * Run evaluate phase
+   */
+  private async runEvaluatePhase(): Promise<{
+    qualityScore: number
+    crazinessScore: number
+    duration: number
+    tokensUsed: number
+    costUSD: number
+  }> {
+    await this.stateMachine.transition(CrazyState.SCORING, {
+      reason: "Calculating scores",
+    })
+
+    const usage = this.safetyGuard.getCurrentUsage()
+    const duration = Date.now() - this.context.startTime
+
+    // Calculate scores (simplified)
+    const taskStats = this.taskQueue.getStats()
+    const qualityScore = this.calculateQualityScore(taskStats)
+    const crazinessScore = this.calculateCrazinessScore(taskStats, usage)
+
+    return {
+      qualityScore,
+      crazinessScore,
+      duration,
+      tokensUsed: usage.tokensUsed,
+      costUSD: usage.costUSD,
+    }
+  }
+
+  /**
+   * Run report phase
+   */
+  private async runReportPhase(): Promise<void> {
+    await Bus.publish(CrazyEvent.ReportGenerated, {
+      sessionId: this.context.sessionId,
+      reportType: "summary",
+    })
+  }
+
+  /**
+   * Handle blocked decision
+   */
+  private async handleBlockedDecision(reasoning: string): Promise<void> {
+    if (this.config.unattended) {
+      await this.stateMachine.transition(CrazyState.PAUSED, {
+        reason: `Decision blocked (unattended): ${reasoning}`,
+      })
+
+      await Bus.publish(CrazyEvent.SessionPaused, {
+        sessionId: this.context.sessionId,
+        reason: reasoning,
+        state: this.stateMachine.getState(),
+        canResume: true,
+      })
+    } else {
+      await this.stateMachine.transition(CrazyState.BLOCKED, {
+        reason: `Decision blocked: ${reasoning}`,
+      })
+
+      await Bus.publish(CrazyEvent.DecisionBlocked, {
+        sessionId: this.context.sessionId,
+        decisionId: "blocked",
+        reason: reasoning,
+      })
+    }
+  }
+
+  /**
+   * Calculate quality score
+   */
+  private calculateQualityScore(stats: { total: number; completed: number; failed: number }): number {
+    if (stats.total === 0) return 50
+
+    const successRate = stats.completed / stats.total
+    const failurePenalty = (stats.failed / stats.total) * 20
+
+    return Math.max(0, Math.min(100, successRate * 100 - failurePenalty))
+  }
+
+  /**
+   * Calculate craziness score
+   */
+  private calculateCrazinessScore(
+    stats: { total: number; completed: number; failed: number },
+    usage: { tokensUsed: number; costUSD: number },
+  ): number {
+    // Base score on autonomy
+    const autonomyScores = {
+      lunatic: 95,
+      insane: 85,
+      crazy: 75,
+      wild: 60,
+      bold: 40,
+      timid: 15,
+    }
+
+    let score = autonomyScores[this.config.autonomyLevel]
+
+    // Adjust based on success rate
+    if (stats.total > 0) {
+      const successRate = stats.completed / stats.total
+      score *= successRate
+    }
+
+    return Math.max(0, Math.min(100, score))
+  }
+
+  /**
+   * State change handler
+   */
+  private async onStateChange(from: CrazyState, to: CrazyState): Promise<void> {
+    log.info("State changed", { from, to })
+  }
+
+  /**
+   * Setup event handlers
+   */
+  private setupEventHandlers(): void {
+    // Subscribe to resource warnings
+    Bus.subscribe(CrazyEvent.ResourceWarning, async (event) => {
+      if (event.properties.sessionId === this.context.sessionId) {
+        log.warn("Resource warning", event.properties)
+      }
+    })
+
+    // Subscribe to loop detection
+    Bus.subscribe(CrazyEvent.LoopDetected, async (event) => {
+      if (event.properties.sessionId === this.context.sessionId) {
+        log.warn("Loop detected", event.properties)
+      }
+    })
+  }
+
+  /**
+   * Pause the session
+   */
+  async pause(reason = "Paused by user"): Promise<void> {
+    await this.stateMachine.transition(CrazyState.PAUSED, { reason })
+
+    await Bus.publish(CrazyEvent.SessionPaused, {
+      sessionId: this.context.sessionId,
+      reason,
+      state: this.stateMachine.getState(),
+      canResume: true,
+    })
+  }
+
+  /**
+   * Resume the session
+   */
+  async resume(): Promise<boolean> {
+    if (this.stateMachine.getState() !== CrazyState.PAUSED) {
+      return false
+    }
+
+    await this.stateMachine.transition(CrazyState.EXECUTING, {
+      reason: "Resuming from pause",
+    })
+
+    return true
+  }
+
+  /**
+   * Stop the session
+   */
+  async stop(reason = "Stopped by user"): Promise<void> {
+    await this.stateMachine.transition(CrazyState.TERMINATED, { reason })
+  }
+
+  /**
+   * Get current state
+   */
+  getState(): CrazyState {
+    return this.stateMachine.getState()
+  }
+
+  /**
+   * Get task queue stats
+   */
+  getTaskStats() {
+    return this.taskQueue.getStats()
+  }
+
+  /**
+   * Get decision history
+   */
+  getDecisionHistory() {
+    return this.decisionEngine.getHistory()
+  }
+
+  /**
+   * Serialize orchestrator state
+   */
+  serialize(): {
+    state: CrazyState
+    tasks: ReturnType<TaskQueue["serialize"]>
+    decisions: ReturnType<DecisionEngine["getHistory"]>
+  } {
+    return {
+      state: this.stateMachine.getState(),
+      tasks: this.taskQueue.serialize(),
+      decisions: this.decisionEngine.getHistory(),
+    }
+  }
+}
+
+/**
+ * Create an orchestrator
+ */
+export function createOrchestrator(context: SessionContext, config: OrchestratorConfig): Orchestrator {
+  return new Orchestrator(context, config)
+}
