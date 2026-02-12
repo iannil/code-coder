@@ -8,6 +8,7 @@ import type { Event } from "@/types"
 
 // Local API imports
 import { LocalSession, LocalPermission, LocalConfig, LocalFind } from "@/api"
+import { SessionPrompt } from "@/session/prompt"
 import { Session } from "@/session"
 import { Provider } from "@/provider/provider"
 import { Command } from "@/command"
@@ -94,6 +95,10 @@ const localApi = {
     children: LocalSession.children,
     messages: LocalSession.messages,
     diff: async () => [],
+    abort: (input: { sessionID: string }) => {
+      SessionPrompt.cancel(input.sessionID)
+      return true
+    },
   },
 
   permission: {

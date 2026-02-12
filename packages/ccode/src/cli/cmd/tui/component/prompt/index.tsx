@@ -202,21 +202,20 @@ export function Prompt(props: PromptProps) {
         enabled: status().type !== "idle",
         onSelect: (dialog) => {
           if (autocomplete.visible) return
-          if (!input.focused) return
-          // TODO: this should be its own command
-          if (store.mode === "shell") {
+          if (!props.sessionID) return
+          if (input.focused && store.mode === "shell") {
             setStore("mode", "normal")
             return
           }
-          if (!props.sessionID) return
 
-          setStore("interrupt", store.interrupt + 1)
+          const newInterrupt = store.interrupt + 1
+          setStore("interrupt", newInterrupt)
 
           setTimeout(() => {
             setStore("interrupt", 0)
           }, 5000)
 
-          if (store.interrupt >= 2) {
+          if (newInterrupt >= 2) {
             sdk.client.session.abort({
               sessionID: props.sessionID,
             })
@@ -259,12 +258,7 @@ export function Prompt(props: PromptProps) {
           const updatedNonTextParts = nonTextParts
             .map((part) => {
               let virtualText = ""
-              if (
-                part.type === "file" &&
-                part.source &&
-                typeof part.source === "object" &&
-                "text" in part.source
-              ) {
+              if (part.type === "file" && part.source && typeof part.source === "object" && "text" in part.source) {
                 virtualText = part.source.text.value
               } else if (
                 part.type === "agent" &&
@@ -283,12 +277,7 @@ export function Prompt(props: PromptProps) {
 
               const newEnd = newStart + virtualText.length
 
-              if (
-                part.type === "file" &&
-                part.source &&
-                typeof part.source === "object" &&
-                "text" in part.source
-              ) {
+              if (part.type === "file" && part.source && typeof part.source === "object" && "text" in part.source) {
                 return {
                   ...part,
                   source: {
@@ -302,12 +291,7 @@ export function Prompt(props: PromptProps) {
                 }
               }
 
-              if (
-                part.type === "agent" &&
-                part.source &&
-                typeof part.source === "object" &&
-                "start" in part.source
-              ) {
+              if (part.type === "agent" && part.source && typeof part.source === "object" && "start" in part.source) {
                 return {
                   ...part,
                   source: {
@@ -383,33 +367,18 @@ export function Prompt(props: PromptProps) {
       let virtualText = ""
       let styleId: number | undefined
 
-      if (
-        part.type === "file" &&
-        part.source &&
-        typeof part.source === "object" &&
-        "text" in part.source
-      ) {
+      if (part.type === "file" && part.source && typeof part.source === "object" && "text" in part.source) {
         start = part.source.text.start
         end = part.source.text.end
         virtualText = part.source.text.value
         styleId = fileStyleId
-      } else if (
-        part.type === "agent" &&
-        part.source &&
-        typeof part.source === "object" &&
-        "start" in part.source
-      ) {
+      } else if (part.type === "agent" && part.source && typeof part.source === "object" && "start" in part.source) {
         const source = part.source as { start: number; end: number; value: string }
         start = source.start
         end = source.end
         virtualText = source.value
         styleId = agentStyleId
-      } else if (
-        part.type === "text" &&
-        part.source &&
-        typeof part.source === "object" &&
-        "text" in part.source
-      ) {
+      } else if (part.type === "text" && part.source && typeof part.source === "object" && "text" in part.source) {
         start = part.source.text.start
         end = part.source.text.end
         virtualText = part.source.text.value
@@ -445,12 +414,7 @@ export function Prompt(props: PromptProps) {
           if (partIndex !== undefined) {
             const part = draft.prompt.parts[partIndex]
             if (part) {
-              if (
-                part.type === "agent" &&
-                part.source &&
-                typeof part.source === "object" &&
-                "start" in part.source
-              ) {
+              if (part.type === "agent" && part.source && typeof part.source === "object" && "start" in part.source) {
                 const source = part.source as { start: number; end: number; value: string }
                 source.start = extmark.start
                 source.end = extmark.end
@@ -555,9 +519,7 @@ export function Prompt(props: PromptProps) {
     const sessionID = props.sessionID
       ? props.sessionID
       : await (async () => {
-          const sessionID = await sdk.client.session
-            .create({})
-            .then((x: { data?: { id: string } }) => x.data!.id)
+          const sessionID = await sdk.client.session.create({}).then((x: { data?: { id: string } }) => x.data!.id)
           return sessionID
         })()
     const messageID = Identifier.ascending("message")
