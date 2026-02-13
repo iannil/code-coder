@@ -710,6 +710,9 @@ export namespace ProviderTransform {
 
         const result: any = {}
         for (const [key, value] of Object.entries(obj)) {
+          // Skip zod's internal 'ref' field - Google API doesn't recognize it
+          if (key === "ref") continue
+
           if (key === "enum" && Array.isArray(value)) {
             // Convert all enum values to strings
             result[key] = value.map((v) => String(v))

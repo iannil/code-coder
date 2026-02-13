@@ -4,6 +4,15 @@ import z from "zod"
 
 export const TuiEvent = {
   PromptAppend: BusEvent.define("tui.prompt.append", z.object({ text: z.string() })),
+  ModelCall: BusEvent.define(
+    "tui.model.call",
+    z.object({
+      providerID: z.string(),
+      modelID: z.string(),
+      agent: z.string(),
+      sessionID: z.string().optional(),
+    }),
+  ),
   CommandExecute: BusEvent.define(
     "tui.command.execute",
     z.object({

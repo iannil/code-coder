@@ -553,6 +553,15 @@ function App() {
     })
   })
 
+  sdk.event.on(TuiEvent.ModelCall.type, (evt) => {
+    const { providerID, modelID, agent, sessionID } = evt.properties
+    toast.show({
+      variant: "info",
+      message: `[${agent}] ${providerID}/${modelID}`,
+      duration: 3000,
+    })
+  })
+
   sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
     if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
       route.navigate({ type: "home" })

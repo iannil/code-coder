@@ -23,6 +23,8 @@ import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
+import { Bus } from "@/bus"
+import { TuiEvent } from "@/cli/cmd/tui/event"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -57,6 +59,15 @@ export namespace LLM {
       modelID: input.model.id,
       providerID: input.model.providerID,
     })
+
+    // Publish model call event for TUI display
+    Bus.publish(TuiEvent.ModelCall, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+      agent: input.agent.name,
+      sessionID: input.sessionID,
+    })
+
     const [language, cfg, provider, auth] = await Promise.all([
       Provider.getLanguage(input.model),
       Config.get(),
