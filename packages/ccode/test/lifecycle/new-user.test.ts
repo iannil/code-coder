@@ -48,7 +48,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -70,7 +70,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -96,7 +96,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -127,7 +127,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -151,7 +151,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -181,7 +181,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -213,7 +213,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -246,7 +246,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -283,7 +283,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -311,7 +311,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -340,7 +340,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -373,7 +373,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -401,7 +401,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -434,7 +434,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -459,7 +459,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -480,7 +480,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -504,7 +504,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           await Bun.write(path.join(dir, "hello.txt"), "Hello, World!")
@@ -530,7 +530,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           await Bun.write(path.join(dir, "src", "index.ts"), "export {}")
@@ -558,7 +558,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -587,7 +587,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -618,7 +618,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -646,7 +646,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -669,7 +669,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -728,7 +728,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -752,7 +752,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -776,7 +776,7 @@ describe("New User Lifecycle - ULC-NU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },

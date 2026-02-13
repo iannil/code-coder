@@ -15,6 +15,7 @@ import { TuiThreadCommand } from "./cli/cmd/tui/thread"
 import { EOL } from "os"
 import { SessionCommand } from "./cli/cmd/session"
 import { DocumentCommand, ChapterCommand } from "./cli/cmd/document"
+import { BookExpandCommand } from "./cli/cmd/book-writer"
 import { ReverseCommands } from "./cli/cmd/reverse"
 import { JarReverseCommands } from "./cli/cmd/jar-reverse"
 import { MemoryCommand } from "./cli/cmd/memory"
@@ -79,6 +80,7 @@ const cli = yargs(hideBin(process.argv))
   .command(ModelsCommand)
   .command(SessionCommand)
   .command(DocumentCommand)
+  .command(BookExpandCommand)
   .command(ReverseCommands)
   .command(JarReverseCommands)
   .command(MemoryCommand)

@@ -194,6 +194,89 @@ describe("ProviderTransform.maxOutputTokens", () => {
       const result = ProviderTransform.maxOutputTokens("@ai-sdk/anthropic", options, modelLimit, OUTPUT_TOKEN_MAX)
       expect(result).toBe(OUTPUT_TOKEN_MAX)
     })
+
+    test("autonomous agent scenario: 128k maxOutput with high variant thinking budget", () => {
+      // Simulate autonomous agent with maxOutputTokens: 128_000
+      // and model with "high" variant (budgetTokens: 16_000)
+      const modelLimit = 200_000
+      const agentMaxTokens = 128_000
+      const options = {
+        thinking: {
+          type: "enabled",
+          budgetTokens: 16_000,
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/anthropic",
+        options,
+        modelLimit,
+        agentMaxTokens
+      )
+      // Should respect the agent's maxOutputTokens since 128k + 16k = 144k <= 200k
+      expect(result).toBe(agentMaxTokens)
+    })
+
+    test("autonomous agent with small model limit returns available space", () => {
+      // When model limit is small, return modelCap - budgetTokens
+      const modelLimit = 100_000
+      const agentMaxTokens = 128_000
+      const options = {
+        thinking: {
+          type: "enabled",
+          budgetTokens: 16_000,
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/anthropic",
+        options,
+        modelLimit,
+        agentMaxTokens
+      )
+      // 128k > (100k - 16k) = 84k, so returns 84k
+      expect(result).toBe(modelLimit - 16_000)
+    })
+
+    test("ensures minimum 80% of available space when standardLimit is small", () => {
+      // Edge case: standardLimit is very small but modelCap is large
+      // When standardLimit + budgetTokens > modelCap, we need to calculate fallback
+      const modelLimit = 50_000
+      const standardLimit = 40_000
+      const budgetTokens = 16_000
+      const options = {
+        thinking: {
+          type: "enabled",
+          budgetTokens,
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/anthropic",
+        options,
+        modelLimit,
+        standardLimit
+      )
+      // 40000 + 16000 = 56000 > 50000, so we can't use standardLimit
+      // availableForOutput = 50000 - 16000 = 34000
+      // standardOutput = Math.min(40000, 34000) = 34000
+      // minimumOutput = Math.min(50000 * 0.8, 34000) = 34000
+      // result = 34000
+      expect(result).toBe(modelLimit - budgetTokens)
+    })
+
+    test("google-vertex/anthropic respects disabled thinking", () => {
+      const modelLimit = 200_000
+      const options = {
+        thinking: {
+          type: "disabled",
+        },
+      }
+      const result = ProviderTransform.maxOutputTokens(
+        "@ai-sdk/google-vertex/anthropic",
+        options,
+        modelLimit,
+        128_000
+      )
+      expect(result).toBe(128_000)
+    })
   })
 })
 
@@ -811,7 +894,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
       providerID: "ccode",
       api: {
         id: "codecoder-test",
-        url: "https://api.codecoder.ai",
+        url: "https://api.code-coder.com",
         npm: "@ai-sdk/openai-compatible",
       },
     }
@@ -845,7 +928,7 @@ describe("ProviderTransform.message - strip openai metadata when store=false", (
       providerID: "ccode",
       api: {
         id: "codecoder-test",
-        url: "https://api.codecoder.ai",
+        url: "https://api.code-coder.com",
         npm: "@ai-sdk/openai-compatible",
       },
     }

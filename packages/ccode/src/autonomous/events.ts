@@ -277,6 +277,162 @@ export namespace AutonomousEvent {
       error: z.string().optional(),
     }),
   )
+
+  export const IterationStarted = BusEvent.define(
+    "autonomous.iteration.started",
+    z.object({
+      sessionId: z.string(),
+      iteration: z.number(),
+      remainingRequirements: z.number(),
+      context: z.record(z.string(), z.any()).optional(),
+    }),
+  )
+
+  export const IterationCompleted = BusEvent.define(
+    "autonomous.iteration.completed",
+    z.object({
+      sessionId: z.string(),
+      iteration: z.number(),
+      completedRequirements: z.number(),
+      success: z.boolean(),
+      duration: z.number(),
+    }),
+  )
+
+  export const NextStepPlanned = BusEvent.define(
+    "autonomous.next_step.planned",
+    z.object({
+      sessionId: z.string(),
+      iteration: z.number(),
+      nextTasks: z.array(
+        z.object({
+          subject: z.string(),
+          priority: z.string(),
+        }),
+      ),
+      reason: z.string(),
+      estimatedCycles: z.number(),
+      confidence: z.number(),
+    }),
+  )
+
+  export const RequirementsUpdated = BusEvent.define(
+    "autonomous.requirements.updated",
+    z.object({
+      sessionId: z.string(),
+      stats: z.object({
+        total: z.number(),
+        completed: z.number(),
+        inProgress: z.number(),
+        pending: z.number(),
+        blocked: z.number(),
+        completionPercentage: z.number(),
+      }),
+    }),
+  )
+
+  export const CompletionChecked = BusEvent.define(
+    "autonomous.completion.checked",
+    z.object({
+      sessionId: z.string(),
+      iteration: z.number(),
+      criteria: z.object({
+        requirementsCompleted: z.boolean(),
+        testsPassing: z.boolean(),
+        verificationPassed: z.boolean(),
+        noBlockingIssues: z.boolean(),
+        resourceExhausted: z.boolean(),
+      }),
+      allComplete: z.boolean(),
+      canContinue: z.boolean(),
+      shouldPause: z.boolean(),
+    }),
+  )
+
+  // ============================================================================
+  // Expansion Events (BookExpander)
+  // ============================================================================
+
+  export const ExpansionStarted = BusEvent.define(
+    "autonomous.expansion.started",
+    z.object({
+      documentID: z.string(),
+      coreIdea: z.string(),
+      targetWords: z.number(),
+      contentType: z.enum(["fiction", "nonfiction", "auto"]),
+      autonomy: z.enum(["autonomous", "stage-confirm", "interactive"]),
+    }),
+  )
+
+  export const ExpansionPhaseChanged = BusEvent.define(
+    "autonomous.expansion.phase_changed",
+    z.object({
+      documentID: z.string(),
+      from: z.string(),
+      to: z.string(),
+      phase: z.enum([
+        "idea_analysis",
+        "framework_building",
+        "outline_generation",
+        "iterative_writing",
+        "consistency_validation",
+      ]),
+    }),
+  )
+
+  export const ExpansionChapterCompleted = BusEvent.define(
+    "autonomous.expansion.chapter_completed",
+    z.object({
+      documentID: z.string(),
+      chapterID: z.string(),
+      chapterIndex: z.number(),
+      wordCount: z.number(),
+      duration: z.number(),
+    }),
+  )
+
+  export const ExpansionCompleted = BusEvent.define(
+    "autonomous.expansion.completed",
+    z.object({
+      documentID: z.string(),
+      targetWords: z.number(),
+      actualWords: z.number(),
+      consistencyScore: z.number(),
+      duration: z.number(),
+    }),
+  )
+
+  export const ExpansionFailed = BusEvent.define(
+    "autonomous.expansion.failed",
+    z.object({
+      documentID: z.string(),
+      phase: z.string(),
+      error: z.string(),
+      retryable: z.boolean(),
+    }),
+  )
+
+  export const ExpansionPaused = BusEvent.define(
+    "autonomous.expansion.paused",
+    z.object({
+      documentID: z.string(),
+      phase: z.string(),
+      reason: z.string(),
+    }),
+  )
+
+  export const FrameworkValidated = BusEvent.define(
+    "autonomous.expansion.framework_validated",
+    z.object({
+      documentID: z.string(),
+      isValid: z.boolean(),
+      issues: z.array(z.object({
+        type: z.string(),
+        description: z.string(),
+        severity: z.enum(["low", "medium", "high"]),
+      })),
+    }),
+  )
 }
 
 const BusPromise = import("@/bus").then((m) => m.Bus)
@@ -291,7 +447,7 @@ export namespace AutonomousEventHelper {
     })
   }
 
-  export async function waitFor<T extends { type: string }>(
+  export async function waitFor<T extends BusEvent.Definition>(
     eventType: T,
     timeout = 30000,
   ): Promise<{ type: string; properties: unknown } | undefined> {

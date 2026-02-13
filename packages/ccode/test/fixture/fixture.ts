@@ -26,7 +26,7 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
     await Bun.write(
       path.join(dirpath, "codecoder.json"),
       JSON.stringify({
-        $schema: "https://codecoder.ai/config.json",
+        $schema: "https://code-coder.com/config.json",
         ...options.config,
       }),
     )

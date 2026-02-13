@@ -21,7 +21,7 @@ describe("E2E High: MCP Integration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "test-server": {
                   type: "local",
@@ -53,7 +53,7 @@ describe("E2E High: MCP Integration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "remote-server": {
                   type: "remote",
@@ -84,7 +84,7 @@ describe("E2E High: MCP Integration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "env-server": {
                   type: "local",
@@ -121,7 +121,7 @@ describe("E2E High: MCP Integration", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -144,7 +144,7 @@ describe("E2E High: MCP Integration", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -167,7 +167,7 @@ describe("E2E High: MCP Integration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "server-1": {
                   type: "local",

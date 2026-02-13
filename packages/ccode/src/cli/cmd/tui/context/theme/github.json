@@ -1,5 +1,5 @@
 {
-  "$schema": "https://codecoder.ai/theme.json",
+  "$schema": "https://code-coder.com/theme.json",
   "defs": {
     "darkBg": "#0d1117",
     "darkBgAlt": "#010409",

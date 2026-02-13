@@ -1,5 +1,5 @@
 {
-  "$schema": "https://codecoder.ai/config.json",
+  "$schema": "https://code-coder.com/config.json",
   "_comment": "最小化配置用于测试 - 如果这个都不工作，说明是其他问题",
   "logLevel": "DEBUG",
   "model": "openai-compatible/glm-4-flash"

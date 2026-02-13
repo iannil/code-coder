@@ -320,7 +320,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://codecoder.ai/",
+            "HTTP-Referer": "https://code-coder.com/",
             "X-Title": "ccode",
           },
         },
@@ -331,7 +331,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "http-referer": "https://codecoder.ai/",
+            "http-referer": "https://code-coder.com/",
             "x-title": "ccode",
           },
         },
@@ -398,7 +398,7 @@ export namespace Provider {
         autoload: false,
         options: {
           headers: {
-            "HTTP-Referer": "https://codecoder.ai/",
+            "HTTP-Referer": "https://code-coder.com/",
             "X-Title": "ccode",
           },
         },
@@ -465,7 +465,7 @@ export namespace Provider {
             // Cloudflare AI Gateway uses cf-aig-authorization for authenticated gateways
             // This enables Unified Billing where Cloudflare handles upstream provider auth
             ...(apiToken ? { "cf-aig-authorization": `Bearer ${apiToken}` } : {}),
-            "HTTP-Referer": "https://codecoder.ai/",
+            "HTTP-Referer": "https://code-coder.com/",
             "X-Title": "ccode",
           },
           // Custom fetch to handle parameter transformation and auth

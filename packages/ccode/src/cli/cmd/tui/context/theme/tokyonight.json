@@ -1,5 +1,5 @@
 {
-  "$schema": "https://codecoder.ai/theme.json",
+  "$schema": "https://code-coder.com/theme.json",
   "defs": {
     "darkStep1": "#1a1b26",
     "darkStep2": "#1e2030",

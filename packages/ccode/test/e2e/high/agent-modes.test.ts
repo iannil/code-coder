@@ -20,7 +20,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -47,7 +47,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -72,7 +72,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -96,7 +96,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -124,7 +124,7 @@ describe("E2E High: Agent Mode Operations", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "anthropic/claude-sonnet-4-20250514",
             }),
           )
@@ -149,7 +149,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -174,7 +174,7 @@ describe("E2E High: Agent Mode Operations", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })

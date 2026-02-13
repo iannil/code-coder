@@ -410,34 +410,36 @@ export class Executor {
     await this.context.setPhase("verify")
 
     try {
-      // In production, this would:
-      // 1. Run TypeScript type checking
-      // 2. Run linter
-      // 3. Check test coverage
-      // 4. Run security checks
-
-      // For now, use placeholder values
-      const typecheck = true
-      const lint = true
-      const coverage = 85 // percentage
-
       const issues: string[] = []
 
-      if (!typecheck) issues.push("TypeScript errors would be found")
-      if (!lint) issues.push("Lint errors would be found")
-      if (coverage < 80) issues.push(`Coverage below threshold: ${coverage}%`)
+      // 1. Run TypeScript type checking
+      const typecheckResult = await this.runTypecheck()
+      if (!typecheckResult.success) {
+        issues.push(...typecheckResult.errors)
+      }
+
+      // 2. Run linter (prettier check)
+      const lintResult = await this.runLint()
+      if (!lintResult.success) {
+        issues.push(...lintResult.errors)
+      }
+
+      // 3. Check test coverage
+      const coverageResult = await TestRunner.runCoverage(80)
 
       const result: VerificationResult = {
-        success: issues.length === 0,
-        typecheck,
-        lint,
-        coverage,
+        success: issues.length === 0 && coverageResult.passesThreshold,
+        typecheck: typecheckResult.success,
+        lint: lintResult.success,
+        coverage: coverageResult.coverage,
         issues,
       }
 
       log.info("Verification completed", {
         sessionId: this.sessionId,
         success: result.success,
+        typecheck: result.typecheck,
+        lint: result.lint,
         coverage: result.coverage,
       })
 
@@ -455,6 +457,67 @@ export class Executor {
         coverage: 0,
         issues: [error instanceof Error ? error.message : String(error)],
       }
+    }
+  }
+
+  /**
+   * Run TypeScript type checking
+   */
+  private async runTypecheck(): Promise<{ success: boolean; errors: string[] }> {
+    try {
+      const { execSync } = require("child_process")
+      const Instance = await import("@/project/instance").then((m) => m.Instance)
+
+      log.info("Running typecheck", { sessionId: this.sessionId })
+
+      const output = execSync("bun", ["run", "typecheck"], {
+        cwd: Instance.worktree,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+
+      return { success: true, errors: [] }
+    } catch (error) {
+      const errorOutput = error instanceof Error ? error.message : String(error)
+      const errors = errorOutput.split("\n").filter((line) => line.trim().length > 0)
+
+      log.warn("Typecheck failed", {
+        sessionId: this.sessionId,
+        errors: errors.slice(0, 5),
+      })
+
+      return { success: false, errors }
+    }
+  }
+
+  /**
+   * Run linter (prettier check)
+   */
+  private async runLint(): Promise<{ success: boolean; errors: string[] }> {
+    try {
+      const { execSync } = require("child_process")
+      const Instance = await import("@/project/instance").then((m) => m.Instance)
+
+      log.info("Running linter", { sessionId: this.sessionId })
+
+      // Check if prettier is available
+      execSync("bun", ["x", "prettier", "--check", "src/**/*.ts"], {
+        cwd: Instance.worktree,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      })
+
+      return { success: true, errors: [] }
+    } catch (error) {
+      const errorOutput = error instanceof Error ? error.message : String(error)
+      const errors = errorOutput.split("\n").filter((line) => line.trim().length > 0)
+
+      log.warn("Lint failed", {
+        sessionId: this.sessionId,
+        errors: errors.slice(0, 5),
+      })
+
+      return { success: false, errors }
     }
   }
 

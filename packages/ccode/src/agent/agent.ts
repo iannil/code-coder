@@ -31,6 +31,9 @@ import PROMPT_SYNTON_ASSISTANT from "./prompt/synton-assistant.txt"
 import PROMPT_AI_ENGINEER from "./prompt/ai-engineer.txt"
 import PROMPT_AUTONOMOUS from "./prompt/autonomous.txt"
 import PROMPT_VERIFIER from "./prompt/verifier.txt"
+import PROMPT_EXPANDER from "./prompt/expander.txt"
+import PROMPT_EXPANDER_FICTION from "./prompt/expander-fiction.txt"
+import PROMPT_EXPANDER_NONFICTION from "./prompt/expander-nonfiction.txt"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -104,7 +107,7 @@ export namespace Agent {
       },
       plan: {
         name: "plan",
-        options: {},
+        options: { maxOutputTokens: 128_000 },
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({
@@ -257,8 +260,41 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_WRITER,
         permission: PermissionNext.merge(defaults, user),
-        options: {},
+        options: { maxOutputTokens: 128_000 },
         temperature: 0.7,
+      },
+      expander: {
+        name: "expander",
+        description:
+          "Content expansion specialist for developing ideas into full-length books through systematic framework building, knowledge-aware writing, and consistency validation.",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_EXPANDER,
+        permission: PermissionNext.merge(defaults, user),
+        options: { maxOutputTokens: 128_000 },
+        temperature: 0.7,
+      },
+      "expander-fiction": {
+        name: "expander-fiction",
+        description:
+          "Fiction expansion specialist for transforming story ideas into coherent novels with consistent worldbuilding, character arcs, and narrative structure.",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_EXPANDER_FICTION,
+        permission: PermissionNext.merge(defaults, user),
+        options: { maxOutputTokens: 128_000 },
+        temperature: 0.8,
+      },
+      "expander-nonfiction": {
+        name: "expander-nonfiction",
+        description:
+          "Non-fiction expansion specialist for transforming ideas into comprehensive books through logical argumentation, evidence frameworks, and systematic reasoning.",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_EXPANDER_NONFICTION,
+        permission: PermissionNext.merge(defaults, user),
+        options: { maxOutputTokens: 128_000 },
+        temperature: 0.6,
       },
       proofreader: {
         name: "proofreader",
@@ -268,7 +304,7 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_PROOFREADER,
         permission: PermissionNext.merge(defaults, user),
-        options: {},
+        options: { maxOutputTokens: 128_000 },
         temperature: 0.3,
       },
       "code-reverse": {
@@ -399,7 +435,7 @@ export namespace Agent {
       verifier: {
         name: "verifier",
         description:
-          "Formal verification specialist for functional acceptance validation. Uses formal methods, property-based testing, contract verification, and coverage analysis to validate software functionality.",
+          "Verification agent for comprehensive validation. Performs build check, type check, lint check, test suite execution, console.log audit, git status analysis, formal methods, property-based testing, contract verification, and coverage analysis.",
         mode: "subagent",
         native: true,
         prompt: PROMPT_VERIFIER,
@@ -424,7 +460,13 @@ export namespace Agent {
           }),
           user,
         ),
-        options: {},
+        options: {
+          maxOutputTokens: 128_000,
+          // Disable thinking mode to prevent truncation when using large maxOutputTokens
+          // Thinking mode reduces available output tokens by budgetTokens amount
+          // Set to environment variable CCODE_AUTONOMOUS_THINKING=true to enable if needed
+          thinking: { type: "disabled" },
+        },
         temperature: 0.6,
         color: "magenta",
       },

@@ -28,7 +28,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -63,7 +63,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   whitelist: ["claude-sonnet-4-20250514"],
@@ -94,7 +94,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   blacklist: ["claude-haiku-4-20250514"],
@@ -124,7 +124,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   whitelist: ["claude-sonnet-4-20250514", "claude-opus-4-20250514"],
@@ -159,7 +159,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   models: {
@@ -197,7 +197,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   models: {
@@ -239,7 +239,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "anthropic/claude-sonnet-4-20250514",
             }),
           )
@@ -265,7 +265,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               small_model: "anthropic/claude-sonnet-4-20250514",
             }),
           )
@@ -294,7 +294,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               disabled_providers: ["openai"],
             }),
           )
@@ -322,7 +322,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               enabled_providers: ["anthropic"],
             }),
           )
@@ -351,7 +351,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 "custom-openai": {
                   name: "Custom OpenAI",
@@ -392,7 +392,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -425,7 +425,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -464,7 +464,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -496,7 +496,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -535,7 +535,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -693,7 +693,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -1157,7 +1157,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               permission: {
                 allow: ["read:*", "glob:*"],
                 deny: ["bash:rm *"],
@@ -1184,7 +1184,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               agent: {
                 "custom-agent": {
                   model: "anthropic/claude-sonnet-4-20250514",

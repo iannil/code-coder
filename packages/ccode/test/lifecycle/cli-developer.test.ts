@@ -38,7 +38,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -77,7 +77,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -109,7 +109,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -140,7 +140,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -172,7 +172,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -200,7 +200,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -227,7 +227,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -253,7 +253,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -282,7 +282,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -328,7 +328,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -371,7 +371,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -426,7 +426,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           // Initialize git repo
@@ -484,7 +484,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -541,7 +541,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -585,7 +585,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -633,7 +633,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -683,7 +683,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -725,7 +725,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           // Create .git directory to simulate git repo
@@ -757,7 +757,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           await Bun.write(path.join(dir, ".git", "HEAD"), "ref: refs/heads/feature-branch\n")
@@ -781,7 +781,7 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
           // Detached HEAD contains commit SHA directly

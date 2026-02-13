@@ -1,5 +1,7 @@
+import z from "zod"
 import { Document } from "./index"
 import { DocumentSchema } from "./schema"
+import * as Knowledge from "./knowledge"
 import { Entity } from "./entity"
 import { Volume } from "./volume"
 
@@ -440,5 +442,425 @@ export namespace Context {
     }
 
     return undefined
+  }
+
+  // ============================================================================
+  // Knowledge-Aware Context (BookExpander)
+  // ============================================================================
+
+  /**
+   * Extended context budget for expansion operations.
+   */
+  export const ExpansionContextBudget = z.object({
+    totalTokens: z.number().int().positive(),
+    systemPromptTokens: z.number().int().nonnegative(),
+    globalSummaryTokens: z.number().int().nonnegative(),
+    entityTokens: z.number().int().nonnegative(),
+    volumeSummaryTokens: z.number().int().nonnegative(),
+    chapterSummaryTokens: z.number().int().nonnegative(),
+    recentChapterTokens: z.number().int().nonnegative(),
+    currentChapterTokens: z.number().int().nonnegative(),
+    reservedOutputTokens: z.number().int().nonnegative(),
+    // Knowledge-specific budgets
+    knowledgeFrameworkTokens: z.number().int().nonnegative().default(15000),
+    argumentChainsTokens: z.number().int().nonnegative().default(5000),
+    establishedFactsTokens: z.number().int().nonnegative().default(3000),
+    thematicContextTokens: z.number().int().nonnegative().default(5000),
+  })
+  export type ExpansionContextBudget = z.infer<typeof ExpansionContextBudget>
+
+  const EXPANSION_BUDGET: ExpansionContextBudget = {
+    ...DEFAULT_BUDGET,
+    knowledgeFrameworkTokens: 15000,
+    argumentChainsTokens: 5000,
+    establishedFactsTokens: 3000,
+    thematicContextTokens: 5000,
+  }
+
+  /**
+   * Knowledge-aware context for expansion writing.
+   */
+  export const KnowledgeAwareContext = z.object({
+    // Base context fields
+    globalSummary: z.string().optional(),
+    relevantEntities: z.array(DocumentSchema.Entity).default([]),
+    volumeSummaries: z.array(z.object({ volume: DocumentSchema.Volume, summary: z.string() })).default([]),
+    chapterSummaries: z.array(z.object({ chapterID: z.string(), title: z.string(), summary: z.string() })).default([]),
+    recentChapterContent: z.string().optional(),
+    currentChapterOutline: DocumentSchema.ChapterOutline,
+    styleGuide: DocumentSchema.StyleGuide.optional(),
+
+    // Knowledge-aware fields
+    knowledgeFramework: Knowledge.KnowledgeSchema.ThematicFramework.optional(),
+    relevantKnowledgeNodes: z.array(Knowledge.KnowledgeSchema.KnowledgeNode).default([]),
+    argumentChains: z.array(Knowledge.KnowledgeSchema.ArgumentChain).default([]),
+    storyArcs: z.array(Knowledge.KnowledgeSchema.StoryArc).default([]),
+    worldFramework: Knowledge.KnowledgeSchema.WorldFramework.optional(),
+    establishedFacts: z.array(z.string()).default([]),
+    pendingConclusions: z.array(z.string()).default([]),
+    thematicPrinciples: z.array(z.string()).default([]),
+  })
+  export type KnowledgeAwareContext = z.infer<typeof KnowledgeAwareContext>
+
+  /**
+   * Select knowledge-aware context for chapter writing/expansion.
+   */
+  export async function selectKnowledgeAwareContext(options: {
+    documentID: string
+    chapterID: string
+    budget?: Partial<ExpansionContextBudget>
+    modelContextWindow?: number
+  }): Promise<KnowledgeAwareContext> {
+    const doc = await Document.get(options.documentID)
+    if (!doc) throw new Error("Document not found")
+
+    const chapter = await Document.Chapter.get(options.documentID, options.chapterID)
+    if (!chapter) throw new Error("Chapter not found")
+
+    const chapters = await Document.Chapter.list(options.documentID)
+    const entities = await Entity.list(options.documentID)
+
+    // Calculate current chapter index
+    const currentIndex = chapters.findIndex((c) => c.id === options.chapterID)
+    if (currentIndex < 0) throw new Error("Chapter not found in list")
+
+    const outline = doc.outline.chapters.find((c) => c.id === chapter.outlineID)
+    if (!outline) throw new Error("Chapter outline not found")
+
+    // Merge user-provided budget with defaults
+    const budget: ExpansionContextBudget = {
+      ...EXPANSION_BUDGET,
+      ...options.budget,
+      totalTokens: options.modelContextWindow ?? EXPANSION_BUDGET.totalTokens,
+    }
+
+    const result: KnowledgeAwareContext = {
+      currentChapterOutline: outline,
+      styleGuide: doc.styleGuide,
+      globalSummary: undefined,
+      relevantEntities: [],
+      volumeSummaries: [],
+      chapterSummaries: [],
+      recentChapterContent: undefined,
+
+      // Knowledge-aware fields (initially empty, filled below)
+      knowledgeFramework: undefined,
+      relevantKnowledgeNodes: [],
+      argumentChains: [],
+      storyArcs: [],
+      worldFramework: undefined,
+      establishedFacts: [],
+      pendingConclusions: [],
+      thematicPrinciples: [],
+    }
+
+    // 1. Global Summary (if available)
+    if (doc.globalSummary) {
+      const summaryText = formatGlobalSummary(doc.globalSummary)
+      result.globalSummary = truncateToTokens(summaryText, budget.globalSummaryTokens)
+    }
+
+    // 2. Relevant Entities (find entities mentioned in previous chapters)
+    const relevantEntities = selectRelevantEntities(entities, chapters, currentIndex)
+    result.relevantEntities = limitEntitiesByTokens(relevantEntities, budget.entityTokens)
+
+    // 3. Volume Summaries (if volumes exist)
+    if (doc.volumes.length > 0) {
+      result.volumeSummaries = await selectVolumeSummaries(
+        options.documentID,
+        doc.volumes,
+        chapters,
+        currentIndex,
+        budget.volumeSummaryTokens,
+      )
+    }
+
+    // 4. Chapter Summaries (recent completed chapters)
+    const recentSummaries = selectRecentChapterSummaries(chapters, currentIndex, budget.chapterSummaryTokens)
+    result.chapterSummaries = recentSummaries
+
+    // 5. Recent Full Chapter Content
+    const recentContent = selectRecentChapterContent(chapters, currentIndex, budget.recentChapterTokens)
+    result.recentChapterContent = recentContent
+
+    // 6. Knowledge Framework (if available)
+    try {
+      const { KnowledgeNode } = await import("./knowledge")
+      const knowledgeNodes = await KnowledgeNode.list(options.documentID)
+      result.relevantKnowledgeNodes = limitKnowledgeNodesByTokens(knowledgeNodes, budget.knowledgeFrameworkTokens)
+
+      // Get thematic framework
+      const { Storage } = await import("../storage/storage")
+      const frameworkKeys = await Storage.list(["document_framework", options.documentID])
+      if (frameworkKeys.length > 0) {
+        const framework = await Storage.read<Knowledge.KnowledgeSchema.ThematicFramework>(frameworkKeys[0])
+        if (framework) {
+          result.knowledgeFramework = framework
+          result.thematicPrinciples = framework.corePrinciples
+        }
+      }
+    } catch {
+      // Knowledge module may not be initialized
+    }
+
+    // 7. Argument Chains (for non-fiction)
+    try {
+      const { Storage } = await import("../storage/storage")
+      const argumentKeys = await Storage.list(["document_argument", options.documentID])
+      const limitedChains: Knowledge.KnowledgeSchema.ArgumentChain[] = []
+      let usedTokens = 0
+
+      for (const key of argumentKeys.slice(0, 10)) {
+        const chain = await Storage.read<Knowledge.KnowledgeSchema.ArgumentChain>(key)
+        if (chain) {
+          const tokens = estimateTokens(JSON.stringify(chain))
+          if (usedTokens + tokens > budget.argumentChainsTokens) break
+          limitedChains.push(chain)
+          usedTokens += tokens
+        }
+      }
+      result.argumentChains = limitedChains
+    } catch {
+      // Ignore if storage read fails
+    }
+
+    // 8. Story Arcs (for fiction)
+    try {
+      const { Storage } = await import("../storage/storage")
+      const arcKeys = await Storage.list(["document_story", options.documentID, "arc"])
+      const limitedArcs: Knowledge.KnowledgeSchema.StoryArc[] = []
+      let usedTokens = 0
+
+      for (const key of arcKeys.slice(0, 10)) {
+        const arc = await Storage.read<Knowledge.KnowledgeSchema.StoryArc>(key)
+        if (arc) {
+          const tokens = estimateTokens(JSON.stringify(arc))
+          if (usedTokens + tokens > budget.thematicContextTokens) break
+          limitedArcs.push(arc)
+          usedTokens += tokens
+        }
+      }
+      result.storyArcs = limitedArcs
+    } catch {
+      // Ignore if storage read fails
+    }
+
+    // 9. World Framework (for fiction)
+    try {
+      const { Storage } = await import("../storage/storage")
+      const worldKeys = await Storage.list(["document_world", options.documentID])
+      if (worldKeys.length > 0) {
+        const world = await Storage.read<Knowledge.KnowledgeSchema.WorldFramework>(worldKeys[0])
+        if (world) {
+          result.worldFramework = world
+        }
+      }
+    } catch {
+      // Ignore if storage read fails
+    }
+
+    // 10. Established Facts (derived from knowledge nodes with high confidence)
+    const highConfidenceNodes = result.relevantKnowledgeNodes.filter((n) => n.confidence >= 0.9)
+    result.establishedFacts = highConfidenceNodes.map((n) => n.content).slice(0, 20)
+
+    // 11. Pending Conclusions (arguments needing support)
+    result.pendingConclusions = result.argumentChains
+      .filter((c) => c.status === "pending")
+      .map((c) => c.conclusion)
+
+    return result
+  }
+
+  /**
+   * Format knowledge-aware context into a prompt string.
+   */
+  export function formatKnowledgeForPrompt(context: KnowledgeAwareContext): string {
+    const lines: string[] = []
+
+    lines.push("# Knowledge-Aware Writing Context")
+    lines.push("")
+
+    // Thematic Framework
+    if (context.knowledgeFramework) {
+      lines.push("## Thematic Framework")
+      lines.push("")
+      lines.push(`**Thesis:** ${context.knowledgeFramework.thesis}`)
+      if (context.thematicPrinciples.length > 0) {
+        lines.push("**Core Principles:**")
+        for (const principle of context.thematicPrinciples) {
+          lines.push(`  - ${principle}`)
+        }
+      }
+      if (context.knowledgeFramework.mainThemes.length > 0) {
+        lines.push(`**Main Themes:** ${context.knowledgeFramework.mainThemes.join(", ")}`)
+      }
+      lines.push("")
+    }
+
+    // Knowledge Nodes
+    if (context.relevantKnowledgeNodes.length > 0) {
+      lines.push("## Knowledge Graph")
+      lines.push("")
+      for (const node of context.relevantKnowledgeNodes.slice(0, 15)) {
+        const emoji: Record<Knowledge.KnowledgeSchema.KnowledgeNodeType, string> = {
+          principle: "📜",
+          concept: "💡",
+          argument: "⚖️",
+          evidence: "📊",
+          conclusion: "✅",
+          character: "👤",
+          location: "📍",
+          world_rule: "🌍",
+        }
+        lines.push(`${emoji[node.type]} **${node.type.toUpperCase()}:** ${node.content.slice(0, 100)}${node.content.length > 100 ? "..." : ""}`)
+        if (node.confidence < 1) {
+          lines.push(`   Confidence: ${(node.confidence * 100).toFixed(0)}%`)
+        }
+      }
+      lines.push("")
+    }
+
+    // Argument Chains
+    if (context.argumentChains.length > 0) {
+      lines.push("## Argument Structure")
+      lines.push("")
+      for (const chain of context.argumentChains.slice(0, 5)) {
+        lines.push(`**Argument:** ${chain.premise.slice(0, 80)}...`)
+        lines.push(`**Status:** ${chain.status}`)
+        lines.push(`**Conclusion:** ${chain.conclusion.slice(0, 80)}...`)
+        lines.push("")
+      }
+    }
+
+    // Story Arcs
+    if (context.storyArcs.length > 0) {
+      lines.push("## Story Arcs")
+      lines.push("")
+      for (const arc of context.storyArcs) {
+        lines.push(`**${arc.name}** (${arc.type})`)
+        if (arc.description) {
+          lines.push(`   ${arc.description}`)
+        }
+        lines.push(`   Status: ${arc.status}`)
+      }
+      lines.push("")
+    }
+
+    // World Framework
+    if (context.worldFramework) {
+      lines.push("## World Framework")
+      lines.push("")
+      lines.push(`**${context.worldFramework.name}**`)
+      if (context.worldFramework.rules.length > 0) {
+        lines.push("**Rules:**")
+        for (const rule of context.worldFramework.rules.slice(0, 5)) {
+          lines.push(`  - ${rule}`)
+        }
+      }
+      if (context.worldFramework.magicSystem) {
+        lines.push(`**Magic System:** ${context.worldFramework.magicSystem}`)
+      }
+      if (context.worldFramework.technology) {
+        lines.push(`**Technology:** ${context.worldFramework.technology}`)
+      }
+      lines.push("")
+    }
+
+    // Established Facts
+    if (context.establishedFacts.length > 0) {
+      lines.push("## Established Facts")
+      lines.push("")
+      for (const fact of context.establishedFacts.slice(0, 10)) {
+        lines.push(`- ${fact}`)
+      }
+      lines.push("")
+    }
+
+    // Pending Conclusions
+    if (context.pendingConclusions.length > 0) {
+      lines.push("## Pending Support")
+      lines.push("")
+      lines.push("The following conclusions need supporting arguments:")
+      for (const conclusion of context.pendingConclusions) {
+        lines.push(`- ${conclusion.slice(0, 100)}...`)
+      }
+      lines.push("")
+    }
+
+    return lines.join("\n")
+  }
+
+  /**
+   * Get established facts from knowledge nodes.
+   */
+  export async function getEstablishedFacts(
+    documentID: string,
+    options: {
+      minConfidence?: number
+      maxCount?: number
+    } = {},
+  ): Promise<string[]> {
+    const { minConfidence = 0.9, maxCount = 50 } = options
+
+    const { KnowledgeNode } = await import("./knowledge")
+    const nodes = await KnowledgeNode.list(documentID)
+    return nodes
+      .filter((n) => n.confidence >= minConfidence)
+      .map((n) => n.content)
+      .slice(0, maxCount)
+  }
+
+  /**
+   * Validate content against knowledge framework.
+   */
+  export async function validateAgainstKnowledge(
+    content: string,
+    framework: Knowledge.KnowledgeSchema.ThematicFramework,
+  ): Promise<Knowledge.KnowledgeSchema.ExtendedConsistencyIssue[]> {
+    const issues: Knowledge.KnowledgeSchema.ExtendedConsistencyIssue[] = []
+
+    // Check for thematic alignment
+    const thesisLower = framework.thesis.toLowerCase()
+    const contentLower = content.toLowerCase()
+
+    // Check if core principles are followed
+    for (const principle of framework.corePrinciples) {
+      const principleLower = principle.toLowerCase()
+      // Simple check for potential contradictions
+      if (contentLower.includes(`not ${principleLower}`) || contentLower.includes(`never ${principleLower}`)) {
+        issues.push({
+          id: `issue_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: "thematic",
+          severity: "medium",
+          description: `Content may contradict principle: "${principle}"`,
+          suggestion: `Review content for alignment with principle`,
+          autoFixable: false,
+          relatedNodeIDs: [],
+        })
+      }
+    }
+
+    return issues
+  }
+
+  // ============================================================================
+  // Helper Functions
+  // ============================================================================
+
+  function limitKnowledgeNodesByTokens(
+    nodes: Knowledge.KnowledgeSchema.KnowledgeNode[],
+    maxTokens: number,
+  ): Knowledge.KnowledgeSchema.KnowledgeNode[] {
+    const result: Knowledge.KnowledgeSchema.KnowledgeNode[] = []
+    let usedTokens = 0
+
+    for (const node of nodes) {
+      const nodeTokens = estimateTokens(JSON.stringify(node))
+      if (usedTokens + nodeTokens > maxTokens) break
+      result.push(node)
+      usedTokens += nodeTokens
+    }
+
+    return result
   }
 }

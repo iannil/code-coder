@@ -24,7 +24,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               keybinds: {
                 app_exit: "ctrl+c",
                 input_submit: "shift+return",
@@ -169,7 +169,7 @@ describe("E2E Medium: TUI Interaction", () => {
     test("should create and switch between sessions", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -208,7 +208,7 @@ describe("E2E Medium: TUI Interaction", () => {
     test("should rename session", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -236,7 +236,7 @@ describe("E2E Medium: TUI Interaction", () => {
     test("should delete session", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -278,7 +278,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "dark",
             }),
           )
@@ -300,7 +300,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "anthropic/claude-sonnet-4-20250514",
             }),
           )
@@ -324,7 +324,7 @@ describe("E2E Medium: TUI Interaction", () => {
     test("should export session transcript", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -356,7 +356,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -383,7 +383,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "dark",
             }),
           )
@@ -406,7 +406,7 @@ describe("E2E Medium: TUI Interaction", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "light",
             }),
           )

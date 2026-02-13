@@ -63,6 +63,23 @@ export type { Phase, PhaseContext, PhaseResult, PhaseRunnerConfig } from "./orch
 export { TaskQueue, createTaskQueue } from "./orchestration/task-queue"
 export type { Task, TaskPriority, TaskStatus, TaskQueueConfig } from "./orchestration/task-queue"
 
+// Planning
+export { RequirementTracker, createRequirementTracker } from "./planning/requirement-tracker"
+export type {
+  Requirement,
+  RequirementStatus,
+  AcceptanceCriterion,
+  ParseResult,
+  RequirementTrackerConfig,
+} from "./planning/requirement-tracker"
+export { NextStepPlanner, createNextStepPlanner } from "./planning/next-step-planner"
+export type {
+  CompletionCriteria,
+  NextStepPlan,
+  NextStepExecutionContext,
+  NextStepPlannerConfig,
+} from "./planning/next-step-planner"
+
 // Execution
 export { ContextManager, createExecutionContext } from "./execution/context"
 export type { ExecutionContext, ContextOptions } from "./execution/context"

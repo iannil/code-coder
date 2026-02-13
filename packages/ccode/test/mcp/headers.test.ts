@@ -53,7 +53,7 @@ test("headers are passed to transports when oauth is enabled (default)", async (
       await Bun.write(
         `${dir}/codecoder.json`,
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             "test-server": {
               type: "remote",

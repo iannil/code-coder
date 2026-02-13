@@ -1,12 +1,12 @@
 // @ts-nocheck
 // NOTE: This test file has issues and is skipped pending rewrite
-import { describe, test, expect, beforeEach, afterEach } from "bun:test"
+import { describe, test, it, expect, beforeEach, afterEach } from "bun:test"
 import { AutonomousState } from "@/autonomous/state/states"
 import { StateMachine } from "@/autonomous/state/state-machine"
 import { DecisionEngine, type DecisionContext } from "@/autonomous/decision/engine"
 import { buildCriteria } from "@/autonomous/decision/criteria"
 import { Orchestrator, createOrchestrator, type OrchestratorConfig } from "@/autonomous/orchestration/orchestrator"
-import { Executor, createExecutor, type ExecutionConfig, type TDDPhase } from "@/autonomous/execution/executor"
+import { Executor, createExecutor, type ExecutionConfig, type TDDPhase, type TDDCycleResult } from "@/autonomous/execution/executor"
 import { CheckpointManager, createCheckpointManager } from "@/autonomous/execution/checkpoint"
 import { SafetyGuard, parseResourceBudget, type ResourceBudget } from "@/autonomous/safety/constraints"
 import { SafetyGuardrails, createGuardrails, type GuardrailConfig } from "@/autonomous/safety/guardrails"
@@ -293,7 +293,7 @@ describe.skip("Crazy Mode Integration", () => {
       const check = await safetyIntegration.checkSafety({ destructive: highRiskOp })
 
       expect(check.safe).toBe(false)
-      expect(checkdestructiveAllowed).toBe(false)
+      expect(check.destructiveAllowed).toBe(false)
       expect(check.requiresConfirmation).toBe(true)
     })
 
@@ -604,7 +604,10 @@ describe.skip("Crazy Mode Integration", () => {
     })
 
     it("should detect and break DOOM loops", async () => {
-      const loopCallback = jest.fn()
+      let loopCallbackCalled = false
+      const loopCallback = () => {
+        loopCallbackCalled = true
+      }
 
       safetyIntegration.onDoomLoop(loopCallback)
 
@@ -614,7 +617,7 @@ describe.skip("Crazy Mode Integration", () => {
       }
 
       // Callback should have been called
-      expect(loopCallback).toHaveBeenCalled()
+      expect(loopCallbackCalled).toBe(true)
     })
   })
 })

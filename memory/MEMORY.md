@@ -38,7 +38,7 @@
 - **影响**: 合并为核心 ccode 包，移除 app/desktop/plugin/function 包
 
 ### 2026-02-04: 域名更新
-- **决策**: 域名从 `codecoder.ai` 更新为 `code-coder.com`
+- **决策**: 域名从 `code-coder.com` 更新为 `code-coder.com`
 - **影响范围**: Schema URL、文档 URL、所有外部引用
 
 ### 2026-02-05: SDK 生成移除
@@ -51,6 +51,12 @@
 - **理由**: 简化调用方式，更直观的 agent 名称
 - **变更**: observer, decision, macro, trader, picker, miniproduct, ai-engineer
 - **影响**: 所有测试通过，文档已同步更新
+
+### 2026-02-13: Write 工具大参数截断修复
+- **问题**: Agent 生成大文件时，Write 工具 JSON 参数被截断，导致 "Unterminated string" 错误
+- **原因**: 工具调用参数有大小限制，超过限制时 JSON 解析失败
+- **解决**: 在 write.txt、edit.txt、multiedit.txt prompt 中添加大文件处理指导
+- **策略**: 引导 agent 使用分批写入或 Bash 工具处理超大内容
 
 ## 经验教训
 

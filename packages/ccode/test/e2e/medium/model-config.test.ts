@@ -28,7 +28,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   whitelist: ["claude-sonnet-4-20250514"],
@@ -59,7 +59,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   blacklist: ["claude-haiku-4-20250514"],
@@ -91,7 +91,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   models: {
@@ -127,7 +127,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   models: {
@@ -166,7 +166,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 "custom-openai": {
                   name: "Custom OpenAI",
@@ -207,7 +207,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               provider: {
                 anthropic: {
                   options: {
@@ -240,7 +240,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               disabled_providers: ["openai"],
             }),
           )
@@ -267,7 +267,7 @@ describe("E2E Medium: Model Configuration", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               enabled_providers: ["anthropic"],
             }),
           )

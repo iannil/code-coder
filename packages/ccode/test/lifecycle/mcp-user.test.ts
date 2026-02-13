@@ -19,7 +19,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -45,7 +45,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "test-server": {
                   type: "local",
@@ -77,7 +77,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "temp-server": {
                   type: "local",
@@ -106,7 +106,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "github-auth-test": {
                   type: "local",
@@ -142,7 +142,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -165,7 +165,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "env-server": {
                   type: "local",
@@ -203,7 +203,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "needs-auth": {
                   type: "local",
@@ -236,7 +236,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "auth-update": {
                   type: "local",
@@ -272,7 +272,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "debug-server": {
                   type: "local",
@@ -309,7 +309,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "invalid-server": {
                   type: "local",
@@ -337,7 +337,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "empty-command": {
                   type: "local",
@@ -368,7 +368,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "missing-env": {
                   type: "local",
@@ -399,7 +399,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "valid-server": {
                   type: "local",
@@ -437,7 +437,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "timeout-server": {
                   type: "local",
@@ -471,7 +471,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -495,7 +495,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "server-a": {
                   type: "local",
@@ -533,7 +533,7 @@ describe("MCP User Lifecycle - ULC-MU", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               mcp: {
                 "github-server": {
                   type: "local",

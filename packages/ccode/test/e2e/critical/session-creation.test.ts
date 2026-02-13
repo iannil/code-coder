@@ -20,7 +20,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -50,7 +50,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -81,7 +81,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -123,7 +123,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -164,7 +164,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -198,7 +198,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -230,7 +230,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -259,7 +259,7 @@ describe("E2E Critical: Session Creation", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
             }),
           )
         },
@@ -294,7 +294,7 @@ describe("E2E Critical: Session Creation", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -303,7 +303,7 @@ describe("E2E Critical: Session Creation", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })
@@ -348,7 +348,7 @@ describe("E2E Critical: Session Creation", () => {
         init: async (dir) => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
-            JSON.stringify({ $schema: "https://codecoder.ai/config.json" }),
+            JSON.stringify({ $schema: "https://code-coder.com/config.json" }),
           )
         },
       })

@@ -24,7 +24,7 @@ test("loads JSON config file", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           model: "test/model",
           username: "testuser",
         }),
@@ -48,7 +48,7 @@ test("loads JSONC config file", async () => {
         path.join(dir, "codecoder.jsonc"),
         `{
         // This is a comment
-        "$schema": "https://codecoder.ai/config.json",
+        "$schema": "https://code-coder.com/config.json",
         "model": "test/model",
         "username": "testuser"
       }`,
@@ -71,7 +71,7 @@ test("merges multiple config files with correct precedence", async () => {
       await Bun.write(
         path.join(dir, "codecoder.jsonc"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           model: "base",
           username: "base",
         }),
@@ -79,7 +79,7 @@ test("merges multiple config files with correct precedence", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           model: "override",
         }),
       )
@@ -105,7 +105,7 @@ test("handles environment variable substitution", async () => {
         await Bun.write(
           path.join(dir, "codecoder.json"),
           JSON.stringify({
-            $schema: "https://codecoder.ai/config.json",
+            $schema: "https://code-coder.com/config.json",
             theme: "{env:TEST_VAR}",
           }),
         )
@@ -172,7 +172,7 @@ test("handles file inclusion substitution", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           theme: "{file:included.txt}",
         }),
       )
@@ -193,7 +193,7 @@ test("validates config schema and throws on invalid fields", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           invalid_field: "should cause error",
         }),
       )
@@ -228,7 +228,7 @@ test("handles agent configuration", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test_agent: {
               model: "test/model",
@@ -261,7 +261,7 @@ test("handles command configuration", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           command: {
             test_command: {
               template: "test template",
@@ -292,7 +292,7 @@ test("migrates mode field to agent field", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mode: {
             test_mode: {
               model: "test/model",
@@ -558,7 +558,7 @@ test("merges instructions arrays from global and local configs", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           instructions: ["global-instructions.md", "shared-rules.md"],
         }),
       )
@@ -566,7 +566,7 @@ test("merges instructions arrays from global and local configs", async () => {
       await Bun.write(
         path.join(codecoderDir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           instructions: ["local-instructions.md"],
         }),
       )
@@ -597,7 +597,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           instructions: ["duplicate.md", "global-only.md"],
         }),
       )
@@ -605,7 +605,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
       await Bun.write(
         path.join(codecoderDir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           instructions: ["duplicate.md", "local-only.md"],
         }),
       )
@@ -637,7 +637,7 @@ test("migrates legacy tools config to permissions - allow", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -668,7 +668,7 @@ test("migrates legacy tools config to permissions - deny", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -699,7 +699,7 @@ test("migrates legacy write tool to edit permission", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -728,7 +728,7 @@ test("migrates legacy edit tool to edit permission", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -757,7 +757,7 @@ test("migrates legacy patch tool to edit permission", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -786,7 +786,7 @@ test("migrates legacy multiedit tool to edit permission", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -815,7 +815,7 @@ test("migrates mixed legacy tools config", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               tools: {
@@ -850,7 +850,7 @@ test("merges legacy tools with existing permission config", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           agent: {
             test: {
               permission: {
@@ -883,7 +883,7 @@ test("permission config preserves key order", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           permission: {
             "*": "deny",
             edit: "ask",
@@ -931,7 +931,7 @@ test("project config can override MCP server enabled status", async () => {
       await Bun.write(
         path.join(dir, "codecoder.jsonc"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             jira: {
               type: "remote",
@@ -950,7 +950,7 @@ test("project config can override MCP server enabled status", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             jira: {
               type: "remote",
@@ -989,7 +989,7 @@ test("MCP config deep merges preserving base config properties", async () => {
       await Bun.write(
         path.join(dir, "codecoder.jsonc"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             myserver: {
               type: "remote",
@@ -1006,7 +1006,7 @@ test("MCP config deep merges preserving base config properties", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             myserver: {
               type: "remote",
@@ -1041,7 +1041,7 @@ test("local .ccode config can override MCP from project config", async () => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             docs: {
               type: "remote",
@@ -1057,7 +1057,7 @@ test("local .ccode config can override MCP from project config", async () => {
       await Bun.write(
         path.join(codecoderDir, "codecoder.json"),
         JSON.stringify({
-          $schema: "https://codecoder.ai/config.json",
+          $schema: "https://code-coder.com/config.json",
           mcp: {
             docs: {
               type: "remote",
@@ -1125,7 +1125,7 @@ test("project config overrides remote well-known config", async () => {
         await Bun.write(
           path.join(dir, "codecoder.json"),
           JSON.stringify({
-            $schema: "https://codecoder.ai/config.json",
+            $schema: "https://code-coder.com/config.json",
             mcp: {
               jira: {
                 type: "remote",
@@ -1165,7 +1165,7 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "project/model",
               username: "project-user",
             }),
@@ -1260,7 +1260,7 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               instructions: ["./CUSTOM.md"],
             }),
           )
@@ -1306,7 +1306,7 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "configdir/model",
             }),
           )
@@ -1319,7 +1319,7 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               model: "project/model",
             }),
           )

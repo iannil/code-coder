@@ -6,3 +6,10 @@ Usage:
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
+
+Large File Handling:
+- For large files (>500 lines or >20KB), use a two-step approach:
+  1. Write the file structure and initial content using Write tool
+  2. Use Edit tool for subsequent large additions
+- Alternative: Use Bash tool with echo/heredoc to write very large content, then verify with Read
+- This prevents JSON parameter size limits from causing "Unterminated string" errors

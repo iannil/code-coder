@@ -646,14 +646,32 @@ export namespace ProviderTransform {
 
     if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") {
       const thinking = options?.["thinking"]
+
+      // Check if thinking is explicitly disabled - return standard limit without modification
+      if (thinking?.["type"] === "disabled") {
+        return standardLimit
+      }
+
       const budgetTokens = typeof thinking?.["budgetTokens"] === "number" ? thinking["budgetTokens"] : 0
       const enabled = thinking?.["type"] === "enabled"
+
       if (enabled && budgetTokens > 0) {
-        // Return text tokens so that text + thinking <= model cap, preferring 32k text when possible.
-        if (budgetTokens + standardLimit <= modelCap) {
+        // When thinking mode is enabled with budgetTokens:
+        // 1. If standardLimit + budgetTokens fits in modelCap, use standardLimit
+        //    This preserves agent/user configuration when there's enough capacity
+        // 2. Otherwise, calculate available space and ensure we get reasonable output
+        const availableForOutput = modelCap - budgetTokens
+
+        if (standardLimit + budgetTokens <= modelCap) {
+          // Standard limit fits with thinking budget - preserve user/agent preference
           return standardLimit
         }
-        return modelCap - budgetTokens
+
+        // Standard limit doesn't fit, return available space
+        // At minimum, ensure 80% of available space for meaningful output
+        const standardOutput = Math.min(standardLimit, availableForOutput)
+        const minimumOutput = Math.min(modelCap * 0.8, availableForOutput)
+        return Math.max(standardOutput, minimumOutput)
       }
     }
 

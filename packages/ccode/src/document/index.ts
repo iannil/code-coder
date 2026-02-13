@@ -16,6 +16,9 @@ export { Proofreader } from "./proofreader"
 export { Entity } from "./entity"
 export { Volume } from "./volume"
 
+// Import and re-export Knowledge module (BookExpander)
+export * as Knowledge from "./knowledge"
+
 export namespace Document {
   const state = Instance.state(async () => {
     return {}

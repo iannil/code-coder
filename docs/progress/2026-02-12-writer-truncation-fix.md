@@ -2,6 +2,10 @@
 
 **日期**: 2026-02-12
 **状态**: 已完成
+**最后更新**: 2026-02-13
+
+> **注意**: 原进度报告标记为已完成，但 `agent.ts` 中的 `maxOutputTokens` 配置未实际应用。
+> **2026-02-13**: 已正确应用修复，为 `writer`、`proofreader`、`plan`、`autonomous` agent 添加了 `maxOutputTokens: 128_000`
 
 ## 问题概述
 

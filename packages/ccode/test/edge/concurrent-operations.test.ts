@@ -38,7 +38,7 @@ describe("Concurrent Operations", () => {
     test("should handle 10 concurrent session creates", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -73,7 +73,7 @@ describe("Concurrent Operations", () => {
     test("should handle concurrent session list operations", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -293,7 +293,7 @@ describe("Concurrent Operations", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "dark",
             }),
           )
@@ -318,7 +318,7 @@ describe("Concurrent Operations", () => {
     test("should handle concurrent session updates safely", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 

@@ -504,4 +504,339 @@ export namespace Consistency {
 
     return autoFixable
   }
+
+  // ============================================================================
+  // Extended Consistency Checks (BookExpander)
+  // ============================================================================
+
+  /**
+   * Check argument coherence for non-fiction content.
+   */
+  export async function checkArgumentCoherence(
+    documentID: string,
+  ): Promise<{
+    overallScore: number
+    issues: Array<{
+      type: string
+      description: string
+      severity: "low" | "medium" | "high"
+      argumentID?: string
+    }>
+  }> {
+    const { ArgumentChain } = await import("./knowledge/argument")
+    const chains = await ArgumentChain.list(documentID)
+
+    const issues: Array<{
+      type: string
+      description: string
+      severity: "low" | "medium" | "high"
+      argumentID?: string
+    }> = []
+
+    // Check for circular reasoning
+    const cycles = await ArgumentChain.detectCircularReasoning(documentID)
+    for (const cycle of cycles) {
+      issues.push({
+        type: "circular_reasoning",
+        description: `Circular argument detected: ${cycle.description}`,
+        severity: "high",
+      })
+    }
+
+    // Check each argument chain
+    for (const chain of chains) {
+      const validation = await ArgumentChain.validate(documentID, chain.id)
+      for (const issue of validation.issues) {
+        issues.push({
+          type: issue.type,
+          description: issue.description,
+          severity: issue.severity === "high" ? "high" : issue.severity === "medium" ? "medium" : "low",
+          argumentID: chain.id,
+        })
+      }
+    }
+
+    const score = chains.length > 0
+      ? 1 - (issues.filter((i) => i.severity === "high").length * 0.3) - (issues.filter((i) => i.severity === "medium").length * 0.1)
+      : 1
+
+    return { overallScore: Math.max(0, score), issues }
+  }
+
+  /**
+   * Check thematic alignment with the framework.
+   */
+  export async function checkThematicAlignment(
+    content: string,
+    framework: { thesis: string; corePrinciples: string[]; mainThemes: string[] },
+  ): Promise<{
+    score: number
+    issues: Array<{
+      type: string
+      description: string
+      severity: "low" | "medium" | "high"
+    }>
+  }> {
+    const issues: Array<{
+      type: string
+      description: string
+      severity: "low" | "medium" | "high"
+    }> = []
+
+    const contentLower = content.toLowerCase()
+    const thesisLower = framework.thesis.toLowerCase()
+
+    // Check if thesis is supported
+    const supportsThesis = framework.mainThemes.some((theme) =>
+      contentLower.includes(theme.toLowerCase()),
+    )
+
+    if (!supportsThesis) {
+      issues.push({
+        type: "thematic_misalignment",
+        description: "Content does not clearly support the central thesis",
+        severity: "medium",
+      })
+    }
+
+    // Check for contradictions with core principles
+    for (const principle of framework.corePrinciples) {
+      const principleLower = principle.toLowerCase()
+      const negationWords = ["not", "never", "cannot", "impossible", "contrary"]
+
+      for (const negation of negationWords) {
+        if (contentLower.includes(`${negation} ${principleLower}`)) {
+          issues.push({
+            type: "principle_contradiction",
+            description: `Content may contradict principle: "${principle}"`,
+            severity: "high",
+          })
+        }
+      }
+    }
+
+    const score = Math.max(0, 1 - issues.length * 0.15)
+    return { score, issues }
+  }
+
+  /**
+   * Detect circular reasoning patterns in arguments.
+   */
+  export async function detectCircularReasoning(
+    documentID: string,
+  ): Promise<string[]> {
+    const { ArgumentChain } = await import("./knowledge/argument")
+    const cycles = await ArgumentChain.detectCircularReasoning(documentID)
+
+    return cycles.map((c) => c.description)
+  }
+
+  /**
+   * Check worldview consistency for fiction content.
+   */
+  export async function checkWorldviewConsistency(
+    documentID: string,
+    worldFramework: {
+      rules: string[]
+      magicSystem?: string
+      technology?: string
+    },
+  ): Promise<DocumentSchema.ConsistencyIssue[]> {
+    const issues: DocumentSchema.ConsistencyIssue[] = []
+    const doc = await Document.get(documentID)
+
+    if (!doc) return issues
+
+    const chapters = await Document.Chapter.list(documentID)
+    const content = chapters.map((ch) => ch.content).join("\n\n").toLowerCase()
+
+    // Check for rule violations
+    for (const rule of worldFramework.rules) {
+      const ruleLower = rule.toLowerCase()
+      const violationPatterns = [
+        `impossible ${ruleLower}`,
+        `cannot ${ruleLower}`,
+        `can't ${ruleLower}`,
+        `never ${ruleLower}`,
+        `against ${ruleLower}`,
+      ]
+
+      for (const pattern of violationPatterns) {
+        if (content.includes(pattern)) {
+          issues.push({
+            id: `worldview_${Date.now()}`,
+            type: "plot",
+            severity: "medium",
+            description: `Potential worldview violation: ${pattern}`,
+            suggestion: `Verify if "${pattern}" contradicts established world rules`,
+            autoFixable: false,
+          })
+        }
+      }
+    }
+
+    // Check magic system consistency
+    if (worldFramework.magicSystem) {
+      const magicKeywords = extractMagicKeywords(worldFramework.magicSystem)
+
+      for (const keyword of magicKeywords) {
+        // Check for inconsistent magic use (e.g., magic works when it shouldn't)
+        const inconsistentPattern = new RegExp(
+          `${keyword}\\s+(?:stopped|failed|didn't work|became powerless)`,
+          "i",
+        )
+
+        if (inconsistentPattern.test(content)) {
+          issues.push({
+            id: `magic_${Date.now()}`,
+            type: "plot",
+            severity: "medium",
+            description: `Inconsistent magic system behavior for: ${keyword}`,
+            suggestion: "Review magic system rules and ensure consistent application",
+            autoFixable: false,
+          })
+        }
+      }
+    }
+
+    return issues
+  }
+
+  /**
+   * Extract magic-related keywords from a magic system description.
+   */
+  function extractMagicKeywords(magicSystem: string): string[] {
+    const keywords: string[] = []
+
+    // Extract quoted terms
+    const quotedMatches = magicSystem.matchAll(/"([^"]{2,30})"/g)
+    for (const match of quotedMatches) {
+      keywords.push(match[1])
+    }
+
+    // Extract key terms after common magic words
+    const patternMatches = magicSystem.matchAll(
+      /(?:magic|spell|power|ability|can|must)(?:\s+([a-z]+)){1,3}/gi,
+    )
+    for (const match of patternMatches) {
+      if (match[1]) keywords.push(match[1].toLowerCase())
+    }
+
+    return keywords
+  }
+
+  /**
+   * Comprehensive consistency check combining all checks.
+   */
+  export async function comprehensiveCheck(documentID: string): Promise<{
+    overallScore: number
+    report: {
+      entity: DocumentSchema.ConsistencyReport | null
+      argument: { overallScore: number; issues: unknown[] } | null
+      thematic: { score: number; issues: unknown[] } | null
+      worldview: DocumentSchema.ConsistencyReport | null
+    }
+  }> {
+    const doc = await Document.get(documentID)
+    if (!doc) {
+      throw new Error("Document not found")
+    }
+
+    let overallScore = 1
+    const report: {
+      entity: DocumentSchema.ConsistencyReport | null
+      argument: { overallScore: number; issues: unknown[] } | null
+      thematic: { score: number; issues: unknown[] } | null
+      worldview: DocumentSchema.ConsistencyReport | null
+    } = {
+      entity: null,
+      argument: null,
+      thematic: null,
+      worldview: null,
+    }
+
+    // Run entity consistency check
+    try {
+      const entityIssues = await quickEntityCheck(documentID)
+      report.entity = {
+        documentID,
+        timestamp: Date.now(),
+        issues: entityIssues.map((issue) => ({
+          id: `entity_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          type: "entity",
+          severity: issue.severity,
+          description: issue.description,
+          suggestion: issue.description,
+          autoFixable: issue.severity === "low",
+        })),
+        summary: {
+          critical: 0,
+          high: entityIssues.filter((i) => i.severity === "high").length,
+          medium: entityIssues.filter((i) => i.severity === "medium").length,
+          low: entityIssues.filter((i) => i.severity === "low").length,
+        },
+      }
+      overallScore *= 0.95
+    } catch {
+      // Skip entity check if it fails
+    }
+
+    // Run argument coherence check (for non-fiction)
+    try {
+      const { ArgumentChain } = await import("./knowledge/argument")
+      const chains = await ArgumentChain.list(documentID)
+      if (chains.length > 0) {
+        const argCheck = await checkArgumentCoherence(documentID)
+        report.argument = argCheck
+        overallScore *= argCheck.overallScore
+      }
+    } catch {
+      // Skip argument check if it fails
+    }
+
+    // Run thematic alignment check
+    try {
+      if (doc.globalSummary?.mainThemes) {
+        const chapters = await Document.Chapter.list(documentID)
+        const allContent = chapters.filter((ch) => ch.status === "completed").map((ch) => ch.content).join("\n\n")
+        const themeCheck = await checkThematicAlignment(
+          allContent,
+          {
+            thesis: doc.globalSummary.overallPlot,
+            corePrinciples: doc.globalSummary.mainThemes,
+            mainThemes: doc.globalSummary.mainThemes,
+          },
+        )
+        report.thematic = themeCheck
+        overallScore *= themeCheck.score
+      }
+    } catch {
+      // Skip thematic check if it fails
+    }
+
+    // Run worldview check (for fiction)
+    try {
+      const { Knowledge } = await import("./knowledge")
+      const worlds = await Knowledge.StoryElements.listWorldFrameworks(documentID)
+      if (worlds.length > 0) {
+        const worldviewIssues = await checkWorldviewConsistency(documentID, worlds[0])
+        report.worldview = {
+          documentID,
+          timestamp: Date.now(),
+          issues: worldviewIssues,
+          summary: {
+            critical: worldviewIssues.filter((i) => i.severity === "critical").length,
+            high: worldviewIssues.filter((i) => i.severity === "high").length,
+            medium: worldviewIssues.filter((i) => i.severity === "medium").length,
+            low: worldviewIssues.filter((i) => i.severity === "low").length,
+          },
+        }
+        overallScore *= 0.95
+      }
+    } catch {
+      // Skip worldview check if it fails
+    }
+
+    return { overallScore, report }
+  }
 }

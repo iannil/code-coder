@@ -248,7 +248,7 @@ export const GetStartedCommand = cmd({
         prompts.intro("Setup Complete!")
         prompts.log.success("CodeCoder is ready to use")
         prompts.log.message("Run `codecoder` to get started")
-        prompts.log.message("See https://codecoder.ai/docs for more information")
+        prompts.log.message("See https://code-coder.com/docs for more information")
         prompts.outro("Happy coding!")
       },
     })

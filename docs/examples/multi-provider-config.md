@@ -17,7 +17,7 @@ CodeCoder 按以下优先级加载配置（从低到高）：
 
 ```json
 {
-  "$schema": "https://codecoder.ai/config.json",
+  "$schema": "https://code-coder.com/config.json",
 
   // ========== 提供商配置 ==========
   "provider": {
@@ -182,7 +182,7 @@ mkdir -p ~/.codecoder
 # 创建配置文件
 cat > ~/.codecoder/config.json << 'EOF'
 {
-  "$schema": "https://codecoder.ai/config.json",
+  "$schema": "https://code-coder.com/config.json",
   "provider": {
     "openai-compatible": {
       "options": {
@@ -464,4 +464,4 @@ bun dev
 
 ## 配置文件参考
 
-完整配置 Schema 参考：https://codecoder.ai/config.json
+完整配置 Schema 参考：https://code-coder.com/config.json

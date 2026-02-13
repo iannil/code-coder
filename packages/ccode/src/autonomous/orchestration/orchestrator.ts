@@ -11,6 +11,8 @@ import { SafetyGuard } from "../safety/constraints"
 import type { ResourceBudget } from "../safety/constraints"
 import { buildCriteria, type AutonomousDecisionCriteria } from "../decision/criteria"
 import { createSafetyIntegration, type SafetyIntegration } from "../safety/integration"
+import { RequirementTracker, createRequirementTracker } from "../planning/requirement-tracker"
+import { NextStepPlanner, createNextStepPlanner, type CompletionCriteria, type NextStepPlan } from "../planning/next-step-planner"
 
 const log = Log.create({ service: "autonomous.orchestrator" })
 
@@ -49,6 +51,11 @@ export class Orchestrator {
   private safetyIntegration: SafetyIntegration
   private config: OrchestratorConfig
   private context: SessionContext
+  private requirementTracker: RequirementTracker
+  private nextStepPlanner: NextStepPlanner
+  private currentIteration: number = 0
+  private recentFailures: number = 0
+  private recentErrors: string[] = []
 
   constructor(context: SessionContext, config: OrchestratorConfig) {
     this.context = context
@@ -70,6 +77,17 @@ export class Orchestrator {
     })
 
     this.safetyGuard = new SafetyGuard(this.context.sessionId, config.resourceBudget)
+
+    // Initialize requirement tracker
+    this.requirementTracker = createRequirementTracker(this.context.sessionId)
+
+    // Initialize next step planner
+    this.nextStepPlanner = createNextStepPlanner({
+      autonomyLevel: config.autonomyLevel,
+      resourceBudget: config.resourceBudget,
+      maxFailuresBeforePause: 5,
+      enableAutoContinue: config.unattended,
+    })
 
     // Initialize safety integration
     this.safetyIntegration = createSafetyIntegration(this.context.sessionId, {
@@ -114,51 +132,181 @@ export class Orchestrator {
   }
 
   /**
-   * Process the request through the full pipeline
+   * Process the request through the full pipeline with continuous execution
    */
   async process(request: string): Promise<{
     success: boolean
     result: {
+      success: boolean
       qualityScore: number
       crazinessScore: number
       duration: number
       tokensUsed: number
       costUSD: number
+      iterationsCompleted: number
     } | null
   }> {
     try {
-      // Phase 1: Understand & Plan
-      await this.runUnderstandPhase(request)
-      await this.runPlanPhase(request)
+      // Parse requirements from initial request
+      this.requirementTracker.parseRequirements(request)
 
-      // Phase 2: Decide
-      const decision = await this.runDecidePhase()
-      if (!decision.approved) {
-        await this.handleBlockedDecision(decision.reasoning)
-        return { success: false, result: null }
+      // Publish initial requirements update
+      await this.publishRequirementsUpdate()
+
+      let currentRequest = request
+      let evaluation = null
+
+      // Main execution loop - continues until all criteria are met
+      while (true) {
+        this.currentIteration++
+
+        // Publish iteration started event
+        await Bus.publish(AutonomousEvent.IterationStarted, {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+          remainingRequirements: this.requirementTracker.getPendingRequirements().length,
+        })
+
+        log.info("Starting execution cycle", {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+        })
+
+        // Execute one complete cycle
+        const cycleResult = await this.executeCycle(currentRequest)
+
+        // Track failures
+        if (!cycleResult.success) {
+          this.recentFailures++
+        }
+
+        // Check completion criteria
+        const completionCheck = await this.checkCompletion()
+
+        // Publish completion checked event
+        await Bus.publish(AutonomousEvent.CompletionChecked, {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+          criteria: completionCheck,
+          allComplete: this.allComplete(completionCheck),
+          canContinue: !completionCheck.resourceExhausted,
+          shouldPause: !completionCheck.noBlockingIssues,
+        })
+
+        // If all complete, we're done
+        if (this.allComplete(completionCheck)) {
+          log.info("All completion criteria met", {
+            sessionId: this.context.sessionId,
+            iteration: this.currentIteration,
+          })
+
+          evaluation = await this.runEvaluatePhase()
+          await this.runReportPhase()
+
+          await this.stateMachine.transition(AutonomousState.COMPLETED, {
+            reason: "All requirements completed, tests passing, verification passed",
+          })
+
+          await Bus.publish(AutonomousEvent.IterationCompleted, {
+            sessionId: this.context.sessionId,
+            iteration: this.currentIteration,
+            completedRequirements: this.requirementTracker.getStats().completed,
+            success: true,
+            duration: Date.now() - this.context.startTime,
+          })
+
+          break
+        }
+
+        // Check if we should pause (resource exhausted or blocked)
+        const analysis = this.nextStepPlanner.analyzeCompletion(completionCheck)
+        if (!analysis.canContinue || analysis.shouldPause) {
+          log.info("Execution paused", {
+            sessionId: this.context.sessionId,
+            iteration: this.currentIteration,
+            reasons: analysis.reasons,
+          })
+
+          await this.stateMachine.transition(AutonomousState.PAUSED, {
+            reason: analysis.reasons.join("; "),
+          })
+
+          await Bus.publish(AutonomousEvent.SessionPaused, {
+            sessionId: this.context.sessionId,
+            reason: analysis.reasons.join("; "),
+            state: this.stateMachine.getState(),
+            canResume: true,
+          })
+
+          return { success: false, result: null }
+        }
+
+        // Generate next step plan
+        const nextStep = await this.planNextSteps()
+
+        if (!nextStep.shouldContinue) {
+          log.info("Cannot continue execution", {
+            sessionId: this.context.sessionId,
+            reason: nextStep.reason,
+          })
+
+          await this.stateMachine.transition(AutonomousState.PAUSED, {
+            reason: nextStep.reason,
+          })
+
+          await Bus.publish(AutonomousEvent.SessionPaused, {
+            sessionId: this.context.sessionId,
+            reason: nextStep.reason,
+            state: this.stateMachine.getState(),
+            canResume: true,
+          })
+
+          return { success: false, result: null }
+        }
+
+        // Transition to continuing state
+        await this.stateMachine.transition(AutonomousState.CONTINUING, {
+          reason: nextStep.reason,
+        })
+
+        // Publish next step planned event
+        await Bus.publish(AutonomousEvent.NextStepPlanned, {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+          nextTasks: nextStep.nextTasks,
+          reason: nextStep.reason,
+          estimatedCycles: nextStep.estimatedCycles,
+          confidence: nextStep.confidence,
+        })
+
+        // Update current request for next iteration
+        currentRequest = this.formatNextStepRequest(nextStep)
+
+        // Publish iteration completed event
+        await Bus.publish(AutonomousEvent.IterationCompleted, {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+          completedRequirements: this.requirementTracker.getStats().completed,
+          success: true,
+          duration: Date.now() - this.context.startTime,
+        })
+
+        log.info("Continuing execution", {
+          sessionId: this.context.sessionId,
+          iteration: this.currentIteration,
+          nextTasksCount: nextStep.nextTasks.length,
+          reason: nextStep.reason,
+        })
       }
-
-      // Phase 3: Execute (TDD cycle)
-      await this.runExecutePhase()
-
-      // Phase 4: Test & Verify
-      await this.runTestPhase()
-      await this.runVerifyPhase()
-
-      // Phase 5: Evaluate
-      const evaluation = await this.runEvaluatePhase()
-
-      // Phase 6: Report
-      await this.runReportPhase()
-
-      // Complete
-      await this.stateMachine.transition(AutonomousState.COMPLETED, {
-        reason: "All phases completed successfully",
-      })
 
       const resultData = {
         success: true,
-        ...evaluation,
+        qualityScore: evaluation?.qualityScore ?? 0,
+        crazinessScore: evaluation?.crazinessScore ?? 0,
+        duration: Date.now() - this.context.startTime,
+        tokensUsed: this.safetyGuard.getCurrentUsage().tokensUsed,
+        costUSD: this.safetyGuard.getCurrentUsage().costUSD,
+        iterationsCompleted: this.currentIteration,
       }
 
       await Bus.publish(AutonomousEvent.SessionCompleted, {
@@ -187,6 +335,59 @@ export class Orchestrator {
 
       return { success: false, result: null }
     }
+  }
+
+  /**
+   * Execute a single cycle (understand -> plan -> decide -> execute -> test -> verify)
+   */
+  private async executeCycle(request: string): Promise<{ success: boolean }> {
+    try {
+      // Phase 1: Understand & Plan
+      await this.runUnderstandPhase(request)
+      await this.runPlanPhase(request)
+
+      // Phase 2: Decide
+      const decision = await this.runDecidePhase()
+      if (!decision.approved) {
+        await this.handleBlockedDecision(decision.reasoning)
+        return { success: false }
+      }
+
+      // Phase 3: Execute (TDD cycle)
+      await this.runExecutePhase()
+
+      // Phase 4: Test & Verify
+      const testResult = await this.runTestPhase()
+      const verifyResult = await this.runVerifyPhase()
+
+      // Update recent errors
+      if (!testResult.success) {
+        this.recentErrors.push(...testResult.errors)
+      }
+      if (!verifyResult.success) {
+        this.recentErrors.push(...verifyResult.errors)
+      }
+
+      // Keep only recent errors
+      this.recentErrors = this.recentErrors.slice(-10)
+
+      return { success: testResult.success && verifyResult.success }
+    } catch (error) {
+      this.recentErrors.push(error instanceof Error ? error.message : String(error))
+      return { success: false }
+    }
+  }
+
+  /**
+   * Check if all completion criteria are met
+   */
+  private allComplete(criteria: CompletionCriteria): boolean {
+    return (
+      criteria.requirementsCompleted &&
+      criteria.testsPassing &&
+      criteria.verificationPassed &&
+      criteria.noBlockingIssues
+    )
   }
 
   /**
@@ -294,20 +495,23 @@ export class Orchestrator {
   /**
    * Run test phase
    */
-  private async runTestPhase(): Promise<void> {
+  private async runTestPhase(): Promise<{ success: boolean; errors: string[] }> {
     if (!this.executor) {
       throw new Error("Executor not initialized")
     }
 
     const testResult = await this.executor.runTests()
+    const errors: string[] = []
 
     if (testResult.success) {
       await this.stateMachine.transition(AutonomousState.VERIFYING, {
         reason: "Tests passed, verifying quality",
       })
     } else {
+      const errorMsg = "Tests failed, entering fix mode"
+      errors.push(errorMsg)
       await this.stateMachine.transition(AutonomousState.FIXING, {
-        reason: "Tests failed, entering fix mode",
+        reason: errorMsg,
       })
 
       // Retry logic would go here
@@ -315,25 +519,30 @@ export class Orchestrator {
         reason: "Fixes applied, verifying",
       })
     }
+
+    return { success: testResult.success, errors }
   }
 
   /**
    * Run verify phase
    */
-  private async runVerifyPhase(): Promise<void> {
+  private async runVerifyPhase(): Promise<{ success: boolean; errors: string[] }> {
     if (!this.executor) {
       throw new Error("Executor not initialized")
     }
 
     const verifyResult = await this.executor.runVerification()
+    const errors: string[] = []
 
     if (verifyResult.success) {
       await this.stateMachine.transition(AutonomousState.EVALUATING, {
         reason: "Verification passed, evaluating results",
       })
     } else {
+      const errorMsg = "Verification failed, entering fix mode"
+      errors.push(errorMsg)
       await this.stateMachine.transition(AutonomousState.FIXING, {
-        reason: "Verification failed, entering fix mode",
+        reason: errorMsg,
       })
 
       // Retry logic would go here
@@ -341,6 +550,8 @@ export class Orchestrator {
         reason: "Fixes applied, evaluating",
       })
     }
+
+    return { success: verifyResult.success, errors }
   }
 
   /**
@@ -450,6 +661,82 @@ export class Orchestrator {
     }
 
     return Math.max(0, Math.min(100, score))
+  }
+
+  /**
+   * Check completion criteria
+   */
+  private async checkCompletion(): Promise<CompletionCriteria> {
+    const requirementsCompleted = this.requirementTracker.allRequirementsCompleted()
+
+    // Check tests passing (simplified - in real implementation would check test results)
+    const testsPassing = this.recentFailures === 0
+
+    // Check verification passed (simplified)
+    const verificationPassed = this.recentErrors.filter((e) => e.includes("verification")).length === 0
+
+    // Check for blocking issues
+    const noBlockingIssues = !this.recentErrors.some((e) =>
+      e.includes("blocked") || e.includes("critical") || e.includes("fatal"),
+    )
+
+    // Check resource exhaustion
+    const usage = this.safetyGuard.getCurrentUsage()
+    const resourceExhausted =
+      usage.tokensUsed >= this.config.resourceBudget.maxTokens ||
+      usage.costUSD >= this.config.resourceBudget.maxCostUSD
+
+    return {
+      requirementsCompleted,
+      testsPassing,
+      verificationPassed,
+      noBlockingIssues,
+      resourceExhausted,
+    }
+  }
+
+  /**
+   * Plan next steps based on remaining requirements
+   */
+  private async planNextSteps(): Promise<NextStepPlan> {
+    const pendingRequirements = this.requirementTracker.getPendingRequirements()
+
+    const context = {
+      sessionId: this.context.sessionId,
+      currentIteration: this.currentIteration,
+      totalCyclesRun: this.currentIteration,
+      lastPhaseCompleted: "verify",
+      recentErrors: this.recentErrors,
+      recentFailures: this.recentFailures,
+      resourceUsage: {
+        tokensUsed: this.safetyGuard.getCurrentUsage().tokensUsed,
+        tokensRemaining: this.config.resourceBudget.maxTokens - this.safetyGuard.getCurrentUsage().tokensUsed,
+        costUSD: this.safetyGuard.getCurrentUsage().costUSD,
+        costRemaining: this.config.resourceBudget.maxCostUSD - this.safetyGuard.getCurrentUsage().costUSD,
+      },
+    }
+
+    return this.nextStepPlanner.planNextSteps(pendingRequirements, context)
+  }
+
+  /**
+   * Format next step request for the next iteration
+   */
+  private formatNextStepRequest(nextStep: NextStepPlan): string {
+    const tasks = nextStep.nextTasks.map((t, i) => `${i + 1}. ${t.subject}`).join("\n")
+    return `Continue with the following tasks:\n${tasks}\n\nContext: This is iteration ${this.currentIteration + 1}. Focus on completing these remaining requirements.`
+  }
+
+  /**
+   * Publish requirements update event
+   */
+  private async publishRequirementsUpdate(): Promise<void> {
+    const stats = this.requirementTracker.getStats()
+
+    await Bus.publish(AutonomousEvent.RequirementsUpdated, {
+      sessionId: this.context.sessionId,
+      stats,
+    })
   }
 
   /**

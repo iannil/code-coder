@@ -16,6 +16,13 @@ export namespace Identifier {
     entity: "ent",
     volume: "vol",
     snapshot: "snp",
+    world: "world",
+    theme: "theme",
+    expansion: "exp",
+    arc: "arc",
+    timeline: "timeline",
+    knowledge: "kn",
+    argument: "arg",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {

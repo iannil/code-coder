@@ -31,7 +31,7 @@ describe("Performance Benchmarks", () => {
     test("session create should complete < 100ms", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -60,7 +60,7 @@ describe("Performance Benchmarks", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "dark",
               model: "anthropic/claude-sonnet-4-20250514",
             }),
@@ -106,7 +106,7 @@ describe("Performance Benchmarks", () => {
     test("provider list should complete < 200ms", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -129,7 +129,7 @@ describe("Performance Benchmarks", () => {
     test("session list should complete < 100ms", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -164,7 +164,7 @@ describe("Performance Benchmarks", () => {
     test("session create should use < 10MB memory", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -260,7 +260,7 @@ describe("Performance Benchmarks", () => {
     test("should handle 100 session operations per second", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -374,7 +374,7 @@ describe("Performance Benchmarks", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
         },
       })
 
@@ -401,7 +401,7 @@ describe("Performance Benchmarks", () => {
           await Bun.write(
             path.join(dir, "codecoder.json"),
             JSON.stringify({
-              $schema: "https://codecoder.ai/config.json",
+              $schema: "https://code-coder.com/config.json",
               theme: "dark",
             }),
           )
@@ -435,7 +435,7 @@ describe("Performance Benchmarks", () => {
     test("should handle rapid sequential operations", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://codecoder.ai/config.json" }))
+          await Bun.write(path.join(dir, "codecoder.json"), JSON.stringify({ $schema: "https://code-coder.com/config.json" }))
           await Bun.write(path.join(dir, "test.txt"), "Test content")
         },
       })

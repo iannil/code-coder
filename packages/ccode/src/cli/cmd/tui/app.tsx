@@ -430,7 +430,7 @@ function App() {
       title: "Open docs",
       value: "docs.open",
       onSelect: () => {
-        open("https://codecoder.ai/docs").catch(() => {})
+        open("https://code-coder.com/docs").catch(() => {})
         dialog.clear()
       },
       category: "System",
@@ -527,7 +527,7 @@ function App() {
         DialogAlert.show(
           dialog,
           "Warning",
-          "While openrouter is a convenient way to access LLMs your request will often be routed to subpar providers that do not work well in our testing.\n\nFor reliable access to models check out CodeCoder Zen\nhttps://codecoder.ai/zen",
+          "While openrouter is a convenient way to access LLMs your request will often be routed to subpar providers that do not work well in our testing.\n\nFor reliable access to models check out CodeCoder Zen\nhttps://code-coder.com/zen",
         ).then(() => kv.set("openrouter_warning", true))
       })
     }
