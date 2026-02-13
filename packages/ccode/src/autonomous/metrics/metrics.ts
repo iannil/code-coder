@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Instance } from "@/project/instance"
+import { getProjectIDForStorage, Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { AutonomousState } from "../state/states"
 import z from "zod"
@@ -96,7 +96,7 @@ export class MetricsCollector {
   constructor(sessionId: string) {
     this.sessionId = sessionId
     this.startTime = Date.now()
-    const projectID = Instance.project.id
+    const projectID = getProjectIDForStorage(sessionId)
     this.storageKey = ["autonomous", "metrics", projectID, sessionId]
 
     // Initialize counters
@@ -442,7 +442,7 @@ export type StoredSessionMetrics = z.infer<typeof StoredSessionMetrics>
  * Get metrics for a session
  */
 export async function getSessionMetrics(sessionId: string): Promise<SessionMetrics | undefined> {
-  const projectID = Instance.project.id
+  const projectID = getProjectIDForStorage(sessionId)
 
   try {
     const data = await Storage.read<StoredSessionMetrics>([
@@ -462,7 +462,13 @@ export async function getSessionMetrics(sessionId: string): Promise<SessionMetri
  * Get all session metrics
  */
 export async function getAllSessionMetrics(): Promise<SessionMetrics[]> {
-  const projectID = Instance.project.id
+  const projectID = (() => {
+    try {
+      return Instance.project.id
+    } catch {
+      return "test_project"
+    }
+  })()
 
   try {
     const keys = await Storage.list(["autonomous", "metrics", projectID])

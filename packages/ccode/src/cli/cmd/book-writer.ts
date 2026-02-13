@@ -2,10 +2,13 @@ import type { Argv } from "yargs"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
+import { Log } from "@/util/log"
 import { bootstrap } from "../bootstrap"
 import { Document } from "../../document"
 import * as Knowledge from "../../document/knowledge"
 import { ExpansionOrchestrator } from "../../autonomous/expansion/index"
+
+const log = Log.create({ service: "cli.book-writer" })
 
 // ============================================================================
 // Types
@@ -128,8 +131,7 @@ async function runExpand(args: any): Promise<void> {
   } catch (error) {
     spinner.stop(`Expansion interrupted`)
     if (error instanceof Error) {
-      console.log()
-      console.log(`Error: ${error.message}`)
+      log.error(error.message)
     }
   }
 }
@@ -155,7 +157,7 @@ async function getInput(args: any): Promise<string | undefined> {
       const content = (fs as any).readFileSync(input, "utf-8")
       return content.trim()
     } catch {
-      console.log(`Failed to read file: ${input}`)
+      log.error(`Failed to read file: ${input}`)
       return undefined
     }
   }
@@ -297,10 +299,12 @@ async function getParameters(
  */
 async function resumeExpansion(documentID: string, parameters: { targetWords: number }): Promise<void> {
   const progress = await ExpansionOrchestrator.getProgress(documentID)
-  console.log()
-  console.log("📊 Current Progress:")
-  console.log(`  Progress: ${Math.round((progress.wordsWritten / progress.targetWords) * 100)}%`)
-  console.log(`  Words: ${progress.wordsWritten}/${progress.targetWords}`)
+  const progressPercent = Math.round((progress.wordsWritten / progress.targetWords) * 100)
+
+  // Output progress info using prompts for consistency
+  prompts.outro("📊 Current Progress:")
+  prompts.outro(`  Progress: ${progressPercent}%`)
+  prompts.outro(`  Words: ${progress.wordsWritten}/${progress.targetWords}`)
 
   const resume = await prompts.select({
     message: "Resume from current phase?",
@@ -316,7 +320,7 @@ async function resumeExpansion(documentID: string, parameters: { targetWords: nu
   }
 
   // Resume expansion (would call orchestrator's resume function)
-  console.log("Resuming expansion...")
+  log.info("Resuming expansion...")
 }
 
 /**

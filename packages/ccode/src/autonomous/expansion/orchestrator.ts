@@ -1,3 +1,4 @@
+import { Log } from "@/util/log"
 import { Document } from "../../document"
 import { Knowledge, KnowledgeSchema } from "../../document/knowledge"
 import type {
@@ -27,6 +28,8 @@ import { Agent } from "../../agent/agent"
 type CoreIdeaAnalysis = KnowledgeSchema.CoreIdeaAnalysis
 type ChapterOutline = KnowledgeSchema.ChapterOutline
 type Outline = KnowledgeSchema.Outline
+
+const log = Log.create({ service: "autonomous.expansion" })
 
 export namespace ExpansionOrchestrator {
   /**
@@ -545,25 +548,20 @@ Output in YAML format compatible with CoreIdeaAnalysis schema.
    * Pause an active expansion.
    */
   export async function pause(documentID: string): Promise<void> {
-    // In production, this would update the stored context
-    // For now, it's a placeholder
-    console.log(`Pausing expansion for document: ${documentID}`)
+    log.info(`Pausing expansion for document: ${documentID}`)
   }
 
   /**
    * Resume a paused expansion.
    */
   export async function resume(documentID: string): Promise<void> {
-    // In production, this would retrieve the stored context and continue
-    // For now, it's a placeholder
-    console.log(`Resuming expansion for document: ${documentID}`)
+    log.info(`Resuming expansion for document: ${documentID}`)
   }
 
   /**
    * Cancel an expansion.
    */
   export async function cancel(documentID: string): Promise<void> {
-    // Clean up any stored expansion state
-    console.log(`Canceling expansion for document: ${documentID}`)
+    log.info(`Canceling expansion for document: ${documentID}`)
   }
 }

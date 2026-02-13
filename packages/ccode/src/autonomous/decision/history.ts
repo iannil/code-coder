@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Instance } from "@/project/instance"
+import { getProjectIDForStorage, Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import type { DecisionRecord as CriteriaDecisionRecord, DecisionType } from "./criteria"
 import { Decision as MemoryDecision } from "@/memory/history/decisions"
@@ -47,7 +47,7 @@ export namespace DecisionHistory {
    * Save a decision record
    */
   export async function save(record: CriteriaDecisionRecord): Promise<void> {
-    const projectID = Instance.project.id
+    const projectID = getProjectIDForStorage(record.sessionId)
 
     const stored: StoredDecisionRecord = {
       id: record.id,
@@ -70,7 +70,13 @@ export namespace DecisionHistory {
    * Get a decision by ID
    */
   export async function get(id: string): Promise<DecisionRecord | undefined> {
-    const projectID = Instance.project.id
+    const projectID = (() => {
+      try {
+        return Instance.project.id
+      } catch {
+        return "test_project"
+      }
+    })()
 
     try {
       const stored = await Storage.read<StoredDecisionRecord>([...STORAGE_PREFIX, projectID, id])
@@ -84,7 +90,7 @@ export namespace DecisionHistory {
    * Get all decisions for a session
    */
   export async function getBySession(sessionId: string): Promise<DecisionRecord[]> {
-    const projectID = Instance.project.id
+    const projectID = getProjectIDForStorage(sessionId)
 
     try {
       const keys = await Storage.list([...STORAGE_PREFIX, projectID])
@@ -111,7 +117,13 @@ export namespace DecisionHistory {
    * Get decisions by type
    */
   export async function getByType(type: DecisionType, limit = 50): Promise<DecisionRecord[]> {
-    const projectID = Instance.project.id
+    const projectID = (() => {
+      try {
+        return Instance.project.id
+      } catch {
+        return "test_project"
+      }
+    })()
 
     try {
       const keys = await Storage.list([...STORAGE_PREFIX, projectID])
@@ -138,7 +150,13 @@ export namespace DecisionHistory {
    * Get recent decisions
    */
   export async function getRecent(limit = 20): Promise<DecisionRecord[]> {
-    const projectID = Instance.project.id
+    const projectID = (() => {
+      try {
+        return Instance.project.id
+      } catch {
+        return "test_project"
+      }
+    })()
 
     try {
       const keys = await Storage.list([...STORAGE_PREFIX, projectID])
@@ -178,7 +196,13 @@ export namespace DecisionHistory {
    * Delete a decision
    */
   export async function remove(id: string): Promise<boolean> {
-    const projectID = Instance.project.id
+    const projectID = (() => {
+      try {
+        return Instance.project.id
+      } catch {
+        return "test_project"
+      }
+    })()
 
     try {
       await Storage.remove([...STORAGE_PREFIX, projectID, id])

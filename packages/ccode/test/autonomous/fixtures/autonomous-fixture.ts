@@ -1,4 +1,6 @@
 import { expect } from "bun:test"
+import { tmpdir } from "../../fixture/fixture"
+import { Instance } from "@/project/instance"
 import { AutonomousState } from "@/autonomous/state/states"
 import { StateMachine } from "@/autonomous/state/state-machine"
 import { Orchestrator, createOrchestrator, type OrchestratorConfig } from "@/autonomous/orchestration/orchestrator"
@@ -16,6 +18,9 @@ import { Scorer, createScorer } from "@/autonomous/metrics/scorer"
  *
  * Provides reusable test utilities, mock agents, and test scenarios
  * for autonomous mode testing.
+ *
+ * IMPORTANT: All autonomous tests must be run within Instance.provide() context.
+ * Use createTestAutonomousSession() which handles this automatically.
  */
 
 /**
@@ -145,7 +150,10 @@ export function createTestConfig(overrides?: Partial<OrchestratorConfig>): Orche
 }
 
 /**
- * Create a mock autonomous session
+ * Create a mock autonomous session with proper Instance context
+ *
+ * IMPORTANT: This function creates a temporary directory and provides Instance context.
+ * The returned session must be properly disposed to clean up.
  */
 export async function createMockAutonomousSession(config?: Partial<OrchestratorConfig>) {
   const sessionId = `test_session_${Date.now()}_${Math.random().toString(36).slice(2)}`
@@ -153,21 +161,42 @@ export async function createMockAutonomousSession(config?: Partial<OrchestratorC
   const request = "Test request"
   const startTime = Date.now()
 
-  const orchestrator = createOrchestrator(
-    { sessionId, requestId, request, startTime },
-    createTestConfig(config),
-  )
+  let tmpDir: Awaited<ReturnType<typeof tmpdir>> | null = null
 
-  return {
-    sessionId,
-    requestId,
-    orchestrator,
-    async start() {
-      await orchestrator.start(request)
-    },
-    async dispose() {
-      // Cleanup
-    },
+  try {
+    tmpDir = await tmpdir({ git: true })
+
+    const orchestrator = await Instance.provide({
+      directory: tmpDir.path,
+      fn: async () => {
+        return createOrchestrator(
+          { sessionId, requestId, request, startTime },
+          createTestConfig(config),
+        )
+      },
+    })
+
+    return {
+      sessionId,
+      requestId,
+      orchestrator,
+      async start() {
+        await Instance.provide({
+          directory: tmpDir!.path,
+          fn: async () => orchestrator.start(request),
+        })
+      },
+      async dispose() {
+        if (tmpDir) {
+          await tmpDir.cleanup()
+        }
+      },
+    }
+  } catch (error) {
+    if (tmpDir) {
+      await tmpDir.cleanup()
+    }
+    throw error
   }
 }
 
@@ -249,6 +278,9 @@ export function parseTestBudget(budget: string): ResourceBudget {
 
 /**
  * Create test session context
+ *
+ * NOTE: This only creates a context object. For tests that require storage access,
+ * use withTestInstance() wrapper or createMockAutonomousSession().
  */
 export interface TestSessionContext {
   sessionId: string
@@ -263,6 +295,47 @@ export function createTestSessionContext(request = "Test request"): TestSessionC
     requestId: `test_req_${Date.now()}_${Math.random().toString(36).slice(2)}`,
     request,
     startTime: Date.now(),
+  }
+}
+
+/**
+ * Run a test function within a temporary Instance context
+ *
+ * Use this wrapper for tests that access storage or require Instance.project.id
+ */
+export async function withTestInstance<T>(
+  fn: (tmpDir: string) => Promise<T>,
+): Promise<T> {
+  const tmp = await tmpdir({ git: true })
+  try {
+    return await Instance.provide({
+      directory: tmp.path,
+      fn: () => fn(tmp.path),
+    })
+  } finally {
+    await tmp.cleanup()
+  }
+}
+
+/**
+ * Wraps a test function for use in describe() blocks that need Instance context
+ *
+ * Usage:
+ * ```ts
+ * describe("My Test", () => {
+ *   const testWithInstance = withTestInstanceWrapper()
+ *   test("should do something", testWithInstance(async () => {
+ *     // orchestrator code here...
+ *   }))
+ * })
+ * ```
+ */
+export function withTestInstanceWrapper() {
+  return <T>(fn: () => Promise<T>) => {
+    return () =>
+      withTestInstance(async () => {
+        await fn()
+      })
   }
 }
 

@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Instance } from "@/project/instance"
+import { getProjectIDForStorage } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { AutonomousState } from "../state/states"
 import z from "zod"
@@ -50,7 +50,7 @@ export class ContextManager {
 
   constructor(options: ContextOptions) {
     const now = Date.now()
-    const projectID = Instance.project.id
+    const projectID = getProjectIDForStorage(options.sessionId)
 
     this.context = {
       sessionId: options.sessionId,

@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Instance } from "@/project/instance"
+import { getProjectIDForStorage, Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
@@ -55,7 +55,7 @@ export class CheckpointManager {
 
   constructor(sessionId: string) {
     this.sessionId = sessionId
-    const projectID = Instance.project.id
+    const projectID = getProjectIDForStorage(sessionId)
     this.storageKey = ["autonomous", "checkpoints", projectID, sessionId]
   }
 
@@ -212,7 +212,7 @@ export class CheckpointManager {
       const stateData = await Storage.read<Record<string, unknown>>([
         "autonomous",
         "context",
-        Instance.project.id,
+        getProjectIDForStorage(this.sessionId),
         this.sessionId,
       ])
 
@@ -259,7 +259,7 @@ export class CheckpointManager {
   private async restoreState(state: Record<string, unknown>): Promise<void> {
     try {
       await Storage.write(
-        ["autonomous", "context", Instance.project.id, this.sessionId],
+        ["autonomous", "context", getProjectIDForStorage(this.sessionId), this.sessionId],
         state,
       )
     } catch (error) {

@@ -7,6 +7,9 @@
   "private": true,
   "scripts": {
     "typecheck": "tsgo --noEmit",
+    "lint": "tsgo --noEmit",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
     "test": "bun test",
     "test:tui": "bun test test/unit/tui test/integration/tui test/e2e/tui/critical",
     "test:tui:unit": "bun test test/unit/tui",
