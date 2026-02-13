@@ -114,6 +114,11 @@ export namespace LLM {
       mergeDeep(input.agent.options),
       mergeDeep(variant),
     )
+
+    // CRITICAL: Force disable thinking for Gemini 2.5 to prevent tool call interruption
+    if (input.model.api.id.includes("2.5") && options["google"]) {
+      options["google"] = { thinkingConfig: { includeThoughts: false } }
+    }
     if (isCodex) {
       options.instructions = SystemPrompt.instructions()
     }

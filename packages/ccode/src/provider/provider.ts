@@ -507,7 +507,7 @@ export namespace Provider {
     google: async () => {
       return {
         autoload: false,
-        options: {},
+        // Do not set options to avoid overriding ProviderTransform.options
       }
     },
     // Standard providers with no special configuration

@@ -8,6 +8,7 @@ import { Truncate } from "../tool/truncation"
 import { Auth } from "../auth"
 import { ProviderTransform } from "../provider/transform"
 
+import PROMPT_BUILD from "./prompt/build.txt"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
@@ -34,6 +35,7 @@ import PROMPT_VERIFIER from "./prompt/verifier.txt"
 import PROMPT_EXPANDER from "./prompt/expander.txt"
 import PROMPT_EXPANDER_FICTION from "./prompt/expander-fiction.txt"
 import PROMPT_EXPANDER_NONFICTION from "./prompt/expander-nonfiction.txt"
+import * as WriterService from "./writer-service"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
@@ -93,6 +95,7 @@ export namespace Agent {
     const result: Record<string, Info> = {
       build: {
         name: "build",
+        prompt: PROMPT_BUILD,
         options: {},
         permission: PermissionNext.merge(
           defaults,
@@ -256,11 +259,23 @@ export namespace Agent {
         name: "writer",
         description:
           "Specialized agent for writing long-form content (20k+ words). Handles outline generation, chapter-by-chapter writing, and style consistency.",
-        mode: "subagent",
+        mode: "primary",
         native: true,
         prompt: PROMPT_WRITER,
-        permission: PermissionNext.merge(defaults, user),
-        options: { maxOutputTokens: 128_000 },
+        permission: PermissionNext.merge(
+          defaults,
+          PermissionNext.fromConfig({
+            question: "allow",
+            plan_enter: "allow",
+          }),
+          user,
+        ),
+        options: {
+          maxOutputTokens: 128_000,
+          // Disable thinking mode to prevent truncation when using large maxOutputTokens
+          // Thinking mode reduces available output tokens by budgetTokens amount
+          thinking: { type: "disabled" },
+        },
         temperature: 0.7,
       },
       expander: {
@@ -271,7 +286,10 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_EXPANDER,
         permission: PermissionNext.merge(defaults, user),
-        options: { maxOutputTokens: 128_000 },
+        options: {
+          maxOutputTokens: 128_000,
+          thinking: { type: "disabled" },
+        },
         temperature: 0.7,
       },
       "expander-fiction": {
@@ -282,7 +300,10 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_EXPANDER_FICTION,
         permission: PermissionNext.merge(defaults, user),
-        options: { maxOutputTokens: 128_000 },
+        options: {
+          maxOutputTokens: 128_000,
+          thinking: { type: "disabled" },
+        },
         temperature: 0.8,
       },
       "expander-nonfiction": {
@@ -293,7 +314,10 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_EXPANDER_NONFICTION,
         permission: PermissionNext.merge(defaults, user),
-        options: { maxOutputTokens: 128_000 },
+        options: {
+          maxOutputTokens: 128_000,
+          thinking: { type: "disabled" },
+        },
         temperature: 0.6,
       },
       proofreader: {
@@ -304,7 +328,10 @@ export namespace Agent {
         native: true,
         prompt: PROMPT_PROOFREADER,
         permission: PermissionNext.merge(defaults, user),
-        options: { maxOutputTokens: 128_000 },
+        options: {
+          maxOutputTokens: 128_000,
+          thinking: { type: "disabled" },
+        },
         temperature: 0.3,
       },
       "code-reverse": {

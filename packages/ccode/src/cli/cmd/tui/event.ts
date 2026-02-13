@@ -54,4 +54,13 @@ export const TuiEvent = {
       sessionID: z.string().regex(/^ses/).describe("Session ID to navigate to"),
     }),
   ),
+  WriterProgress: BusEvent.define(
+    "writer.progress",
+    z.object({
+      action: z.enum(["outline", "chapter_start", "chapter_complete", "complete", "error"]),
+      chapter: z.number().optional(),
+      total: z.number().optional(),
+      message: z.string().optional(),
+    }),
+  ),
 }

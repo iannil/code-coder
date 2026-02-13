@@ -14,6 +14,12 @@ export function Toast() {
   const { theme } = useTheme()
   const dimensions = useTerminalDimensions()
 
+  const formatMessage = (value: unknown): string => {
+    if (value === null || value === undefined) return ""
+    if (typeof value === "string") return value
+    return String(value)
+  }
+
   return (
     <Show when={toast.currentToast}>
       {(current) => (
@@ -29,17 +35,17 @@ export function Toast() {
           paddingTop={1}
           paddingBottom={1}
           backgroundColor={theme.backgroundPanel}
-          borderColor={theme[current().variant]}
+          borderColor={theme[current.variant]}
           border={["left", "right"]}
           customBorderChars={SplitBorder.customBorderChars}
         >
-          <Show when={current().title}>
+          <Show when={current.title}>
             <text attributes={TextAttributes.BOLD} marginBottom={1} fg={theme.text}>
-              {current().title}
+              {formatMessage(current.title)}
             </text>
           </Show>
           <text fg={theme.text} wrapMode="word" width="100%">
-            {current().message}
+            {formatMessage(current.message)}
           </text>
         </box>
       )}
@@ -62,7 +68,7 @@ function init() {
       if (timeoutHandle) clearTimeout(timeoutHandle)
       timeoutHandle = setTimeout(() => {
         setStore("currentToast", null)
-      }, duration).unref()
+      }, duration ?? 5000).unref()
     },
     error: (err: any) => {
       if (err instanceof Error)
@@ -75,7 +81,7 @@ function init() {
         message: "An unknown error has occurred",
       })
     },
-    get currentToast(): ToastOptions | null {
+    get currentToast() {
       return store.currentToast
     },
   }

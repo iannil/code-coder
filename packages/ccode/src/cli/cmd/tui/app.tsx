@@ -555,11 +555,46 @@ function App() {
 
   sdk.event.on(TuiEvent.ModelCall.type, (evt) => {
     const { providerID, modelID, agent, sessionID } = evt.properties
-    toast.show({
-      variant: "info",
-      message: `[${agent}] ${providerID}/${modelID}`,
-      duration: 3000,
-    })
+    // Defer toast.show to avoid interfering with event processing
+    setTimeout(() => {
+      toast.show({
+        variant: "info",
+        message: `[${String(agent)}] ${String(providerID)}/${String(modelID)}`,
+        duration: 3000,
+      })
+    }, 0)
+  })
+
+  // Track writer agent progress for long-form tasks
+  sdk.event.on(TuiEvent.WriterProgress.type, (evt) => {
+    const { action, chapter, total, message } = evt.properties
+    let progressMessage = ""
+
+    switch (action) {
+      case "outline":
+        progressMessage = `📋 Outline: ${total || 0} chapters planned`
+        break
+      case "chapter_start":
+        progressMessage = `✍️  Chapter ${chapter}/${total}...`
+        break
+      case "chapter_complete":
+        progressMessage = `✅ Chapter ${chapter}/${total} complete`
+        break
+      case "complete":
+        progressMessage = `🎉 Writing complete!`
+        break
+      case "error":
+        progressMessage = `⚠️ Error: ${message || "Unknown"}`
+        break
+    }
+
+    if (progressMessage) {
+      toast.show({
+        variant: action === "error" ? "error" : action === "chapter_complete" ? "success" : "info",
+        message: progressMessage,
+        duration: action === "error" ? 8000 : 2000,
+      })
+    }
   })
 
   sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
@@ -578,9 +613,9 @@ function App() {
     const message = (() => {
       if (!error) return "An error occurred"
 
-      if (typeof error === "object") {
-        const data = error.data
-        if ("message" in data && typeof data.message === "string") {
+      if (typeof error === "object" && error !== null && !Array.isArray(error)) {
+        const data = (error as any).data
+        if (typeof data === "object" && data !== null && !Array.isArray(data) && "message" in data && typeof data.message === "string") {
           return data.message
         }
       }
