@@ -1,4 +1,4 @@
-import { type Accessor, createMemo, createSignal, Match, Show, Switch } from "solid-js"
+import { type Accessor, createMemo, createSignal, Match, Show, Switch, createEffect, onCleanup } from "solid-js"
 import { useRouteData } from "@tui/context/route"
 import { useSync } from "@tui/context/sync"
 import { pipe, sumBy } from "remeda"
@@ -8,6 +8,8 @@ import type { AssistantMessage } from "@/types"
 import type { Session } from "@/session"
 import { useCommandDialog } from "@tui/component/dialog-command"
 import { useKeybind } from "../../context/keybind"
+import { formatExecutionTime, getToolDuration } from "../../util/execution-time"
+import { Spinner } from "../../ui/progress-bar"
 import { VERSION } from "@/version"
 import { useTerminalDimensions } from "@opentui/solid"
 
@@ -36,6 +38,7 @@ export function Header() {
   const sync = useSync()
   const session = createMemo(() => sync.session.get(route.sessionID)!)
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+  const [now, setNow] = createSignal(Date.now())
 
   const cost = createMemo(() => {
     const total = pipe(
@@ -59,6 +62,61 @@ export function Header() {
       result += "  " + Math.round((total / model.limit.context) * 100) + "%"
     }
     return result
+  })
+
+  // Get current execution status
+  const executionStatus = createMemo(() => {
+    const lastMessage = messages().findLast((x) => x.role === "assistant")
+    if (!lastMessage) return undefined
+
+    // Check if message is still being generated
+    const isStreaming = !lastMessage.time.completed
+    if (isStreaming) {
+      return { type: "streaming", message: lastMessage }
+    }
+
+    // Check for running tools in the last message
+    const parts = sync.data.part[lastMessage.id] ?? []
+    const runningTool = parts.find(
+      (p): p is import("@/types").ToolPart =>
+        p.type === "tool" && (p.state.status === "running" || p.state.status === "pending"),
+    )
+
+    if (runningTool) {
+      const duration = getToolDuration(runningTool)
+      return {
+        type: "tool",
+        tool: runningTool.tool,
+        elapsed: duration.elapsed,
+      }
+    }
+
+    return undefined
+  })
+
+  const statusText = createMemo(() => {
+    const status = executionStatus()
+    if (!status) return undefined
+
+    if (status.type === "streaming") {
+      return "Generating response..."
+    }
+
+    if (status.type === "tool") {
+      const time = status.elapsed && status.elapsed > 0 ? ` (${formatExecutionTime(status.elapsed)})` : ""
+      return `${status.tool}${time}`
+    }
+
+    return undefined
+  })
+
+  // Update time for real-time display
+  createEffect(() => {
+    const status = executionStatus()
+    if (status && (status.type === "tool" || status.type === "streaming")) {
+      const interval = setInterval(() => setNow(Date.now()), 100)
+      onCleanup(() => clearInterval(interval))
+    }
   })
 
   const { theme } = useTheme()
@@ -90,6 +148,12 @@ export function Header() {
                 </text>
                 <box flexDirection="row" gap={1} flexShrink={0}>
                   <ContextInfo context={context} cost={cost} />
+                  <Show when={statusText()}>
+                    <box flexDirection="row" gap={1}>
+                      <Spinner />
+                      <text fg={theme.accent}>{statusText()}</text>
+                    </box>
+                  </Show>
                   <text fg={theme.textMuted}>v{VERSION}</text>
                 </box>
               </box>
@@ -132,6 +196,12 @@ export function Header() {
               <Title session={session} />
               <box flexDirection="row" gap={1} flexShrink={0}>
                 <ContextInfo context={context} cost={cost} />
+                <Show when={statusText()}>
+                  <box flexDirection="row" gap={1}>
+                    <Spinner />
+                    <text fg={theme.accent}>{statusText()}</text>
+                  </box>
+                </Show>
                 <text fg={theme.textMuted}>v{VERSION}</text>
               </box>
             </box>

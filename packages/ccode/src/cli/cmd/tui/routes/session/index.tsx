@@ -28,6 +28,7 @@ import {
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
 import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@/types"
+import { MessageV2 } from "@/session/message-v2"
 import { useLocal } from "@tui/context/local"
 import { Locale } from "@/util/locale"
 import type { Tool } from "@/tool/tool"
@@ -74,6 +75,12 @@ import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
 import { formatTranscript } from "../../util/transcript"
+import {
+  formatExecutionTime,
+  formatPreciseTime,
+  getToolDuration,
+} from "../../util/execution-time"
+import { Spinner, ProgressBar } from "../../ui/progress-bar"
 
 addDefaultParsers(parsers.parsers)
 
@@ -1277,6 +1284,75 @@ const PART_MAPPING = {
   text: TextPart,
   tool: ToolPart,
   reasoning: ReasoningPart,
+  "step-start": ModelStepStart,
+  "step-finish": ModelStepFinish,
+}
+
+function ModelStepStart(props: { last: boolean; part: MessageV2.StepStartPart; message: AssistantMessage }) {
+  const { theme } = useTheme()
+  const ctx = use()
+  const sync = useSync()
+  const [now, setNow] = createSignal(Date.now())
+
+  const startTime = createMemo(() => props.message.time.created)
+  const elapsed = createMemo(() => (now() - startTime()) / 1000)
+
+  createEffect(() => {
+    if (!props.message.time.completed) {
+      const interval = setInterval(() => setNow(Date.now()), 100)
+      return () => clearInterval(interval)
+    }
+  })
+
+  return (
+    <Show when={ctx.showTimestamps()}>
+      <box paddingLeft={3} marginTop={1} flexShrink={0}>
+        <text fg={theme.textMuted}>
+          <span style={{ fg: theme.accent }}>◈</span> Model API call started
+          <Show when={!props.message.time.completed}> ({elapsed().toFixed(1)}s)</Show>
+        </text>
+      </box>
+    </Show>
+  )
+}
+
+function ModelStepFinish(props: { last: boolean; part: MessageV2.StepFinishPart; message: AssistantMessage }) {
+  const { theme } = useTheme()
+  const ctx = use()
+
+  const tokens = props.part.tokens
+  const totalTokens = tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
+  const cacheHitRate = createMemo(() => {
+    const total = tokens.input + tokens.output
+    if (total === 0) return 0
+    return Math.round((tokens.cache.read / total) * 100)
+  })
+
+  return (
+    <Show when={ctx.showTimestamps()}>
+      <box paddingLeft={3} marginTop={1} flexShrink={0} flexDirection="column" gap={0}>
+        <text fg={theme.textMuted}>
+          <span style={{ fg: theme.success }}>◈</span> Model API call completed
+          <Show when={props.part.reason}> - {props.part.reason}</Show>
+        </text>
+        <Show when={totalTokens > 0}>
+          <text fg={theme.textMuted} paddingLeft={2}>
+            Tokens: {totalTokens.toLocaleString()} (in: {tokens.input.toLocaleString()}, out: {tokens.output.toLocaleString()}
+            <Show when={tokens.reasoning > 0}>, reasoning: {tokens.reasoning.toLocaleString()}</Show>
+            <Show when={tokens.cache.read > 0 || tokens.cache.write > 0}>
+              , cache: ↦{tokens.cache.read.toLocaleString()} ↦{tokens.cache.write.toLocaleString()} ({cacheHitRate()}% hit)
+            </Show>
+            )
+          </text>
+        </Show>
+        <Show when={props.part.cost > 0}>
+          <text fg={theme.textMuted} paddingLeft={2}>
+            Cost: ${(props.part.cost * 100).toFixed(4)}¢
+          </text>
+        </Show>
+      </box>
+    </Show>
+  )
 }
 
 function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: AssistantMessage }) {
@@ -1455,11 +1531,13 @@ function InlineTool(props: {
   pending: string
   children: JSX.Element
   part: ToolPart
+  showTime?: boolean
 }) {
   const [margin, setMargin] = createSignal(0)
   const { theme } = useTheme()
   const ctx = use()
   const sync = useSync()
+  const [now, setNow] = createSignal(Date.now())
 
   const permission = createMemo(() => {
     const callID = sync.data.permission[ctx.sessionID]?.at(0)?.callID
@@ -1481,6 +1559,29 @@ function InlineTool(props: {
       error()?.includes("specified a rule") ||
       error()?.includes("user dismissed"),
   )
+
+  const toolDuration = createMemo(() => getToolDuration(props.part))
+  const isRunning = createMemo(() => toolDuration().isRunning)
+  const timeText = createMemo(() => {
+    const { elapsed, isRunning: running } = toolDuration()
+    if (elapsed < 100 && !running) return ""
+    if (running) return `${formatPreciseTime(elapsed)}`
+    return `${formatPreciseTime(elapsed)}`
+  })
+
+  const statusText = createMemo(() => {
+    if (error()) return "✗"
+    if (props.complete) return "✓"
+    if (isRunning()) return ""
+    return ""
+  })
+
+  createEffect(() => {
+    if (isRunning()) {
+      const interval = setInterval(() => setNow(Date.now()), 100)
+      return () => clearInterval(interval)
+    }
+  })
 
   return (
     <box
@@ -1510,8 +1611,21 @@ function InlineTool(props: {
       }}
     >
       <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
-        <Show fallback={<>~ {props.pending}</>} when={props.complete}>
-          <span style={{ fg: props.iconColor }}>{props.icon}</span> {props.children}
+        <Show fallback={<>~ {props.pending}</>} when={props.complete || isRunning()}>
+          <Show when={isRunning()}>
+            <Spinner color={props.iconColor ?? theme.accent} />
+          </Show>
+          <Show when={!isRunning()}>
+            <span style={{ fg: props.iconColor }}>{props.icon}</span>
+          </Show>
+          {" "}
+          {props.children}
+          <Show when={timeText()}>
+            {" "}
+            <span style={{ fg: theme.textMuted }}>
+              {statusText()} {timeText()}
+            </span>
+          </Show>
         </Show>
       </text>
       <Show when={error() && !denied()}>
@@ -1558,8 +1672,13 @@ function BlockTool(props: { title: string; children: JSX.Element; onClick?: () =
 function Bash(props: ToolProps<typeof BashTool>) {
   const { theme } = useTheme()
   const sync = useSync()
-  const output = createMemo(() => stripAnsi(props.metadata.output?.trim() ?? ""))
   const [expanded, setExpanded] = createSignal(false)
+
+  const toolDuration = createMemo(() => getToolDuration(props.part))
+  const isRunning = createMemo(() => toolDuration().isRunning)
+  const [now, setNow] = createSignal(Date.now())
+
+  const output = createMemo(() => stripAnsi(props.metadata.output?.trim() ?? ""))
   const lines = createMemo(() => output().split("\n"))
   const overflow = createMemo(() => lines().length > 10)
   const limited = createMemo(() => {
@@ -1587,14 +1706,26 @@ function Bash(props: ToolProps<typeof BashTool>) {
   const title = createMemo(() => {
     const desc = props.input.description ?? "Shell"
     const wd = workdirDisplay()
-    if (!wd) return `# ${desc}`
-    if (desc.includes(wd)) return `# ${desc}`
-    return `# ${desc} in ${wd}`
+    const timeInfo = isRunning()
+      ? ` (${formatPreciseTime(toolDuration().elapsed)})`
+      : toolDuration().elapsed > 0
+        ? ` (${formatPreciseTime(toolDuration().elapsed)})`
+        : ""
+    if (!wd) return `# ${desc}${timeInfo}`
+    if (desc.includes(wd)) return `# ${desc}${timeInfo}`
+    return `# ${desc} in ${wd}${timeInfo}`
+  })
+
+  createEffect(() => {
+    if (isRunning()) {
+      const interval = setInterval(() => setNow(Date.now()), 100)
+      return () => clearInterval(interval)
+    }
   })
 
   return (
     <Switch>
-      <Match when={props.metadata.output !== undefined}>
+      <Match when={props.metadata.output !== undefined || isRunning()}>
         <BlockTool
           title={title()}
           part={props.part}
@@ -1602,7 +1733,12 @@ function Bash(props: ToolProps<typeof BashTool>) {
         >
           <box gap={1}>
             <text fg={theme.text}>$ {props.input.command}</text>
-            <text fg={theme.text}>{limited()}</text>
+            <Show when={isRunning()}>
+              <text fg={theme.textMuted}>Running...</text>
+            </Show>
+            <Show when={!isRunning() && output()}>
+              <text fg={theme.text}>{limited()}</text>
+            </Show>
             <Show when={overflow()}>
               <text fg={theme.textMuted}>{expanded() ? "Click to collapse" : "Click to expand"}</text>
             </Show>
@@ -1625,15 +1761,23 @@ function Write(props: ToolProps<typeof WriteTool>) {
     return props.input.content
   })
 
+  const toolDuration = createMemo(() => getToolDuration(props.part))
+
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
     return props.metadata.diagnostics?.[filePath] ?? []
   })
 
+  const title = createMemo(() => {
+    const base = "# Wrote " + normalizePath(props.input.filePath!)
+    const elapsed = toolDuration().elapsed
+    return elapsed > 0 ? `${base} (${formatPreciseTime(elapsed)})` : base
+  })
+
   return (
     <Switch>
       <Match when={props.metadata.diagnostics !== undefined}>
-        <BlockTool title={"# Wrote " + normalizePath(props.input.filePath!)} part={props.part}>
+        <BlockTool title={title()} part={props.part}>
           <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
             <code
               conceal={false}
@@ -1736,15 +1880,51 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const keybind = useKeybind()
   const { navigate } = useRoute()
   const local = useLocal()
+  const [now, setNow] = createSignal(Date.now())
 
   const current = createMemo(() => props.metadata.summary?.findLast((x) => x.state.status !== "pending"))
   const color = createMemo(() => local.agent.color(props.input.subagent_type ?? "unknown"))
+
+  const toolDuration = createMemo(() => getToolDuration(props.part))
+  const isRunning = createMemo(() => toolDuration().isRunning)
+
+  // Calculate taskProgress based on completed vs total tool calls
+  const taskProgress = createMemo(() => {
+    const summary = props.metadata.summary
+    if (!summary || summary.length === 0) return 0
+    const completed = summary.filter((x) => x.state.status === "completed" || x.state.status === "error").length
+    return Math.round((completed / summary.length) * 100)
+  })
+
+  const summaryList = createMemo(() => {
+    const summary = props.metadata.summary ?? []
+    return summary.slice(-5)
+  })
+
+  createEffect(() => {
+    if (isRunning()) {
+      const interval = setInterval(() => setNow(Date.now()), 100)
+      return () => clearInterval(interval)
+    }
+  })
+
+  const title = createMemo(() => {
+    const base = "# " + Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"
+    const elapsed = toolDuration().elapsed
+    const prog = taskProgress()
+    if (elapsed > 0 || prog > 0) {
+      const timeText = elapsed > 0 ? ` (${formatPreciseTime(elapsed)})` : ""
+      const progressText = prog > 0 ? ` ${prog}%` : ""
+      return `${base}${timeText}${progressText}`
+    }
+    return base
+  })
 
   return (
     <Switch>
       <Match when={props.metadata.summary?.length}>
         <BlockTool
-          title={"# " + Locale.titlecase(props.input.subagent_type ?? "unknown") + " Task"}
+          title={title()}
           onClick={
             props.metadata.sessionId
               ? () => navigate({ type: "session", sessionID: props.metadata.sessionId! })
@@ -1752,15 +1932,34 @@ function Task(props: ToolProps<typeof TaskTool>) {
           }
           part={props.part}
         >
-          <box>
+          <box flexDirection="column" gap={1}>
             <text style={{ fg: theme.textMuted }}>
               {props.input.description} ({props.metadata.summary?.length} toolcalls)
             </text>
-            <Show when={current()}>
-              <text style={{ fg: current()!.state.status === "error" ? theme.error : theme.textMuted }}>
-                └ {Locale.titlecase(current()!.tool)}{" "}
-                {current()!.state.status === "completed" ? current()!.state.title : ""}
-              </text>
+            <Show when={taskProgress() > 0 && taskProgress() < 100}>
+              <ProgressBar progress={taskProgress()} width={20} showPercentage={true} />
+            </Show>
+            <Show when={summaryList().length > 0}>
+              <box flexDirection="column" gap={0}>
+                <For each={summaryList()}>
+                  {(item) => (
+                    <text
+                      style={{
+                        fg:
+                          item.state.status === "error"
+                            ? theme.error
+                            : item.state.status === "completed"
+                              ? theme.textMuted
+                              : theme.accent,
+                      }}
+                    >
+                      {item.state.status === "completed" ? "✓" : item.state.status === "error" ? "✗" : "⟳"}{" "}
+                      {Locale.titlecase(item.tool)}{" "}
+                      {item.state.status === "completed" ? item.state.title : ""}
+                    </text>
+                  )}
+                </For>
+              </box>
             </Show>
           </box>
           <text fg={theme.text}>
@@ -1800,16 +1999,24 @@ function Edit(props: ToolProps<typeof EditTool>) {
 
   const diffContent = createMemo(() => props.metadata.diff)
 
+  const toolDuration = createMemo(() => getToolDuration(props.part))
+
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(props.input.filePath ?? "")
     const arr = props.metadata.diagnostics?.[filePath] ?? []
     return arr.filter((x) => x.severity === 1).slice(0, 3)
   })
 
+  const title = createMemo(() => {
+    const base = "← Edit " + normalizePath(props.input.filePath!)
+    const elapsed = toolDuration().elapsed
+    return elapsed > 0 ? `${base} (${formatPreciseTime(elapsed)})` : base
+  })
+
   return (
     <Switch>
       <Match when={props.metadata.diff !== undefined}>
-        <BlockTool title={"← Edit " + normalizePath(props.input.filePath!)} part={props.part}>
+        <BlockTool title={title()} part={props.part}>
           <box paddingLeft={1}>
             <diff
               diff={diffContent()}
