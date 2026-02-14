@@ -1535,7 +1535,7 @@ function ToolTitle(props: { fallback: string; when: any; icon: string; children:
   const { theme } = useTheme()
   return (
     <text paddingLeft={3} fg={props.when ? theme.textMuted : theme.text}>
-      <Show fallback={<text>~ {safeText(props.fallback)}</text>} when={props.when}>
+      <Show fallback={<>~ {safeText(props.fallback)}</>} when={props.when}>
         <span style={{ bold: true }}>{safeText(props.icon)}</span> {props.children}
       </Show>
     </text>
@@ -1643,7 +1643,7 @@ function InlineTool(props: {
       <text paddingLeft={3} fg={fg()} attributes={denied() ? TextAttributes.STRIKETHROUGH : undefined}>
         <Show fallback={<>~ {safePending()}</>} when={props.complete || isRunning()}>
           <Show when={isRunning()}>
-            <Spinner color={props.iconColor ?? theme.accent} />
+            <Spinner color={props.iconColor ?? theme.accent} inline={true} />
           </Show>
           <Show when={!isRunning()}>
             <span style={{ fg: props.iconColor }}>{props.icon}</span>

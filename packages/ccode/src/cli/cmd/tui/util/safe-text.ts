@@ -7,13 +7,28 @@ import { children, type JSX } from "solid-js"
 export function safeText(value: unknown): string {
   if (value === null || value === undefined) return ""
   if (typeof value === "string") return value
-  if (typeof value === "number") return String(value)
-  if (typeof value === "boolean") return String(value)
+  if (typeof value === "number" || typeof value === "boolean") return String(value)
   if (value instanceof Error) return value.message
+  // Handle arrays and objects safely
+  if (Array.isArray(value)) {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return "[Array]"
+    }
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return "[Object]"
+    }
+  }
+  // Fallback for any other type
   try {
-    return JSON.stringify(value)
-  } catch {
     return String(value)
+  } catch {
+    return "[Unknown]"
   }
 }
 

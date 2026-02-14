@@ -46,6 +46,8 @@ export function ProgressBar(props: ProgressBarProps) {
 
 export interface SpinnerProps {
   color?: RGBA
+  /** When true, renders as <span> for use inside <text> elements. When false (default), renders as <text> */
+  inline?: boolean
 }
 
 export function Spinner(props: SpinnerProps) {
@@ -56,5 +58,10 @@ export function Spinner(props: SpinnerProps) {
   const frameIndex = () => Math.floor(Date.now() / 80) % animationFrames.length
   const frame = () => animationFrames[frameIndex()]
 
-  return <text fg={color()}>{frame()}</text>
+  // Use span when inline (inside text elements) to avoid nesting text elements
+  return props.inline ? (
+    <span style={{ fg: color() }}>{frame()}</span>
+  ) : (
+    <text fg={color()}>{frame()}</text>
+  )
 }
