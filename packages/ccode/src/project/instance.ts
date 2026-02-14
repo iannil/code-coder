@@ -78,7 +78,13 @@ export const Instance = {
       return context.use().project
     } catch {
       // Test mode - return fallback project info
-      return { id: "test_project", name: "Test Project" }
+      return {
+        id: "test_project",
+        name: "Test Project",
+        worktree: "/",
+        sandboxes: [],
+        time: { created: Date.now(), updated: Date.now() },
+      }
     }
   },
   /**

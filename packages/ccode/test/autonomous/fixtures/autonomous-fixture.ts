@@ -188,13 +188,13 @@ export async function createMockAutonomousSession(config?: Partial<OrchestratorC
       },
       async dispose() {
         if (tmpDir) {
-          await tmpDir.cleanup()
+          await tmpDir[Symbol.asyncDispose]()
         }
       },
     }
   } catch (error) {
     if (tmpDir) {
-      await tmpDir.cleanup()
+      await tmpDir[Symbol.asyncDispose]()
     }
     throw error
   }
@@ -313,7 +313,7 @@ export async function withTestInstance<T>(
       fn: () => fn(tmp.path),
     })
   } finally {
-    await tmp.cleanup()
+    await tmp[Symbol.asyncDispose]()
   }
 }
 

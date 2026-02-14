@@ -50,20 +50,21 @@ interface CustomModel {
 
 // Type for custom provider model configuration
 type CustomModelConfig = {
-  id?: string
-  name?: string
+  id: string
+  name: string
   tool_call?: boolean
-  limit?: {
-    context?: number
-    output?: number
+  limit: {
+    context: number
+    output: number
+    input?: number
   }
   cost?: {
-    input?: number
-    output?: number
+    input: number
+    output: number
   }
-  modalities?: {
-    input?: string[]
-    output?: string[]
+  modalities: {
+    input: ("audio" | "image" | "pdf" | "text" | "video")[]
+    output: ("audio" | "image" | "pdf" | "text" | "video")[]
   }
   attachment?: boolean
   reasoning?: boolean

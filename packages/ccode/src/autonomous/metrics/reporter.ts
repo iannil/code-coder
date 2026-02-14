@@ -1,5 +1,4 @@
 import { Log } from "@/util/log"
-import { Log } from "@/util/log"
 import { getProjectIDForStorage, Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { Bus } from "@/bus"

@@ -13,6 +13,7 @@ export namespace Context {
    * Returns a fallback mock context when running in test mode (no instance context set).
    */
   const testFallback = <T = any>() => {
+    const storage = new AsyncLocalStorage<T>()
     let provided = false
     return {
       use() {

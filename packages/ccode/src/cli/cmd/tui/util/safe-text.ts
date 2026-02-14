@@ -45,15 +45,15 @@ export function safeStr(value: unknown, fallback = ""): string {
  * Recursively convert all non-string values in JSX children to strings.
  * This is used to sanitize children before passing to text elements.
  */
-export function sanitizeChildren(childrenInput: JSX.Element): JSX.Element {
+export function sanitizeChildren(childrenInput: JSX.Element): () => JSX.Element {
   const resolved = children(() => childrenInput)
 
   return () => {
     const result = resolved()
     if (Array.isArray(result)) {
-      return result.map((child) => sanitizeValue(child))
+      return result.map((child) => sanitizeValue(child)) as unknown as JSX.Element
     }
-    return sanitizeValue(result)
+    return sanitizeValue(result) as JSX.Element
   }
 }
 

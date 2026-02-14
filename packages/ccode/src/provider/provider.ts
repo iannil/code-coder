@@ -849,18 +849,42 @@ export namespace Provider {
       if (disabled.has(providerID)) continue
       const data = database[providerID]
       if (!data) {
-        // Provider not in models.dev database - this is expected for some providers
-        // when models.dev fetch fails or provider is not registered there
-        log.debug("Provider does not exist in model list, skipping custom loader", { providerID })
-        continue
-      }
-      const result = await fn(data)
-      if (result && (result.autoload || providers[providerID])) {
-        if (result.getModel) modelLoaders[providerID] = result.getModel
-        mergeProvider(providerID, {
-          source: "custom",
-          options: result.options,
-        })
+        // Check if this is a BUNDLED_PROVIDER that might have valid env-based configuration
+        // even when not in models.dev database (e.g., gitlab)
+        const isBundledProvider = Object.keys(BUNDLED_PROVIDERS).includes(providerID)
+        if (isBundledProvider) {
+          // Create a minimal Info object for bundled providers not in database
+          // This allows providers like gitlab to be loaded via environment variables
+          const bundledLoader = BUNDLED_PROVIDERS[providerID]
+          const result = await bundledLoader({
+            id: providerID,
+            name: providerID,
+            env: [],
+            models: {},
+            status: "active",
+          })
+          if (result && (result.autoload || providers[providerID])) {
+            if (result.getModel) modelLoaders[providerID] = result.getModel
+            mergeProvider(providerID, {
+              source: "custom",
+              options: result.options,
+            })
+          }
+        } else {
+          // Provider not in models.dev database - this is expected for some providers
+          // when models.dev fetch fails or provider is not registered there
+          log.debug("Provider does not exist in model list, skipping custom loader", { providerID })
+          continue
+        }
+      } else {
+        const result = await fn(data)
+        if (result && (result.autoload || providers[providerID])) {
+          if (result.getModel) modelLoaders[providerID] = result.getModel
+          mergeProvider(providerID, {
+            source: "custom",
+            options: result.options,
+          })
+        }
       }
     }
 
