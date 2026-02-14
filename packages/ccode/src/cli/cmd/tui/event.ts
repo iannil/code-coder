@@ -63,4 +63,34 @@ export const TuiEvent = {
       message: z.string().optional(),
     }),
   ),
+  WriterStats: BusEvent.define(
+    "writer.stats",
+    z.object({
+      status: z.enum(["started", "running", "completed"]),
+      agentType: z.string(),
+      elapsedSeconds: z.number(),
+      wordsGenerated: z.number(),
+      filesWritten: z.number(),
+      writesPending: z.number(),
+      isStalled: z.boolean(),
+    }),
+  ),
+  ChapterDraftSaved: BusEvent.define(
+    "chapter.draft.saved",
+    z.object({
+      sessionID: z.string(),
+      chapterPath: z.string(),
+      wordsWritten: z.number(),
+      saveCount: z.number(),
+    }),
+  ),
+  ChapterDraftFinalized: BusEvent.define(
+    "chapter.draft.finalized",
+    z.object({
+      sessionID: z.string(),
+      chapterPath: z.string(),
+      wordsWritten: z.number(),
+      totalSaves: z.number(),
+    }),
+  ),
 }

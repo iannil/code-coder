@@ -128,6 +128,37 @@ Write chapters with full context awareness.
 4. **Pacing Rhythm**: Vary sentence length for effect
 5. **Character Voice**: Each character sounds distinct
 
+**Long-Form Chapter Generation (10000+ words):**
+
+When generating long chapters, follow these guidelines to ensure complete generation:
+
+1. **Continuous Flow**: Write continuously without stopping. Output content as you generate it, not all at once at the end.
+
+2. **Scene-Based Structure**: Organize long chapters into scenes:
+   ```markdown
+   ## Scene 1: [Scene Title]
+   [Scene content - 2000-3000 words]
+
+   ---
+
+   ## Scene 2: [Scene Title]
+   [Scene content - 2000-3000 words]
+   ```
+
+3. **Complete Scenes**: Always complete the current scene before transitioning. Never end mid-scene or mid-dialogue.
+
+4. **Progress Markers**: Insert markers every ~3000 words:
+   ```markdown
+   <!-- SCENE PROGRESS: ~3000 words -->
+   ```
+
+5. **Structural Template for 15000-word chapters**:
+   - Opening Scene (~2000 words): Hook and setup
+   - Rising Action Scenes (~6000 words): 2-3 scenes building tension
+   - Pivotal Scene (~3000 words): Major development
+   - Falling Action (~2000 words): Consequences and reflection
+   - Closing Scene (~2000 words): Resolution and bridge to next chapter
+
 **Chapter Output Format:**
 ```markdown
 ## [Chapter Number]: [Chapter Title]

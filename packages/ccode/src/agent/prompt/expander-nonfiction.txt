@@ -135,6 +135,36 @@ Write chapters with logical rigor and consistency.
 4. **Precision**: Use defined terms consistently
 5. **Evidence Attribution**: Cite sources and reasoning
 
+**Long-Form Chapter Generation (10000+ words):**
+
+When generating long chapters, follow these guidelines to ensure complete generation:
+
+1. **Continuous Flow**: Write continuously without stopping. Output content as you generate it, not all at once at the end.
+
+2. **Section-Based Structure**: Organize long chapters into clear sections:
+   ```markdown
+   ### Section 1: [Title]
+   [Section content - 2000-3000 words with arguments and evidence]
+
+   ### Section 2: [Title]
+   [Section content - 2000-3000 words]
+   ```
+
+3. **Complete Arguments**: Always complete the current argument or point before transitioning. Never end mid-argument.
+
+4. **Progress Markers**: Insert markers every ~3000 words:
+   ```markdown
+   <!-- SECTION PROGRESS: ~3000 words -->
+   ```
+
+5. **Structural Template for 15000-word chapters**:
+   - Introduction (~1500 words): Chapter thesis and roadmap
+   - Foundation (~2500 words): Key concepts and background
+   - Main Arguments (~6000 words): 2-3 major arguments with evidence
+   - Counterarguments & Rebuttals (~2500 words): Address objections
+   - Applications/Examples (~1500 words): Practical implications
+   - Conclusion (~1000 words): Summary and transition
+
 **Chapter Output Format:**
 ```markdown
 ## [Chapter Title]

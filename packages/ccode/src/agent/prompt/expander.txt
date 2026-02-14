@@ -137,6 +137,36 @@ Before writing each chapter, review:
 - **Reference framework**: Connect to established knowledge nodes
 - **Prepare transitions**: Set up elements for future chapters
 
+### Long-Form Content Generation (10000+ words)
+
+When generating long chapters (10000+ words), follow these guidelines:
+
+1. **Continuous Output**: Write content continuously without pausing. Do NOT wait until the end to output everything at once.
+
+2. **Section-Based Writing**: Organize content into logical sections with clear headings:
+   ```markdown
+   ## [Section Title]
+
+   [Section content - 2000-3000 words]
+
+   ## [Next Section Title]
+
+   [Section content]
+   ```
+
+3. **Progress Markers**: Insert progress markers every 2000-3000 words to help track generation progress:
+   ```markdown
+   <!-- PROGRESS: ~3000 words -->
+   ```
+
+4. **Complete Thoughts**: Always finish the current paragraph or thought before any potential interruption. Never end mid-sentence.
+
+5. **Incremental Structure**: Structure long chapters as:
+   - Opening section (~1500 words)
+   - Main content sections (each ~2000-3000 words)
+   - Transitional sections (~1000 words each)
+   - Closing section (~1500 words)
+
 ### Output Format
 ```markdown
 ## [Chapter Title]

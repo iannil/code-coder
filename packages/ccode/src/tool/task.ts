@@ -11,6 +11,7 @@ import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
+import { WriterStatsMonitor } from "@/agent/writer-stats-monitor"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -144,22 +145,40 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
-      const result = await SessionPrompt.prompt({
-        messageID,
-        sessionID: session.id,
-        model: {
-          modelID: model.modelID,
-          providerID: model.providerID,
-        },
-        agent: agent.name,
-        tools: {
-          todowrite: false,
-          todoread: false,
-          ...(hasTaskPermission ? {} : { task: false }),
-          ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
-        },
-        parts: promptParts,
-      })
+      // Start monitoring for expander agents (long-form content generation)
+      const isExpanderAgent = ["expander", "expander-fiction", "expander-nonfiction"].includes(params.subagent_type)
+      if (isExpanderAgent) {
+        WriterStatsMonitor.start({
+          sessionID: session.id,
+          parentSessionID: ctx.sessionID,
+          agentType: params.subagent_type,
+        })
+      }
+
+      let result: Awaited<ReturnType<typeof SessionPrompt.prompt>>
+      try {
+        result = await SessionPrompt.prompt({
+          messageID,
+          sessionID: session.id,
+          model: {
+            modelID: model.modelID,
+            providerID: model.providerID,
+          },
+          agent: agent.name,
+          tools: {
+            todowrite: false,
+            todoread: false,
+            ...(hasTaskPermission ? {} : { task: false }),
+            ...Object.fromEntries((config.experimental?.primary_tools ?? []).map((t) => [t, false])),
+          },
+          parts: promptParts,
+        })
+      } finally {
+        // Stop monitoring for expander agents
+        if (isExpanderAgent) {
+          await WriterStatsMonitor.stop(session.id)
+        }
+      }
       unsub()
       const messages = await Session.messages({ sessionID: session.id })
       const summary = messages

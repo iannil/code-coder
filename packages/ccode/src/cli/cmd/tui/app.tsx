@@ -633,6 +633,81 @@ function App() {
     }
   })
 
+  // Track expander agent execution stats for long-form content generation
+  sdk.event.on(TuiEvent.WriterStats.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.WriterStats", evt.properties)
+    const { status, agentType, elapsedSeconds, wordsGenerated, filesWritten, writesPending, isStalled } = evt.properties
+
+    const minutes = Math.floor(elapsedSeconds / 60)
+    const seconds = elapsedSeconds % 60
+    const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`
+
+    // Format word count with K suffix for large numbers
+    const formatWords = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+    let message = ""
+    let variant: "info" | "warning" | "success" = "info"
+
+    switch (status) {
+      case "started":
+        message = `📝 [${agentType}] 开始生成...`
+        break
+      case "running":
+        message = `📊 [${agentType}] ${timeStr} | ${formatWords(wordsGenerated)}字`
+        if (filesWritten > 0) {
+          message += ` | ${filesWritten}文件已写入`
+        }
+        if (writesPending > 0) {
+          message += ` (${writesPending}待写入)`
+        }
+        if (isStalled) {
+          message += " ⚠️ 响应缓慢"
+          variant = "warning"
+        }
+        break
+      case "completed":
+        message = `✅ [${agentType}] 完成 | ${timeStr} | ${formatWords(wordsGenerated)}字`
+        if (filesWritten > 0) {
+          message += ` | ${filesWritten}文件`
+        }
+        variant = "success"
+        break
+    }
+
+    toast.show({
+      variant,
+      message,
+      duration: status === "running" ? 5000 : 3000,
+    })
+  })
+
+  // Track chapter draft saves for progress protection
+  sdk.event.on(TuiEvent.ChapterDraftSaved.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.ChapterDraftSaved", evt.properties)
+    const { wordsWritten, saveCount } = evt.properties
+
+    const formatWords = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+    toast.show({
+      variant: "info",
+      message: `💾 草稿已保存 (${saveCount}) | ${formatWords(wordsWritten)}字`,
+      duration: 2000,
+    })
+  })
+
+  sdk.event.on(TuiEvent.ChapterDraftFinalized.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.ChapterDraftFinalized", evt.properties)
+    const { wordsWritten, totalSaves } = evt.properties
+
+    const formatWords = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n))
+
+    toast.show({
+      variant: "success",
+      message: `✅ 章节已完成 | ${formatWords(wordsWritten)}字 | 共${totalSaves}次保存`,
+      duration: 3000,
+    })
+  })
+
   sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
     GlobalErrorHandler.addContext("SessionApi.Event.Deleted", evt.properties)
     if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
