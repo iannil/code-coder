@@ -1,5 +1,5 @@
 import { useSync } from "@tui/context/sync"
-import { createMemo, For, Show, Switch, Match } from "solid-js"
+import { createMemo, createSignal, For, Show, Switch, Match, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../../context/theme"
 import { Locale } from "@/util/locale"
@@ -11,6 +11,24 @@ import { useKeybind } from "../../context/keybind"
 import { useDirectory } from "../../context/directory"
 import { useKV } from "../../context/kv"
 import { TodoItem } from "../../component/todo-item"
+import { Bus } from "@/bus"
+import { AutonomousEvent } from "@/autonomous"
+
+// ============================================================================
+// Autonomous State
+// ============================================================================
+
+interface AutonomousState {
+  active: boolean
+  level?: string
+  state?: string
+  iteration?: number
+  qualityScore?: number
+  crazinessScore?: number
+  tasksCompleted?: number
+  tasksTotal?: number
+  safe?: boolean
+}
 
 export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const sync = useSync()
@@ -20,11 +38,15 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
 
+  // Autonomous mode state
+  const [autonomousState, setAutonomousState] = createSignal<AutonomousState>({ active: false })
+
   const [expanded, setExpanded] = createStore({
     mcp: true,
     diff: true,
     todo: true,
     lsp: true,
+    autonomous: true,
   })
 
   // Sort MCP servers alphabetically for consistent display order
@@ -70,6 +92,91 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
   )
   const gettingStartedDismissed = createMemo(() => kv.get("dismissed_getting_started", false))
 
+  // Subscribe to autonomous events
+  onMount(() => {
+    const unsubscribes: Array<() => void> = []
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionStarted, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          setAutonomousState({
+            active: true,
+            level: event.properties.autonomyLevel,
+            state: "PLANNING",
+            iteration: 0,
+          })
+        }
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.StateChanged, (event) => {
+        setAutonomousState((prev) => ({
+          ...prev,
+          state: event.properties.to,
+        }))
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.IterationStarted, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          setAutonomousState((prev) => ({
+            ...prev,
+            iteration: event.properties.iteration,
+          }))
+        }
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.MetricsUpdated, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          const metrics = event.properties.metrics
+          setAutonomousState((prev) => ({
+            ...prev,
+            qualityScore: metrics.qualityScore,
+            crazinessScore: metrics.crazinessScore,
+            tasksCompleted: metrics.tasksCompleted,
+            tasksTotal: metrics.tasksTotal,
+          }))
+        }
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SafetyTriggered, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          const severity = event.properties.severity
+          setAutonomousState((prev) => ({
+            ...prev,
+            safe: severity !== "critical" && severity !== "high",
+          }))
+        }
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionCompleted, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          setAutonomousState({ active: false })
+        }
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionFailed, (event) => {
+        if (event.properties.sessionId === props.sessionID) {
+          setAutonomousState({ active: false })
+        }
+      }),
+    )
+
+    onCleanup(() => {
+      unsubscribes.forEach((unsub) => unsub())
+    })
+  })
+
   return (
     <Show when={session()}>
       <box
@@ -93,10 +200,62 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
               <text fg={theme.text}>
                 <b>Context</b>
               </text>
-              <text fg={theme.textMuted}>{context()?.tokens ?? 0} tokens</text>
-              <text fg={theme.textMuted}>{context()?.percentage ?? 0}% used</text>
+              <text fg={theme.textMuted}>{String(context()?.tokens ?? 0)} tokens</text>
+              <text fg={theme.textMuted}>{String(context()?.percentage ?? 0)}% used</text>
               <text fg={theme.textMuted}>{cost()} spent</text>
             </box>
+            <Show when={autonomousState().active}>
+              <box>
+                <box flexDirection="row" gap={1}>
+                  <text fg={theme.text}>
+                    <b>Autonomous Mode</b>
+                  </text>
+                </box>
+                <box flexDirection="row" gap={1}>
+                  <text
+                    fg={
+                      autonomousState().level === "lunatic"
+                        ? theme.error
+                        : autonomousState().level === "insane"
+                          ? theme.warning
+                          : autonomousState().level === "crazy"
+                            ? theme.accent
+                            : theme.primary
+                    }
+                  >
+                    {autonomousState().level?.toUpperCase() ?? "AUTO"}
+                  </text>
+                  <text fg={theme.textMuted}>
+                    {String(autonomousState().state ?? "")}
+                  </text>
+                </box>
+                <Show when={autonomousState().iteration !== undefined}>
+                  <text fg={theme.textMuted}>
+                    Iteration: {String(autonomousState().iteration)}
+                  </text>
+                </Show>
+                <Show when={autonomousState().tasksCompleted !== undefined}>
+                  <text fg={theme.textMuted}>
+                    Tasks: {String(autonomousState().tasksCompleted)}/{String(autonomousState().tasksTotal ?? "?")}
+                  </text>
+                </Show>
+                <Show when={autonomousState().qualityScore !== undefined}>
+                  <text fg={theme.textMuted}>
+                    Quality: {String(Math.round(autonomousState().qualityScore ?? 0))}/100
+                  </text>
+                </Show>
+                <Show when={autonomousState().crazinessScore !== undefined}>
+                  <text fg={theme.textMuted}>
+                    Craziness: {String(Math.round(autonomousState().crazinessScore ?? 0))}/100
+                  </text>
+                </Show>
+                <box flexDirection="row" gap={1}>
+                  <text fg={autonomousState().safe !== false ? theme.success : theme.error}>
+                    {autonomousState().safe !== false ? "✓" : "!"} Safety
+                  </text>
+                </box>
+              </box>
+            </Show>
             <Show when={mcpEntries().length > 0}>
               <box>
                 <box
@@ -112,8 +271,8 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                     <Show when={!expanded.mcp}>
                       <span style={{ fg: theme.textMuted }}>
                         {" "}
-                        ({connectedMcpCount()} active
-                        {errorMcpCount() > 0 ? `, ${errorMcpCount()} error${errorMcpCount() > 1 ? "s" : ""}` : ""})
+                        ({String(connectedMcpCount())} active
+                        {errorMcpCount() > 0 ? `, ${String(errorMcpCount())} error${errorMcpCount() > 1 ? "s" : ""}` : ""})
                       </span>
                     </Show>
                   </text>
@@ -241,10 +400,10 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
                           </text>
                           <box flexDirection="row" gap={1} flexShrink={0}>
                             <Show when={item.additions}>
-                              <text fg={theme.diffAdded}>+{item.additions}</text>
+                              <text fg={theme.diffAdded}>+{String(item.additions)}</text>
                             </Show>
                             <Show when={item.deletions}>
-                              <text fg={theme.diffRemoved}>-{item.deletions}</text>
+                              <text fg={theme.diffRemoved}>-{String(item.deletions)}</text>
                             </Show>
                           </box>
                         </box>

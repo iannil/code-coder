@@ -1,6 +1,7 @@
 import { render, useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/solid"
 import { Clipboard } from "@tui/util/clipboard"
 import { TextAttributes } from "@opentui/core"
+
 import { RouteProvider, useRoute } from "@tui/context/route"
 import { Switch, Match, createEffect, untrack, ErrorBoundary, createSignal, onMount, batch, Show, on } from "solid-js"
 import { VERSION } from "@/version"
@@ -37,6 +38,8 @@ import open from "open"
 import { writeHeapSnapshot } from "v8"
 import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { Log } from "@/util/log"
+import { GlobalErrorHandler } from "@/util/global-error-handler"
+import * as fs from "fs"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // Skip terminal background detection to avoid hanging
@@ -62,11 +65,39 @@ export function tui(input: {
       resolve()
     }
 
+    // Log TUI errors to dev.log with enhanced context
+    const logTuiError = (error: Error) => {
+      // Gather context information
+      const context: Record<string, unknown> = {
+        url: input.url,
+        directory: input.directory,
+        mode,
+        timestamp: Date.now(),
+        processMemory: process.memoryUsage(),
+      }
+
+      // Try to extract more info from error
+      if (error.message.includes("TextNodeRenderable")) {
+        context.hint = "A non-string value was passed to a text element. Check for numbers, undefined, or objects being rendered directly."
+      }
+
+      GlobalErrorHandler.logError("TUI Fatal Error", error, context)
+      Log.Default.error("tui_fatal", {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        context,
+      })
+    }
+
     render(
       () => {
         return (
           <ErrorBoundary
-            fallback={(error, reset) => <ErrorComponent error={error} reset={reset} onExit={onExit} mode={mode} />}
+            fallback={(error, reset) => {
+              logTuiError(error)
+              return <ErrorComponent error={error} reset={reset} onExit={onExit} mode={mode} />
+            }}
           >
             <ArgsProvider {...input.args}>
               <ExitProvider onExit={onExit}>
@@ -534,10 +565,12 @@ function App() {
   })
 
   sdk.event.on(TuiEvent.CommandExecute.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.CommandExecute", evt.properties)
     command.trigger(evt.properties.command)
   })
 
   sdk.event.on(TuiEvent.ToastShow.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.ToastShow", evt.properties)
     toast.show({
       title: evt.properties.title,
       message: evt.properties.message,
@@ -547,6 +580,7 @@ function App() {
   })
 
   sdk.event.on(TuiEvent.SessionSelect.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.SessionSelect", evt.properties)
     route.navigate({
       type: "session",
       sessionID: evt.properties.sessionID,
@@ -554,6 +588,7 @@ function App() {
   })
 
   sdk.event.on(TuiEvent.ModelCall.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.ModelCall", evt.properties)
     const { providerID, modelID, agent, sessionID } = evt.properties
     // Defer toast.show to avoid interfering with event processing
     setTimeout(() => {
@@ -567,6 +602,7 @@ function App() {
 
   // Track writer agent progress for long-form tasks
   sdk.event.on(TuiEvent.WriterProgress.type, (evt) => {
+    GlobalErrorHandler.addContext("TuiEvent.WriterProgress", evt.properties)
     const { action, chapter, total, message } = evt.properties
     let progressMessage = ""
 
@@ -598,6 +634,7 @@ function App() {
   })
 
   sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
+    GlobalErrorHandler.addContext("SessionApi.Event.Deleted", evt.properties)
     if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
       route.navigate({ type: "home" })
       toast.show({
@@ -608,6 +645,7 @@ function App() {
   })
 
   sdk.event.on(SessionApi.Event.Error.type, (evt) => {
+    GlobalErrorHandler.addContext("SessionApi.Event.Error", evt.properties)
     const error = evt.properties.error
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
     const message = (() => {

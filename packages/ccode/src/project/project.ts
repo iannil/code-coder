@@ -20,7 +20,7 @@ export namespace Project {
     .object({
       id: z.string(),
       worktree: z.string(),
-      vcs: z.literal("git").optional(),
+      vcs: z.object({ branch: z.string().optional() }).optional(),
       name: z.string().optional(),
       icon: z
         .object({

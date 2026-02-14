@@ -14,6 +14,7 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
+import { branch, point, loop } from "@/observability"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -43,9 +44,13 @@ export namespace SessionProcessor {
       },
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
+        point("processor_start", { sessionID: input.sessionID })
         needsCompaction = false
         const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+        let streamIteration = 0
         while (true) {
+          streamIteration++
+          loop("process_stream", streamIteration)
           try {
             let currentText: MessageV2.TextPart | undefined
             let reasoningMap: Record<string, MessageV2.ReasoningPart> = {}
@@ -53,6 +58,7 @@ export namespace SessionProcessor {
 
             for await (const value of stream.fullStream) {
               input.abort.throwIfAborted()
+              branch("stream_event_type", true, { type: value.type })
               switch (value.type) {
                 case "start":
                   SessionStatus.set(input.sessionID, { type: "busy" })
@@ -383,9 +389,19 @@ export namespace SessionProcessor {
           }
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
-          if (needsCompaction) return "compact"
-          if (blocked) return "stop"
-          if (input.assistantMessage.error) return "stop"
+          if (needsCompaction) {
+            point("processor_end", { result: "compact", sessionID: input.sessionID })
+            return "compact"
+          }
+          if (blocked) {
+            point("processor_end", { result: "stop_blocked", sessionID: input.sessionID })
+            return "stop"
+          }
+          if (input.assistantMessage.error) {
+            point("processor_end", { result: "stop_error", sessionID: input.sessionID })
+            return "stop"
+          }
+          point("processor_end", { result: "continue", sessionID: input.sessionID })
           return "continue"
         }
       },

@@ -16,6 +16,7 @@ import { Shell } from "@/shell/shell"
 
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
+import { point, apiCall } from "@/observability"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.CCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -75,6 +76,12 @@ export const BashTool = Tool.define("bash", async () => {
         ),
     }),
     async execute(params, ctx) {
+      const bashCall = apiCall("BashTool.execute", {
+        command: params.command.slice(0, 100),
+        description: params.description,
+      })
+      point("bash_execute_start", { command: params.command.slice(0, 200) })
+
       const cwd = params.workdir || Instance.directory
       if (params.timeout !== undefined && params.timeout < 0) {
         throw new Error(`Invalid timeout value: ${params.timeout}. Timeout must be a positive number.`)
@@ -243,6 +250,14 @@ export const BashTool = Tool.define("bash", async () => {
       if (resultMetadata.length > 0) {
         output += "\n\n<bash_metadata>\n" + resultMetadata.join("\n") + "\n</bash_metadata>"
       }
+
+      bashCall.end({ exitCode: proc.exitCode, outputLength: output.length })
+      point("bash_execute_end", {
+        exitCode: proc.exitCode,
+        timedOut,
+        aborted,
+        outputLength: output.length,
+      })
 
       return {
         title: params.description,

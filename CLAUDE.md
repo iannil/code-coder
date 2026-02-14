@@ -4,38 +4,38 @@
 
 ## 项目概述
 
-**CodeCoder** 是一个**个人智囊系统**（Personal Brain Trust System），融合工程能力与决策智慧的 AI 顾问平台。
+CodeCoder 是一个个人工作台，融合工程能力与决策智慧。
 
 使用 Turborepo 和 Bun 构建的 monorepo，支持多个 AI 提供商（Claude、OpenAI、Google、通过 MCP 支持本地模型）、CLI/TUI 界面，采用客户端/服务器架构支持远程操作。
 
-### 核心定位：三层智慧架构
+### 核心定位
 
-1. **工程智囊层**：代码审查、安全分析、TDD、架构设计、逆向工程
-2. **领域智囊层**：宏观经济、交易分析、选品策略、极小产品、AI 工程
-3. **思维智囊层**：祝融说哲学体系、CLOSE 决策框架、观察者理论
+1. 工程层：代码审查、安全分析、TDD、架构设计、逆向工程
+2. 领域层：宏观经济、交易分析、选品策略、极小产品、AI 工程
+3. 思维层：祝融说哲学体系、CLOSE 决策框架、观察者理论
 
-### 祝融说哲学框架
+### 哲学框架
 
 本项目内置基于"祝融说"的决策与认知系统，核心理念：
 
-- **可能性基底**：宇宙的终极实在是包含一切潜能的无限场域
-- **观察即收敛**：观察是创造性行为，导致可能性"坍缩"为确定性
-- **可用余量**：尚未被固化的潜能空间，是自由意志和创造力的来源
-- **可持续决策 > 最优决策**：保持"再来一次"的能力比追求"最优解"更重要
+- 可能性基底：宇宙的终极实在是包含一切潜能的无限场域
+- 观察即收敛：观察是创造性行为，导致可能性"坍缩"为确定性
+- 可用余量：尚未被固化的潜能空间，是自由意志和创造力的来源
+- 可持续决策 > 最优决策：保持"再来一次"的能力比追求"最优解"更重要
 
 ### 23 个 Agent 概览
 
-**主模式**：build、plan、code-reverse、jar-code-reverse
+主模式：build、plan、code-reverse、jar-code-reverse
 
-**工程类**：general、explore、code-reviewer、security-reviewer、tdd-guide、architect
+工程类：general、explore、code-reviewer、security-reviewer、tdd-guide、architect
 
-**内容类**：writer、proofreader
+内容类：writer、proofreader
 
-**祝融说系列（ZRS）**：observer、decision、macro、trader、picker、miniproduct、ai-engineer
+祝融说系列（ZRS）：observer、decision、macro、trader、picker、miniproduct、ai-engineer
 
-**其他**：synton-assistant
+其他：synton-assistant
 
-**系统隐藏**：compaction、title、summary
+系统隐藏：compaction、title、summary
 
 ## 项目指南
 
@@ -65,6 +65,18 @@
 - 可搜索性：统一命名（如 `parseXxx`、`assertNever`、`safeJsonParse`、`createXxxService`），降低 LLM 与人类的检索成本。
 - 小步提交与计划：通过 `IMPLEMENTATION_PLAN.md` 和小步提交让模型理解上下文、意图与边界。
 - 变更安全策略：批量程序性改动前先将原文件备份至 `/backup` 相对路径；若错误数异常上升，立即回滚备份。
+
+### 可观测性开发（Observability Driven Development）
+
+- 为了能够完整追踪代码的执行流，请你遵循 "全链路可观测性 (Full-Lifecycle Observability)" 模式编写代码；
+- 结构化日志： 所有的日志输出必须是 JSON 格式，包含字段：timestamp, trace_id (全链路唯一ID), span_id (当前步骤ID), event_type (Function_Start/End, Branch, Error), payload (变量状态)；
+- 装饰器/切面模式： 请定义一个 LifecycleTracker 装饰器或上下文管理器；
+- 在函数进入时：记录输入参数 (Args/Kwargs)；
+- 在函数退出时：记录返回值 (Return Value) 和耗时 (Duration)；
+- 在函数异常时：记录完整的堆栈信息 (Stack Trace)；
+- 关键节点埋点： 在复杂的 if/else 分支、for/while 循环内部、以及外部 API 调用前后，必须手动添加埋点（Point）；
+- 执行摘要： 代码运行结束时，必须能够生成一份“执行轨迹报告 (Execution Trace Report)”；
+- 请确保埋点代码与业务逻辑解耦（尽量使用装饰器），不要让日志代码淹没业务逻辑；
 
 ### 记忆系统
 
@@ -143,18 +155,18 @@ bun run --cwd packages/ccode build
 
 ### Monorepo 结构
 
-- **`packages/ccode/`** - 核心 CLI 工具和业务逻辑。入口点是 `src/index.ts`。包含主要的 agent 实现、LSP 集成和服务器。
-- **`packages/ccode/src/cli/cmd/tui/`** - 终端 UI 代码，使用 SolidJS 和 [opentui](https://github.com/sst/opentui) 编写
-- **`packages/util/`** - 共享工具
-- **`script/`** - 项目级构建和生成脚本
+- `packages/ccode/` - 核心 CLI 工具和业务逻辑。入口点是 `src/index.ts`。包含主要的 agent 实现、LSP 集成和服务器。
+- `packages/ccode/src/cli/cmd/tui/` - 终端 UI 代码，使用 SolidJS 和 [opentui](https://github.com/sst/opentui) 编写
+- `packages/util/` - 共享工具
+- `script/` - 项目级构建和生成脚本
 
 ### 核心技术
 
-- **运行时：** Bun 1.3+
-- **构建：** Turborepo
-- **前端：** Solid.js、OpenTUI（终端）、TailwindCSS
-- **后端：** Hono（HTTP）、Cloudflare Workers
-- **AI：** 多个提供商 SDK（Anthropic、OpenAI、Google 等）、MCP 协议
+- 运行时： Bun 1.3+
+- 构建： Turborepo
+- 前端： Solid.js、OpenTUI（终端）、TailwindCSS
+- 后端： Hono（HTTP）、Cloudflare Workers
+- AI： 多个提供商 SDK（Anthropic、OpenAI、Google 等）、MCP 协议
 
 ### SDK 生成
 
@@ -170,7 +182,7 @@ JavaScript SDK 从 OpenAPI 规范自动生成。修改 API 后，运行 `./scrip
 ### Agent 分类
 
 | 分类 | Agent | 用途 |
-|------|-------|------|
+| ------ | ------- | ------ |
 | 主模式 | build, plan | 主要开发模式 |
 | 逆向工程 | code-reverse, jar-code-reverse | 代码逆向分析 |
 | 工程质量 | code-reviewer, security-reviewer, tdd-guide, architect | 代码质量保障 |
@@ -180,27 +192,33 @@ JavaScript SDK 从 OpenAPI 规范自动生成。修改 API 后，运行 `./scrip
 
 ### 使用场景示例
 
-**代码审查**
+代码审查
+
 ```
 > "Review the recent changes for security issues"
 ```
+
 系统自动使用 security-reviewer agent 进行分析。
 
-**决策咨询**
+决策咨询
+
 ```
 > "@decision 用CLOSE框架分析这个职业选择"
 ```
+
 使用 CLOSE 五维评估法分析决策。
 
-**领域分析**
+领域分析
+
 ```
 > "@macro 解读本月的 PMI 数据"
 ```
+
 使用宏观经济分析框架解读数据。
 
 ## 代码风格指南
 
-**尽可能始终使用并行工具。**
+尽可能始终使用并行工具。
 
 - 避免使用 `let` 语句 - 优先使用 `const` 和三元运算符
 - 避免使用 `else` 语句 - 使用提前返回
@@ -220,8 +238,8 @@ JavaScript SDK 从 OpenAPI 规范自动生成。修改 API 后，运行 `./scrip
 
 ## 格式化
 
-- **Prettier：** 120 字符宽度，无分号
-- **EditorConfig：** 2 空格缩进，最大 80 字符行宽，LF 换行符
+- Prettier： 120 字符宽度，无分号
+- EditorConfig： 2 空格缩进，最大 80 字符行宽，LF 换行符
 
 ## 贡献
 

@@ -338,7 +338,7 @@ export namespace Agent {
         name: "code-reverse",
         description:
           "Website reverse engineering agent for pixel-perfect recreation planning. Analyzes websites, identifies technology stacks, extracts design systems, and generates comprehensive development plans.",
-        mode: "primary",
+        mode: "subagent",
         native: true,
         prompt: PROMPT_CODE_REVERSE,
         permission: PermissionNext.merge(
@@ -358,7 +358,7 @@ export namespace Agent {
         name: "jar-code-reverse",
         description:
           "JAR reverse engineering agent for Java source code reconstruction. Analyzes JAR files, identifies Java frameworks and libraries, extracts class structure, and generates comprehensive development plans.",
-        mode: "primary",
+        mode: "subagent",
         native: true,
         prompt: PROMPT_JAR_CODE_REVERSE,
         permission: PermissionNext.merge(

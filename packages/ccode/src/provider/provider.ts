@@ -12,6 +12,7 @@ import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
 import { iife } from "@/util/iife"
+import { apiCall, point } from "@/observability"
 
 // Direct imports for bundled providers
 import { createAmazonBedrock, type AmazonBedrockProviderSettings } from "@ai-sdk/amazon-bedrock"
@@ -1188,9 +1189,13 @@ export namespace Provider {
   }
 
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
+    const call = apiCall("Provider.getLanguage", { providerID: model.providerID, modelID: model.id })
     const s = await state()
     const key = `${model.providerID}/${model.id}`
-    if (s.models.has(key)) return s.models.get(key)!
+    if (s.models.has(key)) {
+      call.end({ cached: true })
+      return s.models.get(key)!
+    }
 
     const provider = s.providers[model.providerID]
     const sdk = await getSDK(model)
@@ -1200,8 +1205,10 @@ export namespace Provider {
         ? await s.modelLoaders[model.providerID](sdk, model.api.id, provider.options)
         : sdk.languageModel(model.api.id)
       s.models.set(key, language)
+      call.end({ cached: false })
       return language
     } catch (e) {
+      call.end(undefined, e)
       if (e instanceof NoSuchModelError)
         throw new ModelNotFoundError(
           {

@@ -25,7 +25,7 @@ export function TodoItem(props: TodoItemProps) {
           fg: props.status === "in_progress" ? theme.warning : theme.textMuted,
         }}
       >
-        {props.content}
+        {String(props.content ?? "")}
       </text>
     </box>
   )

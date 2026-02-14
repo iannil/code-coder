@@ -20,17 +20,24 @@ import { ReverseCommands } from "./cli/cmd/reverse"
 import { JarReverseCommands } from "./cli/cmd/jar-reverse"
 import { MemoryCommand } from "./cli/cmd/memory"
 import { GetStartedCommand } from "./cli/cmd/get-started"
+import { AutonomousCommand } from "./cli/cmd/autonomous"
+import { GlobalErrorHandler } from "./util/global-error-handler"
+
+// Initialize global error handler early (writes to project dev.log)
+GlobalErrorHandler.init()
 
 process.on("unhandledRejection", (e) => {
   Log.Default.error("rejection", {
     e: e instanceof Error ? e.message : e,
   })
+  GlobalErrorHandler.logError("Unhandled Rejection", e)
 })
 
 process.on("uncaughtException", (e) => {
   Log.Default.error("exception", {
     e: e instanceof Error ? e.message : e,
   })
+  GlobalErrorHandler.logError("Uncaught Exception", e)
 })
 
 const cli = yargs(hideBin(process.argv))
@@ -85,6 +92,7 @@ const cli = yargs(hideBin(process.argv))
   .command(JarReverseCommands)
   .command(MemoryCommand)
   .command(GetStartedCommand)
+  .command(AutonomousCommand)
   .command(ChapterCommand)
   .fail((msg, err) => {
     if (
@@ -132,6 +140,7 @@ try {
     })
   }
   Log.Default.error("fatal", data)
+  GlobalErrorHandler.logError("CLI Fatal Error", e)
   const formatted = FormatError(e)
   if (formatted) UI.error(formatted)
   if (formatted === undefined) {

@@ -982,6 +982,22 @@ export namespace Config {
             .positive()
             .optional()
             .describe("Timeout in milliseconds for model context protocol (MCP) requests"),
+          observability: z
+            .object({
+              enabled: z.boolean().optional().describe("Enable observability logging (default: true)"),
+              level: z
+                .enum(["debug", "info", "warn", "error"])
+                .optional()
+                .describe("Minimum log level for observability (default: info)"),
+              sampling: z
+                .number()
+                .min(0)
+                .max(1)
+                .optional()
+                .describe("Sampling rate for observability logs (0.0-1.0, default: 1.0)"),
+            })
+            .optional()
+            .describe("Observability configuration for structured logging and tracing"),
         })
         .optional(),
       autonomousMode: z

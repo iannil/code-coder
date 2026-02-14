@@ -25,6 +25,11 @@ import { PermissionNext } from "@/permission/next"
 import { Auth } from "@/auth"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
+import {
+  runWithNewContextAsync,
+  apiCall,
+  point,
+} from "@/observability"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -47,18 +52,33 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, unknown>
 
   export async function stream(input: StreamInput) {
-    const l = log
-      .clone()
-      .tag("providerID", input.model.providerID)
-      .tag("modelID", input.model.id)
-      .tag("sessionID", input.sessionID)
-      .tag("small", (input.small ?? false).toString())
-      .tag("agent", input.agent.name)
-      .tag("mode", input.agent.mode)
-    l.info("stream", {
-      modelID: input.model.id,
-      providerID: input.model.providerID,
-    })
+    return runWithNewContextAsync("llm", async () => {
+      const llmApiCall = apiCall("LLM.stream", {
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        sessionID: input.sessionID,
+        agent: input.agent.name,
+      })
+
+      const l = log
+        .clone()
+        .tag("providerID", input.model.providerID)
+        .tag("modelID", input.model.id)
+        .tag("sessionID", input.sessionID)
+        .tag("small", (input.small ?? false).toString())
+        .tag("agent", input.agent.name)
+        .tag("mode", input.agent.mode)
+      l.info("stream", {
+        modelID: input.model.id,
+        providerID: input.model.providerID,
+      })
+
+      point("llm_stream_start", {
+        providerID: input.model.providerID,
+        modelID: input.model.id,
+        messageCount: input.messages.length,
+        toolCount: Object.keys(input.tools).length,
+      })
 
     // Publish model call event for TUI display
     Bus.publish(TuiEvent.ModelCall, {
@@ -169,11 +189,12 @@ export namespace LLM {
       })
     }
 
-    return streamText({
+    const result = streamText({
       onError(error) {
         l.error("stream error", {
           error,
         })
+        llmApiCall.end(undefined, error)
       },
       async experimental_repairToolCall(failed) {
         const lower = failed.toolCall.toolName.toLowerCase()
@@ -253,6 +274,10 @@ export namespace LLM {
         ],
       }),
       experimental_telemetry: { isEnabled: cfg.experimental?.openTelemetry },
+    })
+
+    llmApiCall.end({ streaming: true })
+    return result
     })
   }
 

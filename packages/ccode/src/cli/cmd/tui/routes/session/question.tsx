@@ -316,7 +316,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
           <box paddingLeft={1} gap={1}>
             <box>
               <text fg={theme.text}>
-                {question()?.question}
+                {String(question()?.question ?? "")}
                 {multi() ? " (select all that apply)" : ""}
               </text>
             </box>
@@ -348,7 +348,7 @@ export function QuestionPrompt(props: { request: QuestionRequest }) {
                       </box>
 
                       <box paddingLeft={3}>
-                        <text fg={theme.textMuted}>{opt.description}</text>
+                        <text fg={theme.textMuted}>{String(opt.description ?? "")}</text>
                       </box>
                     </box>
                   )

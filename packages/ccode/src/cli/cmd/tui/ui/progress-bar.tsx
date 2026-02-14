@@ -38,7 +38,7 @@ export function ProgressBar(props: ProgressBarProps) {
         <text fg={theme.textMuted}>{"░".repeat(empty())}</text>
       </box>
       <Show when={props.showPercentage}>
-        <text fg={theme.textMuted}>{Math.round(clampedProgress())}%</text>
+        <text fg={theme.textMuted}>{String(Math.round(clampedProgress()))}%</text>
       </Show>
     </box>
   )

@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
 import z from "zod"
+import * as Observability from "../observability"
 
 export namespace Log {
   export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
@@ -34,6 +35,7 @@ export namespace Log {
       stop(): void
       [Symbol.dispose](): void
     }
+    structured: typeof Observability
   }
 
   const loggers = new Map<string, Logger>()
@@ -44,6 +46,11 @@ export namespace Log {
     print: boolean
     dev?: boolean
     level?: Level
+    observability?: {
+      enabled?: boolean
+      level?: "debug" | "info" | "warn" | "error"
+      sampling?: number
+    }
   }
 
   let logpath = ""
@@ -75,6 +82,16 @@ export namespace Log {
       writer.flush()
       return num
     }
+
+    // Initialize observability system with config
+    if (options.observability) {
+      Observability.configureObservability({
+        enabled: options.observability.enabled ?? true,
+        level: options.observability.level ?? "info",
+        sampling: options.observability.sampling ?? 1.0,
+      })
+    }
+    await Observability.initObservability()
   }
 
   async function cleanup(dir: string) {
@@ -173,6 +190,7 @@ export namespace Log {
           },
         }
       },
+      structured: Observability,
     }
 
     if (service && typeof service === "string") {

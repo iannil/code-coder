@@ -16,6 +16,7 @@ import { Filesystem } from "../util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
+import { point } from "@/observability"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
@@ -32,6 +33,13 @@ export const EditTool = Tool.define("edit", {
     replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
   }),
   async execute(params, ctx) {
+    point("edit_execute", {
+      filePath: params.filePath,
+      oldStringLength: params.oldString.length,
+      newStringLength: params.newString.length,
+      replaceAll: params.replaceAll,
+    })
+
     if (!params.filePath) {
       throw new Error("filePath is required")
     }

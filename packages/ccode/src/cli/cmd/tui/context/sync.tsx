@@ -28,6 +28,7 @@ import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
 import { Log } from "@/util/log"
 import type { Path } from "@/types"
+import { GlobalErrorHandler } from "@/util/global-error-handler"
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -106,6 +107,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     sdk.event.listen((e) => {
       const event = e.details
+      // Track all sync events for debugging
+      GlobalErrorHandler.addContext(`sync:${event.type}`, event.properties)
+
       switch (event.type) {
         case "server.instance.disposed":
           bootstrap()
@@ -279,6 +283,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "message.part.updated": {
+          // Extra debugging for part updates since they drive most UI rendering
+          const part = event.properties.part
+          GlobalErrorHandler.addContext("sync:part.detail", {
+            type: part.type,
+            id: part.id,
+            messageID: part.messageID,
+            tool: (part as any).tool,
+            state: (part as any).state?.status,
+          })
           const parts = store.part[event.properties.part.messageID]
           if (!parts) {
             setStore("part", event.properties.part.messageID, [event.properties.part])

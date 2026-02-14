@@ -17,6 +17,25 @@ import { formatPreciseTime, getToolDuration } from "../../util/execution-time"
 import { Spinner } from "../../ui/progress-bar"
 import type { ToolPart, Part } from "@/types"
 import { MessageV2 } from "@/session/message-v2"
+import { Bus } from "@/bus"
+import { AutonomousEvent } from "@/autonomous"
+
+// ============================================================================
+// Autonomous State
+// ============================================================================
+
+interface AutonomousState {
+  active: boolean
+  sessionId?: string
+  level?: string
+  state?: string
+  qualityScore?: number
+  crazinessScore?: number
+  safe?: boolean
+  iteration?: number
+  tasksCompleted?: number
+  tasksTotal?: number
+}
 
 export function Footer() {
   const { theme } = useTheme()
@@ -33,6 +52,9 @@ export function Footer() {
   const connected = useConnected()
 
   const [now, setNow] = createSignal(Date.now())
+
+  // Autonomous mode state
+  const [autonomousState, setAutonomousState] = createSignal<AutonomousState>({ active: false })
 
   const currentSessionID = createMemo(() => {
     if (route.data.type === "session") return route.data.sessionID
@@ -142,10 +164,77 @@ export function Footer() {
   onMount(() => {
     // Track all timeouts to ensure proper cleanup
     const timeouts: ReturnType<typeof setTimeout>[] = []
+    const unsubscribes: Array<() => void> = []
 
     // Update time every 100ms for smooth real-time updates
     const timeInterval = setInterval(() => setNow(Date.now()), 100)
     timeouts.push(timeInterval)
+
+    // Subscribe to autonomous events
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionStarted, (event) => {
+        setAutonomousState({
+          active: true,
+          sessionId: event.properties.sessionId,
+          level: event.properties.autonomyLevel,
+          state: "PLANNING",
+          iteration: 0,
+        })
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.StateChanged, (event) => {
+        setAutonomousState((prev) => ({
+          ...prev,
+          state: event.properties.to,
+        }))
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.IterationStarted, (event) => {
+        setAutonomousState((prev) => ({
+          ...prev,
+          iteration: event.properties.iteration,
+        }))
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.MetricsUpdated, (event) => {
+        const metrics = event.properties.metrics
+        setAutonomousState((prev) => ({
+          ...prev,
+          qualityScore: metrics.qualityScore,
+          crazinessScore: metrics.crazinessScore,
+          tasksCompleted: metrics.tasksCompleted,
+          tasksTotal: metrics.tasksTotal,
+        }))
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SafetyTriggered, (event) => {
+        const severity = event.properties.severity
+        setAutonomousState((prev) => ({
+          ...prev,
+          safe: severity !== "critical" && severity !== "high",
+        }))
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionCompleted, () => {
+        setAutonomousState({ active: false })
+      }),
+    )
+
+    unsubscribes.push(
+      Bus.subscribe(AutonomousEvent.SessionFailed, () => {
+        setAutonomousState({ active: false })
+      }),
+    )
 
     function tick() {
       if (connected()) return
@@ -166,7 +255,45 @@ export function Footer() {
     onCleanup(() => {
       timeouts.forEach(clearTimeout)
       clearInterval(timeInterval)
+      unsubscribes.forEach((unsub) => unsub())
     })
+  })
+
+  // Autonomous mode status display
+  const autonomousStatusDisplay = createMemo(() => {
+    const state = autonomousState()
+    if (!state.active) return null
+
+    const levelColor =
+      state.level === "lunatic"
+        ? theme.error
+        : state.level === "insane"
+          ? theme.warning
+          : state.level === "crazy"
+            ? theme.accent
+            : state.level === "wild"
+              ? theme.primary
+              : theme.textMuted
+
+    const safeIcon = state.safe !== false ? "✓" : "!"
+    const safeColor = state.safe !== false ? theme.success : theme.error
+
+    const progressText =
+      state.tasksCompleted !== undefined && state.tasksTotal !== undefined
+        ? ` ${state.tasksCompleted}/${state.tasksTotal}`
+        : ""
+
+    return {
+      level: state.level?.toUpperCase() ?? "AUTO",
+      levelColor,
+      state: state.state ?? "IDLE",
+      safeIcon,
+      safeColor,
+      qualityScore: state.qualityScore ?? 0,
+      crazinessScore: state.crazinessScore ?? 0,
+      iteration: state.iteration ?? 0,
+      progressText,
+    }
   })
 
   return (
@@ -182,13 +309,29 @@ export function Footer() {
             </Show>
             <Show when={toolCount().pending > 1}>
               <text fg={theme.textMuted}>
-                (+{toolCount().pending - 1} more)
+                (+{String(toolCount().pending - 1)} more)
               </text>
             </Show>
           </box>
         </Show>
       </box>
       <box gap={2} flexDirection="row" flexShrink={0}>
+        <Show when={autonomousStatusDisplay()}>
+          {(status) => (
+            <box flexDirection="row" gap={1}>
+              <text>
+                <span style={{ fg: status().safeColor }}>{status().safeIcon}</span>
+              </text>
+              <text fg={status().levelColor}>{status().level}</text>
+              <text fg={theme.textMuted}>
+                {status().state}{status().progressText}
+              </text>
+              <Show when={status().qualityScore > 0}>
+                <text fg={theme.textMuted}>Q:{String(Math.round(status().qualityScore))}</text>
+              </Show>
+            </box>
+          )}
+        </Show>
         <Switch>
           <Match when={store.welcome}>
             <text fg={theme.text}>
@@ -198,12 +341,12 @@ export function Footer() {
           <Match when={connected()}>
             <Show when={permissions().length > 0}>
               <text fg={theme.warning}>
-                <span style={{ fg: theme.warning }}>△</span> {permissions().length} Permission
+                <span style={{ fg: theme.warning }}>△</span> {String(permissions().length)} Permission
                 {permissions().length > 1 ? "s" : ""}
               </text>
             </Show>
             <text fg={theme.text}>
-              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {lsp().length} LSP
+              <span style={{ fg: lsp().length > 0 ? theme.success : theme.textMuted }}>•</span> {String(lsp().length)} LSP
             </text>
             <Show when={mcp()}>
               <text fg={theme.text}>
@@ -215,7 +358,7 @@ export function Footer() {
                     <span style={{ fg: theme.success }}>⊙ </span>
                   </Match>
                 </Switch>
-                {mcp()} MCP
+                                {String(mcp())} MCP
               </text>
             </Show>
             <text fg={theme.textMuted}>/status</text>
