@@ -6,49 +6,218 @@
 
 [English](./README.md)
 
-你的 AI 工作站 - 一个功能强大的 CLI 工具，配备 23 个专业 AI Agent，覆盖软件开发、代码分析和智能自动化。
+一个融合工程能力与决策智慧的 AI 个人工作台。
+
+CodeCoder 不只是一个编程助手。它是为所有正在被 AI 改变工作方式的人设计的综合平台——开发者、分析师、写作者、决策者、独立创作者。基于[祝融说](https://zhurongshuo.com)哲学框架构建，它将结构化思维与实用工具融为一体。
+
+## 为什么选择 CodeCoder？
+
+在 AI 普及的时代，挑战不在于如何访问 AI，而在于如何与 AI 一起思考。CodeCoder 通过以下方式应对这一挑战：
+
+- 多维度辅助 - 不止于代码，还有决策、分析和内容创作
+- 哲学根基 - CLOSE 框架支撑可持续决策
+- 提供商灵活性 - 通过统一接口连接 30+ AI 提供商
+- 专业化能力 - 23+ 面向不同领域的专业 Agent
+
+## 核心哲学
+
+CodeCoder 构建在一套独特的哲学框架之上，它重新定义了我们应对不确定性和做出决策的方式。
+
+### 本体论：实在的生成
+
+可能性基底
+
+- 终极实在不是静态的「实体」，而是包含一切潜能的无限场域
+- 一切确定的现实都是从这个「可能性海洋」中涌现的
+- 过程优先于实体，生成（Becoming）优先于存在（Being）
+
+观察即收敛
+
+- 「观察」是一种创造性行为，而非被动接收
+- 观察导致可能性「坍缩」为确定性
+- 存在即被观察（To be is to be observed）
+
+观察共识
+
+- 宏观世界的稳定性源于多层级观察者的「共同投票」
+- 物理定律是宇宙最底层的「规则共识」
+- 社会现实是人类集体观察的「符号共识」
+
+### 实践论：可持续决策
+
+可用余量（Available Surplus）
+
+- 尚未被固化的潜能空间
+- 自由意志、创造力和系统韧性的来源
+- 可持续决策保留余量；最优决策往往消耗余量
+
+选择权优势
+
+- 智慧选择在于为未来「预留可能性」
+- 可持续决策 > 最优决策
+- 保持「再来一次」的能力比追求「最优解」更重要
+
+### CLOSE 五维评估框架
+
+一套用于做出可持续选择的五维评估系统：
+
+| 维度 | 核心问题 | 关注点 |
+|------|----------|--------|
+| Convergence 收敛 | 这个选择会收敛多少可能性？ | 保留未来选项 |
+| Leverage 杠杆 | 是否存在非对称收益？ | 风险收益不对称性 |
+| Optionality 选择权 | 这个决定可以反悔吗？成本多大？ | 可逆性 |
+| Surplus 余量 | 消耗多少缓冲资源？ | 资源保护 |
+| Evolution 演化 | 能带来成长和学习机会吗？ | 学习潜力 |
+
+> 「可持续决策 > 最优决策。能够继续玩下去，比赢一次更重要。」
+
+## 三层架构
+
+CodeCoder 将能力组织为三个相互关联的层次：
+
+### 工程层
+
+代码审查、安全分析、TDD 指导、架构设计、逆向工程、形式化验证。
+
+### 领域层
+
+宏观经济、交易分析、选品策略、极小产品开发、AI 工程指导。
+
+### 思维层
+
+观察者理论分析、CLOSE 框架决策评估、可能性空间探索。
+
+## 专业 Agent（23+）
+
+### 主模式
+
+| Agent | 描述 |
+|-------|------|
+| `build` | 主开发模式，具备完整能力 |
+| `plan` | 只读探索和规划模式 |
+| `autonomous` | 自主任务完成，配备安全护栏 |
+
+### 工程类 Agent
+
+| Agent | 用途 |
+|-------|------|
+| `code-reviewer` | 代码质量审查 - 识别代码异味、命名问题、可维护性 |
+| `security-reviewer` | 安全漏洞分析 - OWASP Top 10、注入风险、认证问题 |
+| `tdd-guide` | 测试驱动开发指导 - 红-绿-重构循环、覆盖率 |
+| `architect` | 系统架构设计 - 接口定义、设计模式、技术决策 |
+| `verifier` | 形式化验证 - 基于属性的测试、不变量验证 |
+| `explore` | 快速代码库探索 - 模式搜索、结构理解 |
+
+### 逆向工程
+
+| Agent | 用途 |
+|-------|------|
+| `code-reverse` | 网站像素级复刻规划 |
+| `jar-code-reverse` | Java JAR 文件分析与源码重建 |
+
+### 领域类 Agent
+
+| Agent | 用途 |
+|-------|------|
+| `macro` | 宏观经济分析 - GDP、通胀、货币政策、贸易数据 |
+| `trader` | 超短线交易指导 - 情绪周期、模式识别（仅供教育参考） |
+| `picker` | 选品策略 - 七宗罪选品法、市场机会发现 |
+| `miniproduct` | 极小产品教练 - MVP 设计、AI 辅助开发、变现策略 |
+| `ai-engineer` | AI 工程师导师 - Python、LLM 应用、RAG、微调、MLOps |
+
+### 思维类 Agent
+
+| Agent | 用途 |
+|-------|------|
+| `observer` | 观察者理论顾问 - 可能性空间分析、认知框架 |
+| `decision` | 决策指导 - CLOSE 框架评估、可持续选择 |
+
+### 内容类 Agent
+
+| Agent | 用途 |
+|-------|------|
+| `writer` | 长文写作 - 2 万字以上文档、章节规划、风格一致性 |
+| `proofreader` | 内容校对 - 语法、风格、PROOF 框架验证 |
+| `expander` | 内容扩展 - 将想法转化为完整书籍 |
 
 ## 功能特性
 
-- 23 个专业 AI Agent - 三层智慧架构，涵盖工程、领域专业、思维框架和内容创作
-- 20+ AI 提供商支持 - Anthropic Claude、OpenAI、Google Gemini、AWS Bedrock、Azure、OpenRouter 等
-- 丰富的工具生态 - 文件操作、代码执行、网络获取等
-- MCP 协议支持 - Model Context Protocol 扩展能力
-- 网站逆向工程 - 分析并生成像素级还原的开发计划
-- 长文档写作 - AI 辅助生成 10 万字以上的长篇文档
-- 自主执行 - 自主完成任务，配备安全护栏
-- 形式化验证 - 基于属性的测试和不变量验证
+### 多 AI 提供商支持
+
+通过统一接口连接 30+ AI 提供商：
+
+| 类别 | 提供商 |
+|------|--------|
+| 主流 | Anthropic Claude、OpenAI、Google Gemini、Amazon Bedrock、Azure |
+| 专业 | xAI Grok、Mistral、Groq、Cerebras、Cohere |
+| 聚合 | OpenRouter、Together AI、DeepInfra、Vercel AI |
+| 企业 | GitHub Copilot、GitLab Duo、Google Vertex AI |
+| 本地 | 任何 OpenAI 兼容端点（通过 MCP） |
+
+### 语言服务器协议（LSP）
+
+内置支持 30+ 语言服务器，自动安装：
+
+TypeScript、Go、Rust、Python、Ruby、Java、Kotlin、C/C++、C#、Swift、Dart、Elixir、Zig、PHP、Lua、OCaml、Haskell、Clojure、Gleam 等。
+
+### 模型上下文协议（MCP）
+
+- 本地和远程 MCP 服务器
+- OAuth 2.0 认证流程
+- 动态工具发现
+- SSE 流式支持
+
+### 终端界面
+
+基于 SolidJS 和 OpenTUI 构建的丰富终端界面：
+
+- 完整键盘导航
+- 支持分支的会话管理
+- 实时流式响应
+- 代码变更差异可视化
+
+### 记忆系统
+
+透明、Git 友好的记忆架构：
+
+- 每日笔记：`./memory/daily/{YYYY-MM-DD}.md` - 只追加的每日日志
+- 长期记忆：`./memory/MEMORY.md` - 整理后的知识和偏好
+
+所有记忆都是人类可读的 Markdown，受版本控制，可手动编辑。
 
 ## 安装
 
-### npm
+### 环境要求
 
-```bash
-npm install -g @codecoder/ccode
-```
-
-### Bun
-
-```bash
-bun install -g @codecoder/ccode
-```
+- [Bun](https://bun.sh/) 1.3 或更高版本
+- macOS、Linux 或 Windows（推荐 WSL）
 
 ### 从源码安装
 
 ```bash
 git clone https://github.com/iannil/code-coder.git
-cd code-coder/packages/ccode
+cd code-coder
 bun install
+bun dev
+```
+
+### 构建独立可执行文件
+
+```bash
+cd packages/ccode
 bun run build
 ```
 
 ## 快速开始
 
 ```bash
-# 启动交互式会话
-ccode run
+# 启动交互式 TUI
+ccode
 
-# 发送直接消息
+# 或指定工作目录
+ccode /path/to/project
+
+# CLI 模式直接发送消息
 ccode run "解释这个代码库的架构"
 
 # 继续上次会话
@@ -56,133 +225,31 @@ ccode run --continue
 
 # 使用特定 Agent
 ccode run --agent architect "设计一个用户管理的 REST API"
+ccode run --agent decision "我应该接受这份工作邀请吗？"
+ccode run --agent macro "解读最新的 PMI 数据"
 
-# 使用特定模型
-ccode run --model anthropic/claude-sonnet-4-20250514 "审查我的代码"
+# 无头服务器模式
+ccode serve --port 4096
 ```
-
-## AI Agent
-
-CodeCoder 采用三层智慧架构，配备 23 个专业 Agent：
-
-### 主要模式（Primary Modes）
-
-| Agent                | 描述                         | 权限     |
-| -------------------- | ---------------------------- | -------- |
-| build            | 主开发模式，完整文件操作能力 | 完全读写 |
-| plan             | 代码探索和规划模式           | 只读     |
-| code-reverse     | 网站逆向工程                 | 只读     |
-| jar-code-reverse | JAR 文件逆向工程             | 只读     |
-
-### 工程
-
-| Agent                 | 用途                                            |
-| --------------------- | ----------------------------------------------- |
-| code-reviewer     | 代码质量审查 - 识别代码异味、命名问题、可维护性 |
-| security-reviewer | 安全漏洞分析 - OWASP Top 10、注入风险、认证问题 |
-| tdd-guide         | 测试驱动开发指导 - 红-绿-重构循环、覆盖率       |
-| architect         | 系统架构设计 - 接口定义、设计模式、技术决策     |
-| explore           | 快速代码库探索 - 模式搜索、结构理解             |
-| general           | 多步骤任务执行 - 复杂工作流、并行处理           |
-| verifier          | 形式化验证 - 基于属性的测试、不变量验证         |
-
-### 领域
-
-| Agent                | 用途                                                |
-| -------------------- | --------------------------------------------------- |
-| macro            | 宏观经济分析 - GDP、通胀、货币政策、贸易数据        |
-| trader           | 超短线交易指导 - 情绪周期、模式识别（仅供教育参考） |
-| picker           | 选品策略专家 - 七宗罪选品法、市场机会发现           |
-| miniproduct      | 极小产品教练 - MVP 设计、AI 辅助开发、变现策略      |
-| ai-engineer      | AI 工程师导师 - Python、LLM 应用、RAG、微调、MLOps  |
-| synton-assistant | SYNTON-DB 助手 - 张量图存储、PaQL 查询、Graph-RAG   |
-
-### 思维
-
-| Agent        | 用途                                                          |
-| ------------ | ------------------------------------------------------------- |
-| observer | 观察者理论顾问 - 可能性空间分析、认知框架                     |
-| decision | 决策智慧师 - CLOSE 五维评估（收敛、杠杆、选择权、余量、演化） |
-
-### 内容
-
-| Agent           | 用途                                      |
-| --------------- | ----------------------------------------- |
-| writer      | 长文写作专家 - 2 万字以上文档、章节规划   |
-| proofreader | 内容校对专家 - 语法、风格、PROOF 框架验证 |
-
-## 工具集
-
-### 文件操作
-
-| 工具    | 描述                       |
-| ------- | -------------------------- |
-| `read`  | 读取文件内容，支持分页     |
-| `write` | 写入或覆盖文件             |
-| `edit`  | 在文件中执行精确字符串替换 |
-| `glob`  | 基于模式的文件匹配         |
-| `grep`  | 基于正则的内容搜索         |
-| `ls`    | 列出目录内容               |
-
-### 执行
-
-| 工具   | 描述                          |
-| ------ | ----------------------------- |
-| `bash` | 在持久会话中执行 Shell 命令   |
-| `task` | 启动专业子 Agent 处理复杂任务 |
-
-### 网络
-
-| 工具               | 描述                    |
-| ------------------ | ----------------------- |
-| `webfetch`         | 获取并分析网页内容      |
-| `websearch`        | 搜索网络信息            |
-| `network-analyzer` | 分析网络流量和 API 端点 |
-
-### 其他
-
-| 工具       | 描述             |
-| ---------- | ---------------- |
-| `question` | 交互式用户提示   |
-| `todo`     | 任务列表管理     |
-| `skill`    | 加载专业技能文档 |
-| `patch`    | 应用统一差异补丁 |
-
-## 支持的 AI 提供商
-
-CodeCoder 开箱即支持 20+ AI 提供商：
-
-- Anthropic - Claude 3.5、Claude 4 系列
-- OpenAI - GPT-4o、GPT-4.1、o1、o3 系列
-- Google - Gemini 2.0、Gemini 2.5 系列
-- AWS Bedrock - 多种基础模型
-- Azure OpenAI - 企业级 OpenAI 访问
-- OpenRouter - 通过统一 API 访问 200+ 模型
-- Groq - 超快推理
-- Cerebras - 高速 AI 推理
-- Mistral - Mistral 和 Codestral 模型
-- Cohere - Command 系列
-- xAI - Grok 模型
-- DeepInfra - 高性价比推理
-- Together AI - 开源模型托管
-- Perplexity - 搜索增强模型
-- GitHub Copilot - GitHub AI 助手
-- GitLab - GitLab AI 功能
-- Vercel AI Gateway - 统一模型访问
 
 ## 配置
 
-### 全局配置
+### 配置文件位置（优先级顺序）
 
-位于 `~/.ccode/config.json`：
+1. 全局：`~/.codecoder/config.json`
+2. 项目：`./codecoder.json` 或 `./.ccode/codecoder.json`
+3. 环境变量：`CCODE_CONFIG` 或 `CCODE_CONFIG_CONTENT`
+
+### 配置示例
 
 ```json
 {
+  "$schema": "https://code-coder.com/config.json",
+  "model": "anthropic/claude-sonnet-4-20250514",
+  "default_agent": "build",
   "provider": {
     "anthropic": {
-      "options": {
-        "apiKey": "your-api-key"
-      }
+      "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
     }
   },
   "permission": {
@@ -191,45 +258,14 @@ CodeCoder 开箱即支持 20+ AI 提供商：
       "git *": "allow",
       "npm *": "allow"
     }
+  },
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "@anthropic/mcp-filesystem"]
+    }
   }
 }
-```
-
-### 自定义 Agent
-
-在 `~/.ccode/agents.json` 中定义自定义 Agent：
-
-```json
-{
-  "agents": [
-    {
-      "name": "my-advisor",
-      "description": "我的自定义顾问",
-      "mode": "subagent",
-      "permission": "read",
-      "systemPrompt": "你是...方面的专家",
-      "temperature": 0.6
-    }
-  ]
-}
-```
-
-### 项目配置
-
-在项目根目录创建 `AGENTS.md` 文件，添加项目特定指令：
-
-```markdown
-# 项目指令
-
-## 构建命令
-
-- npm run build
-- npm run test
-
-## 代码风格
-
-- 使用 TypeScript 严格模式
-- 优先使用函数式编程模式
 ```
 
 ## 架构
@@ -238,98 +274,54 @@ CodeCoder 开箱即支持 20+ AI 提供商：
 ┌─────────────────────────────────────────────────────────────┐
 │                      CodeCoder CLI                          │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   TUI App   │  │  CLI cmds   │  │   Server    │         │
-│  │  (SolidJS)  │  │  (yargs)    │  │   (API)     │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
+│  │   TUI 应用   │  │  CLI 命令   │  │   服务器    │          │
+│  │  (SolidJS)  │  │  (yargs)    │  │   (API)     │          │
+│  └─────────────┘  └─────────────┘  └─────────────┘          │
 ├─────────────────────────────────────────────────────────────┤
-│                      Core Engine                            │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
-│  │  Agent   │ │  Session │ │   Tool   │ │ Provider │      │
-│  │  System  │ │  Manager │ │  System  │ │  System  │      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+│                       核心引擎                               │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │  Agent   │ │  Session │ │   Tool   │ │ Provider │        │
+│  │  系统    │ │  管理器   │ │   系统   │ │   系统   │        │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
-│  │   MCP    │ │  Memory  │ │Verifier  │ │Autonomous│      │
-│  │ Protocol │ │  System  │ │  Engine  │ │  Engine  │      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
+│  │   MCP    │ │   记忆   │ │   LSP    │ │   Hook   │        │
+│  │   协议   │ │   系统   │ │   系统   │ │   系统   │        │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
 ├─────────────────────────────────────────────────────────────┤
-│                      AI Providers                           │
-│  Anthropic │ OpenAI │ Google │ AWS │ Azure │ OpenRouter... │
+│                      AI 提供商                               │
+│  Anthropic │ OpenAI │ Google │ AWS │ Azure │ OpenRouter...  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 技术栈
 
-- 运行时: Bun + TypeScript ESM 模块
-- UI 框架: OpenTUI + SolidJS
-- 验证: Zod schemas
-- AI SDK: Vercel AI SDK 多提供商支持
-- 构建: Bun 原生打包器
-- 测试: Bun test 框架
+- 运行时：Bun 1.3+ + TypeScript ESM
+- UI 框架：OpenTUI + SolidJS
+- 验证：Zod schemas
+- AI SDK：Vercel AI SDK 多提供商支持
+- 构建：Bun 原生打包器
 
-## 内置斜杠命令
+## 项目结构
 
-| 命令       | 描述                     |
-| ---------- | ------------------------ |
-| `/help`    | 获取 CodeCoder 使用帮助  |
-| `/accept`  | 接受并实现更改           |
-| `/docs`    | 生成文档                 |
-| `/issues`  | 分析并修复 GitHub Issues |
-| `/next`    | 建议下一步开发工作       |
-| `/readme`  | 生成或更新 README 文件   |
-| `/roadmap` | 创建项目路线图           |
-
-## 命令行
-
-```bash
-# 认证
-ccode auth login <provider>
-ccode auth logout <provider>
-ccode auth status
-
-# 会话管理
-ccode session list
-ccode session show <id>
-
-# Agent 管理
-ccode agent list
-ccode agent show <name>
-
-# 模型管理
-ccode models list
-ccode models show <provider/model>
-
-# MCP 服务器管理
-ccode mcp list
-ccode mcp add <name> <command>
-ccode mcp remove <name>
-
-# 记忆管理
-ccode memory show
-ccode memory clear
-
-# 文档生成
-ccode document create --title "我的书" --words 100000
-ccode chapter next
-
-# 逆向工程
-ccode reverse analyze <url> --output ./report
-ccode jar-reverse analyze <jar-file>
-
-# 调试模式
-ccode debug <session-id>
 ```
-
-## 贡献
-
-欢迎贡献代码！详情请参阅[贡献指南](CONTRIBUTING.md)。
-
-1. Fork 本仓库
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m '添加某功能'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
+codecoder/
+├── packages/
+│   ├── ccode/           # 核心 CLI 和业务逻辑
+│   │   ├── src/
+│   │   │   ├── agent/   # Agent 定义和提示词
+│   │   │   ├── cli/     # CLI 命令和 TUI
+│   │   │   ├── provider/# AI 提供商集成
+│   │   │   ├── mcp/     # MCP 协议支持
+│   │   │   ├── lsp/     # LSP 集成
+│   │   │   └── tool/    # 内置工具
+│   │   └── test/        # 测试套件
+│   └── util/            # 共享工具库
+├── script/              # 构建和生成脚本
+├── docs/                # 文档
+└── memory/              # 记忆存储
+```
 
 ## 开发
 
@@ -338,20 +330,62 @@ ccode debug <session-id>
 bun install
 
 # 开发模式运行
-bun run dev
+bun dev
 
 # 类型检查
-bun run typecheck
+bun turbo typecheck
 
-# 运行测试
-bun test
+# 运行测试（从包目录）
+cd packages/ccode && bun test
 
-# 运行特定测试文件
-bun test test/tool/tool.test.ts
-
-# 构建
-bun run build
+# 构建可执行文件
+bun run --cwd packages/ccode build
 ```
+
+## 命令参考
+
+```bash
+# 认证
+ccode auth login <provider>
+ccode auth logout <provider>
+ccode auth list
+
+# 会话管理
+ccode session list
+ccode session show <id>
+ccode session delete <id>
+
+# Agent 管理
+ccode agent list
+ccode agent generate
+
+# 模型管理
+ccode models list
+ccode models default
+
+# MCP 服务器管理
+ccode mcp list
+ccode mcp auth <name>
+ccode mcp connect <name>
+
+# 记忆管理
+ccode memory show
+ccode memory clear
+
+# 逆向工程
+ccode reverse <url>
+ccode jar-reverse <file>
+```
+
+## 贡献
+
+欢迎贡献！详情请参阅[贡献指南](./docs/CONTRIB.md)。
+
+1. Fork 本仓库
+2. 创建功能分支（`git checkout -b feature/amazing-feature`）
+3. 按照[约定式提交](https://www.conventionalcommits.org/zh-hans/)规范提交更改
+4. 推送到分支（`git push origin feature/amazing-feature`）
+5. 创建 Pull Request
 
 ## 许可证
 
@@ -361,10 +395,10 @@ bun run build
 
 - 使用 [Bun](https://bun.sh) 构建 - 快速的一体化 JavaScript 运行时
 - 由 [Vercel AI SDK](https://sdk.vercel.ai) 驱动 - 多提供商 AI 集成
-- UI 由 [OpenTUI](https://opentui.com) 提供支持 - 终端 UI 框架
+- UI 由 [OpenTUI](https://github.com/sst/opentui) 提供支持 - 终端 UI 框架
 
 ---
 
 <p align="center">
-  CodeCoder 团队用 ❤️ 制作
+  <strong>CodeCoder</strong> - 工程与智慧的交汇
 </p>
