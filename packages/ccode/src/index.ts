@@ -2,7 +2,6 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { Log } from "./util/log"
-import { AuthCommand } from "./cli/cmd/auth"
 import { AgentCommand } from "./cli/cmd/agent"
 import { ModelsCommand } from "./cli/cmd/models"
 import { UI } from "./cli/ui"
@@ -82,7 +81,6 @@ const cli = yargs(hideBin(process.argv))
   .command(TuiThreadCommand)
   .command(RunCommand)
   .command(DebugCommand)
-  .command(AuthCommand)
   .command(AgentCommand)
   .command(ModelsCommand)
   .command(SessionCommand)

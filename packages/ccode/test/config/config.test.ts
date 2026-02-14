@@ -1,7 +1,6 @@
 import { test, expect, describe, mock } from "bun:test"
 import { Config } from "../../src/config/config"
 import { Instance } from "../../src/project/instance"
-import { Auth } from "../../src/auth"
 import { tmpdir } from "../fixture/fixture"
 import path from "path"
 import fs from "fs/promises"
@@ -1076,81 +1075,6 @@ test("local .ccode config can override MCP from project config", async () => {
       expect(config.mcp?.docs?.enabled).toBe(true)
     },
   })
-})
-
-test("project config overrides remote well-known config", async () => {
-  const originalFetch = globalThis.fetch
-  let fetchedUrl: string | undefined
-  const mockFetch = mock((url: string | URL | Request) => {
-    const urlStr = url.toString()
-    if (urlStr.includes(".well-known/codecoder")) {
-      fetchedUrl = urlStr
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            config: {
-              mcp: {
-                jira: {
-                  type: "remote",
-                  url: "https://jira.example.com/mcp",
-                  enabled: false,
-                },
-              },
-            },
-          }),
-          { status: 200 },
-        ),
-      )
-    }
-    return originalFetch(url)
-  })
-  globalThis.fetch = mockFetch as unknown as typeof fetch
-
-  const originalAuthAll = Auth.all
-  Auth.all = mock(() =>
-    Promise.resolve({
-      "https://example.com": {
-        type: "wellknown" as const,
-        key: "TEST_TOKEN",
-        token: "test-token",
-      },
-    }),
-  )
-
-  try {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        // Project config enables jira (overriding remote default)
-        await Bun.write(
-          path.join(dir, "codecoder.json"),
-          JSON.stringify({
-            $schema: "https://code-coder.com/config.json",
-            mcp: {
-              jira: {
-                type: "remote",
-                url: "https://jira.example.com/mcp",
-                enabled: true,
-              },
-            },
-          }),
-        )
-      },
-    })
-    await Instance.provide({
-      directory: tmp.path,
-      fn: async () => {
-        const config = await Config.get()
-        // Verify fetch was called for wellknown config
-        expect(fetchedUrl).toBe("https://example.com/.well-known/codecoder")
-        // Project config (enabled: true) should override remote (enabled: false)
-        expect(config.mcp?.jira?.enabled).toBe(true)
-      },
-    })
-  } finally {
-    globalThis.fetch = originalFetch
-    Auth.all = originalAuthAll
-  }
 })
 
 describe("CCODE_DISABLE_PROJECT_CONFIG", () => {

@@ -244,7 +244,22 @@ export namespace SessionProcessor {
                     usage: value.usage,
                     metadata: value.providerMetadata,
                   })
-                  input.assistantMessage.finish = value.finishReason
+
+                  // Fix Gemini finishReason: if there are completed tool calls but finishReason is not "tool-calls",
+                  // force correct it for Gemini models to ensure the loop continues properly
+                  const hasCompletedToolCalls =
+                    Object.keys(toolcalls).length > 0 ||
+                    (await MessageV2.parts(input.assistantMessage.id)).some(
+                      (p) => p.type === "tool" && (p.state.status === "completed" || p.state.status === "error"),
+                    )
+                  const isGemini =
+                    input.model.providerID === "google" || input.model.api.id.includes("gemini")
+
+                  if (isGemini && hasCompletedToolCalls && value.finishReason !== "tool-calls") {
+                    input.assistantMessage.finish = "tool-calls"
+                  } else {
+                    input.assistantMessage.finish = value.finishReason
+                  }
                   input.assistantMessage.cost += usage.cost
                   input.assistantMessage.tokens = usage.tokens
                   await Session.updatePart({

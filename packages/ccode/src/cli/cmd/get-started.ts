@@ -1,4 +1,3 @@
-import { Auth } from "../../auth"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
@@ -221,15 +220,6 @@ async function createCustomProvider(): Promise<CustomProviderConfig | undefined>
     prompts.log.info("You can add models later in your config file")
   }
 
-  // Save credentials if provided
-  if (apiKey) {
-    await Auth.set(providerId, {
-      type: "api",
-      key: apiKey,
-    })
-    prompts.log.success("API key saved")
-  }
-
   return {
     id: providerId,
     name: providerName,
@@ -340,15 +330,6 @@ async function configureProviderCredentials(
   const customUrl = urlResult?.trim()
   const apiKey = keyResult?.trim()
 
-  // Save credentials if provided
-  if (apiKey) {
-    await Auth.set(providerId, {
-      type: "api",
-      key: apiKey,
-    })
-    prompts.log.success("API key saved")
-  }
-
   if (customUrl) {
     prompts.log.info(`Custom URL: ${customUrl}`)
   }
@@ -435,10 +416,9 @@ export const GetStartedCommand = cmd({
         UI.empty()
         prompts.intro("Welcome to CodeCoder!")
 
-        const existingAuth = await Auth.all()
         const existingConfig = await Config.getGlobal()
 
-        let needsProvider = Object.keys(existingAuth).length === 0
+        let needsProvider = !existingConfig.provider || Object.keys(existingConfig.provider).length === 0
         let needsModel = !existingConfig.model
         let needsAgent = !existingConfig.default_agent
 
@@ -551,8 +531,10 @@ export const GetStartedCommand = cmd({
               (customCount > 0 ? ` (${officialCount} official, ${customCount} custom)` : ""),
           )
         } else {
-          // Use existing auth providers
-          configuredProviders.push(...Object.keys(existingAuth))
+          // Use existing configured providers
+          if (existingConfig.provider) {
+            configuredProviders.push(...Object.keys(existingConfig.provider))
+          }
         }
 
         // Step 2: Select Default Model

@@ -605,6 +605,36 @@ export namespace SessionPrompt {
           auto: true,
         })
       }
+
+      // Gemini models need synthetic user message after tool calls to prompt continuation
+      // Similar to the subtask synthetic message pattern (lines 438-461)
+      const isGeminiModel = model.providerID === "google" || model.api.id.includes("gemini")
+      if (isGeminiModel && result === "continue") {
+        const lastParts = await MessageV2.parts(processor.message.id)
+        const hasToolCalls = lastParts.some(
+          (p) => p.type === "tool" && (p.state.status === "completed" || p.state.status === "error"),
+        )
+        if (hasToolCalls) {
+          const continueUserMsg: MessageV2.User = {
+            id: Identifier.ascending("message"),
+            sessionID,
+            role: "user",
+            time: { created: Date.now() },
+            agent: lastUser.agent,
+            model: lastUser.model,
+          }
+          await Session.updateMessage(continueUserMsg)
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: continueUserMsg.id,
+            sessionID,
+            type: "text",
+            text: "Process the tool results above and continue with your task.",
+            synthetic: true,
+          } satisfies MessageV2.TextPart)
+        }
+      }
+
       continue
     }
     SessionCompaction.prune({ sessionID })

@@ -7,7 +7,6 @@ import { Log } from "../util/log"
 import { BunProc } from "../bun"
 import { ModelsDev } from "./models"
 import { NamedError } from "@codecoder-ai/util/error"
-import { Auth } from "../auth"
 import { Env } from "../env"
 import { Instance } from "../project/instance"
 import { Flag } from "../flag/flag"
@@ -101,7 +100,6 @@ export namespace Provider {
       const hasKey = await (async () => {
         const env = Env.all()
         if (input.env.some((item) => env[item])) return true
-        if (await Auth.get(input.id)) return true
         const config = await Config.get()
         if (config.provider?.["ccode"]?.options?.apiKey) return true
         return false
@@ -179,8 +177,6 @@ export namespace Provider {
       const config = await Config.get()
       const providerConfig = config.provider?.["amazon-bedrock"]
 
-      const auth = await Auth.get("amazon-bedrock")
-
       // Region precedence: 1) config file, 2) env var, 3) default
       const configRegion = providerConfig?.options?.region
       const envRegion = Env.get("AWS_REGION")
@@ -193,15 +189,7 @@ export namespace Provider {
 
       const awsAccessKeyId = Env.get("AWS_ACCESS_KEY_ID")
 
-      const awsBearerToken = iife(() => {
-        const envToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
-        if (envToken) return envToken
-        if (auth?.type === "api") {
-          Env.set("AWS_BEARER_TOKEN_BEDROCK", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
+      const awsBearerToken = Env.get("AWS_BEARER_TOKEN_BEDROCK")
 
       const awsWebIdentityTokenFile = Env.get("AWS_WEB_IDENTITY_TOKEN_FILE")
 
@@ -373,16 +361,7 @@ export namespace Provider {
       }
     },
     "sap-ai-core": async () => {
-      const auth = await Auth.get("sap-ai-core")
-      const envServiceKey = iife(() => {
-        const envAICoreServiceKey = Env.get("AICORE_SERVICE_KEY")
-        if (envAICoreServiceKey) return envAICoreServiceKey
-        if (auth?.type === "api") {
-          Env.set("AICORE_SERVICE_KEY", auth.key)
-          return auth.key
-        }
-        return undefined
-      })
+      const envServiceKey = Env.get("AICORE_SERVICE_KEY")
       const deploymentId = Env.get("AICORE_DEPLOYMENT_ID")
       const resourceGroup = Env.get("AICORE_RESOURCE_GROUP")
 
@@ -408,12 +387,7 @@ export namespace Provider {
     gitlab: async (input) => {
       const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
 
-      const auth = await Auth.get(input.id)
-      const apiKey = await (async () => {
-        if (auth?.type === "oauth") return auth.access
-        if (auth?.type === "api") return auth.key
-        return Env.get("GITLAB_TOKEN")
-      })()
+      const apiKey = Env.get("GITLAB_TOKEN")
 
       const config = await Config.get()
       const providerConfig = config.provider?.["gitlab"]
@@ -446,14 +420,8 @@ export namespace Provider {
 
       if (!accountId || !gateway) return { autoload: false }
 
-      // Get API token from env or auth prompt
-      const apiToken = await (async () => {
-        const envToken = Env.get("CLOUDFLARE_API_TOKEN")
-        if (envToken) return envToken
-        const auth = await Auth.get(input.id)
-        if (auth?.type === "api") return auth.key
-        return undefined
-      })()
+      // Get API token from env
+      const apiToken = Env.get("CLOUDFLARE_API_TOKEN")
 
       return {
         autoload: true,
@@ -875,23 +843,6 @@ export namespace Provider {
         source: "env",
         key: provider.env.length === 1 ? apiKey : undefined,
       })
-    }
-
-    // load apikeys and oauth tokens
-    for (const [providerID, auth] of Object.entries(await Auth.all())) {
-      if (disabled.has(providerID)) continue
-      if (auth.type === "api") {
-        mergeProvider(providerID, {
-          source: "api",
-          key: auth.key,
-        })
-      } else if (auth.type === "oauth") {
-        // OAuth tokens are valid authentication - use access token as key
-        mergeProvider(providerID, {
-          source: "api",
-          key: auth.access,
-        })
-      }
     }
 
     for (const [providerID, fn] of Object.entries(CUSTOM_LOADERS)) {

@@ -5,7 +5,6 @@ import { generateObject, streamObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "../session/system"
 import { Instance } from "../project/instance"
 import { Truncate } from "../tool/truncation"
-import { Auth } from "../auth"
 import { ProviderTransform } from "../provider/transform"
 
 import PROMPT_BUILD from "./prompt/build.txt"
@@ -629,21 +628,6 @@ export namespace Agent {
         systemPrompt: z.string(),
       }),
     } satisfies Parameters<typeof generateObject>[0]
-
-    if (defaultModel.providerID === "openai" && (await Auth.get(defaultModel.providerID))?.type === "oauth") {
-      const result = streamObject({
-        ...params,
-        providerOptions: ProviderTransform.providerOptions(model, {
-          instructions: SystemPrompt.instructions(),
-          store: false,
-        }),
-        onError: () => {},
-      })
-      for await (const part of result.fullStream) {
-        if (part.type === "error") throw part.error
-      }
-      return result.object
-    }
 
     const result = await generateObject(params)
     return result.object

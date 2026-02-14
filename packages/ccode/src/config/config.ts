@@ -11,7 +11,6 @@ import fs from "fs/promises"
 import { lazy } from "../util/lazy"
 import { NamedError } from "@codecoder-ai/util/error"
 import { Flag } from "../flag/flag"
-import { Auth } from "../auth"
 import {
   type ParseError as JsoncParseError,
   applyEdits,
@@ -39,30 +38,7 @@ export namespace Config {
   }
 
   export const state = Instance.state(async () => {
-    const auth = await Auth.all()
-
-    // Load remote/well-known config first as the base layer (lowest precedence)
-    // This allows organizations to provide default configs that users can override
     let result: Info = {}
-    for (const [key, value] of Object.entries(auth)) {
-      if (value.type === "wellknown") {
-        process.env[value.key] = value.token
-        log.debug("fetching remote config", { url: `${key}/.well-known/codecoder` })
-        const response = await fetch(`${key}/.well-known/codecoder`)
-        if (!response.ok) {
-          throw new Error(`failed to fetch remote config from ${key}: ${response.status}`)
-        }
-        const wellknown = (await response.json()) as any
-        const remoteConfig = wellknown.config ?? {}
-        // Add $schema to prevent load() from trying to write back to a non-existent file
-        if (!remoteConfig.$schema) remoteConfig.$schema = "https://code-coder.com/config.json"
-        result = mergeConfigConcatArrays(
-          result,
-          await load(JSON.stringify(remoteConfig), `${key}/.well-known/codecoder`),
-        )
-        log.debug("loaded remote config from well-known", { url: key })
-      }
-    }
 
     // Global user config overrides remote config
     result = mergeConfigConcatArrays(result, await global())

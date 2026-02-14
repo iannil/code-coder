@@ -4,7 +4,6 @@ import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { generateObject, streamObject, type ModelMessage } from "ai"
 import { SystemPrompt } from "@/session/system"
-import { Auth } from "@/auth"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import { Bus } from "@/bus"
@@ -201,30 +200,8 @@ export namespace AgentInvoker {
         schema: responseSchema,
       } satisfies Parameters<typeof generateObject>[0]
 
-      let result: z.infer<typeof responseSchema>
-
-      if (defaultModel.providerID === "openai" && (await Auth.get(defaultModel.providerID))?.type === "oauth") {
-        const streamResult = streamObject({
-          ...params,
-          providerOptions: ProviderTransform.providerOptions(model, {
-            instructions: SystemPrompt.instructions(),
-            store: false,
-          }),
-          onError: (error) => {
-            log.error("Agent invocation error", { error })
-          },
-        })
-
-        // Collect full stream
-        for await (const part of streamResult.fullStream) {
-          if (part.type === "error") throw part.error
-        }
-
-        result = streamResult.object
-      } else {
-        const generateResult = await generateObject(params)
-        result = generateResult.object
-      }
+      const generateResult = await generateObject(params)
+      const result = generateResult.object
 
       const duration = Date.now() - startTime
 

@@ -22,7 +22,6 @@ import type { MessageV2 } from "./message-v2"
 import { SystemPrompt } from "./system"
 import { Flag } from "@/flag/flag"
 import { PermissionNext } from "@/permission/next"
-import { Auth } from "@/auth"
 import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import {
@@ -88,20 +87,21 @@ export namespace LLM {
       sessionID: input.sessionID,
     })
 
-    const [language, cfg, provider, auth] = await Promise.all([
+    const [language, cfg, provider] = await Promise.all([
       Provider.getLanguage(input.model),
       Config.get(),
       Provider.getProvider(input.model.providerID),
-      Auth.get(input.model.providerID),
     ])
-    const isCodex = provider.id === "openai" && auth?.type === "oauth"
+
+    // isCodex was previously determined by OAuth authentication with OpenAI
+    // Since Auth module has been removed, this is now always false
+    const isCodex = false
 
     const system = SystemPrompt.header(input.model.providerID)
     system.push(
       [
         // use agent prompt otherwise provider prompt
-        // For Codex sessions, skip SystemPrompt.provider() since it's sent via options.instructions
-        ...(input.agent.prompt ? [input.agent.prompt] : isCodex ? [] : SystemPrompt.provider(input.model)),
+        ...(input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)),
         // any custom prompt passed into this call
         ...input.system,
         // any custom prompt from last user message
