@@ -34,7 +34,6 @@ import { createGateway } from "@ai-sdk/gateway"
 import { createTogetherAI } from "@ai-sdk/togetherai"
 import { createPerplexity } from "@ai-sdk/perplexity"
 import { createVercel } from "@ai-sdk/vercel"
-import { createGitLab } from "@gitlab/gitlab-ai-provider"
 import { ProviderTransform } from "./transform"
 
 export namespace Provider {
@@ -72,7 +71,6 @@ export namespace Provider {
     "@ai-sdk/togetherai": createTogetherAI,
     "@ai-sdk/perplexity": createPerplexity,
     "@ai-sdk/vercel": createVercel,
-    "@gitlab/gitlab-ai-provider": createGitLab,
     // @ts-ignore (TODO: kill this code so we dont have to maintain it)
     "@ai-sdk/github-copilot": createGitHubCopilotOpenAICompatible,
   }
@@ -381,36 +379,6 @@ export namespace Provider {
             "HTTP-Referer": "https://code-coder.com/",
             "X-Title": "ccode",
           },
-        },
-      }
-    },
-    gitlab: async (input) => {
-      const instanceUrl = Env.get("GITLAB_INSTANCE_URL") || "https://gitlab.com"
-
-      const apiKey = Env.get("GITLAB_TOKEN")
-
-      const config = await Config.get()
-      const providerConfig = config.provider?.["gitlab"]
-
-      return {
-        autoload: !!apiKey,
-        options: {
-          instanceUrl,
-          apiKey,
-          featureFlags: {
-            duo_agent_platform_agentic_chat: true,
-            duo_agent_platform: true,
-            ...(providerConfig?.options?.featureFlags || {}),
-          },
-        },
-        async getModel(sdk: ReturnType<typeof createGitLab>, modelID: string) {
-          return sdk.agenticChat(modelID, {
-            featureFlags: {
-              duo_agent_platform_agentic_chat: true,
-              duo_agent_platform: true,
-              ...(providerConfig?.options?.featureFlags || {}),
-            },
-          })
         },
       }
     },
@@ -1017,10 +985,6 @@ export namespace Provider {
       ],
       "github-copilot-enterprise": [
         { type: "oauth", label: "GitHub Copilot Enterprise" },
-      ],
-      gitlab: [
-        { type: "oauth", label: "GitLab Duo" },
-        { type: "api", label: "API key" },
       ],
       openai: [
         { type: "oauth", label: "ChatGPT Plus/Pro" },

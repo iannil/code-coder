@@ -77,7 +77,6 @@
     "@ai-sdk/xai": "2.0.51",
     "@clack/prompts": "1.0.0-alpha.1",
     "@codecoder-ai/util": "workspace:*",
-    "@gitlab/gitlab-ai-provider": "3.3.1",
     "@modelcontextprotocol/sdk": "1.25.2",
     "@octokit/rest": "catalog:",
     "@openauthjs/openauth": "catalog:",

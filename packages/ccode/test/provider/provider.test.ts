@@ -20,7 +20,6 @@ mock.module("../../src/bun/index", () => ({
 const mockPlugin = () => ({})
 mock.module("codecoder-copilot-auth", () => ({ default: mockPlugin }))
 mock.module("codecoder-anthropic-auth", () => ({ default: mockPlugin }))
-mock.module("@gitlab/codecoder-gitlab-auth", () => ({ default: mockPlugin }))
 
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"

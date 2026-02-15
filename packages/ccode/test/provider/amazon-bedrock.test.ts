@@ -33,7 +33,6 @@ mock.module("@aws-sdk/credential-providers", () => ({
 const mockPlugin = () => ({})
 mock.module("codecoder-copilot-auth", () => ({ default: mockPlugin }))
 mock.module("codecoder-anthropic-auth", () => ({ default: mockPlugin }))
-mock.module("@gitlab/codecoder-gitlab-auth", () => ({ default: mockPlugin }))
 
 // Import after mocks are set up
 const { tmpdir } = await import("../fixture/fixture")

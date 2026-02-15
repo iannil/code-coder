@@ -635,6 +635,15 @@ export namespace ProviderTransform {
     return { [key]: options }
   }
 
+  // Provider-specific hard limits for max output tokens
+  // These caps take precedence over model-defined limits to prevent API errors
+  // when the actual provider has stricter limits than advertised
+  const PROVIDER_MAX_OUTPUT_CAPS: Record<string, number> = {
+    // Add provider-specific caps here
+    // Example: "@ai-sdk/openai": 16384,
+    // These caps override model limits when lower
+  }
+
   export function maxOutputTokens(
     npm: string,
     options: Record<string, any>,
@@ -642,7 +651,20 @@ export namespace ProviderTransform {
     globalLimit: number,
   ): number {
     const modelCap = modelLimit || globalLimit
-    const standardLimit = Math.min(modelCap, globalLimit)
+    let standardLimit = Math.min(modelCap, globalLimit)
+
+    // Apply provider-specific hard caps if defined
+    const providerCap = PROVIDER_MAX_OUTPUT_CAPS[npm]
+    if (providerCap && providerCap > 0) {
+      standardLimit = Math.min(standardLimit, providerCap)
+    }
+
+    // Apply provider-level cap from options (allows config-based override)
+    // Users can set provider.options.maxOutputTokens in their config
+    const optionsCap = options?.maxOutputTokens
+    if (typeof optionsCap === "number" && optionsCap > 0) {
+      standardLimit = Math.min(standardLimit, optionsCap)
+    }
 
     if (npm === "@ai-sdk/anthropic" || npm === "@ai-sdk/google-vertex/anthropic") {
       const thinking = options?.["thinking"]

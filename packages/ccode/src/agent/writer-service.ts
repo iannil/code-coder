@@ -146,7 +146,10 @@ export namespace WriterService {
   /**
    * Validate chapter content before saving
    */
-  export function validateChapter(content: string, minWords: number = 500): {
+  export function validateChapter(
+    content: string,
+    minWords: number = 500,
+  ): {
     valid: boolean
     wordCount: number
     issues: string[]
@@ -177,7 +180,10 @@ export namespace WriterService {
   /**
    * Suggest chunk size for content generation
    */
-  export function suggestChunkSize(totalWords: number, maxTokens: number = 64_000): {
+  export function suggestChunkSize(
+    totalWords: number,
+    maxTokens: number = 64_000,
+  ): {
     chapters: number
     wordsPerChapter: number
     needsSplitting: boolean

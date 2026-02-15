@@ -31,10 +31,7 @@ export namespace ChapterDraftManager {
   /**
    * Start tracking a chapter draft
    */
-  export function start(input: {
-    sessionID: string
-    chapterPath: string
-  }): void {
+  export function start(input: { sessionID: string; chapterPath: string }): void {
     const draft: DraftSession = {
       sessionID: input.sessionID,
       chapterPath: input.chapterPath,

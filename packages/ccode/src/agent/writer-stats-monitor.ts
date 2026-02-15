@@ -120,10 +120,7 @@ export namespace WriterStatsMonitor {
       if (part.type === "text") {
         session.textParts.set(part.id, part.text)
         // Recalculate total words from all text parts
-        session.wordsGenerated = Array.from(session.textParts.values()).reduce(
-          (sum, text) => sum + countWords(text),
-          0,
-        )
+        session.wordsGenerated = Array.from(session.textParts.values()).reduce((sum, text) => sum + countWords(text), 0)
 
         // Check if we should save draft
         if (session.chapterPath) {
