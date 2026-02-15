@@ -7,6 +7,8 @@
   "packageManager": "bun@1.3.5",
   "scripts": {
     "dev": "bun run --cwd packages/ccode --conditions=browser src/index.ts",
+    "dev:web": "bun run --filter web dev",
+    "dev:serve": "bun run --cwd packages/ccode --conditions=browser src/index.ts serve",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
     "test": "bun test"
