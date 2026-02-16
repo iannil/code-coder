@@ -1,10 +1,10 @@
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import path from "path"
 import fs from "fs/promises"
 import { Global } from "../global"
-import { Filesystem } from "../util/filesystem"
-import { lazy } from "../util/lazy"
-import { Lock } from "../util/lock"
+import { Filesystem } from "@/util/filesystem"
+import { lazy } from "@/util/lazy"
+import { Lock } from "@/util/lock"
 import { $ } from "bun"
 import { NamedError } from "@codecoder-ai/util/error"
 import z from "zod"
@@ -18,6 +18,16 @@ export namespace Storage {
     "NotFoundError",
     z.object({
       message: z.string(),
+    }),
+  )
+
+  export const CorruptedError = NamedError.create(
+    "CorruptedError",
+    z.object({
+      path: z.string(),
+      message: z.string(),
+      originalError: z.string().optional(),
+      recovered: z.boolean().optional(),
     }),
   )
 
@@ -158,6 +168,18 @@ export namespace Storage {
     }
   })
 
+  const BACKUP_RETENTION_DAYS = 7
+  const BACKUP_MAX_COUNT = 3
+
+  async function isolateCorrupted(filepath: string, content: string) {
+    const corrupted = path.join(Global.Path.data, "storage", "_corrupted")
+    const timestamp = Date.now()
+    const dest = path.join(corrupted, `${path.basename(filepath)}.${timestamp}`)
+    await fs.mkdir(corrupted, { recursive: true })
+    await fs.writeFile(dest, content)
+    log.warn("Corrupted file isolated", { original: filepath, isolated: dest })
+  }
+
   export async function remove(key: string[]) {
     const dir = await state().then((x) => x.dir)
     const target = path.join(dir, ...key) + ".json"
@@ -171,8 +193,32 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.read(target)
-      const result = await Bun.file(target).json()
-      return result as T
+      const file = Bun.file(target)
+      const text = await file.text()
+      try {
+        return JSON.parse(text) as T
+      } catch (parseError) {
+        log.error("JSON parse error, attempting recovery", { path: target, error: parseError })
+
+        // Isolate corrupted file
+        await isolateCorrupted(target, text)
+
+        // Attempt auto-recovery from backup
+        const restored = await restore(key)
+        if (restored) {
+          log.info("Auto-recovered from backup", { key })
+          const recoveredText = await Bun.file(target).text()
+          return JSON.parse(recoveredText) as T
+        }
+
+        // Recovery failed
+        throw new CorruptedError({
+          path: target,
+          message: "Failed to parse JSON and no valid backup available",
+          originalError: parseError instanceof Error ? parseError.message : String(parseError),
+          recovered: false,
+        })
+      }
     })
   }
 
@@ -181,9 +227,34 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      const content = await Bun.file(target).json()
+      const file = Bun.file(target)
+      const text = await file.text()
+      let content: T
+      try {
+        content = JSON.parse(text)
+      } catch (parseError) {
+        // Attempt auto-recovery
+        await isolateCorrupted(target, text)
+        const restored = await restore(key)
+        if (restored) {
+          log.info("Auto-recovered from backup during update", { key })
+          const recoveredText = await Bun.file(target).text()
+          content = JSON.parse(recoveredText)
+        } else {
+          throw new CorruptedError({
+            path: target,
+            message: "Failed to parse JSON during update and no valid backup",
+            originalError: parseError instanceof Error ? parseError.message : String(parseError),
+            recovered: false,
+          })
+        }
+      }
+
+      // Backup before update
+      await backup(key)
+
       fn(content)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+      await Filesystem.atomicWrite(target, JSON.stringify(content, null, 2))
       return content as T
     })
   }
@@ -193,7 +264,13 @@ export namespace Storage {
     const target = path.join(dir, ...key) + ".json"
     return withErrorHandling(async () => {
       using _ = await Lock.write(target)
-      await Bun.write(target, JSON.stringify(content, null, 2))
+
+      // Backup existing file before overwrite
+      if (await Bun.file(target).exists()) {
+        await backup(key)
+      }
+
+      await Filesystem.atomicWrite(target, JSON.stringify(content, null, 2))
     })
   }
 
@@ -223,5 +300,143 @@ export namespace Storage {
     } catch {
       return []
     }
+  }
+
+  export async function backup(key: string[]): Promise<string | undefined> {
+    const dir = await state().then((x) => x.dir)
+    const target = path.join(dir, ...key) + ".json"
+    const file = Bun.file(target)
+
+    if (!(await file.exists())) return undefined
+
+    const backupDir = path.join(Global.Path.data, "storage", "_backup", ...key.slice(0, -1))
+    const timestamp = Date.now()
+    const backupPath = path.join(backupDir, `${key.at(-1)}.${timestamp}.json`)
+
+    await fs.mkdir(backupDir, { recursive: true })
+    await fs.copyFile(target, backupPath)
+
+    await cleanupBackups(backupDir, key.at(-1)!)
+
+    log.info("Backup created", { original: target, backup: backupPath })
+    return backupPath
+  }
+
+  async function cleanupBackups(backupDir: string, basename: string) {
+    const pattern = new Bun.Glob(`${basename}.*.json`)
+    const files: { path: string; time: number }[] = []
+
+    for await (const file of pattern.scan({ cwd: backupDir, absolute: true })) {
+      const match = file.match(/\.(\d+)\.json$/)
+      if (match) {
+        files.push({ path: file, time: parseInt(match[1]) })
+      }
+    }
+
+    files.sort((a, b) => b.time - a.time)
+
+    const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000
+
+    for (let i = 0; i < files.length; i++) {
+      if (i >= BACKUP_MAX_COUNT || files[i].time < cutoff) {
+        await fs.unlink(files[i].path).catch(() => {})
+      }
+    }
+  }
+
+  export async function restore(key: string[]): Promise<boolean> {
+    const dir = await state().then((x) => x.dir)
+    const target = path.join(dir, ...key) + ".json"
+    const backupDir = path.join(Global.Path.data, "storage", "_backup", ...key.slice(0, -1))
+    const basename = key.at(-1)!
+
+    const pattern = new Bun.Glob(`${basename}.*.json`)
+    let latest: { path: string; time: number } | undefined
+
+    try {
+      for await (const file of pattern.scan({ cwd: backupDir, absolute: true })) {
+        const match = file.match(/\.(\d+)\.json$/)
+        if (match) {
+          const time = parseInt(match[1])
+          if (!latest || time > latest.time) {
+            latest = { path: file, time }
+          }
+        }
+      }
+    } catch {
+      log.warn("No backup directory found", { key })
+      return false
+    }
+
+    if (!latest) {
+      log.warn("No backup found", { key })
+      return false
+    }
+
+    // Validate backup file is valid JSON
+    try {
+      const content = await Bun.file(latest.path).text()
+      JSON.parse(content)
+    } catch {
+      log.error("Backup file is also corrupted", { backup: latest.path })
+      return false
+    }
+
+    await fs.mkdir(path.dirname(target), { recursive: true })
+    await fs.copyFile(latest.path, target)
+    log.info("Restored from backup", { backup: latest.path, target })
+    return true
+  }
+
+  export interface HealthReport {
+    total: number
+    healthy: number
+    corrupted: { key: string[]; error: string }[]
+    orphaned: string[]
+  }
+
+  export async function healthCheck(prefix: string[]): Promise<HealthReport> {
+    const dir = await state().then((x) => x.dir)
+    const report: HealthReport = {
+      total: 0,
+      healthy: 0,
+      corrupted: [],
+      orphaned: [],
+    }
+
+    for (const key of await list(prefix)) {
+      report.total++
+      const target = path.join(dir, ...key) + ".json"
+      try {
+        const content = await Bun.file(target).text()
+        JSON.parse(content)
+        report.healthy++
+      } catch (e) {
+        report.corrupted.push({
+          key,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    }
+
+    return report
+  }
+
+  export async function listCorrupted(): Promise<string[]> {
+    const corrupted = path.join(Global.Path.data, "storage", "_corrupted")
+    try {
+      const files = await fs.readdir(corrupted)
+      return files.map((f) => path.join(corrupted, f))
+    } catch {
+      return []
+    }
+  }
+
+  export async function clearCorrupted(): Promise<number> {
+    const files = await listCorrupted()
+    for (const file of files) {
+      await fs.unlink(file).catch(() => {})
+    }
+    return files.length
   }
 }

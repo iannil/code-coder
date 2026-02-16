@@ -6,39 +6,38 @@
 
 [中文](./README_CN.md)
 
-An AI-powered personal workstation that combines engineering capabilities with decision wisdom.
+**An AI-powered personal workstation that combines engineering capabilities with decision-making wisdom.**
 
-CodeCoder is not just another coding assistant. It's a comprehensive AI platform designed for everyone whose work is being transformed by AI - developers, analysts, writers, decision-makers, and independent creators. Built on the [祝融说](https://zhurongshuo.com) philosophical framework, it integrates structured thinking with practical tooling.
+CodeCoder is not just another coding assistant. It's a comprehensive AI platform designed for everyone whose work is being transformed by AI - developers, analysts, writers, decision-makers, and independent creators. Built on the [祝融说 (Zhurongshuo)](https://zhurongshuo.com) philosophical framework, it integrates structured thinking with practical tooling.
 
-## Why CodeCoder?
+## The Problem We Solve
 
-In an age of AI abundance, the challenge isn't accessing AI - it's knowing how to think with AI. CodeCoder addresses this by providing:
+In an age of AI abundance, the challenge isn't accessing AI - it's knowing **how to think with AI**.
 
-- Multi-dimensional assistance - Not just code, but decisions, analysis, and content creation
-- Philosophical grounding - The CLOSE framework for sustainable decision-making
-- Provider flexibility - 30+ AI providers through a unified interface
-- Specialized expertise - 23+ purpose-built agents for different domains
+Most AI tools focus on answering questions. CodeCoder focuses on helping you ask better questions and make better decisions. We believe:
+
+- **Multi-dimensional assistance** - Not just code, but decisions, analysis, and content creation
+- **Philosophical grounding** - The CLOSE framework for sustainable decision-making
+- **Provider flexibility** - 30+ AI providers through a unified interface
+- **Specialized expertise** - 25+ purpose-built agents for different domains
 
 ## Core Philosophy
 
-CodeCoder is built on a unique philosophical framework that reframes how we approach uncertainty and decision-making:
+CodeCoder is built on **祝融说 (Zhurongshuo)**, a unique philosophical framework that reframes how we approach uncertainty and decision-making.
 
 ### Foundational Concepts
 
-Possibility Substrate
-
+**Possibility Substrate**
 - Reality emerges from an infinite field of potential
 - Every observation converges possibilities into actuality
 - Understanding this unlocks creative problem-solving
 
-Available Surplus
-
+**Available Surplus**
 - The unfixed potential space in any situation
 - Source of flexibility, creativity, and system resilience
 - Sustainable decisions preserve surplus; optimal decisions often consume it
 
-Observer Convergence
-
+**Observer Convergence**
 - "Observation" is a creative act, not passive reception
 - Macro-world stability comes from multi-level observer "voting"
 - Social reality is a "symbolic consensus" of collective observation
@@ -49,11 +48,11 @@ A five-dimensional evaluation system for making sustainable choices:
 
 | Dimension | Question | Focus |
 |-----------|----------|-------|
-| Convergence | How much does this narrow possibilities? | Preserving future options |
-| Leverage | Is there asymmetric upside? | Risk-reward asymmetry |
-| Optionality | Can this be reversed? At what cost? | Reversibility |
-| Surplus | How much buffer does this consume? | Resource preservation |
-| Evolution | Does this create growth opportunities? | Learning potential |
+| **C**onvergence | How much does this narrow possibilities? | Preserving future options |
+| **L**everage | Is there asymmetric upside? | Risk-reward asymmetry |
+| **O**ptionality | Can this be reversed? At what cost? | Reversibility |
+| **S**urplus | How much buffer does this consume? | Resource preservation |
+| **E**volution | Does this create growth opportunities? | Learning potential |
 
 > "Sustainable decisions > optimal decisions. The ability to play again matters more than winning once."
 
@@ -61,19 +60,13 @@ A five-dimensional evaluation system for making sustainable choices:
 
 CodeCoder organizes its capabilities into three interconnected layers:
 
-### Engineering Layer
+| Layer | Capabilities |
+|-------|-------------|
+| **Engineering** | Code review, security analysis, TDD guidance, architecture design, reverse engineering, verification |
+| **Domain** | Macroeconomics, trading analysis, product selection, indie product development, AI engineering |
+| **Thinking** | Observer theory analysis, CLOSE framework decision evaluation, possibility space exploration |
 
-Code review, security analysis, TDD guidance, architecture design, reverse engineering, and formal verification.
-
-### Domain Layer
-
-Macroeconomics, trading analysis, product selection, indie product development, and AI engineering guidance.
-
-### Thinking Layer
-
-Observer theory analysis, CLOSE framework decision evaluation, and possibility space exploration.
-
-## Specialized Agents (23+)
+## Specialized Agents (25+)
 
 ### Primary Modes
 
@@ -87,11 +80,12 @@ Observer theory analysis, CLOSE framework decision evaluation, and possibility s
 
 | Agent | Purpose |
 |-------|---------|
+| `general` | General-purpose research agent - multi-step tasks, parallel work execution |
 | `code-reviewer` | Code quality review - identifies code smells, naming issues, maintainability |
 | `security-reviewer` | Security vulnerability analysis - OWASP Top 10, injection risks, auth issues |
 | `tdd-guide` | Test-driven development guidance - red-green-refactor cycles, coverage |
 | `architect` | System architecture design - interfaces, patterns, technical decisions |
-| `verifier` | Formal verification - property-based testing, invariant validation |
+| `verifier` | Comprehensive validation - build, type, lint checks, test suites, coverage |
 | `explore` | Fast codebase exploration - pattern search, structure understanding |
 
 ### Reverse Engineering
@@ -101,7 +95,7 @@ Observer theory analysis, CLOSE framework decision evaluation, and possibility s
 | `code-reverse` | Website pixel-perfect reconstruction planning |
 | `jar-code-reverse` | Java JAR file analysis and source reconstruction |
 
-### Domain Agents
+### Domain Agents (祝融说 Series)
 
 | Agent | Purpose |
 |-------|---------|
@@ -110,8 +104,9 @@ Observer theory analysis, CLOSE framework decision evaluation, and possibility s
 | `picker` | Product selection - seven deadly sins method, market opportunity discovery |
 | `miniproduct` | Indie product coaching - MVP design, AI-assisted development, monetization |
 | `ai-engineer` | AI engineering mentorship - Python, LLM apps, RAG, fine-tuning, MLOps |
+| `synton-assistant` | SYNTON-DB helper - LLM memory databases, tensor graph storage, PaQL queries |
 
-### Thinking Agents
+### Thinking Agents (祝融说 Series)
 
 | Agent | Purpose |
 |-------|---------|
@@ -125,6 +120,8 @@ Observer theory analysis, CLOSE framework decision evaluation, and possibility s
 | `writer` | Long-form writing - 20k+ word documents, chapter planning, style consistency |
 | `proofreader` | Content proofreading - grammar, style, PROOF framework validation |
 | `expander` | Content expansion - transform ideas into comprehensive books |
+| `expander-fiction` | Fiction expansion - novels with consistent worldbuilding, character arcs |
+| `expander-nonfiction` | Non-fiction expansion - logical argumentation, evidence frameworks |
 
 ## Features
 
@@ -135,10 +132,22 @@ Connect to 30+ AI providers with a unified interface:
 | Category | Providers |
 |----------|-----------|
 | Major | Anthropic Claude, OpenAI, Google Gemini, Amazon Bedrock, Azure |
-| Specialized | xAI Grok, Mistral, Groq, Cerebras, Cohere |
+| Specialized | xAI Grok, Mistral, Groq, Cerebras, Cohere, Perplexity |
 | Aggregators | OpenRouter, Together AI, DeepInfra, Vercel AI |
 | Enterprise | GitHub Copilot, GitLab Duo, Google Vertex AI |
 | Local | Any OpenAI-compatible endpoint via MCP |
+
+### Built-in Tools
+
+CodeCoder includes 20+ built-in tools:
+
+| Category | Tools |
+|----------|-------|
+| File Operations | `read`, `write`, `edit`, `glob`, `grep`, `ls` |
+| Code Intelligence | `codesearch`, `lsp`, `bash` |
+| Web | `webfetch`, `websearch` |
+| Planning | `task`, `todo`, `plan`, `question` |
+| Advanced | `batch`, `multiedit`, `apply_patch`, `network-analyzer` |
 
 ### Language Server Protocol (LSP)
 
@@ -166,10 +175,46 @@ A rich terminal interface built with SolidJS and OpenTUI:
 
 Transparent, Git-friendly memory architecture:
 
-- Daily Notes: `./memory/daily/{YYYY-MM-DD}.md` - Append-only daily logs
-- Long-term Memory: `./memory/MEMORY.md` - Curated knowledge and preferences
+```
+memory/
+├── daily/              # Append-only daily logs
+│   └── {YYYY-MM-DD}.md
+└── MEMORY.md           # Curated long-term knowledge
+```
 
 All memory is human-readable Markdown, version-controlled, and manually editable.
+
+### HTTP API Server
+
+Run CodeCoder as a headless server:
+
+```bash
+ccode serve --port 4096
+```
+
+Exposes all agents via HTTP API for integration with other tools.
+
+### ZeroBot Integration
+
+CodeCoder includes [ZeroBot](./services/zero-bot/), a lightweight Rust-based AI assistant gateway:
+
+| Feature | Description |
+|---------|-------------|
+| Multi-channel | Telegram, Discord, Slack, WhatsApp, Matrix, iMessage, Email |
+| 24 Providers | OpenAI, Claude, Gemini, Groq, Mistral, and more |
+| Tiny Footprint | ~3.4MB binary, <5MB memory |
+| Bidirectional | ZeroBot calls CodeCoder agents via HTTP API |
+
+```toml
+# ~/.codecoder/config.toml
+[codecoder]
+enabled = true
+endpoint = "http://localhost:4096"
+```
+
+The two systems are complementary:
+- **ZeroBot**: Lightweight gateway for multi-channel message access
+- **CodeCoder**: Full-featured workbench for complex AI tasks
 
 ## Installation
 
@@ -283,11 +328,11 @@ ccode serve --port 4096
 
 ### Tech Stack
 
-- Runtime: Bun 1.3+ with TypeScript ESM
-- UI Framework: OpenTUI + SolidJS
-- Validation: Zod schemas
-- AI SDK: Vercel AI SDK with multi-provider support
-- Build: Bun native bundler
+- **Runtime**: Bun 1.3+ with TypeScript ESM
+- **UI Framework**: OpenTUI + SolidJS
+- **Validation**: Zod schemas
+- **AI SDK**: Vercel AI SDK with multi-provider support
+- **Build**: Bun native bundler
 
 ## Project Structure
 
@@ -304,6 +349,8 @@ codecoder/
 │   │   │   └── tool/    # Built-in tools
 │   │   └── test/        # Test suites
 │   └── util/            # Shared utilities
+├── services/
+│   └── zero-bot/        # Rust message gateway (optional)
 ├── script/              # Build and generation scripts
 ├── docs/                # Documentation
 └── memory/              # Memory storage

@@ -20,6 +20,7 @@ import {
   Share,
   Maximize2,
   Minimize2,
+  GitFork,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/Button"
@@ -33,12 +34,14 @@ import {
 import { MessageList } from "@/components/message/MessageList"
 import { MessageInput } from "@/components/message/MessageInput"
 import { AgentSelector } from "@/components/agent/AgentSelector"
+import { ModelSelectorTrigger } from "@/components/model/ModelSelector"
 import { Separator } from "@/components/ui/Separator"
 import { Card, CardContent } from "@/components/ui/Card"
 import { useSession, useSessionStore } from "@/stores/session"
 import { useMessages, useMessagesLoading, useMessageStore } from "@/stores/message"
 import { useSelectedAgent, useAgents, useAgentStore } from "@/stores/agent"
 import { useSSEConnected, useSSEStore } from "@/stores/sse"
+import { useProviderStore } from "@/stores/provider"
 import { useToast } from "@/hooks/use-toast"
 import { api } from "@/lib/api"
 import { cn, formatTimestamp } from "@/lib/utils"
@@ -79,6 +82,23 @@ function SessionInfo({ sessionId, session, isFullscreen, onToggleFullscreen }: S
     }
   }
 
+  const handleFork = async () => {
+    try {
+      const forkedSession = await api.forkSession(sessionId)
+      toast({
+        title: "Session forked",
+        description: "A new session has been created from this point.",
+      })
+      navigate({ to: "/sessions/$sessionId", params: { sessionId: forkedSession.id } })
+    } catch {
+      toast({
+        title: "Failed to fork session",
+        description: "An error occurred while forking the session.",
+        variant: "destructive",
+      })
+    }
+  }
+
   const handleCopy = () => {
     navigator.clipboard.writeText(sessionId)
     toast({
@@ -93,6 +113,12 @@ function SessionInfo({ sessionId, session, isFullscreen, onToggleFullscreen }: S
         <h2 className="font-medium truncate">{session.title || "Untitled Session"}</h2>
         <p className="text-xs text-muted-foreground">
           Created {formatTimestamp(session.time.created)}
+          {session.parentID && (
+            <span className="ml-2 text-primary">
+              <GitFork className="inline h-3 w-3 mr-1" />
+              Forked
+            </span>
+          )}
         </p>
       </div>
 
@@ -114,6 +140,10 @@ function SessionInfo({ sessionId, session, isFullscreen, onToggleFullscreen }: S
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleFork}>
+              <GitFork className="mr-2 h-4 w-4" />
+              Fork session
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleCopy}>
               <Copy className="mr-2 h-4 w-4" />
               Copy session ID
@@ -207,6 +237,9 @@ export function Session() {
   const selectedAgent = useSelectedAgent()
   const selectAgent = useAgentStore((state) => state.selectAgent)
 
+  // Provider store for fetching providers
+  const fetchProviders = useProviderStore((state) => state.fetchProviders)
+
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [isSending, setIsSending] = React.useState(false)
   const messageInputRef = React.useRef<HTMLTextAreaElement>(null)
@@ -214,6 +247,11 @@ export function Session() {
   // SSE connection
   const sseConnected = useSSEConnected()
   const connectSSE = useSSEStore((state) => state.connect)
+
+  // Fetch providers on mount
+  React.useEffect(() => {
+    fetchProviders()
+  }, [fetchProviders])
 
   // Load session messages on mount
   React.useEffect(() => {
@@ -327,17 +365,23 @@ export function Session() {
         onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
       />
 
-      {/* Agent Selector Bar */}
+      {/* Agent & Model Selector Bar */}
       {!isFullscreen && (
         <>
-          <div className="flex items-center gap-2 px-4 py-2 border-b bg-muted/20">
-            <span className="text-sm text-muted-foreground">Agent:</span>
-            <div className="flex-1 max-w-xs">
-              <AgentSelector
-                agents={agents}
-                selectedId={selectedAgent?.id ?? null}
-                onSelect={selectAgent}
-              />
+          <div className="flex items-center gap-4 px-4 py-2 border-b bg-muted/20">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-sm text-muted-foreground">Agent:</span>
+              <div className="max-w-xs">
+                <AgentSelector
+                  agents={agents}
+                  selectedId={selectedAgent?.id ?? null}
+                  onSelect={selectAgent}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Model:</span>
+              <ModelSelectorTrigger className="max-w-[200px]" />
             </div>
             {sseConnected && (
               <div className="flex items-center gap-1.5 text-xs text-green-500">

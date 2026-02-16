@@ -8,7 +8,7 @@
  * - Active session highlighting
  */
 
-import { Plus, MessageSquare, Trash2, MoreHorizontal, FolderOpen } from "lucide-react"
+import { Plus, MessageSquare, Trash2, MoreHorizontal, FolderOpen, ChevronRight } from "lucide-react"
 import { Button } from "../ui/Button"
 import { ScrollArea } from "../ui/ScrollArea"
 import { Separator } from "../ui/Separator"
@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/DropdownMenu"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/Collapsible"
 import {
   useSessions,
   useActiveSessionId,
@@ -40,33 +41,28 @@ interface CollapsibleSectionProps {
 }
 
 /**
- * Collapsible section component
+ * Collapsible section component using shadcn Collapsible
  */
 function CollapsibleSection({ title, defaultOpen = true, children }: CollapsibleSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (
-    <div className="space-y-1">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between px-2 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <span>{title}</span>
-        <svg
-          className={cn(
-            "h-4 w-4 transition-transform",
-            isOpen ? "rotate-90" : ""
-          )}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+    <Collapsible open={isOpen} onOpenChange={setIsOpen} className="space-y-1">
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-2 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      {isOpen && <div className="space-y-0.5 pl-2">{children}</div>}
-    </div>
+          <span>{title}</span>
+          <ChevronRight
+            className={cn("h-4 w-4 transition-transform", isOpen && "rotate-90")}
+          />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="space-y-0.5 pl-2">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 

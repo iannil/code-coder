@@ -281,7 +281,6 @@ const USER_TYPE_NAMES: Record<string, string> = {
   WU: "Web User",
   RU: "Remote User",
   MU: "MCP User",
-  AU: "ACP User",
   PU: "Power User",
   SU: "API/Server User",
   ALL: "Cross-User",

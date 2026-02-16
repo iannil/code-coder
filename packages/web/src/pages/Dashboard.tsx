@@ -24,6 +24,7 @@ import {
 
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent } from "@/components/ui/Card"
+import { Skeleton } from "@/components/ui/Skeleton"
 import { useSessions, useSessionStore, useSessionsLoading, useActiveSessionId } from "@/stores/session"
 import { cn, formatRelativeTime } from "@/lib/utils"
 
@@ -279,12 +280,12 @@ export function Dashboard() {
               {[1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-3 rounded-lg border p-3 animate-pulse"
+                  className="flex items-center gap-3 rounded-lg border p-3"
                 >
-                  <div className="h-10 w-10 rounded-lg bg-muted" />
+                  <Skeleton className="h-10 w-10 rounded-lg" />
                   <div className="flex-1 space-y-2">
-                    <div className="h-4 w-32 bg-muted rounded" />
-                    <div className="h-3 w-24 bg-muted rounded" />
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
                 </div>
               ))}

@@ -10,6 +10,7 @@ import { Search, Check, Bot } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/Button"
+import { Badge } from "@/components/ui/Badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,34 +51,43 @@ export interface AgentModeBadgeProps {
 // Agent Mode Badge
 // ============================================================================
 
-const MODE_CONFIGS: Record<string, { color: string; label: string }> = {
-  primary: { color: "bg-primary/10 text-primary border-primary/20", label: "Primary" },
-  subagent: { color: "bg-secondary/50 text-secondary-foreground border-secondary/30", label: "Subagent" },
-  build: { color: "bg-blue-500/10 text-blue-500 border-blue-500/20", label: "Build" },
-  plan: { color: "bg-purple-500/10 text-purple-500 border-purple-500/20", label: "Plan" },
-  code: { color: "bg-green-500/10 text-green-500 border-green-500/20", label: "Code" },
-  content: { color: "bg-orange-500/10 text-orange-500 border-orange-500/20", label: "Content" },
-  zrs: { color: "bg-pink-500/10 text-pink-500 border-pink-500/20", label: "ZRS" },
-  default: { color: "bg-muted text-muted-foreground border-border", label: "Agent" },
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "info" | "purple" | "pink" | "orange"
+
+const MODE_VARIANTS: Record<string, BadgeVariant> = {
+  primary: "default",
+  subagent: "secondary",
+  build: "info",
+  plan: "purple",
+  code: "success",
+  content: "orange",
+  zrs: "pink",
+  default: "outline",
 }
 
-function getModeConfig(mode: string) {
-  return MODE_CONFIGS[mode.toLowerCase()] ?? MODE_CONFIGS.default
+const MODE_LABELS: Record<string, string> = {
+  primary: "Primary",
+  subagent: "Subagent",
+  build: "Build",
+  plan: "Plan",
+  code: "Code",
+  content: "Content",
+  zrs: "ZRS",
+  default: "Agent",
+}
+
+function getModeVariant(mode: string): BadgeVariant {
+  return MODE_VARIANTS[mode.toLowerCase()] ?? MODE_VARIANTS.default
+}
+
+function getModeLabel(mode: string): string {
+  return MODE_LABELS[mode.toLowerCase()] ?? MODE_LABELS.default
 }
 
 export function AgentModeBadge({ mode, className }: AgentModeBadgeProps) {
-  const config = getModeConfig(mode)
-
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-medium border",
-        config.color,
-        className
-      )}
-    >
-      {config.label}
-    </span>
+    <Badge variant={getModeVariant(mode)} className={className}>
+      {getModeLabel(mode)}
+    </Badge>
   )
 }
 

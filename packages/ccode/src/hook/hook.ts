@@ -1,6 +1,6 @@
 import z from "zod"
 import path from "path"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { Global } from "../global"

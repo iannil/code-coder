@@ -227,6 +227,7 @@ async function isPortInUse(port: number): Promise<boolean> {
       hostname: "127.0.0.1",
       port,
       socket: {
+        data() {},
         open(socket) {
           socket.end()
           resolve(true)

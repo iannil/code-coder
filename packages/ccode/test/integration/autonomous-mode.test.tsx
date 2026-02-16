@@ -1,5 +1,18 @@
 // @ts-nocheck
-// NOTE: This test file has issues and is skipped pending rewrite
+/**
+ * Integration tests for Autonomous (Crazy) Mode
+ *
+ * SKIPPED: Tests require updates to match current autonomous module API.
+ *
+ * Known issues:
+ * - Some method signatures may have changed (e.g., SafetyGuard.check)
+ * - Test assertions use outdated API patterns
+ * - TypeScript errors due to interface mismatches
+ *
+ * TODO: P4 debt - Review and update test assertions to match current exports
+ *
+ * To re-enable: Remove .skip and @ts-nocheck, then fix type errors
+ */
 import { describe, test, it, expect, beforeEach, afterEach } from "bun:test"
 import { AutonomousState } from "@/autonomous/state/states"
 import { StateMachine } from "@/autonomous/state/state-machine"
@@ -22,14 +35,6 @@ import {
 import { MetricsCollector, createMetricsCollector } from "@/autonomous/metrics/metrics"
 import { Scorer, createScorer, calculateScores } from "@/autonomous/metrics/scorer"
 import { AutonomousEvent, AutonomousEventHelper } from "@/autonomous/events"
-
-/**
- * Integration tests for Crazy Mode
- *
- * Tests the interaction between all Crazy Mode components
- *
- * NOTE: Skipped due to syntax issues - pending rewrite
- */
 
 describe.skip("Crazy Mode Integration", () => {
   let sessionId: string

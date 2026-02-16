@@ -76,6 +76,7 @@
     "@ai-sdk/vercel": "1.0.31",
     "@ai-sdk/xai": "2.0.51",
     "@clack/prompts": "1.0.0-alpha.1",
+    "@codecoder-ai/memory": "workspace:*",
     "@codecoder-ai/util": "workspace:*",
     "@modelcontextprotocol/sdk": "1.25.2",
     "@octokit/rest": "catalog:",

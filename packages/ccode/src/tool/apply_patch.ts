@@ -10,7 +10,7 @@ import { createTwoFilesPatch, diffLines } from "diff"
 import { assertExternalDirectory } from "./external-directory"
 import { trimDiff } from "./edit"
 import { LSP } from "../lsp"
-import { Filesystem } from "../util/filesystem"
+import { Filesystem } from "@/util/filesystem"
 import DESCRIPTION from "./apply_patch.txt"
 import { File } from "../file"
 

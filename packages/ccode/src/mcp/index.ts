@@ -10,7 +10,7 @@ import {
   ToolListChangedNotificationSchema,
 } from "@modelcontextprotocol/sdk/types.js"
 import { Config } from "../config/config"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import { NamedError } from "@codecoder-ai/util/error"
 import z from "zod/v4"
 import { Instance } from "../project/instance"

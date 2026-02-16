@@ -6,6 +6,9 @@ node_modules
 .idea
 .vscode
 *~
+*.bak
+*.bak[0-9]
+*.bak[0-9][0-9]
 playground
 tmp
 dist
@@ -27,3 +30,7 @@ codecoder-dev
 logs/
 *.bun-build
 **/dev.log
+
+# ZeroBot (Rust service)
+services/zero-bot/target/
+.playwright-mcp/

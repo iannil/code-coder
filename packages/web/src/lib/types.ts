@@ -489,3 +489,371 @@ export interface EventChannelsResponse {
     channels: string[]
   }
 }
+
+// ============================================================================
+// Provider Types
+// ============================================================================
+
+export interface ProviderModel {
+  id: string
+  name?: string
+  providerID: string
+  context?: number
+  output?: number
+  cost?: {
+    input: number
+    output: number
+  }
+  status?: "stable" | "preview" | "deprecated"
+  variants?: Record<string, Record<string, unknown>>
+}
+
+export interface ProviderInfo {
+  id: string
+  name: string
+  source: "env" | "config" | "custom" | "api"
+  env: string[]
+  options?: Record<string, unknown>
+  models: Record<string, ProviderModel>
+}
+
+export interface ProviderListResponse {
+  all: ProviderInfo[]
+  default: Record<string, string>
+  connected: string[]
+}
+
+export interface ProviderAuthMethod {
+  type: "oauth" | "api"
+  label: string
+}
+
+export interface ModelSelection {
+  providerID: string
+  modelID: string
+}
+
+// ============================================================================
+// MCP Types
+// ============================================================================
+
+export type McpStatusType = "connected" | "disabled" | "failed" | "needs_auth" | "needs_client_registration"
+
+export interface McpStatusConnected {
+  status: "connected"
+}
+
+export interface McpStatusDisabled {
+  status: "disabled"
+}
+
+export interface McpStatusFailed {
+  status: "failed"
+  error: string
+}
+
+export interface McpStatusNeedsAuth {
+  status: "needs_auth"
+}
+
+export interface McpStatusNeedsClientRegistration {
+  status: "needs_client_registration"
+  error: string
+}
+
+export type McpStatus =
+  | McpStatusConnected
+  | McpStatusDisabled
+  | McpStatusFailed
+  | McpStatusNeedsAuth
+  | McpStatusNeedsClientRegistration
+
+export interface McpTool {
+  name: string
+  description: string
+}
+
+export interface McpResource {
+  name: string
+  uri: string
+  description?: string
+  mimeType?: string
+  client: string
+}
+
+export interface McpAuthStatus {
+  name: string
+  supportsOAuth: boolean
+  authStatus: "authenticated" | "expired" | "not_authenticated"
+}
+
+// ============================================================================
+// Document Types (P2)
+// ============================================================================
+
+export type DocumentStatus = "planning" | "writing" | "reviewing" | "completed"
+export type ChapterStatus = "pending" | "drafting" | "completed" | "revision"
+export type EntityType = "character" | "location" | "concept" | "item" | "event"
+
+export interface DocumentOutlineChapter {
+  id: string
+  title: string
+  description: string
+  estimatedWords: number
+  subsections?: string[]
+}
+
+export interface DocumentOutline {
+  title: string
+  description?: string
+  chapters: DocumentOutlineChapter[]
+}
+
+export interface DocumentStyleGuide {
+  tone?: string
+  voice?: string
+  pov?: string
+  tense?: string
+  audience?: string
+  notes?: string
+}
+
+export interface DocumentGlobalSummary {
+  plot: string
+  themes: string[]
+  mainCharacters: string[]
+  setting: string
+}
+
+export interface DocumentMetadata {
+  id: string
+  projectID: string
+  title: string
+  description?: string
+  status: DocumentStatus
+  targetWords: number
+  currentWords: number
+  createdAt: number
+  updatedAt: number
+  outline: DocumentOutline
+  styleGuide?: DocumentStyleGuide
+  globalSummary?: DocumentGlobalSummary
+  volumes: string[]
+}
+
+export interface DocumentChapter {
+  id: string
+  documentID: string
+  outlineID: string
+  title: string
+  status: ChapterStatus
+  content: string
+  summary?: string
+  wordCount: number
+  createdAt: number
+  updatedAt: number
+  volumeID?: string
+  mentionedEntityIDs: string[]
+}
+
+export interface DocumentEntity {
+  id: string
+  type: EntityType
+  name: string
+  aliases: string[]
+  description: string
+  firstAppearedChapterID: string
+  attributes: Record<string, string>
+  relationships: Array<{
+    targetEntityID: string
+    type: string
+    description: string
+  }>
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DocumentVolume {
+  id: string
+  documentID: string
+  title: string
+  description?: string
+  summary?: string
+  startChapterID: string
+  endChapterID: string
+  order: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface DocumentStats {
+  totalChapters: number
+  completedChapters: number
+  pendingChapters: number
+  totalWords: number
+  targetWords: number
+  progress: number
+  estimatedRemaining: number
+}
+
+// ============================================================================
+// Memory Types (P2)
+// ============================================================================
+
+export type DailyEntryType = "task" | "decision" | "learning" | "note" | "preference" | "context"
+
+export interface DailyEntry {
+  timestamp: string
+  type: DailyEntryType
+  content: string
+  metadata?: Record<string, any>
+}
+
+export type MemoryCategory = "user_preferences" | "project_context" | "key_decisions" | "lessons_learned"
+
+export interface MemorySection {
+  category: MemoryCategory
+  title: string
+  content: string
+}
+
+export interface MemorySummary {
+  longTermSize: number
+  dailyNotesCount: number
+  lastUpdated: number
+}
+
+export interface ConsolidationStats {
+  lastRun?: number
+  totalProcessed: number
+  entriesExtracted: number
+}
+
+// ============================================================================
+// Hooks Types (P2)
+// ============================================================================
+
+export type HookLifecycle = "PreToolUse" | "PostToolUse" | "PreResponse" | "Stop"
+export type HookActionType =
+  | "scan"
+  | "check_env"
+  | "check_style"
+  | "notify_only"
+  | "scan_content"
+  | "run_command"
+  | "analyze_changes"
+  | "scan_files"
+
+export interface HookAction {
+  type: HookActionType
+  patterns?: string[]
+  message?: string
+  block?: boolean
+  command?: string
+  async?: boolean
+  variable?: string
+  command_pattern?: string
+  file_pattern?: string
+  on_output?: Record<string, string>
+}
+
+export interface HookDefinition {
+  pattern?: string
+  description?: string
+  command_pattern?: string
+  file_pattern?: string
+  actions: HookAction[]
+}
+
+export interface HookEntry {
+  lifecycle: HookLifecycle
+  name: string
+  definition: HookDefinition
+  source: string
+}
+
+export interface HookSettings {
+  enabled?: boolean
+  blocking_mode?: "interactive" | "silent" | "strict"
+  log_level?: "debug" | "info" | "warn" | "error"
+}
+
+export interface HookLocation {
+  path: string
+  scope: "global" | "project"
+  description: string
+  exists: boolean
+}
+
+export interface HookActionTypeInfo {
+  type: HookActionType
+  description: string
+  params: string[]
+}
+
+// ============================================================================
+// LSP Types (P2)
+// ============================================================================
+
+export type LspServerStatus = "connected" | "error"
+
+export interface LspStatus {
+  id: string
+  name: string
+  root: string
+  status: LspServerStatus
+}
+
+export interface LspRange {
+  start: { line: number; character: number }
+  end: { line: number; character: number }
+}
+
+export interface LspDiagnostic {
+  severity: 1 | 2 | 3 | 4 // error, warning, info, hint
+  range: LspRange
+  message: string
+  source?: string
+  code?: string | number
+  pretty?: string
+}
+
+export interface LspFileDiagnostics {
+  filePath: string
+  diagnostics: LspDiagnostic[]
+}
+
+export interface LspConfig {
+  enabled: boolean
+  servers?: Record<
+    string,
+    {
+      command: string[]
+      extensions?: string[]
+      disabled?: boolean
+      env?: Record<string, string>
+    }
+  >
+}
+
+export interface LspSymbol {
+  name: string
+  kind: number
+  location: {
+    uri: string
+    range: LspRange
+  }
+}
+
+export interface LspDocumentSymbol {
+  name: string
+  detail?: string
+  kind: number
+  range: LspRange
+  selectionRange: LspRange
+}
+
+export interface LspLocation {
+  uri: string
+  range: LspRange
+}

@@ -52,11 +52,47 @@
 - **变更**: observer, decision, macro, trader, picker, miniproduct, ai-engineer
 - **影响**: 所有测试通过，文档已同步更新
 
+### 2026-02-12: Crazy Mode CLOSE 决策框架集成
+- **决策**: 在 Crazy Agent 的工具调用中集成 CLOSE 决策评估
+- **理由**: 实现可控的自主决策，每个工具调用前评估风险
+- **影响**: DecisionEngine.evaluate() 在 tool/tool.ts 中触发
+
+### 2026-02-12: Verifier Agent 实现
+- **决策**: 添加 verifier agent 用于形式化验证
+- **理由**: 提供数学化、属性测试和契约验证能力
+- **影响**: 新增 packages/ccode/src/verifier/ 模块
+
 ### 2026-02-13: Write 工具大参数截断修复
 - **问题**: Agent 生成大文件时，Write 工具 JSON 参数被截断，导致 "Unterminated string" 错误
 - **原因**: 工具调用参数有大小限制，超过限制时 JSON 解析失败
 - **解决**: 在 write.txt、edit.txt、multiedit.txt prompt 中添加大文件处理指导
 - **策略**: 引导 agent 使用分批写入或 Bash 工具处理超大内容
+
+### 2026-02-13: Autonomous Agent Thinking 模式修复
+- **问题**: Thinking 模式与 maxOutputTokens 冲突导致截断
+- **解决**: 默认禁用 thinking，改进 token 计算逻辑
+- **影响**: agent.ts 配置修改，transform.ts 逻辑优化
+
+### 2026-02-14: Writer + Expander 集成
+- **决策**: Writer Agent 可以调用 Expander 子 Agent
+- **理由**: 支持系统化的长篇内容创作
+- **影响**: writer.txt 添加 expander 调用指令
+
+### 2026-02-16: Storage 数据完整性增强
+- **决策**: 添加原子写入、备份机制、损坏文件隔离
+- **理由**: 确保 session/message/part 数据可靠性
+- **影响**: storage.ts 添加 backup/restore/healthCheck 功能
+
+### 2026-02-16: CodeCoder + ZeroBot 整合
+- **决策**: 合并两个项目，实现双向集成
+- **理由**: ZeroBot 需要调用 CodeCoder Agent，共享记忆
+- **影响**: 新增 services/zero-bot/、memory-zerobot/、Agent HTTP API
+
+### 2026-02-16: 存储路径迁移
+- **决策**: 将存储路径从 `~/.zero-bot` 迁移到 `~/.codecoder`
+- **理由**: 统一品牌标识，避免与 ZeroBot 服务混淆
+- **影响**: storage.ts 路径常量更新，需要手动迁移现有数据
+- **迁移命令**: `mv ~/.zero-bot/* ~/.codecoder/`
 
 ## 经验教训
 

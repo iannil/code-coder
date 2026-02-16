@@ -1052,7 +1052,6 @@ ccode mcp list
 
 - Vercel AI SDK - 20+ AI 提供商的统一接口
 - MCP SDK - 模型上下文协议集成
-- Agent Client Protocol - 代理通信标准
 
 #### 项目结构
 

@@ -2,7 +2,7 @@
 
 > 文档类型: runbook
 > 创建时间: 2026-02-05
-> 最后更新: 2026-02-09
+> 最后更新: 2026-02-16
 > 状态: active
 
 ## 部署程序
@@ -191,6 +191,26 @@ npx husky install
 1. 检查代码格式化: `bun prettier --check .`
 2. 修复格式问题: `bun prettier --write .`
 3. 重新提交
+
+### 问题 6: 记忆系统问题
+
+**症状**: Agent 未能加载用户偏好或历史决策
+
+**诊断**:
+```bash
+# 检查记忆文件
+ls -la ./memory/
+cat ./memory/MEMORY.md
+
+# 检查 ZeroBot 数据库
+ls -la ~/.codecoder/workspace/memory/brain.db
+```
+
+**修复**:
+1. 确保 `./memory/` 目录存在且可写
+2. 检查 `MEMORY.md` 格式是否正确
+3. 清除记忆缓存: 调用 `invalidateMemoryCache()`
+4. 如需写入 ZeroBot: 使用 `createZeroBotMemory({ readOnly: false })`
 
 ## 回滚程序
 

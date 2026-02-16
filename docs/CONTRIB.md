@@ -2,7 +2,7 @@
 
 > 文档类型: guide
 > 创建时间: 2026-02-05
-> 最后更新: 2026-02-09
+> 最后更新: 2026-02-16
 > 状态: active
 
 ## 开发环境设置
@@ -56,7 +56,13 @@ bun dev
 |------|------|
 | `bun dev` | 启动 CLI/TUI 开发模式 (浏览器条件) |
 | `bun build` | 构建独立可执行文件 |
+| `bun build:single` | 构建单一可执行文件 |
+| `bun build:baseline` | 构建单一可执行文件 (基线模式) |
+| `bun build:skip-install` | 跳过安装步骤构建 |
 | `bun typecheck` | 运行 tsgo TypeScript 类型检查 |
+| `bun lint` | 运行 tsgo 代码检查 |
+| `bun format` | 检查代码格式 (Prettier) |
+| `bun format:write` | 自动修复代码格式 |
 
 #### 测试命令
 

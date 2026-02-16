@@ -1,0 +1,54 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#7aa2f7', 'primaryTextColor': '#1a1b26', 'primaryBorderColor': '#7aa2f7', 'lineColor': '#a9b1d6', 'secondaryColor': '#bb9af7', 'tertiaryColor': '#9ece6a'}}}%%
+flowchart TB
+    subgraph Interface["🖥️ Interface Layer"]
+        CLI["CLI Commands"]
+        TUI["Terminal UI<br/>(Solid.js + OpenTUI)"]
+        API["HTTP API Server<br/>(Hono)"]
+    end
+
+    subgraph Core["⚙️ Core Engine"]
+        Session["Session Manager"]
+        Agent["Agent System<br/>(23+ Agents)"]
+        LLM["LLM Orchestration"]
+        Tools["Tool Registry<br/>(25+ Tools)"]
+    end
+
+    subgraph Providers["🤖 AI Providers (20+)"]
+        Anthropic["Anthropic<br/>(Claude)"]
+        OpenAI["OpenAI<br/>(GPT)"]
+        Google["Google<br/>(Gemini)"]
+        Others["Azure, Bedrock,<br/>Copilot, etc."]
+    end
+
+    subgraph Extensions["🔌 Extensions"]
+        MCP["MCP Protocol"]
+        Memory["Memory System<br/>(Markdown)"]
+        Storage["Storage Layer<br/>(JSON + Backup)"]
+    end
+
+    subgraph Autonomous["🚀 Autonomous Mode"]
+        StateMachine["State Machine"]
+        Decision["CLOSE Framework"]
+        Safety["Safety Guards"]
+    end
+
+    CLI --> Session
+    TUI --> Session
+    API --> Session
+
+    Session --> Agent
+    Agent --> LLM
+    LLM --> Tools
+
+    LLM --> Anthropic
+    LLM --> OpenAI
+    LLM --> Google
+    LLM --> Others
+
+    Agent --> MCP
+    Session --> Memory
+    Session --> Storage
+
+    Agent --> StateMachine
+    StateMachine --> Decision
+    Decision --> Safety

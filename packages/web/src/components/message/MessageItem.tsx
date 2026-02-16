@@ -16,6 +16,7 @@ import { formatTimestamp } from "@/lib/utils"
 import { type MessageWithParts, type MessagePart } from "@/lib/types"
 import { Card, CardContent } from "../ui/Card"
 import { ToolCall } from "./ToolCall"
+import { MessageDetails } from "./MessageDetails"
 
 // ============================================================================
 // Interfaces
@@ -380,6 +381,9 @@ export function MessageItem({ sessionId, message, className }: MessageItemProps)
             {info.summary.diffs.length} file{info.summary.diffs.length !== 1 ? "s" : ""} changed
           </div>
         )}
+
+        {/* Message Details (expandable, for assistant messages) */}
+        <MessageDetails info={info} />
       </div>
     </div>
   )

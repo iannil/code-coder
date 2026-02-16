@@ -1,7 +1,7 @@
 import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import { Global } from "../global"
 import z from "zod"
 import { Config } from "../config/config"

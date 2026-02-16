@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Card, CardContent } from "@/components/ui/Card"
 import { ScrollArea } from "@/components/ui/ScrollArea"
+import { Skeleton } from "@/components/ui/Skeleton"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -551,7 +552,7 @@ export function Files() {
             {isLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="h-10 bg-muted rounded animate-pulse" />
+                  <Skeleton key={i} className="h-10 w-full" />
                 ))}
               </div>
             ) : viewMode === "tree" ? (

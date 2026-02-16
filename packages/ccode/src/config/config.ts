@@ -1,14 +1,14 @@
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import path from "path"
 import { pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
-import { Filesystem } from "../util/filesystem"
+import { Filesystem } from "@/util/filesystem"
 import { ModelsDev } from "../provider/models"
 import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
-import { lazy } from "../util/lazy"
+import { lazy } from "@/util/lazy"
 import { NamedError } from "@codecoder-ai/util/error"
 import { Flag } from "../flag/flag"
 import {
@@ -695,6 +695,207 @@ export namespace Config {
       .describe("Control diff rendering style: 'auto' adapts to terminal width, 'stacked' always shows single column"),
   })
 
+  // ══════════════════════════════════════════════════════════════════════
+  // ZeroBot Configuration (shared with ZeroBot daemon)
+  // ══════════════════════════════════════════════════════════════════════
+
+  export const ZeroBotObservability = z
+    .object({
+      backend: z.enum(["none", "log", "prometheus", "otel"]).optional().describe("Observability backend"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotObservabilityConfig" })
+
+  export const ZeroBotAutonomy = z
+    .object({
+      level: z
+        .enum(["readonly", "supervised", "full"])
+        .optional()
+        .describe("Autonomy level: readonly (observe only), supervised (requires approval), full (unrestricted)"),
+      workspace_only: z.boolean().optional().describe("Restrict operations to workspace directory"),
+      allowed_commands: z.array(z.string()).optional().describe("Whitelist of allowed shell commands"),
+      forbidden_paths: z.array(z.string()).optional().describe("Paths that are never accessible"),
+      max_actions_per_hour: z.number().int().positive().optional().describe("Rate limit for autonomous actions"),
+      max_cost_per_day_cents: z.number().int().positive().optional().describe("Daily cost limit in cents"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotAutonomyConfig" })
+
+  export const ZeroBotRuntime = z
+    .object({
+      kind: z.enum(["native", "docker", "cloudflare"]).optional().describe("Runtime environment"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotRuntimeConfig" })
+
+  export const ZeroBotReliability = z
+    .object({
+      provider_retries: z.number().int().positive().optional().describe("Retries per provider before failover"),
+      provider_backoff_ms: z.number().int().positive().optional().describe("Base backoff in milliseconds"),
+      fallback_providers: z.array(z.string()).optional().describe("Fallback provider chain"),
+      channel_initial_backoff_secs: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Initial backoff for channel restarts"),
+      channel_max_backoff_secs: z.number().int().positive().optional().describe("Maximum backoff for channel restarts"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotReliabilityConfig" })
+
+  export const ZeroBotHeartbeat = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable heartbeat monitoring"),
+      interval_minutes: z.number().int().positive().optional().describe("Heartbeat interval in minutes"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotHeartbeatConfig" })
+
+  export const ZeroBotMemory = z
+    .object({
+      backend: z.enum(["sqlite", "markdown", "none"]).optional().describe("Memory storage backend"),
+      auto_save: z.boolean().optional().describe("Auto-save conversation context"),
+      hygiene_enabled: z.boolean().optional().describe("Enable memory hygiene (archiving + cleanup)"),
+      embedding_provider: z.string().optional().describe("Embedding provider: none, openai, or custom:URL"),
+      embedding_model: z.string().optional().describe("Embedding model name"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotMemoryConfig" })
+
+  export const ZeroBotGateway = z
+    .object({
+      port: z.number().int().positive().optional().describe("Gateway port (default: 3000)"),
+      host: z.string().optional().describe("Gateway host (default: 127.0.0.1)"),
+      require_pairing: z.boolean().optional().describe("Require pairing before accepting requests"),
+      allow_public_bind: z.boolean().optional().describe("Allow binding to non-localhost without a tunnel"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotGatewayConfig" })
+
+  export const ZeroBotTunnelCloudflare = z.object({ token: z.string().describe("Cloudflare Tunnel token") }).strict()
+  export const ZeroBotTunnelTailscale = z
+    .object({
+      funnel: z.boolean().optional().describe("Use Tailscale Funnel (public) vs Serve (tailnet only)"),
+      hostname: z.string().optional().describe("Optional hostname override"),
+    })
+    .strict()
+  export const ZeroBotTunnelNgrok = z
+    .object({
+      auth_token: z.string().describe("ngrok auth token"),
+      domain: z.string().optional().describe("Optional custom domain"),
+    })
+    .strict()
+
+  export const ZeroBotTunnel = z
+    .object({
+      provider: z
+        .enum(["none", "cloudflare", "tailscale", "ngrok", "custom"])
+        .optional()
+        .describe("Tunnel provider for remote access"),
+      cloudflare: ZeroBotTunnelCloudflare.optional(),
+      tailscale: ZeroBotTunnelTailscale.optional(),
+      ngrok: ZeroBotTunnelNgrok.optional(),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotTunnelConfig" })
+
+  export const ZeroBotTelegram = z
+    .object({
+      bot_token: z.string().describe("Telegram bot token"),
+      allowed_users: z.array(z.string()).optional().describe("Allowed Telegram usernames"),
+    })
+    .strict()
+
+  export const ZeroBotDiscord = z
+    .object({
+      bot_token: z.string().describe("Discord bot token"),
+      guild_id: z.string().optional().describe("Discord guild/server ID"),
+      allowed_users: z.array(z.string()).optional().describe("Allowed Discord user IDs"),
+    })
+    .strict()
+
+  export const ZeroBotSlack = z
+    .object({
+      bot_token: z.string().describe("Slack bot token"),
+      app_token: z.string().optional().describe("Slack app token for Socket Mode"),
+      channel_id: z.string().optional().describe("Default Slack channel ID"),
+    })
+    .strict()
+
+  export const ZeroBotWhatsApp = z
+    .object({
+      access_token: z.string().describe("Meta Business API access token"),
+      phone_number_id: z.string().describe("WhatsApp phone number ID"),
+      verify_token: z.string().describe("Webhook verification token"),
+      allowed_numbers: z.array(z.string()).optional().describe("Allowed phone numbers (E.164 format)"),
+    })
+    .strict()
+
+  export const ZeroBotChannels = z
+    .object({
+      cli: z.boolean().optional().describe("Enable CLI channel"),
+      telegram: ZeroBotTelegram.optional(),
+      discord: ZeroBotDiscord.optional(),
+      slack: ZeroBotSlack.optional(),
+      whatsapp: ZeroBotWhatsApp.optional(),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotChannelsConfig" })
+
+  export const ZeroBotComposio = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable Composio integration"),
+      api_key: z.string().optional().describe("Composio API key"),
+      entity_id: z.string().optional().describe("Default entity ID for multi-user setups"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotComposioConfig" })
+
+  export const ZeroBotBrowser = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable browser tool"),
+      allowed_domains: z.array(z.string()).optional().describe("Allowed domains for browsing"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotBrowserConfig" })
+
+  export const ZeroBotIdentity = z
+    .object({
+      format: z.enum(["openclaw", "aieos"]).optional().describe("Identity format"),
+      aieos_path: z.string().optional().describe("Path to AIEOS JSON file"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotIdentityConfig" })
+
+  export const ZeroBot = z
+    .object({
+      // Provider configuration (can reuse CodeCoder's provider config)
+      default_provider: z.string().optional().describe("Default LLM provider (uses CodeCoder provider config for keys)"),
+      default_model: z.string().optional().describe("Default model name"),
+      default_temperature: z.number().min(0).max(2).optional().describe("Default temperature (0.0-2.0)"),
+
+      // ZeroBot-specific configuration
+      workspace_dir: z.string().optional().describe("ZeroBot workspace directory"),
+
+      // Subsystem configuration
+      observability: ZeroBotObservability.optional(),
+      autonomy: ZeroBotAutonomy.optional(),
+      runtime: ZeroBotRuntime.optional(),
+      reliability: ZeroBotReliability.optional(),
+      heartbeat: ZeroBotHeartbeat.optional(),
+      memory: ZeroBotMemory.optional(),
+      gateway: ZeroBotGateway.optional(),
+      tunnel: ZeroBotTunnel.optional(),
+      channels: ZeroBotChannels.optional(),
+      composio: ZeroBotComposio.optional(),
+      browser: ZeroBotBrowser.optional(),
+      identity: ZeroBotIdentity.optional(),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotConfig" })
+  export type ZeroBot = z.infer<typeof ZeroBot>
+
   export const Server = z
     .object({
       port: z.number().int().positive().optional().describe("Port to listen on"),
@@ -997,6 +1198,7 @@ export namespace Config {
         })
         .optional()
         .describe("Autonomous Mode autonomous execution configuration"),
+      zerobot: ZeroBot.optional().describe("ZeroBot daemon and channel configuration"),
     })
     .strict()
     .meta({

@@ -1,6 +1,13 @@
 import { Identifier } from "../../id/id"
 import z from "zod"
 
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
+const defaultRecord = <V extends z.ZodTypeAny>(valueSchema: V) =>
+  z.record(z.string(), valueSchema).optional().transform((v) => v ?? {} as Record<string, z.infer<V>>)
+
 export namespace KnowledgeSchema {
   // ============================================================================
   // Knowledge Node Types
@@ -39,7 +46,7 @@ export namespace KnowledgeSchema {
     content: z.string().min(1),
     derivedFrom: z.array(z.string()), // Source node IDs
     confidence: z.number().min(0).max(1).default(1), // 0-1 confidence level
-    attributes: z.record(z.string(), z.string()).default({}),
+    attributes: defaultRecord(z.string()),
     chapterID: z.string().optional(), // First appearance chapter
     createdAt: z.number().int().nonnegative().default(() => Date.now()),
     updatedAt: z.number().int().nonnegative().default(() => Date.now()),
@@ -67,7 +74,7 @@ export namespace KnowledgeSchema {
   export const ArgumentChain = z.object({
     id: Identifier.schema("argument"),
     premise: z.string().min(1),
-    reasoningSteps: z.array(ReasoningStep).default([]),
+    reasoningSteps: defaultArray(ReasoningStep),
     conclusion: z.string().min(1),
     counterArguments: z.array(z.string()), // References to argument chain IDs
     status: z.enum(["valid", "weak", "refuted", "pending"]).default("pending"),
@@ -131,8 +138,8 @@ export namespace KnowledgeSchema {
     rules: z.array(z.string()), // World rules (e.g., magic system rules)
     magicSystem: z.string().optional(), // Description of magic/special powers
     technology: z.string().optional(), // Technology level description
-    timeline: z.array(TimelineEvent).default([]),
-    geography: z.array(z.string()).default([]), // Key locations descriptions
+    timeline: defaultArray(TimelineEvent),
+    geography: defaultArray(z.string()), // Key locations descriptions
     createdAt: z.number().int().nonnegative().default(() => Date.now()),
     updatedAt: z.number().int().nonnegative().default(() => Date.now()),
   })
@@ -155,11 +162,11 @@ export namespace KnowledgeSchema {
   export const ThematicFramework = z.object({
     id: Identifier.schema("theme"),
     thesis: z.string().min(1), // Central thesis or theme
-    corePrinciples: z.array(z.string()).default([]), // Foundational principles
-    mainThemes: z.array(z.string()).default([]), // Key themes explored
-    knowledgeGraph: z.record(z.string(), z.array(z.string())).default({}), // Concept relationships
-    argumentChainIDs: z.array(z.string()).default([]), // For non-fiction
-    storyArcIDs: z.array(z.string()).default([]), // For fiction
+    corePrinciples: defaultArray(z.string()), // Foundational principles
+    mainThemes: defaultArray(z.string()), // Key themes explored
+    knowledgeGraph: defaultRecord(z.array(z.string())), // Concept relationships
+    argumentChainIDs: defaultArray(z.string()), // For non-fiction
+    storyArcIDs: defaultArray(z.string()), // For fiction
     worldFrameworkID: z.string().optional(), // For fiction
     createdAt: z.number().int().nonnegative().default(() => Date.now()),
     updatedAt: z.number().int().nonnegative().default(() => Date.now()),
@@ -176,12 +183,12 @@ export namespace KnowledgeSchema {
   export const CoreIdeaAnalysis = z.object({
     contentType: z.enum(["fiction", "nonfiction", "mixed"]),
     coreThesis: z.string().min(1),
-    mainThemes: z.array(z.string()).default([]),
+    mainThemes: defaultArray(z.string()),
     suggestedWordCount: z.number().int().positive(),
     suggestedChapterCount: z.number().int().positive(),
-    keyConcepts: z.array(z.string()).default([]), // Concepts that become knowledge nodes
-    potentialConflicts: z.array(z.string()).default([]), // For fiction
-    potentialArguments: z.array(z.string()).default([]), // For non-fiction
+    keyConcepts: defaultArray(z.string()), // Concepts that become knowledge nodes
+    potentialConflicts: defaultArray(z.string()), // For fiction
+    potentialArguments: defaultArray(z.string()), // For non-fiction
   })
   export type CoreIdeaAnalysis = z.infer<typeof CoreIdeaAnalysis>
 
@@ -278,12 +285,12 @@ export namespace KnowledgeSchema {
    */
   export const KnowledgeContext = z.object({
     framework: ThematicFramework.optional(),
-    relevantNodes: z.array(KnowledgeNode).default([]),
-    argumentChains: z.array(ArgumentChain).default([]),
-    storyArcs: z.array(StoryArc).default([]),
+    relevantNodes: defaultArray(KnowledgeNode),
+    argumentChains: defaultArray(ArgumentChain),
+    storyArcs: defaultArray(StoryArc),
     worldFramework: WorldFramework.optional(),
-    establishedFacts: z.array(z.string()).default([]), // Non-refutable statements
-    pendingConclusions: z.array(z.string()).default([]), // Conclusions needing support
+    establishedFacts: defaultArray(z.string()), // Non-refutable statements
+    pendingConclusions: defaultArray(z.string()), // Conclusions needing support
   })
   export type KnowledgeContext = z.infer<typeof KnowledgeContext>
 
@@ -317,7 +324,7 @@ export namespace KnowledgeSchema {
     location: z.string().optional(), // chapterID or volumeID
     suggestion: z.string().optional(),
     autoFixable: z.boolean().default(false),
-    relatedNodeIDs: z.array(z.string()).default([]), // Related knowledge nodes
+    relatedNodeIDs: defaultArray(z.string()), // Related knowledge nodes
     confidence: z.number().min(0).max(1).optional(), // Detection confidence
   })
   export type ExtendedConsistencyIssue = z.infer<typeof ExtendedConsistencyIssue>

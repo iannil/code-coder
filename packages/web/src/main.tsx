@@ -8,6 +8,7 @@ import { StrictMode } from "react"
 import ReactDOM from "react-dom/client"
 import { RouterProvider } from "@tanstack/react-router"
 import { Toaster } from "@/components/ui/Toaster"
+import { ThemeProvider } from "@/hooks/use-theme"
 import { router } from "./router"
 import "./styles.css"
 
@@ -18,8 +19,10 @@ import "./styles.css"
 function Root() {
   return (
     <StrictMode>
-      <RouterProvider router={router} />
-      <Toaster />
+      <ThemeProvider>
+        <RouterProvider router={router} />
+        <Toaster />
+      </ThemeProvider>
     </StrictMode>
   )
 }

@@ -20,6 +20,8 @@ import { Outlet, Link, useNavigate } from "@tanstack/react-router"
 import { useConfig, useConfigStore } from "@/stores/config"
 import { useSessionStore } from "@/stores/session"
 import { useEffect, useRef } from "react"
+import { ThemeToggle } from "@/components/theme"
+import { CommandPaletteProvider } from "@/components/command"
 
 // ============================================================================
 // Layout Component
@@ -56,9 +58,10 @@ export function AppLayout() {
   const appName = (config?.appName as string | undefined) ?? "CodeCoder"
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-      {/* Header */}
-      <header className="flex h-14 items-center justify-between border-b bg-background px-4 sm:px-6 shrink-0">
+    <CommandPaletteProvider>
+      <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+        {/* Header */}
+        <header className="flex h-14 items-center justify-between border-b bg-background px-4 sm:px-6 shrink-0">
         <div className="flex items-center gap-3">
           <Link to="/">
             <div className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary text-primary-foreground">
@@ -68,7 +71,8 @@ export function AppLayout() {
           <h1 className="text-lg font-semibold">{appName}</h1>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Link to="/settings">
             <button
               type="button"
@@ -169,6 +173,27 @@ export function AppLayout() {
                 Files
               </button>
             </Link>
+            <Link to="/documents">
+              <button
+                type="button"
+                className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                </svg>
+                Documents
+              </button>
+            </Link>
           </div>
 
           <div className="border-t" />
@@ -180,6 +205,7 @@ export function AppLayout() {
         </main>
       </div>
     </div>
+    </CommandPaletteProvider>
   )
 }
 

@@ -66,6 +66,16 @@ const filesRoute = createRoute({
 })
 
 // ============================================================================
+// Documents Route
+// ============================================================================
+
+const documentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/documents",
+  component: lazyRouteComponent(() => import("./pages/Documents"), "Documents"),
+})
+
+// ============================================================================
 // Route Tree Assembly
 // ============================================================================
 
@@ -74,6 +84,7 @@ const routeTree = rootRoute.addChildren([
   sessionsRoute.addChildren([sessionRoute]),
   settingsRoute,
   filesRoute,
+  documentsRoute,
 ])
 
 // ============================================================================

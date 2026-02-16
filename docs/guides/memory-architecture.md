@@ -2,27 +2,55 @@
 
 > 文档类型: guide
 > 创建时间: 2026-02-05
+> 最后更新: 2026-02-16
 > 状态: active
 
 ## 概述
 
-CodeCoder 采用双记忆系统架构，分别服务于不同的使用场景：
+CodeCoder 采用多层记忆系统架构，分别服务于不同的使用场景：
 
 1. **技术记忆系统** - 用于代码理解和索引
 2. **Markdown 记忆系统** - 用于用户偏好、决策、经验教训的持久化
+3. **ZeroBot 记忆系统** - 跨系统共享记忆 (SQLite)
+4. **记忆路由器** - 统一写入入口，自动路由到正确存储层
+5. **记忆桥接层** - 组合多系统上下文，带 TTL 缓存
+
+## 系统架构图
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     MemoryRouter                             │
+│            (统一写入入口，自动路由)                            │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Markdown   │  │  Technical  │  │   ZeroBot   │
+│   Memory    │  │   Memory    │  │   Memory    │
+│ (MEMORY.md) │  │ (patterns)  │  │ (brain.db)  │
+└─────────────┘  └─────────────┘  └─────────────┘
+         │               │               │
+         └───────────────┼───────────────┘
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   MemoryBridge                               │
+│         (组合上下文，30秒 TTL 缓存)                           │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## 系统对比
 
-| 特性 | 技术记忆系统 | Markdown 记忆系统 |
-|------|-------------|------------------|
-| **代码路径** | `packages/ccode/src/memory/` | `packages/ccode/src/memory-markdown/` |
-| **存储位置** | 内部数据结构 | 项目目录 `./memory/` |
-| **存储格式** | 二进制/内部 | Markdown 文本 |
-| **人类可读** | 否 | 是 |
-| **Git 友好** | 否 | 是 |
-| **检索方式** | 向量搜索 | 文本读取 |
-| **主要用途** | 代码结构、API 端点 | 用户偏好、关键决策 |
-| **依赖关系** | 独立 | 独立 |
+| 特性 | 技术记忆系统 | Markdown 记忆系统 | ZeroBot 记忆系统 |
+|------|-------------|------------------|------------------|
+| **代码路径** | `src/memory/` | `src/memory-markdown/` | `src/memory-zerobot/` |
+| **存储位置** | 内部数据结构 | 项目 `./memory/` | `~/.codecoder/workspace/memory/brain.db` |
+| **存储格式** | 二进制/内部 | Markdown 文本 | SQLite + FTS5 |
+| **人类可读** | 否 | 是 | 部分 (SQL) |
+| **Git 友好** | 否 | 是 | 否 |
+| **检索方式** | 向量搜索 | 文本读取 | FTS5 全文搜索 |
+| **主要用途** | 代码结构、API 端点 | 用户偏好、关键决策 | 跨系统共享 |
+| **默认访问** | 读写 | 读写 | **只读** |
 
 ## 技术记忆系统
 
@@ -185,15 +213,121 @@ codecoder memory stats
 
 ### 功能
 
-将两套记忆系统组合成统一的上下文：
+将多套记忆系统组合成统一的上下文，并提供 TTL 缓存减少重复加载：
 
 ```typescript
-buildMemoryContext(): Promise<{
+// 构建组合上下文（带 30 秒缓存）
+buildMemoryContext(options?: BuildMemoryContextOptions): Promise<{
   technical: AgentContext      // 来自技术记忆系统
   markdown: MemoryContext      // 来自 Markdown 记忆系统
   formatted: string            // 组合后的格式化上下文
 }>
+
+// 强制跳过缓存
+buildMemoryContext({ skipCache: true })
+
+// 手动失效缓存
+invalidateMemoryCache(): void
 ```
+
+### 缓存策略
+
+- **TTL**: 30 秒自动过期
+- **Options Hash**: 不同参数使用独立缓存
+- **自动失效**: `routeMemoryWrite()` 成功后自动失效
+- **手动失效**: 调用 `invalidateMemoryCache()`
+
+## 记忆路由器
+
+### 代码路径
+
+`packages/ccode/src/agent/memory-router.ts`
+
+### 功能
+
+统一写入入口，根据数据类型自动路由到正确的存储层：
+
+| 类型 | 路由目标 | 说明 |
+|------|----------|------|
+| `preference` | MEMORY.md/用户偏好 | 长期用户偏好 |
+| `decision` | MEMORY.md/关键决策 | 需要审计的决策 |
+| `lesson` | MEMORY.md/经验教训 | 知识沉淀 |
+| `context` | MEMORY.md/项目上下文 | 项目特定上下文 |
+| `daily` | daily/*.md | 每日流水日志 |
+| `pattern` | preferences/patterns | 代码模式学习 |
+
+### API
+
+```typescript
+// 主路由函数
+routeMemoryWrite(request: MemoryWriteRequest): Promise<MemoryWriteResult>
+
+// 批量写入
+batchMemoryWrite(requests: MemoryWriteRequest[]): Promise<MemoryWriteResult[]>
+
+// 便捷函数
+writePreference(key: string, content: string): Promise<MemoryWriteResult>
+writeDecision(key: string, content: string): Promise<MemoryWriteResult>
+writeLesson(key: string, content: string): Promise<MemoryWriteResult>
+writeDailyNote(key: string, content: string, entryType?: DailyEntryType): Promise<MemoryWriteResult>
+learnPattern(pattern: string): Promise<MemoryWriteResult>
+```
+
+### 使用示例
+
+```typescript
+import { routeMemoryWrite, writePreference } from "@/agent/memory-router"
+
+// 使用主函数
+await routeMemoryWrite({
+  type: "preference",
+  key: "editor",
+  content: "Uses Neovim for all editing"
+})
+
+// 使用便捷函数
+await writePreference("lang", "Prefers Rust over Python")
+await writeDecision("arch", "Adopted event-driven architecture")
+await writeLesson("testing", "Always mock external services")
+```
+
+## ZeroBot 记忆系统
+
+### 代码路径
+
+`packages/ccode/src/memory-zerobot/`
+
+### 功能
+
+访问 ZeroBot (Rust) 的 SQLite 记忆数据库，实现跨系统共享：
+
+```typescript
+import { createZeroBotMemory } from "@/memory-zerobot"
+
+const memory = createZeroBotMemory()  // 默认只读
+
+if (memory.isAvailable()) {
+  // 查询记忆
+  const results = memory.recall("programming language", 5)
+
+  // 获取特定记忆
+  const pref = memory.get("user_preference")
+
+  // 检查是否可写
+  if (memory.isWritable()) {
+    memory.store("key", "content", "core")
+  }
+
+  // 安全写入（只读模式返回 false）
+  const success = memory.tryStore("key", "content", "core")
+}
+```
+
+### 安全设计
+
+- **默认只读**: `readOnly` 默认为 `true`，防止意外修改 ZeroBot 数据
+- **显式可写**: 需要 `createZeroBotMemory({ readOnly: false })` 才能写入
+- **安全写入**: `tryStore()` 在只读模式返回 `false` 而不是抛异常
 
 ## 集成到 Agent
 

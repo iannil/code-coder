@@ -1,5 +1,5 @@
 import z from "zod"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import { Instance } from "../project/instance"
 import { BusEvent } from "./bus-event"
 

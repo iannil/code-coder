@@ -1,6 +1,13 @@
 import { Identifier } from "../id/id"
 import z from "zod"
 
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
+const defaultRecord = <V extends z.ZodTypeAny>(valueSchema: V) =>
+  z.record(z.string(), valueSchema).optional().transform((v) => v ?? {} as Record<string, z.infer<V>>)
+
 export namespace DocumentSchema {
   export const Status = z.enum(["planning", "writing", "reviewing", "completed"])
   export type Status = z.infer<typeof Status>
@@ -45,19 +52,17 @@ export namespace DocumentSchema {
     id: z.string(),
     type: EntityType,
     name: z.string(),
-    aliases: z.array(z.string()).default([]),
+    aliases: defaultArray(z.string()),
     description: z.string(),
     firstAppearedChapterID: z.string(),
-    attributes: z.record(z.string(), z.string()).default({}),
-    relationships: z
-      .array(
-        z.object({
-          targetEntityID: z.string(),
-          type: z.string(),
-          description: z.string(),
-        }),
-      )
-      .default([]),
+    attributes: defaultRecord(z.string()),
+    relationships: defaultArray(
+      z.object({
+        targetEntityID: z.string(),
+        type: z.string(),
+        description: z.string(),
+      }),
+    ),
     createdAt: z.number().int().nonnegative(),
     updatedAt: z.number().int().nonnegative(),
   })
@@ -88,9 +93,9 @@ export namespace DocumentSchema {
 
   export const GlobalSummary = z.object({
     overallPlot: z.string().max(2000),
-    mainThemes: z.array(z.string()).default([]),
+    mainThemes: defaultArray(z.string()),
     writingStyle: z.string().max(1000),
-    keyArcs: z.array(KeyArc).default([]),
+    keyArcs: defaultArray(KeyArc),
     lastUpdated: z.number().int().nonnegative(),
   })
   export type GlobalSummary = z.infer<typeof GlobalSummary>
@@ -118,9 +123,9 @@ export namespace DocumentSchema {
     message: z.string(),
     timestamp: z.number().int().nonnegative(),
     baselineSnapshotID: z.string().optional(),
-    chapterDeltas: z.array(ChapterDelta).default([]),
+    chapterDeltas: defaultArray(ChapterDelta),
     globalSummary: GlobalSummary.optional(),
-    entityDeltas: z.array(EntityDelta).default([]),
+    entityDeltas: defaultArray(EntityDelta),
     chapterCount: z.number().int().nonnegative(),
     totalWords: z.number().int().nonnegative(),
   })
@@ -143,9 +148,9 @@ export namespace DocumentSchema {
   // Selected context for chapter writing
   export const SelectedContext = z.object({
     globalSummary: z.string().optional(),
-    relevantEntities: z.array(Entity).default([]),
-    volumeSummaries: z.array(z.object({ volume: Volume, summary: z.string() })).default([]),
-    chapterSummaries: z.array(z.object({ chapterID: z.string(), title: z.string(), summary: z.string() })).default([]),
+    relevantEntities: defaultArray(Entity),
+    volumeSummaries: defaultArray(z.object({ volume: Volume, summary: z.string() })),
+    chapterSummaries: defaultArray(z.object({ chapterID: z.string(), title: z.string(), summary: z.string() })),
     recentChapterContent: z.string().optional(),
     currentChapterOutline: ChapterOutline,
     styleGuide: StyleGuide.optional(),
@@ -167,7 +172,7 @@ export namespace DocumentSchema {
   export const ConsistencyReport = z.object({
     documentID: z.string(),
     timestamp: z.number().int().nonnegative(),
-    issues: z.array(ConsistencyIssue).default([]),
+    issues: defaultArray(ConsistencyIssue),
     summary: z.object({
       critical: z.number().int().nonnegative(),
       high: z.number().int().nonnegative(),
@@ -227,7 +232,7 @@ export namespace DocumentSchema {
     timestamp: z.number().int().nonnegative(),
     scope: z.enum(["chapter", "document", "selection"]),
     chapterID: z.string().optional(),
-    issues: z.array(ProofreaderIssue).default([]),
+    issues: defaultArray(ProofreaderIssue),
     summary: z.object({
       byType: z.record(z.string(), z.number().int().nonnegative()),
       bySeverity: z.record(z.string(), z.number().int().nonnegative()),
@@ -253,7 +258,7 @@ export namespace DocumentSchema {
     styleGuide: StyleGuide.optional(),
     // New fields for long document support
     globalSummary: GlobalSummary.optional(),
-    volumes: z.array(z.string()).default([]), // volume IDs
+    volumes: defaultArray(z.string()), // volume IDs
   })
   export type Metadata = z.infer<typeof Metadata>
 
@@ -271,7 +276,7 @@ export namespace DocumentSchema {
     updatedAt: z.number().int().nonnegative(),
     // New fields
     volumeID: z.string().optional(),
-    mentionedEntityIDs: z.array(z.string()).default([]),
+    mentionedEntityIDs: defaultArray(z.string()),
   })
   export type Chapter = z.infer<typeof Chapter>
 }

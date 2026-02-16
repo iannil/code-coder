@@ -143,14 +143,39 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 
 **建议**: 这些错误不影响核心功能和测试运行，可以后续逐步修复。
 
+## 8. 新增技术债务 (2026-02-16)
+
+### 8.1 BookExpander Zod 兼容性问题
+
+- **状态**: 🚧 待解决
+- **问题**: Zod v4 + Bun 的 escapeRegex 错误
+- **影响**: BookExpander 模块无法正常运行
+- **文档**: `docs/progress/2026-02-13-bookexpander-implementation.md`
+
+### 8.2 CodeCoder + ZeroBot 类型共享
+
+- **状态**: 🚧 待规划
+- **问题**: Rust 和 TypeScript 之间缺乏类型同步机制
+- **影响**: 手动维护两端类型定义，容易不一致
+- **位置**: `services/zero-bot/` 和 `packages/ccode/src/memory-zerobot/`
+
+### 8.3 存储路径迁移后清理
+
+- **状态**: ✅ 已完成
+- **内容**: 路径从 `~/.zero-bot` 迁移到 `~/.codecoder`
+- **后续**: 用户需手动执行 `mv ~/.zero-bot/* ~/.codecoder/`
+- **文档**: `docs/reports/completed/2026-02-16-storage-path-migration.md`
+
 ## 优先级
 
 | 优先级 | 任务                          | 状态            | 预计工作量 |
 | ------ | ----------------------------- | --------------- | ---------- |
 | 高     | 统一工具函数到 packages/util  | ✓ 已完成        | 2小时      |
 | 高     | 标准化导入路径                | 部分完成        | 3小时      |
+| 高     | BookExpander Zod 兼容性       | 🆕 待解决       | 2小时      |
 | 中     | 清理过时测试                  | ✓ 已验证有效    | 1小时      |
 | 中     | 重写 Skills 文档              | ✓ 已完成        | 1小时      |
+| 中     | ZeroBot 类型共享              | 🆕 待规划       | 4小时      |
 | 低     | 审查依赖                      | ✓ 已完成        | 1小时      |
 | 低     | 修复 TS 类型错误              | 部分完成        | 4小时      |
 
@@ -165,3 +190,5 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 - 2026-02-05: ✅ 修复 5 个失败测试 (provider source 类型错误和 defaultAgent 测试)
 - 2026-02-05: ✅ console.log 清理 - 确认所有使用都在适当的 CLI 命令中
 - 2026-02-05: ✅ 文档整理完成 - 移动已完成文档，创建记忆系统架构文档，更新索引链接 ([2026-02-05-doc-reorg.md](progress/2026-02-05-doc-reorg.md))
+- 2026-02-16: 添加新技术债务 - BookExpander Zod 兼容性问题、ZeroBot 类型共享；文档归档整理（11个文档从 progress 移至 completed）
+- 2026-02-16: 完成存储路径迁移；更新技术债务列表；规范化报告文件命名

@@ -1,6 +1,6 @@
 import { Bus } from "../bus"
 import { File } from "../file"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import path from "path"
 import z from "zod"
 

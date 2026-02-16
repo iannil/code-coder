@@ -1,4 +1,5 @@
 import { realpathSync } from "fs"
+import fs from "fs/promises"
 import { dirname, join, relative } from "path"
 
 export namespace Filesystem {
@@ -89,5 +90,22 @@ export namespace Filesystem {
       current = parent
     }
     return result
+  }
+
+  /**
+   * Atomically write content to a file using temp file + rename.
+   * This prevents data corruption if the process is interrupted during write.
+   */
+  export async function atomicWrite(filepath: string, content: string): Promise<void> {
+    const dir = dirname(filepath)
+    await fs.mkdir(dir, { recursive: true })
+    const tempPath = `${filepath}.${Date.now()}.tmp`
+    try {
+      await Bun.write(tempPath, content)
+      await fs.rename(tempPath, filepath)
+    } catch (e) {
+      await fs.unlink(tempPath).catch(() => {})
+      throw e
+    }
   }
 }

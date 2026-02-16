@@ -10,7 +10,7 @@ import { Identifier } from "../id/id"
 import { VERSION } from "../version"
 
 import { Storage } from "../storage/storage"
-import { Log } from "../util/log"
+import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { Instance } from "../project/instance"
 import { SessionPrompt } from "./prompt"

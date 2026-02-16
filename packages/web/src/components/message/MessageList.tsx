@@ -16,6 +16,7 @@ import { useMessages, useMessagesLoading } from "@/stores/message"
 import { MessageItem } from "./MessageItem"
 import { ScrollArea } from "../ui/ScrollArea"
 import { Button } from "../ui/Button"
+import { Skeleton } from "../ui/Skeleton"
 
 // ============================================================================
 // Interfaces
@@ -37,13 +38,13 @@ interface MessageSkeletonProps {
 function MessageSkeleton({ className }: MessageSkeletonProps) {
   return (
     <div className={cn("flex gap-3 p-4", className)}>
-      <div className="h-8 w-8 shrink-0 rounded-full bg-muted animate-pulse" />
+      <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
       <div className="flex-1 space-y-2">
-        <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+        <Skeleton className="h-4 w-24" />
         <div className="space-y-1">
-          <div className="h-4 w-full bg-muted animate-pulse rounded" />
-          <div className="h-4 w-5/6 bg-muted animate-pulse rounded" />
-          <div className="h-4 w-4/6 bg-muted animate-pulse rounded" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-5/6" />
+          <Skeleton className="h-4 w-4/6" />
         </div>
       </div>
     </div>

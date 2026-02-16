@@ -155,6 +155,82 @@ export async function registerRoutes(): Promise<void> {
   const { listPermissions, respondPermission, replyPermission } = await import("./handlers/permission")
   const { findFiles, findFilesCache } = await import("./handlers/find")
   const { streamEvents, listEventChannels } = await import("./handlers/event")
+  const { listAgents, invokeAgent, getAgent } = await import("./handlers/agent")
+  const { createTask, listTasks, getTask, streamTaskEvents, interactTask, deleteTask } = await import(
+    "./handlers/task"
+  )
+  const {
+    listProviders,
+    listConnectedProviders,
+    getProviderAuthMethods,
+    getProvider,
+    getProviderModels,
+  } = await import("./handlers/provider")
+  const {
+    getMcpStatus,
+    getMcpTools,
+    getMcpResources,
+    connectMcp,
+    disconnectMcp,
+    toggleMcp,
+    getMcpAuthStatus,
+    startMcpAuth,
+    finishMcpAuth,
+  } = await import("./handlers/mcp")
+
+  // Document/Writing handlers
+  const {
+    listDocuments,
+    getDocument,
+    createDocument,
+    updateDocument,
+    deleteDocument,
+    getDocumentStats,
+    exportDocument,
+    listChapters,
+    getChapter,
+    updateChapter,
+    listEntities,
+    createEntity,
+    updateEntity,
+    deleteEntity,
+    listVolumes,
+    createVolume,
+  } = await import("./handlers/document")
+
+  // Memory handlers
+  const {
+    listDailyDates,
+    getDailyNotes,
+    appendDailyNoteHandler,
+    getLongTermMemory,
+    getMemorySectionsHandler,
+    updateCategoryHandler,
+    mergeToCategoryHandler,
+    getConsolidationStatsHandler,
+    triggerConsolidation,
+    getMemorySummaryHandler,
+  } = await import("./handlers/memory")
+
+  // Hooks handlers
+  const { listHooks, getHooksByLifecycle, getHooksSettings, getHookLocations, getActionTypes } = await import(
+    "./handlers/hooks"
+  )
+
+  // LSP handlers
+  const {
+    getLspStatus,
+    getLspDiagnostics,
+    getLspConfig,
+    checkLspAvailable,
+    initLsp,
+    touchFile,
+    getHover,
+    getDefinition,
+    getReferences,
+    getWorkspaceSymbols,
+    getDocumentSymbols,
+  } = await import("./handlers/lsp")
 
   // Session routes
   router.get("/api/sessions", listSessions)
@@ -182,6 +258,87 @@ export async function registerRoutes(): Promise<void> {
   // Event routes
   router.get("/api/events", streamEvents)
   router.get("/api/events/channels", listEventChannels)
+
+  // Agent routes (for ZeroBot integration - legacy)
+  router.get("/api/agents", listAgents)
+  router.get("/api/agent/:agentId", getAgent)
+  router.post("/api/agent/invoke", invokeAgent)
+
+  // Task routes (async task flow model for ZeroBot integration - v1)
+  router.post("/api/v1/tasks", createTask)
+  router.get("/api/v1/tasks", listTasks)
+  router.get("/api/v1/tasks/:id", getTask)
+  router.get("/api/v1/tasks/:id/events", streamTaskEvents)
+  router.post("/api/v1/tasks/:id/interact", interactTask)
+  router.delete("/api/v1/tasks/:id", deleteTask)
+
+  // Provider routes (for Web UI model selection and provider management)
+  router.get("/api/providers", listProviders)
+  router.get("/api/providers/connected", listConnectedProviders)
+  router.get("/api/providers/auth", getProviderAuthMethods)
+  router.get("/api/providers/:providerId", getProvider)
+  router.get("/api/providers/:providerId/models", getProviderModels)
+
+  // MCP routes (for Web UI MCP server management)
+  router.get("/api/mcp/status", getMcpStatus)
+  router.get("/api/mcp/tools", getMcpTools)
+  router.get("/api/mcp/resources", getMcpResources)
+  router.post("/api/mcp/:name/connect", connectMcp)
+  router.post("/api/mcp/:name/disconnect", disconnectMcp)
+  router.post("/api/mcp/:name/toggle", toggleMcp)
+  router.get("/api/mcp/:name/auth-status", getMcpAuthStatus)
+  router.post("/api/mcp/:name/auth/start", startMcpAuth)
+  router.post("/api/mcp/:name/auth/finish", finishMcpAuth)
+
+  // Document/Writing routes
+  router.get("/api/documents", listDocuments)
+  router.get("/api/documents/:id", getDocument)
+  router.post("/api/documents", createDocument)
+  router.put("/api/documents/:id", updateDocument)
+  router.delete("/api/documents/:id", deleteDocument)
+  router.get("/api/documents/:id/stats", getDocumentStats)
+  router.get("/api/documents/:id/export", exportDocument)
+  router.get("/api/documents/:id/chapters", listChapters)
+  router.get("/api/documents/:id/chapters/:chapterId", getChapter)
+  router.put("/api/documents/:id/chapters/:chapterId", updateChapter)
+  router.get("/api/documents/:id/entities", listEntities)
+  router.post("/api/documents/:id/entities", createEntity)
+  router.put("/api/documents/:id/entities/:entityId", updateEntity)
+  router.delete("/api/documents/:id/entities/:entityId", deleteEntity)
+  router.get("/api/documents/:id/volumes", listVolumes)
+  router.post("/api/documents/:id/volumes", createVolume)
+
+  // Memory routes
+  router.get("/api/memory/daily", listDailyDates)
+  router.get("/api/memory/daily/:date", getDailyNotes)
+  router.post("/api/memory/daily", appendDailyNoteHandler)
+  router.get("/api/memory/long-term", getLongTermMemory)
+  router.get("/api/memory/sections", getMemorySectionsHandler)
+  router.put("/api/memory/category/:category", updateCategoryHandler)
+  router.post("/api/memory/category/:category/merge", mergeToCategoryHandler)
+  router.get("/api/memory/consolidation/stats", getConsolidationStatsHandler)
+  router.post("/api/memory/consolidation", triggerConsolidation)
+  router.get("/api/memory/summary", getMemorySummaryHandler)
+
+  // Hooks routes
+  router.get("/api/hooks", listHooks)
+  router.get("/api/hooks/settings", getHooksSettings)
+  router.get("/api/hooks/locations", getHookLocations)
+  router.get("/api/hooks/action-types", getActionTypes)
+  router.get("/api/hooks/:lifecycle", getHooksByLifecycle)
+
+  // LSP routes
+  router.get("/api/lsp/status", getLspStatus)
+  router.get("/api/lsp/diagnostics", getLspDiagnostics)
+  router.get("/api/lsp/config", getLspConfig)
+  router.get("/api/lsp/available", checkLspAvailable)
+  router.post("/api/lsp/init", initLsp)
+  router.post("/api/lsp/touch", touchFile)
+  router.post("/api/lsp/hover", getHover)
+  router.post("/api/lsp/definition", getDefinition)
+  router.post("/api/lsp/references", getReferences)
+  router.post("/api/lsp/workspace-symbols", getWorkspaceSymbols)
+  router.post("/api/lsp/document-symbols", getDocumentSymbols)
 }
 
 // ============================================================================

@@ -5,6 +5,10 @@ import * as Knowledge from "./knowledge"
 import { Entity } from "./entity"
 import { Volume } from "./volume"
 
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
 // Default token budget for 200k context window (Claude 3.6+)
 const DEFAULT_BUDGET: DocumentSchema.ContextBudget = {
   totalTokens: 200000,
@@ -483,22 +487,22 @@ export namespace Context {
   export const KnowledgeAwareContext = z.object({
     // Base context fields
     globalSummary: z.string().optional(),
-    relevantEntities: z.array(DocumentSchema.Entity).default([]),
-    volumeSummaries: z.array(z.object({ volume: DocumentSchema.Volume, summary: z.string() })).default([]),
-    chapterSummaries: z.array(z.object({ chapterID: z.string(), title: z.string(), summary: z.string() })).default([]),
+    relevantEntities: defaultArray(DocumentSchema.Entity),
+    volumeSummaries: defaultArray(z.object({ volume: DocumentSchema.Volume, summary: z.string() })),
+    chapterSummaries: defaultArray(z.object({ chapterID: z.string(), title: z.string(), summary: z.string() })),
     recentChapterContent: z.string().optional(),
     currentChapterOutline: DocumentSchema.ChapterOutline,
     styleGuide: DocumentSchema.StyleGuide.optional(),
 
     // Knowledge-aware fields
     knowledgeFramework: Knowledge.KnowledgeSchema.ThematicFramework.optional(),
-    relevantKnowledgeNodes: z.array(Knowledge.KnowledgeSchema.KnowledgeNode).default([]),
-    argumentChains: z.array(Knowledge.KnowledgeSchema.ArgumentChain).default([]),
-    storyArcs: z.array(Knowledge.KnowledgeSchema.StoryArc).default([]),
+    relevantKnowledgeNodes: defaultArray(Knowledge.KnowledgeSchema.KnowledgeNode),
+    argumentChains: defaultArray(Knowledge.KnowledgeSchema.ArgumentChain),
+    storyArcs: defaultArray(Knowledge.KnowledgeSchema.StoryArc),
     worldFramework: Knowledge.KnowledgeSchema.WorldFramework.optional(),
-    establishedFacts: z.array(z.string()).default([]),
-    pendingConclusions: z.array(z.string()).default([]),
-    thematicPrinciples: z.array(z.string()).default([]),
+    establishedFacts: defaultArray(z.string()),
+    pendingConclusions: defaultArray(z.string()),
+    thematicPrinciples: defaultArray(z.string()),
   })
   export type KnowledgeAwareContext = z.infer<typeof KnowledgeAwareContext>
 

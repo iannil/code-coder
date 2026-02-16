@@ -23,6 +23,7 @@ export namespace Identifier {
     timeline: "timeline",
     knowledge: "kn",
     argument: "arg",
+    task: "tsk",
   } as const
 
   export function schema(prefix: keyof typeof prefixes) {

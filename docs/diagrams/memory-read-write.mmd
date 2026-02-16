@@ -1,0 +1,35 @@
+flowchart LR
+    subgraph 写入操作["写入操作 (Write)"]
+        direction TB
+        W1["ZeroBot 写入"]
+        W2["CodeCoder 写入"]
+    end
+
+    subgraph 读取操作["读取操作 (Read)"]
+        direction TB
+        R1["ZeroBot 读取"]
+        R2["CodeCoder 读取"]
+    end
+
+    SQLite[("SQLite\nbrain.db")]
+    MD[("Markdown\n./memory/")]
+
+    %% Write operations
+    W1 ==>|读写| SQLite
+    W2 -->|默认只读\n显式开启可写| SQLite
+    W2 ==>|读写| MD
+
+    %% Read operations
+    R1 -->|FTS5搜索| SQLite
+    R2 -->|FTS5搜索| SQLite
+    R2 -->|文本匹配| MD
+
+    classDef write fill:#c62828,stroke:#b71c1c,color:#fff
+    classDef read fill:#1565c0,stroke:#0d47a1,color:#fff
+    classDef sqlite fill:#ff8f00,stroke:#e65100,color:#000
+    classDef md fill:#2e7d32,stroke:#1b5e20,color:#fff
+
+    class W1,W2 write
+    class R1,R2 read
+    class SQLite sqlite
+    class MD md

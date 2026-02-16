@@ -6,56 +6,48 @@
 
 [English](./README.md)
 
-一个融合工程能力与决策智慧的 AI 个人工作台。
+**融合工程能力与决策智慧的 AI 个人工作台。**
 
 CodeCoder 不只是一个编程助手。它是为所有正在被 AI 改变工作方式的人设计的综合平台——开发者、分析师、写作者、决策者、独立创作者。基于[祝融说](https://zhurongshuo.com)哲学框架构建，它将结构化思维与实用工具融为一体。
 
-## 为什么选择 CodeCoder？
+## 我们解决什么问题
 
-在 AI 普及的时代，挑战不在于如何访问 AI，而在于如何与 AI 一起思考。CodeCoder 通过以下方式应对这一挑战：
+在 AI 普及的时代，挑战不在于如何访问 AI，而在于**如何与 AI 一起思考**。
 
-- 多维度辅助 - 不止于代码，还有决策、分析和内容创作
-- 哲学根基 - CLOSE 框架支撑可持续决策
-- 提供商灵活性 - 通过统一接口连接 30+ AI 提供商
-- 专业化能力 - 23+ 面向不同领域的专业 Agent
+大多数 AI 工具专注于回答问题。CodeCoder 专注于帮助你提出更好的问题、做出更好的决策。我们相信：
+
+- **多维度辅助** - 不止于代码，还有决策、分析和内容创作
+- **哲学根基** - CLOSE 框架支撑可持续决策
+- **提供商灵活性** - 通过统一接口连接 30+ AI 提供商
+- **专业化能力** - 25+ 面向不同领域的专业 Agent
 
 ## 核心哲学
 
-CodeCoder 构建在一套独特的哲学框架之上，它重新定义了我们应对不确定性和做出决策的方式。
+CodeCoder 构建在**祝融说**之上，这是一套独特的哲学框架，它重新定义了我们应对不确定性和做出决策的方式。
 
 ### 本体论：实在的生成
 
-可能性基底
-
+**可能性基底**
 - 终极实在不是静态的「实体」，而是包含一切潜能的无限场域
 - 一切确定的现实都是从这个「可能性海洋」中涌现的
 - 过程优先于实体，生成（Becoming）优先于存在（Being）
 
-观察即收敛
-
+**观察即收敛**
 - 「观察」是一种创造性行为，而非被动接收
 - 观察导致可能性「坍缩」为确定性
 - 存在即被观察（To be is to be observed）
 
-观察共识
-
+**观察共识**
 - 宏观世界的稳定性源于多层级观察者的「共同投票」
 - 物理定律是宇宙最底层的「规则共识」
 - 社会现实是人类集体观察的「符号共识」
 
 ### 实践论：可持续决策
 
-可用余量（Available Surplus）
-
+**可用余量（Available Surplus）**
 - 尚未被固化的潜能空间
 - 自由意志、创造力和系统韧性的来源
 - 可持续决策保留余量；最优决策往往消耗余量
-
-选择权优势
-
-- 智慧选择在于为未来「预留可能性」
-- 可持续决策 > 最优决策
-- 保持「再来一次」的能力比追求「最优解」更重要
 
 ### CLOSE 五维评估框架
 
@@ -63,11 +55,11 @@ CodeCoder 构建在一套独特的哲学框架之上，它重新定义了我们�
 
 | 维度 | 核心问题 | 关注点 |
 |------|----------|--------|
-| Convergence 收敛 | 这个选择会收敛多少可能性？ | 保留未来选项 |
-| Leverage 杠杆 | 是否存在非对称收益？ | 风险收益不对称性 |
-| Optionality 选择权 | 这个决定可以反悔吗？成本多大？ | 可逆性 |
-| Surplus 余量 | 消耗多少缓冲资源？ | 资源保护 |
-| Evolution 演化 | 能带来成长和学习机会吗？ | 学习潜力 |
+| **C**onvergence 收敛 | 这个选择会收敛多少可能性？ | 保留未来选项 |
+| **L**everage 杠杆 | 是否存在非对称收益？ | 风险收益不对称性 |
+| **O**ptionality 选择权 | 这个决定可以反悔吗？成本多大？ | 可逆性 |
+| **S**urplus 余量 | 消耗多少缓冲资源？ | 资源保护 |
+| **E**volution 演化 | 能带来成长和学习机会吗？ | 学习潜力 |
 
 > 「可持续决策 > 最优决策。能够继续玩下去，比赢一次更重要。」
 
@@ -75,19 +67,13 @@ CodeCoder 构建在一套独特的哲学框架之上，它重新定义了我们�
 
 CodeCoder 将能力组织为三个相互关联的层次：
 
-### 工程层
+| 层次 | 能力 |
+|------|------|
+| **工程层** | 代码审查、安全分析、TDD 指导、架构设计、逆向工程、验证 |
+| **领域层** | 宏观经济、交易分析、选品策略、极小产品开发、AI 工程 |
+| **思维层** | 观察者理论分析、CLOSE 框架决策评估、可能性空间探索 |
 
-代码审查、安全分析、TDD 指导、架构设计、逆向工程、形式化验证。
-
-### 领域层
-
-宏观经济、交易分析、选品策略、极小产品开发、AI 工程指导。
-
-### 思维层
-
-观察者理论分析、CLOSE 框架决策评估、可能性空间探索。
-
-## 专业 Agent（23+）
+## 专业 Agent（25+）
 
 ### 主模式
 
@@ -101,11 +87,12 @@ CodeCoder 将能力组织为三个相互关联的层次：
 
 | Agent | 用途 |
 |-------|------|
+| `general` | 通用研究代理 - 多步骤任务、并行工作执行 |
 | `code-reviewer` | 代码质量审查 - 识别代码异味、命名问题、可维护性 |
 | `security-reviewer` | 安全漏洞分析 - OWASP Top 10、注入风险、认证问题 |
 | `tdd-guide` | 测试驱动开发指导 - 红-绿-重构循环、覆盖率 |
 | `architect` | 系统架构设计 - 接口定义、设计模式、技术决策 |
-| `verifier` | 形式化验证 - 基于属性的测试、不变量验证 |
+| `verifier` | 全面验证 - 构建、类型、lint 检查、测试套件、覆盖率 |
 | `explore` | 快速代码库探索 - 模式搜索、结构理解 |
 
 ### 逆向工程
@@ -115,7 +102,7 @@ CodeCoder 将能力组织为三个相互关联的层次：
 | `code-reverse` | 网站像素级复刻规划 |
 | `jar-code-reverse` | Java JAR 文件分析与源码重建 |
 
-### 领域类 Agent
+### 领域类 Agent（祝融说系列）
 
 | Agent | 用途 |
 |-------|------|
@@ -124,8 +111,9 @@ CodeCoder 将能力组织为三个相互关联的层次：
 | `picker` | 选品策略 - 七宗罪选品法、市场机会发现 |
 | `miniproduct` | 极小产品教练 - MVP 设计、AI 辅助开发、变现策略 |
 | `ai-engineer` | AI 工程师导师 - Python、LLM 应用、RAG、微调、MLOps |
+| `synton-assistant` | SYNTON-DB 助手 - LLM 记忆数据库、张量图存储、PaQL 查询 |
 
-### 思维类 Agent
+### 思维类 Agent（祝融说系列）
 
 | Agent | 用途 |
 |-------|------|
@@ -139,6 +127,8 @@ CodeCoder 将能力组织为三个相互关联的层次：
 | `writer` | 长文写作 - 2 万字以上文档、章节规划、风格一致性 |
 | `proofreader` | 内容校对 - 语法、风格、PROOF 框架验证 |
 | `expander` | 内容扩展 - 将想法转化为完整书籍 |
+| `expander-fiction` | 虚构类扩展 - 小说创作、世界观构建、角色弧线 |
+| `expander-nonfiction` | 非虚构类扩展 - 逻辑论证、证据框架 |
 
 ## 功能特性
 
@@ -149,10 +139,22 @@ CodeCoder 将能力组织为三个相互关联的层次：
 | 类别 | 提供商 |
 |------|--------|
 | 主流 | Anthropic Claude、OpenAI、Google Gemini、Amazon Bedrock、Azure |
-| 专业 | xAI Grok、Mistral、Groq、Cerebras、Cohere |
+| 专业 | xAI Grok、Mistral、Groq、Cerebras、Cohere、Perplexity |
 | 聚合 | OpenRouter、Together AI、DeepInfra、Vercel AI |
 | 企业 | GitHub Copilot、GitLab Duo、Google Vertex AI |
 | 本地 | 任何 OpenAI 兼容端点（通过 MCP） |
+
+### 内置工具
+
+CodeCoder 包含 20+ 内置工具：
+
+| 类别 | 工具 |
+|------|------|
+| 文件操作 | `read`、`write`、`edit`、`glob`、`grep`、`ls` |
+| 代码智能 | `codesearch`、`lsp`、`bash` |
+| 网络 | `webfetch`、`websearch` |
+| 规划 | `task`、`todo`、`plan`、`question` |
+| 高级 | `batch`、`multiedit`、`apply_patch`、`network-analyzer` |
 
 ### 语言服务器协议（LSP）
 
@@ -180,10 +182,46 @@ TypeScript、Go、Rust、Python、Ruby、Java、Kotlin、C/C++、C#、Swift、Da
 
 透明、Git 友好的记忆架构：
 
-- 每日笔记：`./memory/daily/{YYYY-MM-DD}.md` - 只追加的每日日志
-- 长期记忆：`./memory/MEMORY.md` - 整理后的知识和偏好
+```
+memory/
+├── daily/              # 只追加的每日日志
+│   └── {YYYY-MM-DD}.md
+└── MEMORY.md           # 整理后的长期知识
+```
 
 所有记忆都是人类可读的 Markdown，受版本控制，可手动编辑。
+
+### HTTP API 服务器
+
+以无头服务器模式运行 CodeCoder：
+
+```bash
+ccode serve --port 4096
+```
+
+通过 HTTP API 暴露所有 Agent，便于与其他工具集成。
+
+### ZeroBot 集成
+
+CodeCoder 包含 [ZeroBot](./services/zero-bot/)，一个轻量级的 Rust AI 助手网关：
+
+| 特性 | 描述 |
+|------|------|
+| 多通道 | Telegram、Discord、Slack、WhatsApp、Matrix、iMessage、Email |
+| 24 个提供商 | OpenAI、Claude、Gemini、Groq、Mistral 等 |
+| 超小体积 | ~3.4MB 二进制文件，<5MB 内存 |
+| 双向集成 | ZeroBot 通过 HTTP API 调用 CodeCoder Agent |
+
+```toml
+# ~/.codecoder/config.toml
+[codecoder]
+enabled = true
+endpoint = "http://localhost:4096"
+```
+
+两个系统互为补充：
+- **ZeroBot**：多通道消息访问的轻量级网关
+- **CodeCoder**：复杂 AI 任务的全功能工作台
 
 ## 安装
 
@@ -236,7 +274,7 @@ ccode serve --port 4096
 
 ### 配置文件位置（优先级顺序）
 
-1. 全局：`~/.codecoder/config.json`
+1. 全局：`~/.config/codecoder/codecoder.json`
 2. 项目：`./codecoder.json` 或 `./.ccode/codecoder.json`
 3. 环境变量：`CCODE_CONFIG` 或 `CCODE_CONFIG_CONTENT`
 
@@ -244,7 +282,7 @@ ccode serve --port 4096
 
 ```json
 {
-  "$schema": "https://code-coder.com/config.json",
+  "$schema": "https://raw.githubusercontent.com/iannil/code-coder/main/packages/ccode/schema.json",
   "model": "anthropic/claude-sonnet-4-20250514",
   "default_agent": "build",
   "provider": {
@@ -297,11 +335,11 @@ ccode serve --port 4096
 
 ### 技术栈
 
-- 运行时：Bun 1.3+ + TypeScript ESM
-- UI 框架：OpenTUI + SolidJS
-- 验证：Zod schemas
-- AI SDK：Vercel AI SDK 多提供商支持
-- 构建：Bun 原生打包器
+- **运行时**：Bun 1.3+ + TypeScript ESM
+- **UI 框架**：OpenTUI + SolidJS
+- **验证**：Zod schemas
+- **AI SDK**：Vercel AI SDK 多提供商支持
+- **构建**：Bun 原生打包器
 
 ## 项目结构
 
@@ -318,6 +356,8 @@ codecoder/
 │   │   │   └── tool/    # 内置工具
 │   │   └── test/        # 测试套件
 │   └── util/            # 共享工具库
+├── services/
+│   └── zero-bot/        # Rust 消息网关（可选）
 ├── script/              # 构建和生成脚本
 ├── docs/                # 文档
 └── memory/              # 记忆存储

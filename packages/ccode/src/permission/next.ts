@@ -42,6 +42,26 @@ export namespace PermissionNext {
   })
   export type Ruleset = z.infer<typeof Ruleset>
 
+  /**
+   * Remote context for requests from external systems (e.g., ZeroBot)
+   * When present, dangerous operations will force "ask" action
+   */
+  export const RemoteContext = z
+    .object({
+      /** Source identifier: "remote" for external systems */
+      source: z.literal("remote"),
+      /** User identifier from the remote system */
+      userID: z.string(),
+      /** Platform: telegram, discord, slack, etc. */
+      platform: z.string(),
+      /** Task ID for tracking */
+      taskID: z.string().optional(),
+    })
+    .meta({
+      ref: "PermissionRemoteContext",
+    })
+  export type RemoteContext = z.infer<typeof RemoteContext>
+
   export function fromConfig(permission: Config.Permission) {
     const ruleset: Ruleset = []
     for (const [key, value] of Object.entries(permission)) {
@@ -78,6 +98,8 @@ export namespace PermissionNext {
           callID: z.string(),
         })
         .optional(),
+      /** Remote context when request originates from external system */
+      remoteContext: RemoteContext.optional(),
     })
     .meta({
       ref: "PermissionRequest",

@@ -1,0 +1,68 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#7aa2f7', 'lineColor': '#a9b1d6'}}}%%
+flowchart TB
+    subgraph Input["📥 Input Sources"]
+        UserInput["User Input"]
+        FileAttach["File Attachments"]
+        MCPTools["MCP Tool Results"]
+    end
+
+    subgraph Config["⚙️ Configuration"]
+        GlobalConfig["~/.ccode/codecoder.jsonc"]
+        ProjectConfig["./codecoder.jsonc"]
+        EnvVars["Environment Variables"]
+        Rules["rules/**/*.md"]
+        AgentDefs["agents/**/*.md"]
+    end
+
+    subgraph Session["💬 Session State"]
+        Messages["MessageV2[]"]
+        AgentInfo["Agent.Info"]
+        ModelInfo["Provider.Model"]
+        ToolState["Tool Registry"]
+    end
+
+    subgraph Storage["💾 Storage Layer"]
+        direction TB
+        SessionStore["Session Store<br/>(JSON)"]
+        Backup["_backup/<br/>(Auto)"]
+        Corrupted["_corrupted/<br/>(Isolated)"]
+        Health["Health Check"]
+    end
+
+    subgraph Memory["🧠 Memory System"]
+        Daily["daily/{date}.md<br/>(Flow Layer)"]
+        LongTerm["MEMORY.md<br/>(Sediment Layer)"]
+    end
+
+    subgraph Output["📤 Output"]
+        TUIDisplay["TUI Display"]
+        FileWrite["File Changes"]
+        APIResponse["API Response"]
+        SSEStream["SSE Events"]
+    end
+
+    UserInput --> Session
+    FileAttach --> Session
+    MCPTools --> Session
+
+    GlobalConfig --> Config
+    ProjectConfig --> Config
+    EnvVars --> Config
+    Rules --> Config
+    AgentDefs --> Config
+
+    Config --> Session
+
+    Session --> Storage
+    Storage --> Backup
+    Storage --> Corrupted
+    Storage --> Health
+
+    Session --> Memory
+    Daily --> LongTerm
+
+    Session --> Output
+    TUIDisplay --> Output
+    FileWrite --> Output
+    APIResponse --> Output
+    SSEStream --> Output

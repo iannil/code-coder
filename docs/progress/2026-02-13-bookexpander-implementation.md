@@ -1,7 +1,8 @@
 # BookExpander Implementation Progress
 
 **Date**: 2026-02-13
-**Status**: Implementation Complete, Testing In Progress
+**Last Updated**: 2026-02-16
+**Status**: 🚫 Blocked - Zod v4 + Bun 兼容性问题
 
 ## Summary
 
@@ -92,6 +93,27 @@ Tests created for:
 3. **Increase Test Coverage**: Add more integration tests for full expansion workflow
 4. **Performance Testing**: Test with large documents (100K+ words)
 5. **Documentation**: Add user-facing documentation for the BookExpander feature
+
+## 阻塞问题详情 (2026-02-16 更新)
+
+### Zod v4 + Bun 运行时兼容性
+
+**错误信息**:
+```
+TypeError: undefined is not an object (evaluating 'str.replace')
+```
+
+**触发位置**: Zod 内部的 `escapeRegex` 函数
+
+**触发模式**: 使用 `.default([])` 时
+
+**可能的解决方案**:
+1. 降级 Zod 到 v3.x
+2. 修改 schema 定义避免使用 `.default([])`
+3. 等待 Zod v4 + Bun 兼容性修复
+4. 使用其他验证库 (如 valibot, yup)
+
+**优先级**: 中 - 不影响核心功能，但阻塞 BookExpander 模块
 
 ---
 

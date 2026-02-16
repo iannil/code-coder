@@ -1,0 +1,41 @@
+flowchart TB
+    subgraph Composite["Composite 模式 (双写)"]
+        direction TB
+        Store["store(key, content)"]
+        Recall["recall(query)"]
+    end
+
+    subgraph Primary["主后端 (Primary)"]
+        SQLite[("SQLite")]
+    end
+
+    subgraph Secondary["副后端 (Secondary)"]
+        MD[("Markdown")]
+    end
+
+    subgraph Merge["合并策略"]
+        PW["primary-wins\n主后端优先"]
+        NW["newest-wins\n最新时间戳优先"]
+        MG["merge\n去重按分数排序"]
+    end
+
+    %% Write flow
+    Store ==>|1. 必须成功| SQLite
+    Store -->|2. 可选，失败不阻塞| MD
+
+    %% Read flow
+    Recall -->|并行查询| SQLite
+    Recall -->|并行查询| MD
+    SQLite --> Merge
+    MD --> Merge
+    Merge -->|合并结果| Result["返回结果"]
+
+    classDef primary fill:#1976d2,stroke:#0d47a1,color:#fff
+    classDef secondary fill:#388e3c,stroke:#1b5e20,color:#fff
+    classDef op fill:#7b1fa2,stroke:#4a148c,color:#fff
+    classDef merge fill:#f57c00,stroke:#e65100,color:#000
+
+    class SQLite primary
+    class MD secondary
+    class Store,Recall op
+    class PW,NW,MG,Merge merge
