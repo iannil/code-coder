@@ -252,15 +252,18 @@ function LongTermMemory() {
 function ConsolidationPanel() {
   const stats = useConsolidationStats()
   const summary = useMemorySummary()
-  const { fetchConsolidationStats, fetchSummary, triggerConsolidation, consolidating } =
-    useMemoryStore((s) => ({
-      fetchConsolidationStats: s.fetchConsolidationStats,
-      fetchSummary: s.fetchSummary,
-      triggerConsolidation: s.triggerConsolidation,
-      consolidating: s.consolidating,
-    }))
+  const consolidating = useMemoryStore((s) => s.consolidating)
+  const fetchConsolidationStats = useMemoryStore((s) => s.fetchConsolidationStats)
+  const fetchSummary = useMemoryStore((s) => s.fetchSummary)
+  const triggerConsolidation = useMemoryStore((s) => s.triggerConsolidation)
+
+  // Track initialization to avoid infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
+
     fetchConsolidationStats()
     fetchSummary()
   }, [fetchConsolidationStats, fetchSummary])
@@ -384,7 +387,7 @@ function ConsolidationPanel() {
 
 export function MemoryPanel() {
   return (
-    <Tabs defaultValue="daily" className="space-y-4" data-testid="memory-panel">
+    <Tabs defaultValue="daily" className="space-y-4" data-testid="memory-tabs">
       <TabsList>
         <TabsTrigger value="daily" className="flex items-center gap-2">
           <Calendar className="h-4 w-4" />

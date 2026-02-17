@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand"
+import { useShallow } from "zustand/react/shallow"
 import { api } from "@/lib/api"
 import type { McpStatus, McpTool, McpResource, McpAuthStatus } from "@/lib/types"
 
@@ -209,8 +210,10 @@ export const useMcpTools = () => useMcpStore((state) => state.tools)
 export const useMcpResources = () => useMcpStore((state) => state.resources)
 
 export const useMcpLoading = () =>
-  useMcpStore((state) => ({
-    isLoading: state.isLoading,
-    isToggling: state.isToggling,
-    error: state.error,
-  }))
+  useMcpStore(
+    useShallow((state) => ({
+      isLoading: state.isLoading,
+      isToggling: state.isToggling,
+      error: state.error,
+    }))
+  )

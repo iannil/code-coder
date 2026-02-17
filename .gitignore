@@ -36,3 +36,4 @@ services/zero-bot/target/
 .playwright-mcp/
 **/playwright-report/
 **/test-results/
+**/coverage/

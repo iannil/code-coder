@@ -39,10 +39,36 @@ const sessionsRoute = createRoute({
   path: "/sessions",
 })
 
+const sessionsIndexRoute = createRoute({
+  getParentRoute: () => sessionsRoute,
+  path: "/",
+  component: lazyRouteComponent(() => import("./pages/Sessions"), "Sessions"),
+})
+
 const sessionRoute = createRoute({
   getParentRoute: () => sessionsRoute,
   path: "/$sessionId",
   component: lazyRouteComponent(() => import("./pages/Session"), "Session"),
+})
+
+// ============================================================================
+// Agents Route
+// ============================================================================
+
+const agentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agents",
+  component: lazyRouteComponent(() => import("./pages/Agents"), "Agents"),
+})
+
+// ============================================================================
+// Memory Route
+// ============================================================================
+
+const memoryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/memory",
+  component: lazyRouteComponent(() => import("./pages/Memory"), "Memory"),
 })
 
 // ============================================================================
@@ -76,15 +102,28 @@ const documentsRoute = createRoute({
 })
 
 // ============================================================================
+// Tasks Route
+// ============================================================================
+
+const tasksRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tasks",
+  component: lazyRouteComponent(() => import("./pages/Tasks"), "Tasks"),
+})
+
+// ============================================================================
 // Route Tree Assembly
 // ============================================================================
 
 const routeTree = rootRoute.addChildren([
   indexRoute,
-  sessionsRoute.addChildren([sessionRoute]),
+  sessionsRoute.addChildren([sessionsIndexRoute, sessionRoute]),
   settingsRoute,
   filesRoute,
   documentsRoute,
+  tasksRoute,
+  agentsRoute,
+  memoryRoute,
 ])
 
 // ============================================================================

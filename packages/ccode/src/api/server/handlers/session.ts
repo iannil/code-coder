@@ -129,7 +129,7 @@ export async function deleteSession(_req: HttpRequest, params: RouteParams): Pro
       {
         success: true,
       },
-      204,
+      200,
     )
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error), 500)

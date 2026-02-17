@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand"
+import { useMemo } from "react"
 import type {
   HookEntry,
   HookSettings,
@@ -159,19 +160,23 @@ export const useHooksActionTypes = () => useHooksStore((state) => state.actionTy
 export const useSelectedLifecycle = () => useHooksStore((state) => state.selectedLifecycle)
 
 // Computed selectors
-export const useHooksByLifecycle = (lifecycle: HookLifecycle) =>
-  useHooksStore((state) => state.hooks.filter((h) => h.lifecycle === lifecycle))
+export const useHooksByLifecycle = (lifecycle: HookLifecycle): HookEntry[] => {
+  const hooks = useHooks()
+  return useMemo(() => hooks.filter((h) => h.lifecycle === lifecycle), [hooks, lifecycle])
+}
 
-export const useHookCounts = () =>
-  useHooksStore((state) => {
+export const useHookCounts = (): Record<HookLifecycle, number> => {
+  const hooks = useHooks()
+  return useMemo(() => {
     const counts: Record<HookLifecycle, number> = {
       PreToolUse: 0,
       PostToolUse: 0,
       PreResponse: 0,
       Stop: 0,
     }
-    for (const hook of state.hooks) {
+    for (const hook of hooks) {
       counts[hook.lifecycle]++
     }
     return counts
-  })
+  }, [hooks])
+}

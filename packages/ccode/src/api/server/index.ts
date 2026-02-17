@@ -7,6 +7,7 @@ import type { ServerConfig, HttpRequest, HttpResponse } from "./types"
 import { router, registerRoutes } from "./router"
 import { setMiddlewareConfig, corsMiddleware, authMiddleware, loggingMiddleware } from "./middleware"
 import { VERSION } from "../../version.js"
+import { Instance } from "../../project/instance"
 
 // ============================================================================
 // Server State
@@ -14,6 +15,7 @@ import { VERSION } from "../../version.js"
 
 let server: ReturnType<typeof Bun.serve> | undefined
 let startTime = Date.now()
+let serverDirectory: string | undefined
 
 // ============================================================================
 // Server Configuration
@@ -111,49 +113,59 @@ async function notFound(): Promise<HttpResponse> {
 
 function createRequestHandler() {
   return async (req: Request): Promise<Response> => {
-    const url = new URL(req.url)
-    const method = req.method
-    const headers = req.headers
-
-    const httpRequest: HttpRequest = {
-      method,
-      url,
-      headers,
-      body: req.body as ReadableStream | null,
+    // Wrap request handling in Instance context to ensure proper project context
+    if (!serverDirectory) {
+      throw new Error("Server not properly initialized")
     }
 
-    // Health check
-    if (url.pathname === "/" && method === "GET") {
-      const response = await healthCheck()
-      return new Response(response.body ?? undefined, {
-        status: response.status,
-        headers: response.headers,
-      })
-    }
+    return Instance.provide({
+      directory: serverDirectory,
+      fn: async () => {
+        const url = new URL(req.url)
+        const method = req.method
+        const headers = req.headers
 
-    // API discovery
-    if (url.pathname === "/api" && method === "GET") {
-      const response = await apiDiscovery()
-      return new Response(response.body ?? undefined, {
-        status: response.status,
-        headers: response.headers,
-      })
-    }
+        const httpRequest: HttpRequest = {
+          method,
+          url,
+          headers,
+          body: req.body as ReadableStream | null,
+        }
 
-    // Try to match a route
-    const routeResponse = await router.handle(httpRequest)
-    if (routeResponse) {
-      return new Response(routeResponse.body ?? undefined, {
-        status: routeResponse.status,
-        headers: routeResponse.headers,
-      })
-    }
+        // Health check
+        if (url.pathname === "/" && method === "GET") {
+          const response = await healthCheck()
+          return new Response(response.body ?? undefined, {
+            status: response.status,
+            headers: response.headers,
+          })
+        }
 
-    // 404
-    const response = await notFound()
-    return new Response(response.body ?? undefined, {
-      status: response.status,
-      headers: response.headers,
+        // API discovery
+        if (url.pathname === "/api" && method === "GET") {
+          const response = await apiDiscovery()
+          return new Response(response.body ?? undefined, {
+            status: response.status,
+            headers: response.headers,
+          })
+        }
+
+        // Try to match a route
+        const routeResponse = await router.handle(httpRequest)
+        if (routeResponse) {
+          return new Response(routeResponse.body ?? undefined, {
+            status: routeResponse.status,
+            headers: routeResponse.headers,
+          })
+        }
+
+        // 404
+        const response = await notFound()
+        return new Response(response.body ?? undefined, {
+          status: response.status,
+          headers: response.headers,
+        })
+      },
     })
   }
 }
@@ -166,6 +178,9 @@ export async function start(options: StartOptions = {}): Promise<void> {
   const port = options.port ?? 4096
   const hostname = options.hostname ?? "127.0.0.1"
   const cors = typeof options.cors === "string" ? [options.cors] : (options.cors ?? [])
+
+  // Save the current directory for request handling context
+  serverDirectory = Instance.directory
 
   // Configure middleware
   setMiddlewareConfig({

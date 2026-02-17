@@ -46,6 +46,10 @@ import type {
   LspSymbol,
   LspDocumentSymbol,
   LspLocation,
+  // Task Types
+  TaskInfo,
+  CreateTaskInput,
+  InteractTaskInput,
 } from "./types"
 
 // ============================================================================
@@ -842,6 +846,45 @@ export class ApiClient {
   async getLspDocumentSymbols(uri: string): Promise<LspDocumentSymbol[]> {
     return this.post<LspDocumentSymbol[]>("/lsp/document-symbols", { uri })
   }
+
+  // ========================================================================
+  // Tasks (Async Task Management)
+  // ========================================================================
+
+  /**
+   * List all tasks
+   */
+  async listTasks(): Promise<TaskInfo[]> {
+    return this.get<TaskInfo[]>("/v1/tasks")
+  }
+
+  /**
+   * Get a specific task
+   */
+  async getTask(id: string): Promise<TaskInfo> {
+    return this.get<TaskInfo>(`/v1/tasks/${id}`)
+  }
+
+  /**
+   * Create a new task
+   */
+  async createTask(input: CreateTaskInput): Promise<TaskInfo> {
+    return this.post<TaskInfo>("/v1/tasks", input)
+  }
+
+  /**
+   * Interact with a task (approve/reject)
+   */
+  async interactTask(id: string, input: InteractTaskInput): Promise<TaskInfo> {
+    return this.post<TaskInfo>(`/v1/tasks/${id}/interact`, input)
+  }
+
+  /**
+   * Delete a task
+   */
+  async deleteTask(id: string): Promise<void> {
+    return this.delete<void>(`/v1/tasks/${id}`)
+  }
 }
 
 // ============================================================================
@@ -967,4 +1010,10 @@ export const api = {
     getClient().getLspReferences(file, line, character),
   getLspWorkspaceSymbols: (query?: string) => getClient().getLspWorkspaceSymbols(query),
   getLspDocumentSymbols: (uri: string) => getClient().getLspDocumentSymbols(uri),
+  // Task APIs
+  listTasks: () => getClient().listTasks(),
+  getTask: (id: string) => getClient().getTask(id),
+  createTask: (input: CreateTaskInput) => getClient().createTask(input),
+  interactTask: (id: string, input: InteractTaskInput) => getClient().interactTask(id, input),
+  deleteTask: (id: string) => getClient().deleteTask(id),
 }

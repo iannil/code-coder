@@ -857,3 +857,107 @@ export interface LspLocation {
   uri: string
   range: LspRange
 }
+
+// ============================================================================
+// Task Types (Async Task Management)
+// ============================================================================
+
+export type TaskStatus = "pending" | "running" | "awaiting_approval" | "completed" | "failed"
+
+export interface TaskContext {
+  userID: string
+  platform: string
+  chatHistory?: unknown[]
+  source: "remote"
+}
+
+export interface TaskInfo {
+  id: string
+  sessionID: string
+  status: TaskStatus
+  agent: string
+  prompt: string
+  context: TaskContext
+  output?: string
+  error?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateTaskInput {
+  agent: string
+  prompt: string
+  context: TaskContext
+  sessionID?: string
+  model?: string
+}
+
+export interface InteractTaskInput {
+  action: "approve" | "reject"
+  reason?: string
+  reply?: "once" | "always" | "reject"
+}
+
+export type TaskEventType = "thought" | "tool_use" | "output" | "confirmation" | "finish" | "progress"
+
+export interface ConfirmationRequest {
+  requestID: string
+  tool: string
+  description: string
+  args: unknown
+  actions: string[]
+}
+
+export interface TaskEventBase {
+  type: TaskEventType
+}
+
+export interface ThoughtTaskEvent extends TaskEventBase {
+  type: "thought"
+  data: string
+}
+
+export interface ToolUseTaskEvent extends TaskEventBase {
+  type: "tool_use"
+  data: {
+    tool: string
+    args: unknown
+    result?: unknown
+  }
+}
+
+export interface OutputTaskEvent extends TaskEventBase {
+  type: "output"
+  data: string
+}
+
+export interface ConfirmationTaskEvent extends TaskEventBase {
+  type: "confirmation"
+  data: ConfirmationRequest
+}
+
+export interface FinishTaskEvent extends TaskEventBase {
+  type: "finish"
+  data: {
+    success: boolean
+    output?: string
+    error?: string
+  }
+}
+
+export interface ProgressTaskEvent extends TaskEventBase {
+  type: "progress"
+  data: {
+    stage: string
+    message: string
+    percentage?: number
+  }
+}
+
+export type TaskEvent =
+  | ThoughtTaskEvent
+  | ToolUseTaskEvent
+  | OutputTaskEvent
+  | ConfirmationTaskEvent
+  | FinishTaskEvent
+  | ProgressTaskEvent

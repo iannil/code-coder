@@ -8,6 +8,7 @@ import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
 import { enableMapSet } from "immer"
 import { useShallow } from "zustand/react/shallow"
+import { useMemo } from "react"
 import type { AgentInfo } from "../lib/types"
 
 // Enable Immer support for Map and Set
@@ -255,19 +256,23 @@ export const useSelectedAgentId = () => useAgentStoreBase((state) => state.selec
 
 /**
  * Get agents grouped by category
+ * Uses useMemo for stable reference
  */
-export const useAgentsByCategory = () =>
-  useAgentStoreBase((state) => {
-    const grouped = new Map<string, AgentInfo[]>()
-    const agents = Array.from(state.agents.values())
+export const useAgentsByCategory = (): Record<string, AgentInfo[]> => {
+  const agents = useAgents()
+
+  return useMemo(() => {
+    const grouped: Record<string, AgentInfo[]> = {}
     for (const agent of agents) {
       const category = agent.category ?? "general"
-      const currentAgents = grouped.get(category) ?? []
-      currentAgents.push(agent)
-      grouped.set(category, currentAgents)
+      if (!grouped[category]) {
+        grouped[category] = []
+      }
+      grouped[category].push(agent)
     }
     return grouped
-  })
+  }, [agents])
+}
 
 /**
  * Get loading state

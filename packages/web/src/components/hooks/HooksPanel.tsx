@@ -166,9 +166,14 @@ function HooksList() {
   const hooks = useHooks()
   const isLoading = useHooksLoading()
   const counts = useHookCounts()
-  const { fetchHooks } = useHooksStore()
+  const fetchHooks = useHooksStore((s) => s.fetchHooks)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchHooks()
   }, [fetchHooks])
 
@@ -251,9 +256,14 @@ function HooksList() {
 
 function SettingsPanel() {
   const settings = useHooksSettings()
-  const { fetchSettings } = useHooksStore()
+  const fetchSettings = useHooksStore((s) => s.fetchSettings)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchSettings()
   }, [fetchSettings])
 
@@ -319,9 +329,14 @@ function SettingsPanel() {
 
 function LocationsPanel() {
   const locations = useHooksLocations()
-  const { fetchLocations } = useHooksStore()
+  const fetchLocations = useHooksStore((s) => s.fetchLocations)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchLocations()
   }, [fetchLocations])
 
@@ -364,9 +379,14 @@ function LocationsPanel() {
 
 function ActionTypesReference() {
   const actionTypes = useHooksActionTypes()
-  const { fetchActionTypes } = useHooksStore()
+  const fetchActionTypes = useHooksStore((s) => s.fetchActionTypes)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchActionTypes()
   }, [fetchActionTypes])
 

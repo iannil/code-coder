@@ -86,9 +86,15 @@ function ServerStatus() {
   const isLoading = useLspStatusLoading()
   const connectedCount = useConnectedServers().length
   const errorCount = useErrorServers().length
-  const { fetchStatus, initLsp } = useLspStore()
+  const fetchStatus = useLspStore((s) => s.fetchStatus)
+  const initLsp = useLspStore((s) => s.initLsp)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchStatus()
   }, [fetchStatus])
 
@@ -214,9 +220,14 @@ function ServerStatus() {
 function DiagnosticsPanel() {
   const diagnostics = useLspDiagnostics()
   const totalCount = useTotalDiagnostics()
-  const { fetchDiagnostics } = useLspStore()
+  const fetchDiagnostics = useLspStore((s) => s.fetchDiagnostics)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchDiagnostics()
   }, [fetchDiagnostics])
 
@@ -336,9 +347,14 @@ function DiagnosticsPanel() {
 
 function ConfigurationPanel() {
   const config = useLspConfig()
-  const { fetchConfig } = useLspStore()
+  const fetchConfig = useLspStore((s) => s.fetchConfig)
+
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
 
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchConfig()
   }, [fetchConfig])
 

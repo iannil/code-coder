@@ -769,7 +769,12 @@ function ProviderManagement() {
   const { isLoading } = useProviderLoading()
   const fetchProviders = useProviderStore((state) => state.fetchProviders)
 
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
+
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchProviders()
   }, [fetchProviders])
 
@@ -882,10 +887,16 @@ function McpManagement() {
   const status = useMcpStatus()
   const tools = useMcpTools()
   const { isLoading, isToggling } = useMcpLoading()
-  const { fetchAll, toggle } = useMcpStore()
+  const fetchAll = useMcpStore((s) => s.fetchAll)
+  const toggle = useMcpStore((s) => s.toggle)
   const { toast } = useToast()
 
+  // Track initialization to prevent infinite loop
+  const initialized = React.useRef(false)
+
   React.useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     fetchAll()
   }, [fetchAll])
 

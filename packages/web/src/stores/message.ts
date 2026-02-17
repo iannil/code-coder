@@ -5,9 +5,13 @@
 
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
+import { enableMapSet } from "immer"
 import { useShallow } from "zustand/react/shallow"
 import type { MessageWithParts, MessagePart } from "../lib/types"
 import { api } from "../lib/api"
+
+// Enable Immer support for Map and Set
+enableMapSet()
 
 // ============================================================================
 // State Interface

@@ -119,16 +119,16 @@ class Router {
   }
 
   private patternToRegex(pattern: string): RegExp {
-    // Convert :param style to named groups
-    let regex = pattern.replace(/\*/g, ".*")
+    // First, escape special regex characters (but not : or * which we'll handle separately)
+    let regex = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
 
     // Replace path parameters with regex capture groups
     regex = regex.replace(/:([a-zA-Z_][a-zA-Z0-9_]*)/g, "([^/?]+)")
 
-    // Escape special regex characters except for our capture groups
-    regex = "^" + regex.replace(/[.+?^${}()|[\]\\]/g, "\\$&") + "$"
+    // Convert * to .*
+    regex = regex.replace(/\*/g, ".*")
 
-    return new RegExp(regex)
+    return new RegExp("^" + regex + "$")
   }
 }
 

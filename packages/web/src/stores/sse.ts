@@ -5,9 +5,13 @@
 
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
+import { enableMapSet } from "immer"
 import { useShallow } from "zustand/react/shallow"
 import type { SSEClient } from "../lib/sse"
 import type { SSEEventType, SSEDataEvent } from "../lib/types"
+
+// Enable Immer support for Map and Set
+enableMapSet()
 
 // ============================================================================
 // State Interface
@@ -277,10 +281,12 @@ export const useSSEError = () => useSSEStoreBase((state) => state.error)
  * Get reconnection info
  */
 export const useSSEReconnectInfo = () =>
-  useSSEStoreBase((state) => ({
-    attempts: state.reconnectAttempts,
-    lastConnected: state.lastConnected,
-  }))
+  useSSEStoreBase(
+    useShallow((state) => ({
+      attempts: state.reconnectAttempts,
+      lastConnected: state.lastConnected,
+    }))
+  )
 
 // ============================================================================
 // Export Store
