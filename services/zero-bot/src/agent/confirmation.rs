@@ -10,6 +10,27 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex, RwLock};
 
+/// Confirmation response type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfirmationResponse {
+    /// Approve this single request
+    Once,
+    /// Approve and remember for future requests of this type
+    Always,
+    /// Reject the request
+    Reject,
+}
+
+impl ConfirmationResponse {
+    pub fn is_approved(&self) -> bool {
+        matches!(self, Self::Once | Self::Always)
+    }
+
+    pub fn is_always(&self) -> bool {
+        matches!(self, Self::Always)
+    }
+}
+
 /// Global notification sink for sending messages to channels
 static NOTIFICATION_SINK: RwLock<Option<Arc<dyn NotificationSink>>> = RwLock::const_new(None);
 
@@ -91,7 +112,7 @@ pub async fn request_confirmation_and_wait(
     permission: &str,
     message: &str,
     timeout_secs: Option<u64>,
-) -> anyhow::Result<bool> {
+) -> anyhow::Result<ConfirmationResponse> {
     let registry = get_confirmation_registry()
         .await
         .ok_or_else(|| anyhow::anyhow!("Confirmation registry not initialized"))?;
@@ -113,15 +134,15 @@ pub async fn request_confirmation_and_wait(
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(DEFAULT_CONFIRMATION_TIMEOUT_SECS));
 
     match tokio::time::timeout(timeout, rx).await {
-        Ok(Ok(approved)) => {
-            let result_msg = if approved {
-                "✅ 已批准"
-            } else {
-                "❌ 已拒绝"
+        Ok(Ok(response)) => {
+            let result_msg = match response {
+                ConfirmationResponse::Once => "✅ 已批准",
+                ConfirmationResponse::Always => "✅ 已始终批准",
+                ConfirmationResponse::Reject => "❌ 已拒绝",
             };
             // Update the message to show result
-            let _ = sink.update_confirmation_result(channel, user_id, approved, result_msg).await;
-            Ok(approved)
+            let _ = sink.update_confirmation_result(channel, user_id, response.is_approved(), result_msg).await;
+            Ok(response)
         }
         Ok(Err(_)) => {
             // Sender dropped (shouldn't happen)
@@ -137,9 +158,22 @@ pub async fn request_confirmation_and_wait(
 }
 
 /// Respond to a confirmation from user callback (e.g., Telegram button click)
+///
+/// For backwards compatibility, use `handle_confirmation_response_with_type` for
+/// full control over the response type.
 pub async fn handle_confirmation_response(request_id: &str, approved: bool) -> bool {
+    let response = if approved {
+        ConfirmationResponse::Once
+    } else {
+        ConfirmationResponse::Reject
+    };
+    handle_confirmation_response_with_type(request_id, response).await
+}
+
+/// Respond to a confirmation with a specific response type
+pub async fn handle_confirmation_response_with_type(request_id: &str, response: ConfirmationResponse) -> bool {
     if let Some(registry) = get_confirmation_registry().await {
-        registry.respond(request_id, approved).await
+        registry.respond(request_id, response).await
     } else {
         false
     }
@@ -150,7 +184,7 @@ pub struct PendingConfirmation {
     pub request_id: String,
     pub permission: String,
     pub message: String,
-    pub responder: oneshot::Sender<bool>,
+    pub responder: oneshot::Sender<ConfirmationResponse>,
 }
 
 /// Confirmation handler trait - implement for each channel type
@@ -190,7 +224,7 @@ impl ConfirmationRegistry {
         request_id: String,
         permission: String,
         message: String,
-    ) -> oneshot::Receiver<bool> {
+    ) -> oneshot::Receiver<ConfirmationResponse> {
         let (tx, rx) = oneshot::channel();
         let pending = PendingConfirmation {
             request_id: request_id.clone(),
@@ -203,9 +237,9 @@ impl ConfirmationRegistry {
     }
 
     /// Respond to a pending confirmation
-    pub async fn respond(&self, request_id: &str, approved: bool) -> bool {
+    pub async fn respond(&self, request_id: &str, response: ConfirmationResponse) -> bool {
         if let Some(pending) = self.pending.lock().await.remove(request_id) {
-            let _ = pending.responder.send(approved);
+            let _ = pending.responder.send(response);
             true
         } else {
             false

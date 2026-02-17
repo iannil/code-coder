@@ -459,13 +459,13 @@ pub struct CodeCoderConfig {
     /// Enable `CodeCoder` tool for invoking 23 AI agents
     #[serde(default)]
     pub enabled: bool,
-    /// `CodeCoder` API endpoint (default: `<http://localhost:4096>`)
+    /// `CodeCoder` API endpoint (default: `<http://localhost:4400>`)
     #[serde(default = "default_codecoder_endpoint")]
     pub endpoint: String,
 }
 
 fn default_codecoder_endpoint() -> String {
-    "http://localhost:4096".into()
+    "http://localhost:4400".into()
 }
 
 impl Default for CodeCoderConfig {

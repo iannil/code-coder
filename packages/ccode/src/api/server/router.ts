@@ -152,7 +152,7 @@ export async function registerRoutes(): Promise<void> {
   } = await import("./handlers/session")
 
   const { getConfig, updateConfig } = await import("./handlers/config")
-  const { listPermissions, respondPermission, replyPermission } = await import("./handlers/permission")
+  const { listPermissions, respondPermission, replyPermission, addToAllowlist, getAllowlist, removeFromAllowlist, clearAllowlist } = await import("./handlers/permission")
   const { findFiles, findFilesCache } = await import("./handlers/find")
   const { streamEvents, listEventChannels } = await import("./handlers/event")
   const { listAgents, invokeAgent, getAgent } = await import("./handlers/agent")
@@ -253,6 +253,12 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/permissions", listPermissions)
   router.post("/api/permissions/:id/respond", respondPermission)
   router.post("/api/permissions/:id/reply", replyPermission)
+
+  // Allowlist management routes (v1)
+  router.post("/api/v1/permission/allowlist", addToAllowlist)
+  router.get("/api/v1/permission/allowlist/:userID", getAllowlist)
+  router.delete("/api/v1/permission/allowlist/:userID/:tool", removeFromAllowlist)
+  router.delete("/api/v1/permission/allowlist/:userID", clearAllowlist)
 
   // Find routes
   router.get("/api/files", findFiles)

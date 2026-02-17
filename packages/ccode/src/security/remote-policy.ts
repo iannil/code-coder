@@ -4,10 +4,15 @@
  */
 
 import { Log } from "@/util/log"
+import { Global } from "@/global"
+import path from "path"
 import type { TaskContext } from "@/api/task/types"
 
 export namespace RemotePolicy {
   const log = Log.create({ service: "remote-policy" })
+
+  /** File path for persisting user allowlists */
+  const ALLOWLIST_FILE = path.join(Global.Path.config, "remote-allowlists.json")
 
   // ============================================================================
   // Dangerous Operations
@@ -21,6 +26,7 @@ export namespace RemotePolicy {
    * - Shell command execution
    * - Git operations that modify history
    * - Network operations (fetch, curl)
+   * - MCP browser operations that can modify state or navigate
    */
   const DANGEROUS_OPERATIONS = new Set([
     // File mutations
@@ -50,6 +56,19 @@ export namespace RemotePolicy {
     "fetch",
     "curl",
     "http",
+
+    // MCP Playwright browser operations (mutating/navigating)
+    "mcp__playwright__browser_navigate",
+    "mcp__playwright__browser_click",
+    "mcp__playwright__browser_type",
+    "mcp__playwright__browser_fill_form",
+    "mcp__playwright__browser_file_upload",
+    "mcp__playwright__browser_evaluate",
+    "mcp__playwright__browser_run_code",
+    "mcp__playwright__browser_select_option",
+    "mcp__playwright__browser_drag",
+    "mcp__playwright__browser_press_key",
+    "mcp__playwright__browser_handle_dialog",
   ])
 
   /**
@@ -65,6 +84,19 @@ export namespace RemotePolicy {
     "git_status",
     "git_log",
     "git_diff",
+
+    // MCP Playwright read-only operations
+    "mcp__playwright__browser_snapshot",
+    "mcp__playwright__browser_take_screenshot",
+    "mcp__playwright__browser_console_messages",
+    "mcp__playwright__browser_network_requests",
+    "mcp__playwright__browser_tabs",
+    "mcp__playwright__browser_wait_for",
+    "mcp__playwright__browser_navigate_back",
+    "mcp__playwright__browser_resize",
+    "mcp__playwright__browser_hover",
+    "mcp__playwright__browser_close",
+    "mcp__playwright__browser_install",
   ])
 
   /**
@@ -104,6 +136,12 @@ export namespace RemotePolicy {
     // Dangerous operations always need approval for remote calls
     if (DANGEROUS_OPERATIONS.has(normalizedTool)) {
       log.info("dangerous operation requires approval", { tool, userID: context.userID })
+      return true
+    }
+
+    // MCP tools (prefixed with mcp__) need approval by default unless explicitly safe
+    if (normalizedTool.startsWith("mcp__")) {
+      log.info("MCP operation requires approval", { tool, userID: context.userID })
       return true
     }
 
@@ -147,24 +185,76 @@ export namespace RemotePolicy {
   // User Allowlist Management
   // ============================================================================
 
+  /** Whether allowlists have been loaded from disk */
+  let allowlistsLoaded = false
+
+  /**
+   * Load user allowlists from persistent storage
+   * Called automatically on first use, can also be called explicitly
+   */
+  export async function loadAllowlists(): Promise<void> {
+    if (allowlistsLoaded) return
+
+    try {
+      const file = Bun.file(ALLOWLIST_FILE)
+      if (await file.exists()) {
+        const data = (await file.json()) as Record<string, string[]>
+        for (const [userID, tools] of Object.entries(data)) {
+          userAllowlists.set(userID, new Set(tools))
+        }
+        log.info("loaded user allowlists from disk", {
+          userCount: userAllowlists.size,
+          file: ALLOWLIST_FILE,
+        })
+      }
+    } catch (error) {
+      log.warn("failed to load user allowlists", { error })
+    }
+
+    allowlistsLoaded = true
+  }
+
+  /**
+   * Save user allowlists to persistent storage
+   */
+  export async function saveAllowlists(): Promise<void> {
+    try {
+      const data: Record<string, string[]> = {}
+      for (const [userID, tools] of userAllowlists) {
+        data[userID] = [...tools]
+      }
+      await Bun.write(ALLOWLIST_FILE, JSON.stringify(data, null, 2))
+      log.info("saved user allowlists to disk", {
+        userCount: userAllowlists.size,
+        file: ALLOWLIST_FILE,
+      })
+    } catch (error) {
+      log.error("failed to save user allowlists", { error })
+    }
+  }
+
   /**
    * Add an operation to a user's allowlist
+   * Also persists the allowlist to disk
    */
-  export function allowForUser(userID: string, tool: string): void {
+  export async function allowForUser(userID: string, tool: string): Promise<void> {
     const existing = userAllowlists.get(userID) ?? new Set()
     existing.add(tool.toLowerCase())
     userAllowlists.set(userID, existing)
     log.info("added tool to user allowlist", { userID, tool })
+    await saveAllowlists()
   }
 
   /**
    * Remove an operation from a user's allowlist
+   * Also persists the allowlist to disk
    */
-  export function revokeForUser(userID: string, tool: string): void {
+  export async function revokeForUser(userID: string, tool: string): Promise<void> {
     const existing = userAllowlists.get(userID)
     if (existing) {
       existing.delete(tool.toLowerCase())
       log.info("removed tool from user allowlist", { userID, tool })
+      await saveAllowlists()
     }
   }
 
@@ -177,10 +267,12 @@ export namespace RemotePolicy {
 
   /**
    * Clear a user's allowlist
+   * Also persists the change to disk
    */
-  export function clearUserAllowlist(userID: string): void {
+  export async function clearUserAllowlist(userID: string): Promise<void> {
     userAllowlists.delete(userID)
     log.info("cleared user allowlist", { userID })
+    await saveAllowlists()
   }
 
   // ============================================================================
@@ -213,7 +305,35 @@ export namespace RemotePolicy {
       case "delete":
         return `Delete file: ${(args as { path?: string })?.path ?? "unknown path"}`
 
+      // MCP Playwright operations
+      case "mcp__playwright__browser_navigate":
+        return `Navigate browser to: ${(args as { url?: string })?.url ?? "unknown URL"}`
+
+      case "mcp__playwright__browser_click":
+        return `Click element: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? "unknown"}`
+
+      case "mcp__playwright__browser_type":
+        return `Type text into: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? "unknown"}`
+
+      case "mcp__playwright__browser_fill_form":
+        return `Fill form with ${((args as { fields?: unknown[] })?.fields?.length ?? 0)} fields`
+
+      case "mcp__playwright__browser_file_upload":
+        return `Upload files: ${((args as { paths?: string[] })?.paths ?? []).join(", ") || "unknown"}`
+
+      case "mcp__playwright__browser_evaluate":
+      case "mcp__playwright__browser_run_code":
+        return `Execute JavaScript in browser`
+
       default:
+        // Handle other MCP tools generically
+        if (normalizedTool.startsWith("mcp__playwright__")) {
+          const action = normalizedTool.replace("mcp__playwright__browser_", "")
+          return `Browser ${action} operation`
+        }
+        if (normalizedTool.startsWith("mcp__")) {
+          return `MCP operation: ${tool}`
+        }
         return `Operation "${tool}" requested`
     }
   }
@@ -223,4 +343,16 @@ export namespace RemotePolicy {
 // Convenience Export
 // ============================================================================
 
-export const { shouldRequireApproval, isDangerous, isSafe, riskLevel, describeApprovalReason } = RemotePolicy
+export const {
+  shouldRequireApproval,
+  isDangerous,
+  isSafe,
+  riskLevel,
+  describeApprovalReason,
+  loadAllowlists,
+  saveAllowlists,
+  allowForUser,
+  revokeForUser,
+  getUserAllowlist,
+  clearUserAllowlist,
+} = RemotePolicy

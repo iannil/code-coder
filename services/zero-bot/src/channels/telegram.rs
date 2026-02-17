@@ -649,6 +649,7 @@ impl Channel for TelegramChannel {
         let mut offset: i64 = 0;
 
         tracing::info!("Telegram channel listening for messages...");
+        println!("  📡 Telegram: listening for messages (allowed_users: {:?})", self.allowed_users);
 
         loop {
             let url = self.api_url("getUpdates");
@@ -683,6 +684,9 @@ impl Channel for TelegramChannel {
             };
 
             if let Some(results) = data.get("result").and_then(serde_json::Value::as_array) {
+                if !results.is_empty() {
+                    println!("  📨 Telegram: received {} update(s)", results.len());
+                }
                 for update in results {
                     // Advance offset past this update
                     if let Some(uid) = update.get("update_id").and_then(serde_json::Value::as_i64) {
@@ -751,6 +755,11 @@ impl Channel for TelegramChannel {
                         tracing::warn!(
                             "Telegram: ignoring message from unauthorized user: username={username}, user_id={}. \
 Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --channels-only`.",
+                            user_id_str.as_deref().unwrap_or("unknown")
+                        );
+                        println!(
+                            "  ⚠️ Telegram: unauthorized user ignored: username={}, user_id={}",
+                            username,
                             user_id_str.as_deref().unwrap_or("unknown")
                         );
                         continue;

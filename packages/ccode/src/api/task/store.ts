@@ -15,10 +15,15 @@ export namespace TaskStore {
   // State Management
   // ============================================================================
 
+  interface PendingConfirmationInfo {
+    requestID: string
+    permission: string
+  }
+
   interface TaskStoreState {
     tasks: Map<string, Task>
-    /** Map of taskID to pending confirmation requestID */
-    pendingConfirmations: Map<string, string>
+    /** Map of taskID to pending confirmation info */
+    pendingConfirmations: Map<string, PendingConfirmationInfo>
   }
 
   const state = Instance.state((): TaskStoreState => {
@@ -104,9 +109,9 @@ export namespace TaskStore {
     return updateStatus(taskID, "running")
   }
 
-  export function setAwaitingApproval(taskID: string, confirmationRequestID: string): Task | undefined {
+  export function setAwaitingApproval(taskID: string, confirmationRequestID: string, permission: string): Task | undefined {
     const s = state()
-    s.pendingConfirmations.set(taskID, confirmationRequestID)
+    s.pendingConfirmations.set(taskID, { requestID: confirmationRequestID, permission })
     return updateStatus(taskID, "awaiting_approval")
   }
 
@@ -155,6 +160,10 @@ export namespace TaskStore {
   // ============================================================================
 
   export function getPendingConfirmation(taskID: string): string | undefined {
+    return state().pendingConfirmations.get(taskID)?.requestID
+  }
+
+  export function getPendingConfirmationInfo(taskID: string): PendingConfirmationInfo | undefined {
     return state().pendingConfirmations.get(taskID)
   }
 

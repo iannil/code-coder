@@ -17,7 +17,7 @@ pub use telegram::TelegramChannel;
 pub use traits::Channel;
 pub use whatsapp::WhatsAppChannel;
 
-use crate::agent::confirmation::{self, NotificationSink};
+use crate::agent::confirmation::{self, NotificationSink, ConfirmationResponse};
 use crate::agent::AgentExecutor;
 use crate::config::Config;
 use crate::memory::{self, Memory};
@@ -93,6 +93,7 @@ impl NotificationSink for ChannelNotificationSink {
 
                 let buttons = vec![vec![
                     InlineButton::new("✅ 批准", format!("approve:{request_id}")),
+                    InlineButton::new("✅ 始终批准", format!("always:{request_id}")),
                     InlineButton::new("❌ 拒绝", format!("reject:{request_id}")),
                 ]];
 
@@ -156,7 +157,7 @@ async fn handle_telegram_callbacks(
             query.from_user_id
         );
 
-        // Parse callback data: "approve:request_id" or "reject:request_id"
+        // Parse callback data: "approve:request_id", "always:request_id", or "reject:request_id"
         let parts: Vec<&str> = query.data.splitn(2, ':').collect();
         if parts.len() != 2 {
             tracing::warn!("Invalid callback data format: {}", query.data);
@@ -167,13 +168,21 @@ async fn handle_telegram_callbacks(
         }
 
         let (action, request_id) = (parts[0], parts[1]);
-        let approved = action == "approve";
+        let response = match action {
+            "approve" => ConfirmationResponse::Once,
+            "always" => ConfirmationResponse::Always,
+            _ => ConfirmationResponse::Reject,
+        };
+        let approved = response.is_approved();
+        let is_always = response.is_always();
 
-        // Respond to the confirmation registry
-        let handled = confirmation::handle_confirmation_response(request_id, approved).await;
+        // Respond to the confirmation registry with the full response type
+        let handled = confirmation::handle_confirmation_response_with_type(request_id, response).await;
 
         if handled {
-            let response_text = if approved {
+            let response_text = if is_always {
+                "✅ 已始终批准此类操作"
+            } else if approved {
                 "✅ 已批准操作"
             } else {
                 "❌ 已拒绝操作"
@@ -185,7 +194,9 @@ async fn handle_telegram_callbacks(
                 .await;
 
             // Update the original message to show the result
-            let update_text = if approved {
+            let update_text = if is_always {
+                format!("✅ *已始终批准*\n\n此类操作将自动批准。\n请求 ID: {request_id}")
+            } else if approved {
                 format!("✅ *已批准*\n\n请求 ID: {request_id}")
             } else {
                 format!("❌ *已拒绝*\n\n请求 ID: {request_id}")
@@ -196,10 +207,11 @@ async fn handle_telegram_callbacks(
                 .await;
 
             tracing::info!(
-                "Confirmation {} {} by user {}",
+                "Confirmation {} {} by user {} (always={})",
                 request_id,
                 if approved { "approved" } else { "rejected" },
-                query.from_user_id
+                query.from_user_id,
+                is_always
             );
         } else {
             // Request not found (expired or already handled)

@@ -16,7 +16,17 @@ import { TaskStore, TaskEmitter } from "@/api/task"
 import { CreateTaskRequest, InteractTaskRequest, type TaskContext } from "@/api/task/types"
 import { PermissionNext } from "@/permission/next"
 import { Bus } from "@/bus"
-import { shouldRequireApproval } from "@/security/remote-policy"
+import { Log } from "@/util/log"
+import { shouldRequireApproval, allowForUser, loadAllowlists } from "@/security/remote-policy"
+
+const log = Log.create({ service: "task-handler" })
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** Task execution timeout in milliseconds (5 minutes) */
+const TASK_TIMEOUT_MS = 5 * 60 * 1000
 
 // ============================================================================
 // Helper Functions
@@ -50,6 +60,9 @@ function formatSSEEvent(event: string, data: string, id?: string): string {
  */
 export async function createTask(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
+    // Ensure allowlists are loaded from disk
+    await loadAllowlists()
+
     const body = await readRequestBody(req.body)
     const input = CreateTaskRequest.parse(JSON.parse(body))
 
@@ -114,6 +127,16 @@ async function executeTask(
   model?: string,
 ): Promise<void> {
   const { LocalSession } = await import("@/api")
+  const startTime = Date.now()
+
+  log.info("starting task execution", {
+    taskID,
+    agent,
+    sessionID,
+    userID: context.userID,
+    platform: context.platform,
+    promptLength: prompt.length,
+  })
 
   // Mark task as running
   TaskStore.setRunning(taskID)
@@ -126,8 +149,14 @@ async function executeTask(
     // Check if this is a remote context that needs approval
     if (context.source === "remote") {
       if (shouldRequireApproval(event.properties.permission, context)) {
+        log.info("permission requested", {
+          taskID,
+          requestID: event.properties.id,
+          permission: event.properties.permission,
+          patterns: event.properties.patterns,
+        })
         // Emit confirmation event
-        TaskStore.setAwaitingApproval(taskID, event.properties.id)
+        TaskStore.setAwaitingApproval(taskID, event.properties.id, event.properties.permission)
         TaskEmitter.confirmation(
           taskID,
           event.properties.id,
@@ -140,15 +169,32 @@ async function executeTask(
   })
 
   try {
-    // Send prompt to agent
+    // Send prompt to agent with timeout
     TaskEmitter.progress(taskID, "processing", `Processing with ${agent}...`)
 
-    const result = await LocalSession.prompt({
-      sessionID,
-      agent,
-      model,
-      parts: [{ type: "text", text: prompt }],
+    // Create timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        log.warn("task execution timeout", {
+          taskID,
+          agent,
+          timeoutMs: TASK_TIMEOUT_MS,
+          elapsedMs: Date.now() - startTime,
+        })
+        reject(new Error(`Task execution timeout after ${TASK_TIMEOUT_MS / 1000} seconds`))
+      }, TASK_TIMEOUT_MS)
     })
+
+    // Race between prompt execution and timeout
+    await Promise.race([
+      LocalSession.prompt({
+        sessionID,
+        agent,
+        model,
+        parts: [{ type: "text", text: prompt }],
+      }),
+      timeoutPromise,
+    ])
 
     // Get the response
     const messages = await LocalSession.messages({ sessionID })
@@ -160,11 +206,30 @@ async function executeTask(
           .join("\n")
       : "Task completed"
 
+    const elapsedMs = Date.now() - startTime
+    log.info("task completed successfully", {
+      taskID,
+      agent,
+      elapsedMs,
+      outputLength: output.length,
+    })
+
     // Mark task as completed
     TaskStore.complete(taskID, output)
     TaskEmitter.finish(taskID, true, output)
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
+    const elapsedMs = Date.now() - startTime
+    const isTimeout = errorMsg.includes("timeout")
+
+    log.error("task execution failed", {
+      taskID,
+      agent,
+      elapsedMs,
+      isTimeout,
+      error: errorMsg,
+    })
+
     TaskStore.fail(taskID, errorMsg)
     TaskEmitter.finish(taskID, false, undefined, errorMsg)
   } finally {
@@ -338,9 +403,20 @@ export async function interactTask(req: HttpRequest, params: RouteParams): Promi
       return errorResponse(`No pending confirmation for task "${id}"`, 400)
     }
 
+    // Get the full confirmation info including permission name
+    const confirmationInfo = TaskStore.getPendingConfirmationInfo(id)
+
     // Reply to permission request
     if (input.action === "approve") {
       const reply = input.reply ?? "once"
+
+      // If user chose "always", add the tool to their allowlist
+      if (reply === "always" && confirmationInfo) {
+        const userID = task.context.userID
+        const permission = confirmationInfo.permission
+        await allowForUser(userID, permission)
+      }
+
       await PermissionNext.reply({
         requestID: pendingRequestID,
         reply: reply === "reject" ? "reject" : reply,

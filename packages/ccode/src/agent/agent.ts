@@ -34,6 +34,7 @@ import PROMPT_VERIFIER from "./prompt/verifier.txt"
 import PROMPT_EXPANDER from "./prompt/expander.txt"
 import PROMPT_EXPANDER_FICTION from "./prompt/expander-fiction.txt"
 import PROMPT_EXPANDER_NONFICTION from "./prompt/expander-nonfiction.txt"
+import PROMPT_GENERAL from "./prompt/general.txt"
 import * as WriterService from "./writer-service"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -133,6 +134,7 @@ export namespace Agent {
       general: {
         name: "general",
         description: `General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.`,
+        prompt: PROMPT_GENERAL,
         permission: PermissionNext.merge(
           defaults,
           PermissionNext.fromConfig({

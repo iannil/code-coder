@@ -15,18 +15,23 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::error::Error as StdError;
 use std::time::Duration;
 
 /// Default `CodeCoder` API endpoint
-const DEFAULT_ENDPOINT: &str = "http://localhost:4096";
+const DEFAULT_ENDPOINT: &str = "http://localhost:4400";
 /// HTTP request timeout in seconds
 const REQUEST_TIMEOUT_SECS: u64 = 300; // 5 minutes for long-running tasks
-/// SSE connection timeout in seconds
-const SSE_TIMEOUT_SECS: u64 = 600; // 10 minutes max for SSE stream
 /// SSE per-chunk timeout in seconds (how long to wait between chunks)
 const SSE_CHUNK_TIMEOUT_SECS: u64 = 120; // 2 minutes per chunk - generous for agent thinking
 /// Confirmation timeout in seconds (how long to wait for user to approve/reject)
 const CONFIRMATION_TIMEOUT_SECS: u64 = 120; // 2 minutes for user to respond
+/// SSE connection retry attempts
+const SSE_MAX_RETRIES: u32 = 3;
+/// SSE connection timeout in seconds (time to establish connection)
+const SSE_CONNECT_TIMEOUT_SECS: u64 = 30;
+/// Delay between SSE retry attempts in seconds
+const SSE_RETRY_DELAY_SECS: u64 = 2;
 
 /// `CodeCoder` HTTP client tool with SSE support
 pub struct CodeCoderTool {
@@ -357,35 +362,97 @@ impl CodeCoderTool {
 
         tracing::info!("Connecting to SSE stream: {}", url);
 
-        // Create a client with longer timeout for SSE
+        // Create a client optimized for SSE connections
+        // - connect_timeout: time to establish TCP connection (handles IPv6->IPv4 fallback)
+        // - no overall timeout: SSE streams are long-lived
+        // - tcp_nodelay: reduce latency for event streaming
         let sse_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(SSE_TIMEOUT_SECS))
+            .connect_timeout(Duration::from_secs(SSE_CONNECT_TIMEOUT_SECS))
+            .tcp_nodelay(true)
             .build()
             .unwrap_or_default();
 
-        let resp = match sse_client
-            .get(&url)
-            .header("Accept", "text/event-stream")
-            .header("Cache-Control", "no-cache")
-            .send()
-            .await
-        {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!("SSE connection error: {}, falling back to polling", e);
+        // Retry SSE connection with exponential backoff
+        let mut last_error: Option<String> = None;
+        let mut resp: Option<reqwest::Response> = None;
+
+        for attempt in 1..=SSE_MAX_RETRIES {
+            tracing::info!(
+                "SSE connection attempt {}/{} for task {}",
+                attempt,
+                SSE_MAX_RETRIES,
+                task_id
+            );
+
+            match sse_client
+                .get(&url)
+                .header("Accept", "text/event-stream")
+                .header("Cache-Control", "no-cache")
+                .send()
+                .await
+            {
+                Ok(r) => {
+                    let status = r.status();
+                    tracing::info!("SSE response status: {} (attempt {})", status, attempt);
+
+                    if status.is_success() {
+                        resp = Some(r);
+                        break;
+                    }
+                    // Non-success status
+                    let body = r.text().await.unwrap_or_default();
+                    last_error = Some(format!("HTTP {}: {}", status, body));
+                    tracing::warn!(
+                        "SSE connection failed with status {} (attempt {}/{}): {}",
+                        status,
+                        attempt,
+                        SSE_MAX_RETRIES,
+                        body
+                    );
+                }
+                Err(e) => {
+                    // Log detailed error information for debugging
+                    let is_connect = e.is_connect();
+                    let is_timeout = e.is_timeout();
+                    let is_request = e.is_request();
+                    let source = e.source().map(|s| s.to_string());
+
+                    last_error = Some(format!(
+                        "{} (connect={}, timeout={}, request={}, source={:?})",
+                        e, is_connect, is_timeout, is_request, source
+                    ));
+                    tracing::warn!(
+                        "SSE connection error (attempt {}/{}): {} [connect={}, timeout={}, source={:?}]",
+                        attempt,
+                        SSE_MAX_RETRIES,
+                        e,
+                        is_connect,
+                        is_timeout,
+                        source
+                    );
+                }
+            }
+
+            // Wait before retry (except on last attempt)
+            if attempt < SSE_MAX_RETRIES {
+                let delay = Duration::from_secs(SSE_RETRY_DELAY_SECS * u64::from(attempt));
+                tracing::debug!("Waiting {:?} before SSE retry", delay);
+                tokio::time::sleep(delay).await;
+            }
+        }
+
+        // If all retries failed, fall back to polling
+        let resp = match resp {
+            Some(r) => r,
+            None => {
+                tracing::warn!(
+                    "All {} SSE connection attempts failed, falling back to polling. Last error: {:?}",
+                    SSE_MAX_RETRIES,
+                    last_error
+                );
                 return self.poll_task_result(task_id).await;
             }
         };
-
-        let status = resp.status();
-        tracing::info!("SSE response status: {}", status);
-
-        if !status.is_success() {
-            // If SSE connection fails, fall back to polling
-            let body = resp.text().await.unwrap_or_default();
-            tracing::warn!("SSE connection failed with status {}: {}", status, body);
-            return self.poll_task_result(task_id).await;
-        }
 
         let mut stream = resp.bytes_stream();
         let mut buffer = String::new();
@@ -491,20 +558,27 @@ impl CodeCoderTool {
                                         )
                                         .await
                                         {
-                                            Ok(true) => {
-                                                // User approved
+                                            Ok(response) if response.is_approved() => {
+                                                // User approved - determine reply type
+                                                let reply_type = if response.is_always() {
+                                                    "always"
+                                                } else {
+                                                    "once"
+                                                };
                                                 tracing::info!(
-                                                    "User {} approved confirmation {}",
+                                                    "User {} approved confirmation {} (reply={})",
                                                     user_id,
-                                                    data.request_id
+                                                    data.request_id,
+                                                    reply_type
                                                 );
-                                                self.approve_task(task_id, &data.request_id).await?;
+                                                self.approve_task_with_reply(task_id, &data.request_id, reply_type).await?;
                                                 progress_messages.push(format!(
-                                                    "[user-approved] {}",
+                                                    "[user-approved:{}] {}",
+                                                    reply_type,
                                                     data.message
                                                 ));
                                             }
-                                            Ok(false) => {
+                                            Ok(_) => {
                                                 // User rejected
                                                 tracing::info!(
                                                     "User {} rejected confirmation {}",
@@ -567,12 +641,17 @@ impl CodeCoderTool {
 
     /// Approve a permission request
     async fn approve_task(&self, task_id: &str, request_id: &str) -> anyhow::Result<()> {
+        self.approve_task_with_reply(task_id, request_id, "once").await
+    }
+
+    /// Approve a permission request with specific reply type
+    async fn approve_task_with_reply(&self, task_id: &str, request_id: &str, reply: &str) -> anyhow::Result<()> {
         let resp = self
             .client
             .post(format!("{}/api/v1/tasks/{}/interact", self.endpoint, task_id))
             .json(&json!({
                 "action": "approve",
-                "reply": "session",
+                "reply": reply,
                 "requestID": request_id
             }))
             .send()
