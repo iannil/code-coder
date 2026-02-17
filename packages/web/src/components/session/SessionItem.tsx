@@ -95,6 +95,7 @@ export const SessionItem = React.forwardRef<HTMLDivElement, SessionItemProps>(
       <div
         ref={ref}
         onClick={onClick}
+        data-testid="session-item"
         className={cn(
           "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
           "cursor-pointer select-none",

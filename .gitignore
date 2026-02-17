@@ -34,3 +34,5 @@ logs/
 # ZeroBot (Rust service)
 services/zero-bot/target/
 .playwright-mcp/
+**/playwright-report/
+**/test-results/

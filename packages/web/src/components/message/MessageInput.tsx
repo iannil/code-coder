@@ -254,6 +254,7 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               disabled={disabled}
+              data-testid="message-input"
               className="min-h-[44px] max-h-[200px] resize-none pr-10"
               maxLength={maxLength}
             />
@@ -295,6 +296,7 @@ export const MessageInput = React.forwardRef<HTMLTextAreaElement, MessageInputPr
               onClick={handleSend}
               disabled={!canSend}
               type="button"
+              data-testid="send-btn"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

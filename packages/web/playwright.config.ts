@@ -20,8 +20,8 @@ export default defineConfig({
   },
 
   use: {
-    // Base URL for navigation
-    baseURL: process.env.TEST_BASE_URL || "http://localhost:4096",
+    // Base URL for navigation (web dev server)
+    baseURL: process.env.TEST_BASE_URL || "http://localhost:3000",
 
     // Collect trace on failure
     trace: "on-first-retry",
@@ -58,13 +58,13 @@ export default defineConfig({
     },
   ],
 
-  // Web server configuration
-  webServer: {
-    command: "bun run dev",
-    url: "http://localhost:5173",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  // Web server configuration - disabled for manual server start
+  // webServer: {
+  //   command: "bun run dev",
+  //   url: "http://localhost:5173",
+  //   reuseExistingServer: !process.env.CI,
+  //   timeout: 120000,
+  // },
 
   // Output directory for test artifacts
   outputDir: "test-results",

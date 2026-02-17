@@ -638,9 +638,9 @@ function DocumentDetail() {
 
 export function Documents() {
   return (
-    <div className="flex h-full">
+    <div className="flex h-full" data-testid="documents-panel">
       {/* Document List Sidebar */}
-      <div className="w-72 border-r flex flex-col bg-background">
+      <div className="w-72 border-r flex flex-col bg-background" data-testid="document-list">
         <DocumentList />
       </div>
 

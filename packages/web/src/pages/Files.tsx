@@ -140,6 +140,7 @@ function FileTreeItem({
   return (
     <div>
       <div
+        data-testid="file-tree-item"
         className={cn(
           "flex items-center gap-2 py-1.5 px-2 rounded-md cursor-pointer transition-colors",
           "hover:bg-accent/50",
@@ -150,6 +151,7 @@ function FileTreeItem({
       >
         {node.type === "directory" && (
           <ChevronRight
+            data-testid="file-directory"
             className={cn(
               "h-3 w-3 shrink-0 transition-transform",
               isExpanded && "transform rotate-90"
@@ -484,7 +486,7 @@ export function Files() {
   const fileTree = buildFileTree(files)
 
   return (
-    <div className="flex-1 flex overflow-hidden">
+    <div className="flex-1 flex overflow-hidden" data-testid="file-browser">
       {/* Sidebar - File List */}
       <div className="w-80 border-r flex flex-col bg-background">
         {/* Search Header */}
@@ -556,7 +558,7 @@ export function Files() {
                 ))}
               </div>
             ) : viewMode === "tree" ? (
-              <div className="space-y-0.5">
+              <div className="space-y-0.5" data-testid="file-tree">
                 {fileTree.map((node) => (
                   <FileTreeItem
                     key={node.path}

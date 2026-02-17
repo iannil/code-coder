@@ -46,6 +46,7 @@ function QuickActionCard({ action }: { action: QuickAction }) {
   return (
     <button
       onClick={action.onClick}
+      data-testid={action.title === "New Session" ? "create-session-btn" : undefined}
       className={cn(
         "flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition-all hover:shadow-md",
         "hover:border-primary/50",
@@ -310,7 +311,7 @@ export function Dashboard() {
                 <p className="text-sm text-muted-foreground mb-4 text-center">
                   Create your first session to start chatting with CodeCoder
                 </p>
-                <Button onClick={() => quickActions[0].onClick()}>
+                <Button data-testid="create-session-btn" onClick={() => quickActions[0].onClick()}>
                   <Plus className="mr-2 h-4 w-4" />
                   New Session
                 </Button>

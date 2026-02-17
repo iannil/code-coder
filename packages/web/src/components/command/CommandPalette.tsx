@@ -232,13 +232,13 @@ function CommandPaletteDialog({ open, onOpenChange }: CommandPaletteDialogProps)
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Type a command or search..." />
-      <CommandList>
+      <CommandInput placeholder="Type a command or search..." data-testid="command-search" />
+      <CommandList data-testid="command-palette">
         <CommandEmpty>No commands found</CommandEmpty>
         {Object.entries(groupedCommands).map(([category, cmds]) => (
           <CommandGroup key={category} heading={categoryLabels[category] ?? category}>
             {cmds.map((cmd) => (
-              <CommandItem key={cmd.id} onSelect={() => executeCommand(cmd)} className="gap-3">
+              <CommandItem key={cmd.id} onSelect={() => executeCommand(cmd)} data-testid="command-item" className="gap-3">
                 <cmd.icon className="h-4 w-4 text-muted-foreground" />
                 <div className="flex-1">
                   <div>{cmd.label}</div>

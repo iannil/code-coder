@@ -71,7 +71,7 @@ interface EmptyStateProps {
 
 function EmptyState({ onStartConversation }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+    <div className="flex flex-col items-center justify-center h-full p-8 text-center" data-testid="message-list">
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
         <MessageSquare className="h-8 w-8 text-muted-foreground" />
       </div>
@@ -121,7 +121,7 @@ export function MessageListSimple({
   }
 
   return (
-    <ScrollArea className={cn("flex-1 h-full", className)}>
+    <ScrollArea className={cn("flex-1 h-full", className)} data-testid="message-list">
       <div className="space-y-4 p-4">
         {messages.map((message) => (
           <MessageItem

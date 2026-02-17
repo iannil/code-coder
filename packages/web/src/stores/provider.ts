@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand"
+import { useShallow } from "zustand/react/shallow"
 import { api } from "@/lib/api"
 import type {
   ProviderInfo,
@@ -200,14 +201,16 @@ export const useProviderStore = create<ProviderStore>((set, get) => ({
 // Hooks
 // ============================================================================
 
-export const useProviders = () => useProviderStore((state) => state.all)
-export const useConnectedProviders = () => useProviderStore((state) => state.connected)
+export const useProviders = () => useProviderStore(useShallow((state) => state.all))
+export const useConnectedProviders = () => useProviderStore(useShallow((state) => state.connected))
 export const useSelectedModel = () => useProviderStore((state) => state.selectedModel)
-export const useModelFavorites = () => useProviderStore((state) => state.favorites)
-export const useModelRecents = () => useProviderStore((state) => state.recents)
+export const useModelFavorites = () => useProviderStore(useShallow((state) => state.favorites))
+export const useModelRecents = () => useProviderStore(useShallow((state) => state.recents))
 
 export const useProviderLoading = () =>
-  useProviderStore((state) => ({
-    isLoading: state.isLoading,
-    error: state.error,
-  }))
+  useProviderStore(
+    useShallow((state) => ({
+      isLoading: state.isLoading,
+      error: state.error,
+    }))
+  )

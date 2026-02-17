@@ -6,8 +6,12 @@
 import { create } from "zustand"
 // import { persist } from "zustand/middleware"
 import { immer } from "zustand/middleware/immer"
+import { enableMapSet } from "immer"
 import { useShallow } from "zustand/react/shallow"
 import type { AgentInfo } from "../lib/types"
+
+// Enable Immer support for Map and Set
+enableMapSet()
 
 // ============================================================================
 // State Interface
@@ -40,6 +44,44 @@ interface AgentActions {
 }
 
 type AgentStore = AgentState & AgentActions
+
+// ============================================================================
+// Static Agent List (since no API endpoint exists yet)
+// ============================================================================
+
+const STATIC_AGENTS: AgentInfo[] = [
+  // Main modes
+  { id: "build", name: "build", description: "Primary build and development mode", category: "primary" },
+  { id: "plan", name: "plan", description: "Plan mode for architecture and design", category: "primary" },
+
+  // Engineering
+  { id: "code-reviewer", name: "code-reviewer", description: "Review code for quality and best practices", category: "engineering" },
+  { id: "security-reviewer", name: "security-reviewer", description: "Review code for security vulnerabilities", category: "engineering" },
+  { id: "tdd-guide", name: "tdd-guide", description: "Test-driven development guidance", category: "engineering" },
+  { id: "architect", name: "architect", description: "System architecture and design", category: "engineering" },
+  { id: "explore", name: "explore", description: "Explore and understand codebase", category: "engineering" },
+  { id: "general", name: "general", description: "General-purpose assistant", category: "engineering" },
+
+  // Content
+  { id: "writer", name: "writer", description: "Long-form content writing (20k+ words)", category: "content" },
+  { id: "proofreader", name: "proofreader", description: "Proofread and edit content", category: "content" },
+  { id: "expander", name: "expander", description: "Expand content from outlines", category: "content" },
+  { id: "expander-fiction", name: "expander-fiction", description: "Expand fiction content", category: "content" },
+  { id: "expander-nonfiction", name: "expander-nonfiction", description: "Expand non-fiction content", category: "content" },
+
+  // ZRS (Zhurong Say) Analysis
+  { id: "observer", name: "observer", description: "Observer perspective analysis", category: "zrs" },
+  { id: "decision", name: "decision", description: "CLOSE framework decision analysis", category: "zrs" },
+  { id: "macro", name: "macro", description: "Macro-economic data interpretation", category: "zrs" },
+  { id: "trader", name: "trader", description: "Trading and market analysis", category: "zrs" },
+  { id: "picker", name: "picker", description: "Product selection using 七宗罪选品法", category: "zrs" },
+  { id: "miniproduct", name: "miniproduct", description: "Minimal product development guide", category: "zrs" },
+  { id: "ai-engineer", name: "ai-engineer", description: "AI engineering specialist", category: "zrs" },
+
+  // Reverse Engineering
+  { id: "code-reverse", name: "code-reverse", description: "Code reverse engineering", category: "reverse" },
+  { id: "jar-code-reverse", name: "jar-code-reverse", description: "JAR file reverse engineering", category: "reverse" },
+]
 
 // ============================================================================
 // Initial State
@@ -78,12 +120,8 @@ const useAgentStoreBase = create<AgentStore>()(
         })
 
         try {
-          // Note: The API client may not have an agents endpoint yet
-          // This is a placeholder implementation
-          // const agents = await api.listAgents()
-
-          // For now, use a mock implementation or empty array
-          const agents: AgentInfo[] = []
+          // Use static agents list since no API endpoint exists yet
+          const agents = STATIC_AGENTS
 
           set((state) => {
             state.agents.clear()

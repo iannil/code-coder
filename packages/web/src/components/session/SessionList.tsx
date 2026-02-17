@@ -196,7 +196,7 @@ export const SessionList = React.forwardRef<HTMLDivElement, SessionListProps>(
     }
 
     return (
-      <div ref={ref} className={cn("flex flex-col h-full", className)}>
+      <div ref={ref} className={cn("flex flex-col h-full", className)} data-testid="session-list">
         {/* Search Header */}
         <div className="flex-shrink-0 p-4 border-b">
           <div className="relative">

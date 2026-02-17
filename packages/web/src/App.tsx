@@ -76,6 +76,7 @@ export function AppLayout() {
           <Link to="/settings">
             <button
               type="button"
+              data-testid="nav-settings"
               className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               aria-label="Open settings"
             >
@@ -100,12 +101,13 @@ export function AppLayout() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-[260px] shrink-0 border-r bg-background">
+        <aside data-testid="sidebar" className="w-[260px] shrink-0 border-r bg-background">
           <div className="flex items-center justify-between p-4">
             <h2 className="text-sm font-semibold">Sessions</h2>
             <button
               type="button"
               onClick={handleNewSession}
+              data-testid="new-session-btn"
               className="rounded-md p-1.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               aria-label="New session"
             >
@@ -130,6 +132,7 @@ export function AppLayout() {
             <Link to="/">
               <button
                 type="button"
+                data-testid="nav-dashboard"
                 className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 <svg
@@ -154,6 +157,7 @@ export function AppLayout() {
             <Link to="/files">
               <button
                 type="button"
+                data-testid="nav-files"
                 className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
               >
                 <svg
@@ -200,7 +204,7 @@ export function AppLayout() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main data-testid="main-panel" className="flex-1 overflow-auto">
           <Outlet />
         </main>
       </div>

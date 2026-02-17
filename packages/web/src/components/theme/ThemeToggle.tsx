@@ -32,7 +32,7 @@ export function ThemeToggle({ className }: ThemeToggleProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Toggle theme" className={className}>
+        <Button variant="ghost" size="icon" aria-label="Toggle theme" data-testid="theme-toggle" className={className}>
           {resolvedTheme === "dark" ? (
             <Moon className="h-5 w-5" />
           ) : (

@@ -197,7 +197,7 @@ interface SessionEmptyStateProps {
 
 function SessionEmptyState({ onCreateMessage }: SessionEmptyStateProps) {
   return (
-    <div className="flex-1 flex items-center justify-center p-8">
+    <div className="flex-1 flex items-center justify-center p-8" data-testid="message-list">
       <Card className="max-w-md text-center">
         <CardContent className="pt-6 space-y-4">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
@@ -236,6 +236,7 @@ export function Session() {
   const agents = useAgents()
   const selectedAgent = useSelectedAgent()
   const selectAgent = useAgentStore((state) => state.selectAgent)
+  const loadAgents = useAgentStore((state) => state.loadAgents)
 
   // Provider store for fetching providers
   const fetchProviders = useProviderStore((state) => state.fetchProviders)
@@ -252,6 +253,11 @@ export function Session() {
   React.useEffect(() => {
     fetchProviders()
   }, [fetchProviders])
+
+  // Load agents on mount
+  React.useEffect(() => {
+    loadAgents()
+  }, [loadAgents])
 
   // Load session messages on mount
   React.useEffect(() => {

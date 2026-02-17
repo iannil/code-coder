@@ -135,7 +135,7 @@ export function AgentSelector({
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className={cn("justify-between", className)}>
+        <Button variant="outline" data-testid="agent-selector" className={cn("justify-between", className)}>
           <span className="flex items-center gap-2 truncate">
             {selectedAgent ? (
               <>
@@ -186,13 +186,21 @@ export function AgentSelector({
                   <DropdownMenuItem
                     key={agent.id}
                     onSelect={() => handleSelect(agent.id)}
-                    className="flex items-center gap-2 px-2 py-1.5"
+                    data-testid="agent-option"
+                    className="flex flex-col items-start gap-1 px-2 py-2"
                   >
-                    <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="flex-1 truncate">{agent.name}</span>
-                    {agent.category && <AgentModeBadge mode={agent.category} />}
-                    {agent.id === selectedId && (
-                      <Check className="h-4 w-4 text-primary shrink-0" />
+                    <div className="flex items-center gap-2 w-full">
+                      <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate">{agent.name}</span>
+                      {agent.category && <AgentModeBadge mode={agent.category} />}
+                      {agent.id === selectedId && (
+                        <Check className="h-4 w-4 text-primary shrink-0" />
+                      )}
+                    </div>
+                    {agent.description && (
+                      <span data-testid="agent-description" className="text-xs text-muted-foreground pl-6 truncate max-w-full">
+                        {agent.description}
+                      </span>
                     )}
                   </DropdownMenuItem>
                 ))}

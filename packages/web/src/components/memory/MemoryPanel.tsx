@@ -384,7 +384,7 @@ function ConsolidationPanel() {
 
 export function MemoryPanel() {
   return (
-    <Tabs defaultValue="daily" className="space-y-4">
+    <Tabs defaultValue="daily" className="space-y-4" data-testid="memory-panel">
       <TabsList>
         <TabsTrigger value="daily" className="flex items-center gap-2">
           <Calendar className="h-4 w-4" />

@@ -101,6 +101,7 @@ interface ConfigFormProps {
 function ConfigForm({ config, isLoading, isSaving, onSave }: ConfigFormProps) {
   const [formData, setFormData] = React.useState<Record<string, unknown>>({})
   const [visibleKeys, setVisibleKeys] = React.useState<Set<string>>(new Set())
+  const [showSuccess, setShowSuccess] = React.useState(false)
   const { toast } = useToast()
 
   React.useEffect(() => {
@@ -161,6 +162,8 @@ function ConfigForm({ config, isLoading, isSaving, onSave }: ConfigFormProps) {
   const handleSave = async () => {
     try {
       await onSave(formData as Partial<ConfigData>)
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 3000)
       toast({
         title: "Settings saved",
         description: "Your configuration has been updated successfully.",
@@ -261,7 +264,7 @@ function ConfigForm({ config, isLoading, isSaving, onSave }: ConfigFormProps) {
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-4">
-        <Button type="submit" disabled={!hasChanges || isSaving}>
+        <Button type="submit" disabled={!hasChanges || isSaving} data-testid="save-settings-btn">
           {isSaving ? (
             <>
               <RotateCw className="mr-2 h-4 w-4 animate-spin" />
@@ -278,6 +281,12 @@ function ConfigForm({ config, isLoading, isSaving, onSave }: ConfigFormProps) {
           <Button type="button" variant="ghost" onClick={handleReset}>
             Reset
           </Button>
+        )}
+        {showSuccess && (
+          <div data-testid="save-success" className="flex items-center gap-2 text-sm text-green-600">
+            <Check className="h-4 w-4" />
+            Saved successfully
+          </div>
         )}
       </div>
     </form>
@@ -358,6 +367,7 @@ function ApiKeyManagement({ apiKeys }: ApiKeyManagementProps) {
                 placeholder="e.g., Production API Key"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
+                data-testid="api-key-input"
               />
             </div>
             <div className="flex gap-2">
@@ -1130,7 +1140,7 @@ export function Settings() {
           </TabsContent>
 
           {/* Providers Settings */}
-          <TabsContent value="providers" className="space-y-6">
+          <TabsContent value="providers" className="space-y-6" data-testid="provider-settings">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
