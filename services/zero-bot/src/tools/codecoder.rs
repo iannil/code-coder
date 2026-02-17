@@ -1,24 +1,32 @@
-//! CodeCoder Tool - SSE bridge to CodeCoder's 23 AI agents
+//! `CodeCoder` Tool - SSE bridge to `CodeCoder`'s 23 AI agents
 //!
-//! This tool allows ZeroBot to invoke CodeCoder agents via HTTP API
+//! This tool allows `ZeroBot` to invoke `CodeCoder` agents via HTTP API
 //! with Server-Sent Events (SSE) for real-time streaming responses.
 //! Supports all 23 agents: build, plan, decision, macro, trader, etc.
 
+#![allow(clippy::single_match_else)]
+#![allow(clippy::redundant_closure_for_method_calls)]
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::too_many_lines)]
+
 use super::traits::{Tool, ToolResult};
+use crate::agent::confirmation;
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::time::Duration;
 
-/// Default CodeCoder API endpoint
+/// Default `CodeCoder` API endpoint
 const DEFAULT_ENDPOINT: &str = "http://localhost:4096";
 /// HTTP request timeout in seconds
 const REQUEST_TIMEOUT_SECS: u64 = 300; // 5 minutes for long-running tasks
 /// SSE connection timeout in seconds
 const SSE_TIMEOUT_SECS: u64 = 600; // 10 minutes max for SSE stream
+/// SSE per-chunk timeout in seconds (how long to wait between chunks)
+const SSE_CHUNK_TIMEOUT_SECS: u64 = 120; // 2 minutes per chunk - generous for agent thinking
 
-/// CodeCoder HTTP client tool with SSE support
+/// `CodeCoder` HTTP client tool with SSE support
 pub struct CodeCoderTool {
     endpoint: String,
     client: reqwest::Client,
@@ -57,6 +65,9 @@ struct CreateTaskRequest {
 #[derive(Debug, Serialize)]
 struct TaskContext {
     source: String,
+    #[serde(rename = "userID")]
+    user_id: String,
+    platform: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_id: Option<String>,
 }
@@ -82,6 +93,7 @@ struct TaskData {
 
 /// Response from getting task status
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct GetTaskResponse {
     success: bool,
     data: Option<TaskData>,
@@ -92,7 +104,7 @@ struct GetTaskResponse {
 // SSE Event Types
 // ============================================================================
 
-/// SSE event types from CodeCoder Task API
+/// SSE event types from `CodeCoder` Task API
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", content = "data")]
 enum TaskEvent {
@@ -253,12 +265,21 @@ impl Tool for CodeCoderTool {
         let model = args.get("model").and_then(|v| v.as_str()).map(String::from);
         let auto_approve = args.get("auto_approve").and_then(|v| v.as_bool()).unwrap_or(false);
 
+        // Extract context info if available (injected by AgentExecutor)
+        let (platform, user_id) = if let Some(ctx) = args.get("_context") {
+            let channel = ctx.get("channel").and_then(|v| v.as_str()).unwrap_or("zerobot");
+            let sender = ctx.get("sender_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+            (channel.to_string(), sender.to_string())
+        } else {
+            ("zerobot".to_string(), "unknown".to_string())
+        };
+
         // Step 1: Create task via Task API
-        let task_id = self.create_task(agent, prompt, model.as_deref()).await?;
-        tracing::info!("Created CodeCoder task: {}", task_id);
+        let task_id = self.create_task(agent, prompt, model.as_deref(), &platform, &user_id).await?;
+        tracing::info!("Created CodeCoder task: {} (platform: {}, user: {})", task_id, platform, user_id);
 
         // Step 2: Connect to SSE stream and process events
-        let result = self.stream_task_events(&task_id, agent, auto_approve).await;
+        let result = self.stream_task_events(&task_id, agent, auto_approve, &platform, &user_id).await;
 
         match result {
             Ok(output) => Ok(ToolResult {
@@ -282,6 +303,8 @@ impl CodeCoderTool {
         agent: &str,
         prompt: &str,
         model: Option<&str>,
+        platform: &str,
+        user_id: &str,
     ) -> anyhow::Result<String> {
         let request = CreateTaskRequest {
             agent: agent.to_string(),
@@ -289,6 +312,8 @@ impl CodeCoderTool {
             model: model.map(String::from),
             context: Some(TaskContext {
                 source: "remote".to_string(),
+                user_id: user_id.to_string(),
+                platform: platform.to_string(),
                 client_id: Some("zerobot".to_string()),
             }),
         };
@@ -323,10 +348,12 @@ impl CodeCoderTool {
         task_id: &str,
         agent: &str,
         auto_approve: bool,
+        platform: &str,
+        user_id: &str,
     ) -> anyhow::Result<String> {
         let url = format!("{}/api/v1/tasks/{}/events", self.endpoint, task_id);
 
-        tracing::debug!("Connecting to SSE stream: {}", url);
+        tracing::info!("Connecting to SSE stream: {}", url);
 
         // Create a client with longer timeout for SSE
         let sse_client = reqwest::Client::builder()
@@ -334,17 +361,27 @@ impl CodeCoderTool {
             .build()
             .unwrap_or_default();
 
-        let resp = sse_client
+        let resp = match sse_client
             .get(&url)
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-cache")
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("Failed to connect to SSE stream: {e}"))?;
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("SSE connection error: {}, falling back to polling", e);
+                return self.poll_task_result(task_id).await;
+            }
+        };
 
-        if !resp.status().is_success() {
+        let status = resp.status();
+        tracing::info!("SSE response status: {}", status);
+
+        if !status.is_success() {
             // If SSE connection fails, fall back to polling
-            tracing::warn!("SSE connection failed, falling back to polling");
+            let body = resp.text().await.unwrap_or_default();
+            tracing::warn!("SSE connection failed with status {}: {}", status, body);
             return self.poll_task_result(task_id).await;
         }
 
@@ -352,7 +389,32 @@ impl CodeCoderTool {
         let mut buffer = String::new();
         let mut progress_messages: Vec<String> = Vec::new();
 
-        while let Some(chunk_result) = stream.next().await {
+        // Use per-chunk timeout to prevent indefinite blocking
+        let chunk_timeout = Duration::from_secs(SSE_CHUNK_TIMEOUT_SECS);
+
+        loop {
+            // Wait for next chunk with timeout
+            let chunk_result = match tokio::time::timeout(chunk_timeout, stream.next()).await {
+                Ok(Some(result)) => {
+                    tracing::debug!("Received SSE chunk");
+                    result
+                }
+                Ok(None) => {
+                    // Stream ended normally
+                    tracing::info!("SSE stream ended normally, polling for final status");
+                    return self.poll_task_result(task_id).await;
+                }
+                Err(_) => {
+                    // Timeout waiting for chunk - fall back to polling
+                    tracing::warn!(
+                        "SSE chunk timeout after {} seconds, falling back to polling",
+                        SSE_CHUNK_TIMEOUT_SECS
+                    );
+                    return self.poll_task_result(task_id).await;
+                }
+            };
+
+            // Process the chunk
             match chunk_result {
                 Ok(chunk) => {
                     let text = String::from_utf8_lossy(&chunk);
@@ -392,6 +454,17 @@ impl CodeCoderTool {
                                         data.message
                                     );
 
+                                    // Send notification to user via Telegram/channel
+                                    let notification_msg = format!(
+                                        "🔐 *CodeCoder 授权请求*\n\n\
+                                        📋 *操作*: {}\n\
+                                        📝 *详情*: {}\n\n\
+                                        ✅ 已自动批准",
+                                        data.permission,
+                                        data.message
+                                    );
+                                    confirmation::notify(platform, user_id, &notification_msg).await;
+
                                     if auto_approve {
                                         // Auto-approve the permission
                                         self.approve_task(task_id, &data.request_id).await?;
@@ -424,11 +497,10 @@ impl CodeCoderTool {
                                                 progress_messages.join("\n")
                                             }
                                         }));
-                                    } else {
-                                        return Err(anyhow::anyhow!(
-                                            data.error.unwrap_or_else(|| "Task failed".into())
-                                        ));
                                     }
+                                    return Err(anyhow::anyhow!(
+                                        data.error.unwrap_or_else(|| "Task failed".into())
+                                    ));
                                 }
                             }
                         }
@@ -440,10 +512,6 @@ impl CodeCoderTool {
                 }
             }
         }
-
-        // Stream ended without finish event - poll for final status
-        tracing::debug!("SSE stream ended, polling for final status");
-        self.poll_task_result(task_id).await
     }
 
     /// Approve a permission request
@@ -470,6 +538,7 @@ impl CodeCoderTool {
 
     /// Fallback: Poll for task result
     async fn poll_task_result(&self, task_id: &str) -> anyhow::Result<String> {
+        tracing::info!("Starting to poll task {} for result", task_id);
         let max_attempts = 180; // 180 * 2s = 6 minutes
         let poll_interval = Duration::from_secs(2);
 
@@ -489,16 +558,25 @@ impl CodeCoderTool {
                 .map_err(|e| anyhow::anyhow!("Failed to parse task response: {e}"))?;
 
             if let Some(task) = body.data {
+                tracing::info!(
+                    "Poll attempt {}: task {} status = {}",
+                    attempt + 1,
+                    task_id,
+                    task.status
+                );
                 match task.status.as_str() {
                     "completed" => {
+                        tracing::info!("Task {} completed with output", task_id);
                         return Ok(task.output.unwrap_or_else(|| "Task completed".into()));
                     }
                     "failed" => {
+                        tracing::warn!("Task {} failed: {:?}", task_id, task.error);
                         return Err(anyhow::anyhow!(
                             task.error.unwrap_or_else(|| "Task failed".into())
                         ));
                     }
                     "awaiting_approval" => {
+                        tracing::info!("Task {} awaiting approval", task_id);
                         return Err(anyhow::anyhow!(
                             "Task is awaiting approval. Use auto_approve=true or approve manually."
                         ));

@@ -72,6 +72,16 @@ const memoryRoute = createRoute({
 })
 
 // ============================================================================
+// Infrastructure Route
+// ============================================================================
+
+const infrastructureRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/infrastructure",
+  component: lazyRouteComponent(() => import("./pages/Infrastructure"), "Infrastructure"),
+})
+
+// ============================================================================
 // Settings Route
 // ============================================================================
 
@@ -124,6 +134,7 @@ const routeTree = rootRoute.addChildren([
   tasksRoute,
   agentsRoute,
   memoryRoute,
+  infrastructureRoute,
 ])
 
 // ============================================================================

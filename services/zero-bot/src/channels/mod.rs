@@ -17,13 +17,52 @@ pub use telegram::TelegramChannel;
 pub use traits::Channel;
 pub use whatsapp::WhatsAppChannel;
 
+use crate::agent::confirmation::{self, NotificationSink};
+use crate::agent::AgentExecutor;
 use crate::config::Config;
 use crate::memory::{self, Memory};
 use crate::providers::{self, Provider};
+use crate::security::SecurityPolicy;
+use crate::tools;
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
+use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
+
+/// Notification sink that routes notifications to the appropriate channel
+struct ChannelNotificationSink {
+    channels: RwLock<HashMap<String, Arc<dyn Channel>>>,
+}
+
+impl ChannelNotificationSink {
+    fn new() -> Self {
+        Self {
+            channels: RwLock::new(HashMap::new()),
+        }
+    }
+
+    async fn register_channel(&self, name: &str, channel: Arc<dyn Channel>) {
+        self.channels.write().await.insert(name.to_string(), channel);
+    }
+}
+
+#[async_trait]
+impl NotificationSink for ChannelNotificationSink {
+    async fn send_notification(&self, channel: &str, user_id: &str, message: &str) {
+        if let Some(ch) = self.channels.read().await.get(channel) {
+            if let Err(e) = ch.send(message, user_id).await {
+                tracing::error!("Failed to send notification to {}: {}", channel, e);
+            } else {
+                tracing::info!("Sent notification to {} user {}", channel, user_id);
+            }
+        } else {
+            tracing::warn!("Channel '{}' not found for notification", channel);
+        }
+    }
+}
 
 /// Maximum characters per injected workspace file (matches `OpenClaw` default).
 const BOOTSTRAP_MAX_CHARS: usize = 20_000;
@@ -81,14 +120,37 @@ fn spawn_supervised_listener(
 ///
 /// Daily memory files (`memory/*.md`) are NOT injected — they are accessed
 /// on-demand via `memory_recall` / `memory_search` tools.
+#[allow(clippy::too_many_lines)]
 pub fn build_system_prompt(
     workspace_dir: &std::path::Path,
     model_name: &str,
     tools: &[(&str, &str)],
     skills: &[crate::skills::Skill],
+    codecoder_enabled: bool,
 ) -> String {
     use std::fmt::Write;
     let mut prompt = String::with_capacity(8192);
+
+    // ── 0. CodeCoder Integration (if enabled) ──────────────────
+    if codecoder_enabled {
+        prompt.push_str("## CodeCoder Integration (IMPORTANT)\n\n");
+        prompt.push_str(
+            "You have access to CodeCoder, a powerful AI workbench with 23 specialized agents.\n\n\
+             **DEFAULT BEHAVIOR**: For most tasks, you should use the `codecoder` tool to delegate to \
+             the appropriate CodeCoder agent. This includes:\n\
+             - General questions and research → `general` agent\n\
+             - Code review and quality analysis → `code-reviewer` agent\n\
+             - Security analysis → `security-reviewer` agent\n\
+             - Architecture decisions → `architect` agent\n\
+             - Test-driven development → `tdd-guide` agent\n\
+             - Weather, news, and web searches → `general` agent (has WebSearch capability)\n\n\
+             **EXCEPTION**: Only use your built-in tools (bash, file operations) when:\n\
+             - The user explicitly asks NOT to use CodeCoder\n\
+             - The task is extremely simple (e.g., `ls`, `pwd`)\n\
+             - The user specifically requests a bash command\n\n\
+             When using codecoder, provide the full user request as the prompt.\n\n",
+        );
+    }
 
     // ── 1. Tooling ──────────────────────────────────────────────
     if !tools.is_empty() {
@@ -414,46 +476,92 @@ pub async fn start_channels(config: Config) -> Result<()> {
         config.api_key.as_deref(),
     )?);
 
+    // Create security policy
+    let security = Arc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+    ));
+
+    // Create actual tools for execution
+    let composio_key = if config.composio.enabled {
+        config.composio.api_key.as_deref()
+    } else {
+        None
+    };
+    let tool_instances = tools::all_tools(
+        &security,
+        mem.clone(),
+        composio_key,
+        &config.browser,
+        &config.codecoder,
+    );
+
     // Build system prompt from workspace identity files + skills
     let workspace = config.workspace_dir.clone();
     let skills = crate::skills::load_skills(&workspace);
 
-    // Collect tool descriptions for the prompt
-    let mut tool_descs: Vec<(&str, &str)> = vec![
+    // Collect tool descriptions for the prompt (from actual tools)
+    let tool_descs: Vec<(&str, &str)> = vec![
         (
             "shell",
-            "Execute terminal commands. Use when: running local checks, build/test commands, diagnostics. Don't use when: a safer dedicated tool exists, or command is destructive without approval.",
+            "Execute terminal commands. Use when: running local checks, build/test commands, diagnostics.",
         ),
         (
             "file_read",
-            "Read file contents. Use when: inspecting project files, configs, logs. Don't use when: a targeted search is enough.",
+            "Read file contents. Use when: inspecting project files, configs, logs.",
         ),
         (
             "file_write",
-            "Write file contents. Use when: applying focused edits, scaffolding files, updating docs/code. Don't use when: side effects are unclear or file ownership is uncertain.",
+            "Write file contents. Use when: applying focused edits, scaffolding files.",
         ),
         (
             "memory_store",
-            "Save to memory. Use when: preserving durable preferences, decisions, key context. Don't use when: information is transient/noisy/sensitive without need.",
+            "Save to memory. Use when: preserving durable preferences, decisions, key context.",
         ),
         (
             "memory_recall",
-            "Search memory. Use when: retrieving prior decisions, user preferences, historical context. Don't use when: answer is already in current context.",
+            "Search memory. Use when: retrieving prior decisions, user preferences.",
         ),
         (
             "memory_forget",
-            "Delete a memory entry. Use when: memory is incorrect/stale or explicitly requested for removal. Don't use when: impact is uncertain.",
+            "Delete a memory entry. Use when: memory is incorrect/stale.",
+        ),
+        (
+            "codecoder",
+            "Invoke CodeCoder AI agents. Use for: web search, code review, security analysis, architecture, etc. Pass the full user request as prompt.",
         ),
     ];
 
-    if config.browser.enabled {
-        tool_descs.push((
-            "browser_open",
-            "Open approved HTTPS URLs in Brave Browser (allowlist-only, no scraping)",
-        ));
+    // Build base system prompt
+    let mut system_prompt = build_system_prompt(&workspace, &model, &tool_descs, &skills, config.codecoder.enabled);
+
+    // Add tool calling instructions
+    system_prompt.push_str("\n## Tool Calling Format\n\n");
+    system_prompt.push_str("To use a tool, output a JSON block:\n\n");
+    system_prompt.push_str("```json\n");
+    system_prompt.push_str("{\"tool\": \"tool_name\", \"args\": {\"param\": \"value\"}}\n");
+    system_prompt.push_str("```\n\n");
+    system_prompt.push_str("After tool execution, you'll receive results. Continue using tools or provide a final text response.\n\n");
+    system_prompt.push_str("### Tool Parameter Schemas:\n\n");
+    for tool in &tool_instances {
+        let _ = std::fmt::Write::write_fmt(
+            &mut system_prompt,
+            format_args!("**{}**: {}\n", tool.name(), tool.description()),
+        );
+        let _ = std::fmt::Write::write_fmt(
+            &mut system_prompt,
+            format_args!("Parameters: `{}`\n\n", tool.parameters_schema()),
+        );
     }
 
-    let system_prompt = build_system_prompt(&workspace, &model, &tool_descs, &skills);
+    // Create the agent executor
+    let executor = Arc::new(AgentExecutor::new(
+        provider.clone(),
+        tool_instances,
+        system_prompt.clone(),
+        model.clone(),
+        temperature,
+    ));
 
     if !skills.is_empty() {
         println!(
@@ -519,6 +627,13 @@ pub async fn start_channels(config: Config) -> Result<()> {
         return Ok(());
     }
 
+    // Register notification sink for confirmation messages
+    let notification_sink = Arc::new(ChannelNotificationSink::new());
+    for ch in &channels {
+        notification_sink.register_channel(ch.name(), ch.clone()).await;
+    }
+    confirmation::set_notification_sink(notification_sink).await;
+
     println!("🐦‍🔥 ZeroBot Channel Server");
     println!("  🤖 Model:    {model}");
     println!(
@@ -564,7 +679,7 @@ pub async fn start_channels(config: Config) -> Result<()> {
     }
     drop(tx); // Drop our copy so rx closes when all channels stop
 
-    // Process incoming messages — call the LLM and reply
+    // Process incoming messages — use the agent executor
     while let Some(msg) = rx.recv().await {
         println!(
             "  💬 [{}] from {}: {}",
@@ -584,15 +699,15 @@ pub async fn start_channels(config: Config) -> Result<()> {
                 .await;
         }
 
-        // Call the LLM with system prompt (identity + soul + tools)
-        match provider
-            .chat_with_system(Some(&system_prompt), &msg.content, &model, temperature)
-            .await
-        {
+        // Create tool context with channel info
+        let tool_context = crate::agent::ToolContext::new(&msg.channel, &msg.sender);
+
+        // Use the agent executor for tool-calling loop with context
+        match executor.execute_with_context(&msg.content, Some(tool_context)).await {
             Ok(response) => {
                 println!(
                     "  🤖 Reply: {}",
-                    truncate_with_ellipsis(&response, 80)
+                    truncate_with_ellipsis(&response, 200)
                 );
                 // Find the channel that sent this message and reply
                 for ch in &channels {
@@ -605,7 +720,7 @@ pub async fn start_channels(config: Config) -> Result<()> {
                 }
             }
             Err(e) => {
-                eprintln!("  ❌ LLM error: {e}");
+                eprintln!("  ❌ Agent error: {e}");
                 for ch in &channels {
                     if ch.name() == msg.channel {
                         let _ = ch.send(&format!("⚠️ Error: {e}"), &msg.sender).await;
@@ -656,7 +771,7 @@ mod tests {
     fn prompt_contains_all_sections() {
         let ws = make_workspace();
         let tools = vec![("shell", "Run commands"), ("file_read", "Read files")];
-        let prompt = build_system_prompt(ws.path(), "test-model", &tools, &[]);
+        let prompt = build_system_prompt(ws.path(), "test-model", &tools, &[], false);
 
         // Section headers
         assert!(prompt.contains("## Tools"), "missing Tools section");
@@ -680,7 +795,7 @@ mod tests {
             ("shell", "Run commands"),
             ("memory_recall", "Search memory"),
         ];
-        let prompt = build_system_prompt(ws.path(), "gpt-4o", &tools, &[]);
+        let prompt = build_system_prompt(ws.path(), "gpt-4o", &tools, &[], false);
 
         assert!(prompt.contains("**shell**"));
         assert!(prompt.contains("Run commands"));
@@ -690,7 +805,7 @@ mod tests {
     #[test]
     fn prompt_injects_safety() {
         let ws = make_workspace();
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         assert!(prompt.contains("Do not exfiltrate private data"));
         assert!(prompt.contains("Do not run destructive commands"));
@@ -700,7 +815,7 @@ mod tests {
     #[test]
     fn prompt_injects_workspace_files() {
         let ws = make_workspace();
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         assert!(prompt.contains("### SOUL.md"), "missing SOUL.md header");
         assert!(prompt.contains("Be helpful"), "missing SOUL content");
@@ -721,7 +836,7 @@ mod tests {
     fn prompt_missing_file_markers() {
         let tmp = TempDir::new().unwrap();
         // Empty workspace — no files at all
-        let prompt = build_system_prompt(tmp.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(tmp.path(), "model", &[], &[], false);
 
         assert!(prompt.contains("[File not found: SOUL.md]"));
         assert!(prompt.contains("[File not found: AGENTS.md]"));
@@ -732,7 +847,7 @@ mod tests {
     fn prompt_bootstrap_only_if_exists() {
         let ws = make_workspace();
         // No BOOTSTRAP.md — should not appear
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
         assert!(
             !prompt.contains("### BOOTSTRAP.md"),
             "BOOTSTRAP.md should not appear when missing"
@@ -740,7 +855,7 @@ mod tests {
 
         // Create BOOTSTRAP.md — should appear
         std::fs::write(ws.path().join("BOOTSTRAP.md"), "# Bootstrap\nFirst run.").unwrap();
-        let prompt2 = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt2 = build_system_prompt(ws.path(), "model", &[], &[], false);
         assert!(
             prompt2.contains("### BOOTSTRAP.md"),
             "BOOTSTRAP.md should appear when present"
@@ -760,7 +875,7 @@ mod tests {
         )
         .unwrap();
 
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         // Daily notes should NOT be in the system prompt (on-demand via tools)
         assert!(
@@ -776,7 +891,7 @@ mod tests {
     #[test]
     fn prompt_runtime_metadata() {
         let ws = make_workspace();
-        let prompt = build_system_prompt(ws.path(), "claude-sonnet-4", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "claude-sonnet-4", &[], &[], false);
 
         assert!(prompt.contains("Model: claude-sonnet-4"));
         assert!(prompt.contains(&format!("OS: {}", std::env::consts::OS)));
@@ -797,7 +912,7 @@ mod tests {
             location: None,
         }];
 
-        let prompt = build_system_prompt(ws.path(), "model", &[], &skills);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &skills, false);
 
         assert!(prompt.contains("<available_skills>"), "missing skills XML");
         assert!(prompt.contains("<name>code-review</name>"));
@@ -818,7 +933,7 @@ mod tests {
         let big_content = "x".repeat(BOOTSTRAP_MAX_CHARS + 1000);
         std::fs::write(ws.path().join("AGENTS.md"), &big_content).unwrap();
 
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         assert!(
             prompt.contains("truncated at"),
@@ -835,7 +950,7 @@ mod tests {
         let ws = make_workspace();
         std::fs::write(ws.path().join("TOOLS.md"), "").unwrap();
 
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         // Empty file should not produce a header
         assert!(
@@ -847,7 +962,7 @@ mod tests {
     #[test]
     fn prompt_workspace_path() {
         let ws = make_workspace();
-        let prompt = build_system_prompt(ws.path(), "model", &[], &[]);
+        let prompt = build_system_prompt(ws.path(), "model", &[], &[], false);
 
         assert!(prompt.contains(&format!("Working directory: `{}`", ws.path().display())));
     }

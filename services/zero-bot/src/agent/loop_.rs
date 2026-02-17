@@ -123,6 +123,7 @@ pub async fn run(
         model_name,
         &tool_descs,
         &skills,
+        config.codecoder.enabled,
     );
 
     // ── Execute ──────────────────────────────────────────────────

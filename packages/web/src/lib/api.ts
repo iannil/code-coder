@@ -50,6 +50,8 @@ import type {
   TaskInfo,
   CreateTaskInput,
   InteractTaskInput,
+  // Channel Types
+  ChannelStatus,
 } from "./types"
 
 // ============================================================================
@@ -885,6 +887,31 @@ export class ApiClient {
   async deleteTask(id: string): Promise<void> {
     return this.delete<void>(`/v1/tasks/${id}`)
   }
+
+  // ========================================================================
+  // Channels (ZeroBot Integration)
+  // ========================================================================
+
+  /**
+   * List all configured channels with status
+   */
+  async listChannels(): Promise<ChannelStatus[]> {
+    return this.get<ChannelStatus[]>("/channels")
+  }
+
+  /**
+   * Get specific channel status
+   */
+  async getChannel(name: string): Promise<ChannelStatus> {
+    return this.get<ChannelStatus>(`/channels/${name}`)
+  }
+
+  /**
+   * Check channel health
+   */
+  async checkChannelHealth(name: string): Promise<ChannelStatus> {
+    return this.post<ChannelStatus>(`/channels/${name}/health`)
+  }
 }
 
 // ============================================================================
@@ -1016,4 +1043,8 @@ export const api = {
   createTask: (input: CreateTaskInput) => getClient().createTask(input),
   interactTask: (id: string, input: InteractTaskInput) => getClient().interactTask(id, input),
   deleteTask: (id: string) => getClient().deleteTask(id),
+  // Channel APIs (ZeroBot Integration)
+  listChannels: () => getClient().listChannels(),
+  getChannel: (name: string) => getClient().getChannel(name),
+  checkChannelHealth: (name: string) => getClient().checkChannelHealth(name),
 }

@@ -961,3 +961,94 @@ export type TaskEvent =
   | ConfirmationTaskEvent
   | FinishTaskEvent
   | ProgressTaskEvent
+
+// ============================================================================
+// Infrastructure Types (Zero-Bot)
+// ============================================================================
+
+// Channel Types
+export type ChannelType = "cli" | "telegram" | "discord" | "slack" | "matrix" | "whatsapp" | "imessage" | "email"
+export type ChannelHealth = "healthy" | "degraded" | "unhealthy"
+
+export interface ChannelConfig {
+  token?: string
+  webhookUrl?: string
+  botId?: string
+  apiKey?: string
+  [key: string]: unknown
+}
+
+export interface ChannelStatus {
+  name: string
+  type: ChannelType
+  enabled: boolean
+  health: ChannelHealth
+  config: ChannelConfig
+  lastPing?: number
+  error?: string
+}
+
+// Gateway Types
+export interface GatewayEndpoint {
+  path: string
+  method: string
+  description?: string
+}
+
+export interface GatewayRequest {
+  id: string
+  method: string
+  path: string
+  status: number
+  timestamp: number
+  duration: number
+}
+
+export interface GatewayStatus {
+  running: boolean
+  host: string
+  port: number
+  uptime?: number
+  endpoints: GatewayEndpoint[]
+  requestCount: number
+  recentRequests: GatewayRequest[]
+}
+
+// Cron Types
+export type CronJobStatus = "success" | "failed" | "running" | "pending"
+
+export interface CronJob {
+  id: string
+  name: string
+  expression: string
+  command: string
+  enabled: boolean
+  nextRun?: number
+  lastRun?: number
+  lastStatus?: CronJobStatus
+  lastError?: string
+}
+
+export interface CronHistory {
+  id: string
+  jobId: string
+  jobName: string
+  startTime: number
+  endTime?: number
+  status: CronJobStatus
+  output?: string
+  error?: string
+}
+
+// Tunnel Types
+export type TunnelType = "cloudflare" | "ngrok" | "tailscale" | "custom" | "none"
+
+export interface TunnelStatus {
+  type: TunnelType
+  connected: boolean
+  publicUrl?: string
+  localUrl?: string
+  latency?: number
+  error?: string
+  startedAt?: number
+}

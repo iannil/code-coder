@@ -232,6 +232,9 @@ export async function registerRoutes(): Promise<void> {
     getDocumentSymbols,
   } = await import("./handlers/lsp")
 
+  // Channel handlers (ZeroBot integration)
+  const { listChannels, getChannel, checkChannelHealth } = await import("./handlers/channel")
+
   // Session routes
   router.get("/api/sessions", listSessions)
   router.get("/api/sessions/:id", getSession)
@@ -339,6 +342,11 @@ export async function registerRoutes(): Promise<void> {
   router.post("/api/lsp/references", getReferences)
   router.post("/api/lsp/workspace-symbols", getWorkspaceSymbols)
   router.post("/api/lsp/document-symbols", getDocumentSymbols)
+
+  // Channel routes (ZeroBot integration)
+  router.get("/api/channels", listChannels)
+  router.get("/api/channels/:name", getChannel)
+  router.post("/api/channels/:name/health", checkChannelHealth)
 }
 
 // ============================================================================

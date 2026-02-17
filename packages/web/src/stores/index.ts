@@ -169,3 +169,55 @@ export {
   useTotalDiagnostics,
   useErrorDiagnostics,
 } from "./lsp"
+
+// ============================================================================
+// Channel Store (Infrastructure)
+// ============================================================================
+
+export {
+  useChannelStore,
+  useChannels,
+  useChannelLoading,
+  useEnabledChannels,
+  useChannelCounts,
+  useZeroBotStatus,
+} from "./channel"
+
+// ============================================================================
+// Gateway Store (Infrastructure)
+// ============================================================================
+
+export {
+  useGatewayStore,
+  useGatewayStatus,
+  useGatewayRunning,
+  useGatewayEndpoints,
+  useGatewayRequests,
+  useGatewayLoading,
+} from "./gateway"
+
+// ============================================================================
+// Cron Store (Infrastructure)
+// ============================================================================
+
+export {
+  useCronStore,
+  useCronJobs,
+  useCronHistory,
+  useCronLoading,
+  useEnabledJobs,
+  useCronCounts,
+} from "./cron"
+
+// ============================================================================
+// Tunnel Store (Infrastructure)
+// ============================================================================
+
+export {
+  useTunnelStore,
+  useTunnelStatus,
+  useTunnelConnected,
+  useTunnelPublicUrl,
+  useAvailableTunnelTypes,
+  useTunnelLoading,
+} from "./tunnel"

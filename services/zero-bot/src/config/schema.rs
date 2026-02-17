@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 // ── JSON config structures for CodeCoder integration ──────────────────
 
-/// Intermediate structure for deserializing ZeroBot config from JSON
+/// Intermediate structure for deserializing `ZeroBot` config from JSON
 #[derive(Debug, Clone, Deserialize)]
 struct ZeroBotJsonConfig {
     default_provider: Option<String>,
@@ -39,6 +39,8 @@ struct ZeroBotJsonConfig {
     browser: Option<ZeroBotJsonBrowser>,
     #[serde(default)]
     identity: Option<ZeroBotJsonIdentity>,
+    #[serde(default)]
+    codecoder: Option<ZeroBotJsonCodeCoder>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -177,6 +179,12 @@ struct ZeroBotJsonIdentity {
     aieos_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ZeroBotJsonCodeCoder {
+    enabled: Option<bool>,
+    endpoint: Option<String>,
+}
+
 /// Strip JSONC-style comments (// and /* */)
 fn strip_json_comments(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
@@ -200,7 +208,7 @@ fn strip_json_comments(input: &str) -> String {
             if chars.peek() == Some(&'/') {
                 // Single-line comment: skip to end of line
                 chars.next(); // consume second /
-                while chars.next().map_or(false, |ch| ch != '\n') {}
+                while chars.next().is_some_and(|ch| ch != '\n') {}
                 result.push('\n');
             } else if chars.peek() == Some(&'*') {
                 // Multi-line comment: skip to */
@@ -428,10 +436,10 @@ pub struct BrowserConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CodeCoderConfig {
-    /// Enable CodeCoder tool for invoking 23 AI agents
+    /// Enable `CodeCoder` tool for invoking 23 AI agents
     #[serde(default)]
     pub enabled: bool,
-    /// CodeCoder API endpoint (default: http://localhost:4096)
+    /// `CodeCoder` API endpoint (default: `<http://localhost:4096>`)
     #[serde(default = "default_codecoder_endpoint")]
     pub endpoint: String,
 }
@@ -906,13 +914,18 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Try to load ZeroBot config from CodeCoder's config file (~/.ccode/codecoder.json)
+    /// Try to load `ZeroBot` config from `CodeCoder`'s config file
     fn load_from_codecoder() -> Option<Self> {
         let home = UserDirs::new()?.home_dir().to_path_buf();
         let zerobot_dir = home.join(".codecoder");
 
         // Try multiple possible config paths
         let candidates = [
+            // Primary: ~/.codecoder/config.json (shared with CodeCoder)
+            home.join(".codecoder/config.json"),
+            home.join(".codecoder/codecoder.json"),
+            home.join(".codecoder/codecoder.jsonc"),
+            // Legacy: ~/.ccode/ paths
             home.join(".ccode/codecoder.json"),
             home.join(".ccode/codecoder.jsonc"),
             home.join(".ccode/config.json"),
@@ -927,22 +940,65 @@ impl Config {
                 if let Ok(full_config) = serde_json::from_str::<serde_json::Value>(&content) {
                     // Extract zerobot section
                     if let Some(zerobot_value) = full_config.get("zerobot") {
-                        if let Ok(zb_config) =
+                        if let Ok(mut zb_config) =
                             serde_json::from_value::<ZeroBotJsonConfig>(zerobot_value.clone())
                         {
-                            // Extract API key from provider config if available
-                            let api_key = zb_config
+                            // Extract provider config from CodeCoder's provider section
+                            let (resolved_provider, api_key) = zb_config
                                 .default_provider
                                 .as_ref()
-                                .and_then(|provider| {
-                                    full_config
-                                        .get("provider")
-                                        .and_then(|p| p.get(provider))
-                                        .and_then(|p| p.get("options"))
-                                        .and_then(|o| o.get("apiKey"))
-                                        .and_then(|k| k.as_str())
-                                        .map(|s| resolve_env_vars(s))
-                                });
+                                .map_or_else(
+                                    || (String::new(), None),
+                                    |provider_name| {
+                                        // Check if it's already a custom:URL format
+                                        if provider_name.starts_with("custom:") {
+                                            return (provider_name.clone(), None);
+                                        }
+
+                                        // Look up provider in CodeCoder's provider config
+                                        let provider_config = full_config
+                                            .get("provider")
+                                            .and_then(|p| p.get(provider_name));
+
+                                        if let Some(pc) = provider_config {
+                                            // Extract baseURL and apiKey
+                                            let base_url = pc
+                                                .get("options")
+                                                .and_then(|o| o.get("baseURL"))
+                                                .and_then(|u| u.as_str())
+                                                .or_else(|| pc.get("api").and_then(|a| a.as_str()))
+                                                .map(resolve_env_vars);
+
+                                            let api_key = pc
+                                                .get("options")
+                                                .and_then(|o| o.get("apiKey"))
+                                                .and_then(|k| k.as_str())
+                                                .map(resolve_env_vars);
+
+                                            // Convert to custom:URL format if baseURL found
+                                            if let Some(url) = base_url {
+                                                let custom_provider = format!("custom:{url}");
+                                                tracing::info!(
+                                                    "Resolved provider '{}' to '{}'",
+                                                    provider_name,
+                                                    custom_provider
+                                                );
+                                                (custom_provider, api_key)
+                                            } else {
+                                                // Keep original provider name (might be built-in)
+                                                (provider_name.clone(), api_key)
+                                            }
+                                        } else {
+                                            // Provider not found in config, keep original
+                                            (provider_name.clone(), None)
+                                        }
+                                    },
+                                );
+
+                            // Update the provider in zb_config
+                            if !resolved_provider.is_empty() {
+                                zb_config.default_provider = Some(resolved_provider);
+                            }
 
                             tracing::info!(
                                 "Loaded ZeroBot config from CodeCoder: {}",
@@ -964,11 +1020,12 @@ impl Config {
     }
 
     /// Convert JSON config to Config struct
+    #[allow(clippy::too_many_lines)]
     fn from_json_config(
         json: ZeroBotJsonConfig,
         api_key: Option<String>,
         config_path: PathBuf,
-        zerobot_dir: &PathBuf,
+        zerobot_dir: &std::path::Path,
     ) -> Self {
         let defaults = Config::default();
 
@@ -984,13 +1041,11 @@ impl Config {
             let level = a
                 .level
                 .as_deref()
-                .map(|s| match s {
+                .map_or(defaults.autonomy.level, |s| match s {
                     "readonly" => AutonomyLevel::ReadOnly,
-                    "supervised" => AutonomyLevel::Supervised,
                     "full" => AutonomyLevel::Full,
                     _ => AutonomyLevel::Supervised,
-                })
-                .unwrap_or(defaults.autonomy.level);
+                });
 
             AutonomyConfig {
                 level,
@@ -1151,11 +1206,16 @@ impl Config {
             aieos_inline: None,
         });
 
+        // Build codecoder config
+        let codecoder = json.codecoder.map_or(defaults.codecoder.clone(), |c| CodeCoderConfig {
+            enabled: c.enabled.unwrap_or(defaults.codecoder.enabled),
+            endpoint: c.endpoint.unwrap_or(defaults.codecoder.endpoint.clone()),
+        });
+
         Config {
             workspace_dir: json
                 .workspace_dir
-                .map(PathBuf::from)
-                .unwrap_or_else(|| zerobot_dir.join("workspace")),
+                .map_or_else(|| zerobot_dir.join("workspace"), PathBuf::from),
             config_path,
             api_key,
             default_provider: json.default_provider.or(defaults.default_provider),
@@ -1173,7 +1233,7 @@ impl Config {
             composio,
             secrets: defaults.secrets,
             browser,
-            codecoder: defaults.codecoder,
+            codecoder,
             identity,
         }
     }
@@ -2343,6 +2403,7 @@ default_temperature = 0.7
             composio: None,
             browser: None,
             identity: None,
+            codecoder: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test-zerobot");
@@ -2395,6 +2456,7 @@ default_temperature = 0.7
             composio: None,
             browser: None,
             identity: None,
+            codecoder: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test");
