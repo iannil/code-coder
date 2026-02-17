@@ -30,22 +30,30 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use telegram::{CallbackQuery, InlineButton};
 use tokio::sync::RwLock;
 
 /// Notification sink that routes notifications to the appropriate channel
 struct ChannelNotificationSink {
     channels: RwLock<HashMap<String, Arc<dyn Channel>>>,
+    /// Store Telegram channel separately for inline keyboard operations
+    telegram_channel: RwLock<Option<Arc<TelegramChannel>>>,
 }
 
 impl ChannelNotificationSink {
     fn new() -> Self {
         Self {
             channels: RwLock::new(HashMap::new()),
+            telegram_channel: RwLock::new(None),
         }
     }
 
     async fn register_channel(&self, name: &str, channel: Arc<dyn Channel>) {
         self.channels.write().await.insert(name.to_string(), channel);
+    }
+
+    async fn register_telegram_channel(&self, channel: Arc<TelegramChannel>) {
+        *self.telegram_channel.write().await = Some(channel);
     }
 }
 
@@ -62,6 +70,151 @@ impl NotificationSink for ChannelNotificationSink {
             tracing::warn!("Channel '{}' not found for notification", channel);
         }
     }
+
+    async fn send_confirmation_request(
+        &self,
+        channel: &str,
+        user_id: &str,
+        request_id: &str,
+        permission: &str,
+        message: &str,
+    ) -> anyhow::Result<()> {
+        // For Telegram, use inline keyboard buttons
+        if channel == "telegram" {
+            if let Some(tg) = self.telegram_channel.read().await.as_ref() {
+                let text = format!(
+                    "🔐 *CodeCoder 授权请求*\n\n\
+                    📋 *操作*: {}\n\
+                    📝 *详情*: {}\n\n\
+                    请选择批准或拒绝此操作：",
+                    escape_markdown(permission),
+                    escape_markdown(message)
+                );
+
+                let buttons = vec![vec![
+                    InlineButton::new("✅ 批准", format!("approve:{request_id}")),
+                    InlineButton::new("❌ 拒绝", format!("reject:{request_id}")),
+                ]];
+
+                tg.send_with_inline_keyboard(user_id, &text, buttons).await?;
+                return Ok(());
+            }
+        }
+
+        // Fallback: send plain text message for non-Telegram channels
+        if let Some(ch) = self.channels.read().await.get(channel) {
+            let text = format!(
+                "🔐 CodeCoder Authorization Request\n\n\
+                Operation: {permission}\n\
+                Details: {message}\n\n\
+                Reply 'approve {request_id}' or 'reject {request_id}' to respond."
+            );
+            ch.send(&text, user_id).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn update_confirmation_result(
+        &self,
+        channel: &str,
+        user_id: &str,
+        approved: bool,
+        message: &str,
+    ) -> anyhow::Result<()> {
+        // Just send a simple status message for now
+        // In the future, we could edit the original message
+        if let Some(ch) = self.channels.read().await.get(channel) {
+            let status = if approved { "✅" } else { "❌" };
+            let text = format!("{status} {message}");
+            ch.send(&text, user_id).await?;
+        }
+        Ok(())
+    }
+}
+
+/// Escape special Markdown characters for Telegram
+fn escape_markdown(text: &str) -> String {
+    text.replace('*', "\\*")
+        .replace('_', "\\_")
+        .replace('`', "\\`")
+        .replace('[', "\\[")
+}
+
+/// Handle Telegram callback queries (button clicks) for confirmation requests
+async fn handle_telegram_callbacks(
+    tg: Arc<TelegramChannel>,
+    mut rx: tokio::sync::mpsc::Receiver<CallbackQuery>,
+) {
+    tracing::info!("Starting Telegram callback query handler");
+
+    while let Some(query) = rx.recv().await {
+        tracing::debug!(
+            "Received callback query: id={}, data={}, from={}",
+            query.id,
+            query.data,
+            query.from_user_id
+        );
+
+        // Parse callback data: "approve:request_id" or "reject:request_id"
+        let parts: Vec<&str> = query.data.splitn(2, ':').collect();
+        if parts.len() != 2 {
+            tracing::warn!("Invalid callback data format: {}", query.data);
+            let _ = tg
+                .answer_callback_query(&query.id, Some("无效的回调数据"), false)
+                .await;
+            continue;
+        }
+
+        let (action, request_id) = (parts[0], parts[1]);
+        let approved = action == "approve";
+
+        // Respond to the confirmation registry
+        let handled = confirmation::handle_confirmation_response(request_id, approved).await;
+
+        if handled {
+            let response_text = if approved {
+                "✅ 已批准操作"
+            } else {
+                "❌ 已拒绝操作"
+            };
+
+            // Answer the callback query to remove loading state
+            let _ = tg
+                .answer_callback_query(&query.id, Some(response_text), false)
+                .await;
+
+            // Update the original message to show the result
+            let update_text = if approved {
+                format!("✅ *已批准*\n\n请求 ID: {request_id}")
+            } else {
+                format!("❌ *已拒绝*\n\n请求 ID: {request_id}")
+            };
+
+            let _ = tg
+                .edit_message_text(&query.chat_id, query.message_id, &update_text)
+                .await;
+
+            tracing::info!(
+                "Confirmation {} {} by user {}",
+                request_id,
+                if approved { "approved" } else { "rejected" },
+                query.from_user_id
+            );
+        } else {
+            // Request not found (expired or already handled)
+            let _ = tg
+                .answer_callback_query(&query.id, Some("⚠️ 请求已过期或已处理"), true)
+                .await;
+            tracing::warn!(
+                "Callback for unknown/expired request: {} (user: {})",
+                request_id,
+                query.from_user_id
+            );
+        }
+    }
+
+    tracing::info!("Telegram callback query handler stopped");
 }
 
 /// Maximum characters per injected workspace file (matches `OpenClaw` default).
@@ -347,6 +500,7 @@ pub async fn doctor_channels(config: Config) -> Result<()> {
     let mut channels: Vec<(&'static str, Arc<dyn Channel>)> = Vec::new();
 
     if let Some(ref tg) = config.channels_config.telegram {
+        // Note: For health check, we don't need STT - just check basic connectivity
         channels.push((
             "Telegram",
             Arc::new(TelegramChannel::new(
@@ -576,12 +730,82 @@ pub async fn start_channels(config: Config) -> Result<()> {
 
     // Collect active channels
     let mut channels: Vec<Arc<dyn Channel>> = Vec::new();
+    // Keep a separate reference to Telegram channel for inline keyboard operations
+    let mut telegram_channel_ref: Option<Arc<TelegramChannel>> = None;
+    // Callback channel for Telegram inline button confirmations
+    let mut telegram_callback_rx: Option<tokio::sync::mpsc::Receiver<CallbackQuery>> = None;
 
     if let Some(ref tg) = config.channels_config.telegram {
-        channels.push(Arc::new(TelegramChannel::new(
-            tg.bot_token.clone(),
-            tg.allowed_users.clone(),
-        )));
+        // Create callback channel for inline button clicks
+        let (callback_tx, callback_rx) = tokio::sync::mpsc::channel::<CallbackQuery>(100);
+        telegram_callback_rx = Some(callback_rx);
+
+        // Create STT client if voice transcription is enabled
+        let mut telegram_channel =
+            if let Some(ref voice) = tg.voice {
+                if voice.enabled {
+                    // Get API key: prefer voice-specific key, then fall back to main key
+                    let stt_api_key = voice
+                        .stt_api_key
+                        .as_deref()
+                        .or(config.api_key.as_deref());
+
+                    if let Some(key) = stt_api_key {
+                        match crate::stt::create_stt(
+                            &voice.stt_provider,
+                            key,
+                            voice.stt_model.as_deref(),
+                            voice.stt_base_url.as_deref(),
+                        ) {
+                            Ok(stt) => {
+                                tracing::info!(
+                                    "Telegram voice transcription enabled (provider: {})",
+                                    voice.stt_provider
+                                );
+                                TelegramChannel::with_stt(
+                                    tg.bot_token.clone(),
+                                    tg.allowed_users.clone(),
+                                    stt,
+                                )
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Failed to create STT client, voice disabled: {e}"
+                                );
+                                TelegramChannel::new(
+                                    tg.bot_token.clone(),
+                                    tg.allowed_users.clone(),
+                                )
+                            }
+                        }
+                    } else {
+                        tracing::warn!(
+                            "Voice transcription enabled but no API key configured, voice disabled"
+                        );
+                        TelegramChannel::new(
+                            tg.bot_token.clone(),
+                            tg.allowed_users.clone(),
+                        )
+                    }
+                } else {
+                    TelegramChannel::new(
+                        tg.bot_token.clone(),
+                        tg.allowed_users.clone(),
+                    )
+                }
+            } else {
+                TelegramChannel::new(
+                    tg.bot_token.clone(),
+                    tg.allowed_users.clone(),
+                )
+            };
+
+        // Set callback sender BEFORE wrapping in Arc
+        telegram_channel.set_callback_sender(callback_tx);
+
+        let telegram_arc = Arc::new(telegram_channel);
+        telegram_channel_ref = Some(telegram_arc.clone());
+        channels.push(telegram_arc);
     }
 
     if let Some(ref dc) = config.channels_config.discord {
@@ -627,10 +851,17 @@ pub async fn start_channels(config: Config) -> Result<()> {
         return Ok(());
     }
 
+    // Initialize the confirmation registry for interactive approvals
+    confirmation::init_confirmation_registry().await;
+
     // Register notification sink for confirmation messages
     let notification_sink = Arc::new(ChannelNotificationSink::new());
     for ch in &channels {
         notification_sink.register_channel(ch.name(), ch.clone()).await;
+    }
+    // Register Telegram channel separately for inline keyboard operations
+    if let Some(ref tg) = telegram_channel_ref {
+        notification_sink.register_telegram_channel(tg.clone()).await;
     }
     confirmation::set_notification_sink(notification_sink).await;
 
@@ -677,6 +908,16 @@ pub async fn start_channels(config: Config) -> Result<()> {
             max_backoff_secs,
         ));
     }
+
+    // Spawn callback handler for Telegram inline button confirmations
+    // (callbacks are received by the main listener and sent to callback_rx)
+    if let (Some(tg), Some(callback_rx)) = (telegram_channel_ref.clone(), telegram_callback_rx) {
+        handles.push(tokio::spawn(async move {
+            handle_telegram_callbacks(tg, callback_rx).await;
+        }));
+        tracing::info!("Telegram callback query handler started for interactive confirmations");
+    }
+
     drop(tx); // Drop our copy so rx closes when all channels stop
 
     // Process incoming messages — use the agent executor

@@ -37,3 +37,7 @@ services/zero-bot/target/
 **/playwright-report/
 **/test-results/
 **/coverage/
+
+# Ops script runtime files
+.pids/
+.logs/

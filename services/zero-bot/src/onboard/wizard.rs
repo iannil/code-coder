@@ -1269,6 +1269,7 @@ fn setup_channels() -> Result<ChannelsConfig> {
                 config.telegram = Some(TelegramConfig {
                     bot_token: token,
                     allowed_users,
+                    voice: None, // Voice transcription can be configured manually
                 });
             }
             1 => {

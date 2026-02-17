@@ -25,6 +25,8 @@ const REQUEST_TIMEOUT_SECS: u64 = 300; // 5 minutes for long-running tasks
 const SSE_TIMEOUT_SECS: u64 = 600; // 10 minutes max for SSE stream
 /// SSE per-chunk timeout in seconds (how long to wait between chunks)
 const SSE_CHUNK_TIMEOUT_SECS: u64 = 120; // 2 minutes per chunk - generous for agent thinking
+/// Confirmation timeout in seconds (how long to wait for user to approve/reject)
+const CONFIRMATION_TIMEOUT_SECS: u64 = 120; // 2 minutes for user to respond
 
 /// `CodeCoder` HTTP client tool with SSE support
 pub struct CodeCoderTool {
@@ -454,32 +456,81 @@ impl CodeCoderTool {
                                         data.message
                                     );
 
-                                    // Send notification to user via Telegram/channel
-                                    let notification_msg = format!(
-                                        "🔐 *CodeCoder 授权请求*\n\n\
-                                        📋 *操作*: {}\n\
-                                        📝 *详情*: {}\n\n\
-                                        ✅ 已自动批准",
-                                        data.permission,
-                                        data.message
-                                    );
-                                    confirmation::notify(platform, user_id, &notification_msg).await;
-
                                     if auto_approve {
                                         // Auto-approve the permission
+                                        let notification_msg = format!(
+                                            "🔐 *CodeCoder 授权请求*\n\n\
+                                            📋 *操作*: {}\n\
+                                            📝 *详情*: {}\n\n\
+                                            ✅ 已自动批准",
+                                            data.permission,
+                                            data.message
+                                        );
+                                        confirmation::notify(platform, user_id, &notification_msg).await;
                                         self.approve_task(task_id, &data.request_id).await?;
                                         progress_messages.push(format!(
                                             "[auto-approved] {}",
                                             data.message
                                         ));
                                     } else {
-                                        // Return early, requiring user interaction
-                                        return Err(anyhow::anyhow!(
-                                            "Permission required: {} - {}. \
-                                            Use auto_approve=true or manually approve via API.",
-                                            data.permission,
-                                            data.message
-                                        ));
+                                        // Request interactive confirmation from user
+                                        tracing::info!(
+                                            "Requesting interactive confirmation for {} from {} on {}",
+                                            data.request_id,
+                                            user_id,
+                                            platform
+                                        );
+
+                                        match confirmation::request_confirmation_and_wait(
+                                            platform,
+                                            user_id,
+                                            &data.request_id,
+                                            &data.permission,
+                                            &data.message,
+                                            Some(CONFIRMATION_TIMEOUT_SECS),
+                                        )
+                                        .await
+                                        {
+                                            Ok(true) => {
+                                                // User approved
+                                                tracing::info!(
+                                                    "User {} approved confirmation {}",
+                                                    user_id,
+                                                    data.request_id
+                                                );
+                                                self.approve_task(task_id, &data.request_id).await?;
+                                                progress_messages.push(format!(
+                                                    "[user-approved] {}",
+                                                    data.message
+                                                ));
+                                            }
+                                            Ok(false) => {
+                                                // User rejected
+                                                tracing::info!(
+                                                    "User {} rejected confirmation {}",
+                                                    user_id,
+                                                    data.request_id
+                                                );
+                                                return Err(anyhow::anyhow!(
+                                                    "用户拒绝了操作: {} - {}",
+                                                    data.permission,
+                                                    data.message
+                                                ));
+                                            }
+                                            Err(e) => {
+                                                // Timeout or error - no registry/sink initialized
+                                                // Fall back to old behavior (return error)
+                                                tracing::warn!(
+                                                    "Interactive confirmation failed: {}, falling back to error",
+                                                    e
+                                                );
+                                                return Err(anyhow::anyhow!(
+                                                    "需要授权: {} - {}。请使用 auto_approve=true 或通过 API 手动批准。",
+                                                    data.permission,
+                                                    data.message
+                                                ));
+                                            }
+                                        }
                                     }
                                 }
                                 TaskEvent::Finish(data) => {
@@ -531,6 +582,29 @@ impl CodeCoderTool {
         if !resp.status().is_success() {
             let text = resp.text().await.unwrap_or_default();
             return Err(anyhow::anyhow!("Failed to approve task: {}", text));
+        }
+
+        Ok(())
+    }
+
+    /// Reject a permission request (user declined)
+    #[allow(dead_code)]
+    async fn reject_task(&self, task_id: &str, request_id: &str) -> anyhow::Result<()> {
+        let resp = self
+            .client
+            .post(format!("{}/api/v1/tasks/{}/interact", self.endpoint, task_id))
+            .json(&json!({
+                "action": "reject",
+                "reply": "session",
+                "requestID": request_id
+            }))
+            .send()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to reject task: {e}"))?;
+
+        if !resp.status().is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!("Failed to reject task: {}", text));
         }
 
         Ok(())

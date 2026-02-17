@@ -32,6 +32,7 @@ pub mod runtime;
 pub mod security;
 pub mod service;
 pub mod skills;
+pub mod stt;
 pub mod tools;
 pub mod tunnel;
 pub mod util;

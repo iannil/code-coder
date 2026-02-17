@@ -32,6 +32,7 @@ mod runtime;
 mod security;
 mod service;
 mod skills;
+mod stt;
 mod tools;
 mod tunnel;
 mod util;

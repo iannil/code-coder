@@ -1,14 +1,52 @@
 use super::traits::{Channel, ChannelMessage};
+use crate::stt::SpeechToText;
 use async_trait::async_trait;
 use reqwest::multipart::{Form, Part};
 use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::mpsc;
 use uuid::Uuid;
+
+// ============================================================================
+// Inline Keyboard Types
+// ============================================================================
+
+/// A single inline keyboard button
+#[derive(Debug, Clone)]
+pub struct InlineButton {
+    pub text: String,
+    pub callback_data: String,
+}
+
+impl InlineButton {
+    pub fn new(text: impl Into<String>, callback_data: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            callback_data: callback_data.into(),
+        }
+    }
+}
+
+/// Callback query received when user clicks an inline button
+#[derive(Debug, Clone)]
+pub struct CallbackQuery {
+    pub id: String,
+    pub from_user_id: String,
+    pub from_username: Option<String>,
+    pub chat_id: String,
+    pub message_id: i64,
+    pub data: String,
+}
 
 /// Telegram channel — long-polls the Bot API for updates
 pub struct TelegramChannel {
     bot_token: String,
     allowed_users: Vec<String>,
     client: reqwest::Client,
+    /// Optional STT client for voice message transcription
+    stt: Option<Arc<dyn SpeechToText>>,
+    /// Optional callback query sender for inline button clicks
+    callback_tx: Option<mpsc::Sender<CallbackQuery>>,
 }
 
 impl TelegramChannel {
@@ -17,11 +55,41 @@ impl TelegramChannel {
             bot_token,
             allowed_users,
             client: reqwest::Client::new(),
+            stt: None,
+            callback_tx: None,
         }
+    }
+
+    /// Create a new Telegram channel with STT support for voice messages.
+    pub fn with_stt(
+        bot_token: String,
+        allowed_users: Vec<String>,
+        stt: Arc<dyn SpeechToText>,
+    ) -> Self {
+        Self {
+            bot_token,
+            allowed_users,
+            client: reqwest::Client::new(),
+            stt: Some(stt),
+            callback_tx: None,
+        }
+    }
+
+    /// Set a callback query sender for inline button click handling.
+    /// Call this before starting the listener to receive callback queries.
+    pub fn set_callback_sender(&mut self, tx: mpsc::Sender<CallbackQuery>) {
+        self.callback_tx = Some(tx);
     }
 
     fn api_url(&self, method: &str) -> String {
         format!("https://api.telegram.org/bot{}/{method}", self.bot_token)
+    }
+
+    fn file_url(&self, file_path: &str) -> String {
+        format!(
+            "https://api.telegram.org/file/bot{}/{}",
+            self.bot_token, file_path
+        )
     }
 
     fn is_user_allowed(&self, username: &str) -> bool {
@@ -33,6 +101,47 @@ impl TelegramChannel {
         I: IntoIterator<Item = &'a str>,
     {
         identities.into_iter().any(|id| self.is_user_allowed(id))
+    }
+
+    /// Download a file from Telegram by its `file_id`.
+    ///
+    /// # Arguments
+    /// * `file_id` - The `file_id` from the Telegram message
+    ///
+    /// # Returns
+    /// The raw file bytes, or an error if download fails.
+    async fn download_file(&self, file_id: &str) -> anyhow::Result<Vec<u8>> {
+        // Step 1: Get the file path via getFile API
+        let url = self.api_url("getFile");
+        let body = serde_json::json!({ "file_id": file_id });
+
+        let resp = self.client.post(&url).json(&body).send().await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram getFile failed: {err}");
+        }
+
+        let data: serde_json::Value = resp.json().await?;
+        let file_path = data
+            .get("result")
+            .and_then(|r| r.get("file_path"))
+            .and_then(|p| p.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Missing file_path in getFile response"))?;
+
+        // Step 2: Download the file
+        let download_url = self.file_url(file_path);
+        let file_resp = self.client.get(&download_url).send().await?;
+
+        if !file_resp.status().is_success() {
+            anyhow::bail!(
+                "Failed to download file from Telegram: {}",
+                file_resp.status()
+            );
+        }
+
+        let bytes = file_resp.bytes().await?;
+        Ok(bytes.to_vec())
     }
 
     /// Send a document/file to a Telegram chat
@@ -361,8 +470,159 @@ impl TelegramChannel {
         tracing::info!("Telegram photo (URL) sent to {chat_id}: {url}");
         Ok(())
     }
+
+    /// Send a message with inline keyboard buttons
+    ///
+    /// Returns the `message_id` of the sent message (for later editing/deletion)
+    pub async fn send_with_inline_keyboard(
+        &self,
+        chat_id: &str,
+        text: &str,
+        buttons: Vec<Vec<InlineButton>>,
+    ) -> anyhow::Result<i64> {
+        // Build keyboard structure
+        let keyboard: Vec<Vec<serde_json::Value>> = buttons
+            .into_iter()
+            .map(|row| {
+                row.into_iter()
+                    .map(|btn| {
+                        serde_json::json!({
+                            "text": btn.text,
+                            "callback_data": btn.callback_data
+                        })
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": keyboard
+            }
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram sendMessage with keyboard failed: {err}");
+        }
+
+        let data: serde_json::Value = resp.json().await?;
+        let message_id = data
+            .get("result")
+            .and_then(|r| r.get("message_id"))
+            .and_then(serde_json::Value::as_i64)
+            .ok_or_else(|| anyhow::anyhow!("Missing message_id in response"))?;
+
+        tracing::info!(
+            "Telegram message with inline keyboard sent to {chat_id}, message_id={}",
+            message_id
+        );
+        Ok(message_id)
+    }
+
+    /// Answer a callback query (acknowledge button click)
+    ///
+    /// This removes the loading spinner from the button.
+    pub async fn answer_callback_query(
+        &self,
+        callback_query_id: &str,
+        text: Option<&str>,
+        show_alert: bool,
+    ) -> anyhow::Result<()> {
+        let mut body = serde_json::json!({
+            "callback_query_id": callback_query_id,
+            "show_alert": show_alert
+        });
+
+        if let Some(t) = text {
+            body["text"] = serde_json::Value::String(t.to_string());
+        }
+
+        let resp = self
+            .client
+            .post(self.api_url("answerCallbackQuery"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram answerCallbackQuery failed: {err}");
+        }
+
+        tracing::debug!("Answered callback query {callback_query_id}");
+        Ok(())
+    }
+
+    /// Edit the text of an existing message (e.g., to remove buttons after user clicks)
+    pub async fn edit_message_text(
+        &self,
+        chat_id: &str,
+        message_id: i64,
+        text: &str,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("editMessageText"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram editMessageText failed: {err}");
+        }
+
+        tracing::debug!("Edited message {message_id} in chat {chat_id}");
+        Ok(())
+    }
+
+    /// Parse a `callback_query` JSON object into a `CallbackQuery` struct
+    #[allow(clippy::unused_self)]
+    fn parse_callback_query(&self, callback: &serde_json::Value) -> Option<CallbackQuery> {
+        let id = callback.get("id")?.as_str()?.to_string();
+        let data = callback.get("data")?.as_str()?.to_string();
+
+        let from = callback.get("from")?;
+        let from_user_id = from.get("id")?.as_i64()?.to_string();
+        let from_username = from
+            .get("username")
+            .and_then(|u| u.as_str())
+            .map(String::from);
+
+        let message = callback.get("message")?;
+        let chat_id = message.get("chat")?.get("id")?.as_i64()?.to_string();
+        let message_id = message.get("message_id")?.as_i64()?;
+
+        Some(CallbackQuery {
+            id,
+            from_user_id,
+            from_username,
+            chat_id,
+            message_id,
+            data,
+        })
+    }
 }
 
+#[allow(clippy::too_many_lines)]
 #[async_trait]
 impl Channel for TelegramChannel {
     fn name(&self) -> &str {
@@ -392,10 +652,16 @@ impl Channel for TelegramChannel {
 
         loop {
             let url = self.api_url("getUpdates");
+            // Listen for both messages and callback_query if callback handler is set
+            let allowed_updates = if self.callback_tx.is_some() {
+                serde_json::json!(["message", "callback_query"])
+            } else {
+                serde_json::json!(["message"])
+            };
             let body = serde_json::json!({
                 "offset": offset,
                 "timeout": 30,
-                "allowed_updates": ["message"]
+                "allowed_updates": allowed_updates
             });
 
             let resp = match self.client.post(&url).json(&body).send().await {
@@ -423,14 +689,47 @@ impl Channel for TelegramChannel {
                         offset = uid + 1;
                     }
 
+                    // Handle callback_query (inline button clicks)
+                    if let Some(callback) = update.get("callback_query") {
+                        if let Some(ref callback_tx) = self.callback_tx {
+                            if let Some(query) = self.parse_callback_query(callback) {
+                                // Check user authorization
+                                let username = query.from_username.as_deref().unwrap_or("unknown");
+                                let mut identities = vec![username];
+                                identities.push(&query.from_user_id);
+
+                                if self.is_any_user_allowed(identities.iter().copied()) {
+                                    if callback_tx.send(query).await.is_err() {
+                                        tracing::warn!("Callback query receiver dropped");
+                                    }
+                                } else {
+                                    tracing::warn!(
+                                        "Ignoring callback from unauthorized user: {}",
+                                        username
+                                    );
+                                    // Still answer to remove loading state
+                                    let _ = self
+                                        .answer_callback_query(&query.id, Some("Unauthorized"), false)
+                                        .await;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
                     let Some(message) = update.get("message") else {
                         continue;
                     };
 
-                    let Some(text) = message.get("text").and_then(serde_json::Value::as_str) else {
-                        continue;
-                    };
+                    // Extract chat_id early (needed for error messages)
+                    let chat_id = message
+                        .get("chat")
+                        .and_then(|c| c.get("id"))
+                        .and_then(serde_json::Value::as_i64)
+                        .map(|id| id.to_string())
+                        .unwrap_or_default();
 
+                    // Check authorization first (before downloading any files)
                     let username_opt = message
                         .get("from")
                         .and_then(|f| f.get("username"))
@@ -457,17 +756,79 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                         continue;
                     }
 
-                    let chat_id = message
-                        .get("chat")
-                        .and_then(|c| c.get("id"))
-                        .and_then(serde_json::Value::as_i64)
-                        .map(|id| id.to_string())
-                        .unwrap_or_default();
+                    // Handle text message or voice message
+                    let text = if let Some(text) = message.get("text").and_then(|v| v.as_str()) {
+                        text.to_string()
+                    } else if let Some(voice) = message.get("voice") {
+                        // Voice message handling
+                        let Some(ref stt) = self.stt else {
+                            tracing::debug!(
+                                "Voice message received but STT not configured, skipping"
+                            );
+                            continue;
+                        };
+
+                        let Some(file_id) = voice.get("file_id").and_then(|v| v.as_str()) else {
+                            tracing::warn!("Voice message missing file_id");
+                            continue;
+                        };
+
+                        // Download the voice file
+                        let audio_bytes = match self.download_file(file_id).await {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                tracing::error!("Failed to download voice: {e}");
+                                let _ = self
+                                    .send("Unable to download voice file, please try again", &chat_id)
+                                    .await;
+                                continue;
+                            }
+                        };
+
+                        // Validate audio bytes before transcription
+                        if audio_bytes.is_empty() {
+                            tracing::error!("Downloaded voice file is empty (0 bytes)");
+                            let _ = self
+                                .send("Voice file appears to be empty, please try again", &chat_id)
+                                .await;
+                            continue;
+                        }
+
+                        tracing::debug!(
+                            "Voice file downloaded: {} bytes, file_id={}",
+                            audio_bytes.len(),
+                            file_id
+                        );
+
+                        // Transcribe the voice message
+                        match stt.transcribe(&audio_bytes, "ogg").await {
+                            Ok(transcription) => {
+                                tracing::info!(
+                                    "Voice transcribed: {} chars",
+                                    transcription.len()
+                                );
+                                transcription
+                            }
+                            Err(e) => {
+                                tracing::error!("Voice transcription failed: {e}");
+                                let _ = self
+                                    .send(
+                                        "Voice transcription failed, please try again or use text",
+                                        &chat_id,
+                                    )
+                                    .await;
+                                continue;
+                            }
+                        }
+                    } else {
+                        // Other message types (photo, video, etc.) — skip
+                        continue;
+                    };
 
                     let msg = ChannelMessage {
                         id: Uuid::new_v4().to_string(),
                         sender: chat_id,
-                        content: text.to_string(),
+                        content: text,
                         channel: "telegram".to_string(),
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
@@ -817,5 +1178,183 @@ mod tests {
 
         // Should not panic
         assert!(result.is_err());
+    }
+
+    // ── Voice message / STT tests ──────────────────────────────────────
+
+    #[test]
+    fn telegram_file_url() {
+        let ch = TelegramChannel::new("123:ABC".into(), vec![]);
+        assert_eq!(
+            ch.file_url("voice/file_123.ogg"),
+            "https://api.telegram.org/file/bot123:ABC/voice/file_123.ogg"
+        );
+    }
+
+    #[test]
+    fn telegram_channel_without_stt() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+        assert!(ch.stt.is_none());
+    }
+
+    #[test]
+    fn telegram_channel_with_stt() {
+        use crate::stt::OpenAiStt;
+        let stt = Arc::new(OpenAiStt::new("sk-test".to_string(), None));
+        let ch = TelegramChannel::with_stt("fake-token".into(), vec!["*".into()], stt);
+        assert!(ch.stt.is_some());
+    }
+
+    #[tokio::test]
+    async fn telegram_download_file_fails_with_invalid_token() {
+        let ch = TelegramChannel::new("invalid-token".into(), vec!["*".into()]);
+        let result = ch.download_file("some_file_id").await;
+        // Should fail (network error or invalid token)
+        assert!(result.is_err());
+    }
+
+    // ── Inline Keyboard Tests ──────────────────────────────────────────
+
+    #[test]
+    fn inline_button_creation() {
+        let btn = InlineButton::new("Approve", "approve:req-123");
+        assert_eq!(btn.text, "Approve");
+        assert_eq!(btn.callback_data, "approve:req-123");
+    }
+
+    #[test]
+    fn inline_button_from_string() {
+        let btn = InlineButton::new("Test".to_string(), "data".to_string());
+        assert_eq!(btn.text, "Test");
+        assert_eq!(btn.callback_data, "data");
+    }
+
+    #[tokio::test]
+    async fn telegram_send_with_inline_keyboard_fails_without_server() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+        let buttons = vec![vec![
+            InlineButton::new("✅ Approve", "approve:123"),
+            InlineButton::new("❌ Reject", "reject:123"),
+        ]];
+
+        let result = ch
+            .send_with_inline_keyboard("123456", "Test message", buttons)
+            .await;
+
+        // Should fail with network error (no real server)
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn telegram_answer_callback_query_fails_without_server() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+
+        let result = ch
+            .answer_callback_query("callback-123", Some("Approved!"), false)
+            .await;
+
+        // Should fail with network error
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn telegram_edit_message_text_fails_without_server() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+
+        let result = ch
+            .edit_message_text("123456", 999, "Updated message")
+            .await;
+
+        // Should fail with network error
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn telegram_parse_callback_query_valid() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+
+        let callback_json = serde_json::json!({
+            "id": "callback-123",
+            "from": {
+                "id": 12345,
+                "username": "testuser"
+            },
+            "message": {
+                "message_id": 999,
+                "chat": {
+                    "id": 67890
+                }
+            },
+            "data": "approve:req-abc"
+        });
+
+        let result = ch.parse_callback_query(&callback_json);
+        assert!(result.is_some());
+
+        let query = result.unwrap();
+        assert_eq!(query.id, "callback-123");
+        assert_eq!(query.from_user_id, "12345");
+        assert_eq!(query.from_username.as_deref(), Some("testuser"));
+        assert_eq!(query.chat_id, "67890");
+        assert_eq!(query.message_id, 999);
+        assert_eq!(query.data, "approve:req-abc");
+    }
+
+    #[test]
+    fn telegram_parse_callback_query_missing_username() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+
+        let callback_json = serde_json::json!({
+            "id": "callback-456",
+            "from": {
+                "id": 11111
+            },
+            "message": {
+                "message_id": 888,
+                "chat": {
+                    "id": 22222
+                }
+            },
+            "data": "reject:req-xyz"
+        });
+
+        let result = ch.parse_callback_query(&callback_json);
+        assert!(result.is_some());
+
+        let query = result.unwrap();
+        assert_eq!(query.from_user_id, "11111");
+        assert!(query.from_username.is_none());
+    }
+
+    #[test]
+    fn telegram_parse_callback_query_invalid() {
+        let ch = TelegramChannel::new("fake-token".into(), vec!["*".into()]);
+
+        // Missing required fields
+        let invalid_json = serde_json::json!({
+            "id": "callback-789"
+            // Missing "from", "message", "data"
+        });
+
+        let result = ch.parse_callback_query(&invalid_json);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn telegram_api_url_answer_callback() {
+        let ch = TelegramChannel::new("123:ABC".into(), vec![]);
+        assert_eq!(
+            ch.api_url("answerCallbackQuery"),
+            "https://api.telegram.org/bot123:ABC/answerCallbackQuery"
+        );
+    }
+
+    #[test]
+    fn telegram_api_url_edit_message_text() {
+        let ch = TelegramChannel::new("123:ABC".into(), vec![]);
+        assert_eq!(
+            ch.api_url("editMessageText"),
+            "https://api.telegram.org/bot123:ABC/editMessageText"
+        );
     }
 }

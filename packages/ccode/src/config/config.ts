@@ -800,10 +800,21 @@ export namespace Config {
     .strict()
     .meta({ ref: "ZeroBotTunnelConfig" })
 
+  export const ZeroBotTelegramVoice = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable voice message support"),
+      stt_provider: z.string().optional().describe("Speech-to-text provider: openai, uniapi, groq, deepinfra, compatible"),
+      stt_model: z.string().optional().describe("Speech-to-text model"),
+      stt_api_key: z.string().optional().describe("Speech-to-text API key"),
+      stt_base_url: z.string().optional().describe("Base URL for OpenAI-compatible STT providers"),
+    })
+    .strict()
+
   export const ZeroBotTelegram = z
     .object({
       bot_token: z.string().describe("Telegram bot token"),
       allowed_users: z.array(z.string()).optional().describe("Allowed Telegram usernames"),
+      voice: ZeroBotTelegramVoice.optional().describe("Voice message configuration"),
     })
     .strict()
 
@@ -868,6 +879,14 @@ export namespace Config {
     .strict()
     .meta({ ref: "ZeroBotIdentityConfig" })
 
+  export const ZeroBotCodeCoder = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable CodeCoder integration"),
+      endpoint: z.string().optional().describe("CodeCoder API endpoint (default: http://localhost:4096)"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotCodeCoderConfig" })
+
   export const ZeroBot = z
     .object({
       // Provider configuration (can reuse CodeCoder's provider config)
@@ -891,6 +910,7 @@ export namespace Config {
       composio: ZeroBotComposio.optional(),
       browser: ZeroBotBrowser.optional(),
       identity: ZeroBotIdentity.optional(),
+      codecoder: ZeroBotCodeCoder.optional().describe("CodeCoder integration for accessing AI agents"),
     })
     .strict()
     .meta({ ref: "ZeroBotConfig" })

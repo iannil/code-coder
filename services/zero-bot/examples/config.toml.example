@@ -78,6 +78,13 @@ cli = true
 # [channels_config.telegram]
 # bot_token = "123456:ABC..."
 # allowed_users = ["your_telegram_user_id"]
+#
+# # Voice message transcription (optional)
+# [channels_config.telegram.voice]
+# enabled = true
+# stt_provider = "openai"  # Currently only OpenAI Whisper supported
+# # stt_api_key = "sk-..."  # Optional, defaults to main api_key
+# # stt_model = "whisper-1"  # Optional, defaults to whisper-1
 
 # Discord (optional)
 # [channels_config.discord]

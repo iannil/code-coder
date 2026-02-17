@@ -134,6 +134,26 @@ struct ZeroBotJsonTelegram {
     bot_token: String,
     #[serde(default)]
     allowed_users: Vec<String>,
+    #[serde(default)]
+    voice: Option<ZeroBotJsonTelegramVoice>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ZeroBotJsonTelegramVoice {
+    #[serde(default = "default_json_true")]
+    enabled: bool,
+    #[serde(default)]
+    stt_provider: Option<String>,
+    #[serde(default)]
+    stt_api_key: Option<String>,
+    #[serde(default)]
+    stt_model: Option<String>,
+    #[serde(default)]
+    stt_base_url: Option<String>,
+}
+
+fn default_json_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -826,6 +846,33 @@ impl Default for ChannelsConfig {
 pub struct TelegramConfig {
     pub bot_token: String,
     pub allowed_users: Vec<String>,
+    /// Voice message transcription configuration (optional)
+    #[serde(default)]
+    pub voice: Option<TelegramVoiceConfig>,
+}
+
+/// Configuration for Telegram voice message transcription.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramVoiceConfig {
+    /// Enable voice message transcription (default: true when this section exists)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// STT provider: "openai", "uniapi", "groq", "deepinfra", "compatible" (default: "openai")
+    #[serde(default = "default_stt_provider")]
+    pub stt_provider: String,
+    /// API key for STT provider (optional, defaults to main `api_key`)
+    #[serde(default)]
+    pub stt_api_key: Option<String>,
+    /// STT model name (optional, defaults to "whisper-1" for `OpenAI`)
+    #[serde(default)]
+    pub stt_model: Option<String>,
+    /// Base URL for OpenAI-compatible STT providers (optional)
+    #[serde(default)]
+    pub stt_base_url: Option<String>,
+}
+
+fn default_stt_provider() -> String {
+    "openai".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1158,6 +1205,13 @@ impl Config {
                 telegram: c.telegram.map(|t| TelegramConfig {
                     bot_token: t.bot_token,
                     allowed_users: t.allowed_users,
+                    voice: t.voice.map(|v| TelegramVoiceConfig {
+                        enabled: v.enabled,
+                        stt_provider: v.stt_provider.unwrap_or_else(default_stt_provider),
+                        stt_api_key: v.stt_api_key,
+                        stt_model: v.stt_model,
+                        stt_base_url: v.stt_base_url,
+                    }),
                 }),
                 discord: c.discord.map(|d| DiscordConfig {
                     bot_token: d.bot_token,
@@ -1444,6 +1498,7 @@ mod tests {
                 telegram: Some(TelegramConfig {
                     bot_token: "123:ABC".into(),
                     allowed_users: vec!["user1".into()],
+                    voice: None,
                 }),
                 discord: None,
                 slack: None,
@@ -1552,6 +1607,7 @@ default_temperature = 0.7
         let tc = TelegramConfig {
             bot_token: "123:XYZ".into(),
             allowed_users: vec!["alice".into(), "bob".into()],
+            voice: None,
         };
         let json = serde_json::to_string(&tc).unwrap();
         let parsed: TelegramConfig = serde_json::from_str(&json).unwrap();
