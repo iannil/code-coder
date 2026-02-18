@@ -26,8 +26,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PID_DIR="${PROJECT_ROOT}/.pids"
 LOG_DIR="${PROJECT_ROOT}/.logs"
 
+# Docker 容器名称
+WHISPER_CONTAINER="codecoder-whisper"
+WHISPER_IMAGE="${WHISPER_IMAGE:-fedirz/faster-whisper-server:latest-cpu}"
+
 # 服务列表
-ALL_SERVICES="api web zerobot"
+ALL_SERVICES="api web zerobot whisper"
 
 # 服务配置函数
 get_service_port() {
@@ -35,6 +39,7 @@ get_service_port() {
         api) echo "4400" ;;
         web) echo "4401" ;;
         zerobot) echo "4402" ;;
+        whisper) echo "4403" ;;
         *) echo "" ;;
     esac
 }
@@ -44,13 +49,14 @@ get_service_name() {
         api) echo "CodeCoder API Server" ;;
         web) echo "Web Frontend (Vite)" ;;
         zerobot) echo "ZeroBot Daemon" ;;
+        whisper) echo "Whisper STT Server" ;;
         *) echo "" ;;
     esac
 }
 
 is_valid_service() {
     case "$1" in
-        api|web|zerobot) return 0 ;;
+        api|web|zerobot|whisper) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -91,6 +97,15 @@ get_log_file() {
 # 检查服务是否运行
 is_running() {
     local service="$1"
+
+    # whisper 使用 Docker 容器
+    if [ "${service}" = "whisper" ]; then
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
+            return 0
+        fi
+        return 1
+    fi
+
     local pid_file
     pid_file=$(get_pid_file "${service}")
 
@@ -107,6 +122,13 @@ is_running() {
 # 获取运行中的 PID
 get_pid() {
     local service="$1"
+
+    # whisper 使用 Docker 容器
+    if [ "${service}" = "whisper" ]; then
+        docker inspect -f '{{.State.Pid}}' "${WHISPER_CONTAINER}" 2>/dev/null || echo ""
+        return
+    fi
+
     local pid_file
     pid_file=$(get_pid_file "${service}")
 
@@ -167,6 +189,49 @@ start_service() {
             cd "${PROJECT_ROOT}/services/zero-bot"
             nohup cargo run --release -- daemon --port 4402 > "${log_file}" 2>&1 &
             ;;
+        whisper)
+            # 检查 Docker 是否可用
+            if ! command -v docker &> /dev/null; then
+                log_error "Docker 未安装"
+                echo "  请先安装 Docker Desktop"
+                return 1
+            fi
+            if ! docker info &> /dev/null; then
+                log_error "Docker 未运行"
+                echo "  请启动 Docker Desktop"
+                return 1
+            fi
+
+            local whisper_model="${WHISPER_MODEL:-base}"
+            local cache_dir="${HOME}/.cache/huggingface"
+            mkdir -p "${cache_dir}"
+
+            log_info "拉取 Docker 镜像 ${WHISPER_IMAGE}..."
+            docker pull "${WHISPER_IMAGE}" || true
+
+            log_info "启动 Docker 容器..."
+            docker run -d \
+                --name "${WHISPER_CONTAINER}" \
+                --rm \
+                -p 4403:8000 \
+                -v "${cache_dir}:/root/.cache/huggingface" \
+                -e WHISPER__MODEL="${whisper_model}" \
+                "${WHISPER_IMAGE}" \
+                > /dev/null 2>&1
+
+            # Docker 容器不使用 PID 文件，直接返回
+            sleep 3
+            if is_running "whisper"; then
+                log_success "${service_name} 启动成功 (Container: ${WHISPER_CONTAINER}, Port: ${port})"
+                echo "  模型: ${whisper_model}"
+                echo "  镜像: ${WHISPER_IMAGE}"
+            else
+                log_error "${service_name} 启动失败"
+                echo "  查看日志: docker logs ${WHISPER_CONTAINER}"
+                return 1
+            fi
+            return 0
+            ;;
         *)
             log_error "未知服务: ${service}"
             return 1
@@ -197,6 +262,17 @@ stop_service() {
     pid_file=$(get_pid_file "${service}")
 
     log_info "正在停止 ${service_name}..."
+
+    # whisper 使用 Docker 容器
+    if [ "${service}" = "whisper" ]; then
+        if ! is_running "whisper"; then
+            log_warn "${service_name} 未在运行"
+            return 0
+        fi
+        docker stop "${WHISPER_CONTAINER}" > /dev/null 2>&1 || true
+        log_success "${service_name} 已停止"
+        return 0
+    fi
 
     if ! is_running "${service}"; then
         log_warn "${service_name} 未在运行"
@@ -279,7 +355,11 @@ show_status() {
 
         if is_running "${service}"; then
             status="${GREEN}运行中${NC}"
-            pid=$(get_pid "${service}")
+            if [ "${service}" = "whisper" ]; then
+                pid="docker"
+            else
+                pid=$(get_pid "${service}")
+            fi
         else
             status="${RED}已停止${NC}"
         fi
@@ -302,15 +382,37 @@ show_status() {
         fi
     done
     echo ""
+
+    # 显示 Docker 容器信息（如果有）
+    if command -v docker &> /dev/null && docker info &> /dev/null; then
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
+            echo "Docker 容器:"
+            docker ps --filter "name=${WHISPER_CONTAINER}" --format "  {{.Names}}: {{.Image}} ({{.Status}})"
+            echo ""
+        fi
+    fi
 }
 
 # 查看服务日志
 show_logs() {
     local service="$1"
-    local log_file
-    log_file=$(get_log_file "${service}")
     local service_name
     service_name=$(get_service_name "${service}")
+
+    # whisper 使用 Docker 日志
+    if [ "${service}" = "whisper" ]; then
+        if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
+            log_error "Whisper 容器不存在"
+            return 1
+        fi
+        log_info "显示 ${service_name} 日志 (最后 50 行):"
+        echo "----------------------------------------"
+        docker logs --tail 50 "${WHISPER_CONTAINER}" 2>&1
+        return 0
+    fi
+
+    local log_file
+    log_file=$(get_log_file "${service}")
 
     if [ ! -f "${log_file}" ]; then
         log_error "日志文件不存在: ${log_file}"
@@ -325,10 +427,23 @@ show_logs() {
 # 实时查看日志
 tail_logs() {
     local service="$1"
-    local log_file
-    log_file=$(get_log_file "${service}")
     local service_name
     service_name=$(get_service_name "${service}")
+
+    # whisper 使用 Docker 日志
+    if [ "${service}" = "whisper" ]; then
+        if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
+            log_error "Whisper 容器未运行"
+            return 1
+        fi
+        log_info "实时跟踪 ${service_name} 日志 (Ctrl+C 退出):"
+        echo "----------------------------------------"
+        docker logs -f "${WHISPER_CONTAINER}" 2>&1
+        return 0
+    fi
+
+    local log_file
+    log_file=$(get_log_file "${service}")
 
     if [ ! -f "${log_file}" ]; then
         log_error "日志文件不存在: ${log_file}"
@@ -361,15 +476,22 @@ show_help() {
     echo "  api                CodeCoder API Server (端口 4400)"
     echo "  web                Web Frontend (端口 4401)"
     echo "  zerobot            ZeroBot Daemon (端口 4402)"
+    echo "  whisper            Whisper STT Server (端口 4403, Docker)"
+    echo ""
+    echo "环境变量 (whisper):"
+    echo "  WHISPER_MODEL      模型: tiny|base|small|medium|large (默认: base)"
+    echo "  WHISPER_IMAGE      Docker 镜像 (默认: fedirz/faster-whisper-server:latest-cpu)"
     echo ""
     echo "示例:"
     echo "  ./ops.sh start            # 启动所有服务"
     echo "  ./ops.sh start api        # 只启动 API 服务"
     echo "  ./ops.sh stop web         # 只停止 Web 服务"
     echo "  ./ops.sh restart zerobot  # 重启 ZeroBot"
+    echo "  ./ops.sh start whisper    # 启动 Whisper STT (Docker)"
+    echo "  WHISPER_MODEL=small ./ops.sh start whisper  # 使用 small 模型"
     echo "  ./ops.sh status           # 查看状态"
-    echo "  ./ops.sh logs api         # 查看 API 日志"
-    echo "  ./ops.sh tail web         # 实时跟踪 Web 日志"
+    echo "  ./ops.sh logs whisper     # 查看 Whisper Docker 日志"
+    echo "  ./ops.sh tail api         # 实时跟踪 API 日志"
     echo ""
 }
 

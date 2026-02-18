@@ -67,8 +67,22 @@ pub fn create_stt(
                 model.map(ToString::to_string),
             )))
         }
+        // Local Whisper server (faster-whisper-server, whisper.cpp, etc.)
+        // No API key required - runs on localhost
+        "local" | "faster-whisper" | "whisper-local" => {
+            let url = base_url.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "base_url is required for 'local' STT provider (e.g., http://localhost:8000)"
+                )
+            })?;
+            Ok(Arc::new(CompatibleStt::new(
+                api_key.to_string(), // Can be empty for local services
+                url.to_string(),
+                model.map(ToString::to_string),
+            )))
+        }
         _ => anyhow::bail!(
-            "Unsupported STT provider: {provider}. Supported: openai, uniapi, groq, deepinfra, compatible"
+            "Unsupported STT provider: {provider}. Supported: openai, uniapi, groq, deepinfra, compatible, local"
         ),
     }
 }
@@ -123,5 +137,45 @@ mod tests {
         assert!(create_stt("OpenAI", "key", None, None).is_ok());
         assert!(create_stt("OPENAI", "key", None, None).is_ok());
         assert!(create_stt("UniAPI", "key", None, None).is_ok());
+    }
+
+    #[test]
+    fn create_local_stt_requires_base_url() {
+        // local provider requires base_url
+        let stt = create_stt("local", "", None, None);
+        assert!(stt.is_err());
+        let err = stt.err().expect("expected error");
+        assert!(err.to_string().contains("base_url is required"));
+    }
+
+    #[test]
+    fn create_local_stt_with_base_url() {
+        // local provider works with base_url and empty api_key
+        let stt = create_stt("local", "", Some("base"), Some("http://localhost:8000"));
+        assert!(stt.is_ok());
+    }
+
+    #[test]
+    fn create_faster_whisper_alias() {
+        // faster-whisper alias for local provider
+        let stt = create_stt(
+            "faster-whisper",
+            "",
+            Some("small"),
+            Some("http://localhost:8000"),
+        );
+        assert!(stt.is_ok());
+    }
+
+    #[test]
+    fn create_whisper_local_alias() {
+        // whisper-local alias for local provider
+        let stt = create_stt(
+            "whisper-local",
+            "",
+            Some("medium"),
+            Some("http://localhost:8000"),
+        );
+        assert!(stt.is_ok());
     }
 }

@@ -159,7 +159,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         println!();
         println!("  🔐 PAIRING REQUIRED — use this one-time code:");
         println!("     ┌──────────────┐");
-        println!("     │  {code}  │");
+        println!("     │    {code}    │");
         println!("     └──────────────┘");
         println!("     Send: POST /pair with header X-Pairing-Code: {code}");
     } else if pairing.require_pairing() {

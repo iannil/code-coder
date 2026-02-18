@@ -1,4 +1,4 @@
-//! OpenAI-compatible STT implementation for providers like UniAPI, Groq, etc.
+//! OpenAI-compatible STT implementation for providers like `UniAPI`, Groq, etc.
 
 use super::traits::SpeechToText;
 use async_trait::async_trait;
@@ -9,8 +9,8 @@ use serde::Deserialize;
 /// Minimum audio size in bytes (1KB) - smaller files often cause parsing issues
 const MIN_AUDIO_BYTES: usize = 1024;
 
-/// OpenAI-compatible API implementation for speech-to-text.
-/// Supports any provider that implements the OpenAI audio transcription API.
+/// `OpenAI`-compatible API implementation for speech-to-text.
+/// Supports any provider that implements the `OpenAI` audio transcription API.
 pub struct CompatibleStt {
     api_key: String,
     client: Client,
@@ -27,8 +27,8 @@ impl CompatibleStt {
     /// Create a new OpenAI-compatible STT client.
     ///
     /// # Arguments
-    /// * `api_key` - API key for the provider
-    /// * `base_url` - Base URL for the API (e.g., "https://hk.uniapi.io")
+    /// * `api_key` - API key for the provider (can be empty for local services)
+    /// * `base_url` - Base URL for the API (e.g., `https://hk.uniapi.io` or `http://localhost:8000`)
     /// * `model` - Model name (default: "whisper-1")
     pub fn new(api_key: String, base_url: String, model: Option<String>) -> Self {
         // Normalize base URL (remove trailing slash)
@@ -125,11 +125,14 @@ impl SpeechToText for CompatibleStt {
             audio_bytes.len()
         );
 
-        let response = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .multipart(form)
+        // Build request - only add Authorization header if api_key is non-empty
+        // This allows local services (like faster-whisper-server) that don't require auth
+        let mut request = self.client.post(&url).multipart(form);
+        if !self.api_key.is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+
+        let response = request
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("STT request failed: {e}"))?;
@@ -187,5 +190,18 @@ mod tests {
         assert_eq!(CompatibleStt::get_mime_type("ogg"), "audio/ogg");
         assert_eq!(CompatibleStt::get_mime_type("mp3"), "audio/mpeg");
         assert_eq!(CompatibleStt::get_mime_type("wav"), "audio/wav");
+    }
+
+    #[test]
+    fn creates_with_empty_api_key() {
+        // Local services (faster-whisper-server) don't require API key
+        let stt = CompatibleStt::new(
+            String::new(),
+            "http://localhost:8000".to_string(),
+            Some("base".to_string()),
+        );
+        assert!(stt.api_key.is_empty());
+        assert_eq!(stt.model, "base");
+        assert_eq!(stt.base_url, "http://localhost:8000");
     }
 }

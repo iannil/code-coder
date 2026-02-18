@@ -82,9 +82,19 @@ cli = true
 # # Voice message transcription (optional)
 # [channels_config.telegram.voice]
 # enabled = true
-# stt_provider = "openai"  # Currently only OpenAI Whisper supported
+# stt_provider = "openai"  # openai, uniapi, groq, deepinfra, local, compatible
 # # stt_api_key = "sk-..."  # Optional, defaults to main api_key
 # # stt_model = "whisper-1"  # Optional, defaults to whisper-1
+#
+# # Local Whisper (faster-whisper-server via Docker)
+# # Requires: Docker Desktop
+# # Start: ./ops.sh start whisper
+# # Stop:  ./ops.sh stop whisper
+# # [channels_config.telegram.voice]
+# # enabled = true
+# # stt_provider = "local"
+# # stt_base_url = "http://localhost:4403"
+# # stt_model = "base"  # tiny, base, small, medium, large
 
 # Discord (optional)
 # [channels_config.discord]

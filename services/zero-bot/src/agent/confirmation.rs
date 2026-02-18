@@ -315,13 +315,13 @@ mod tests {
         assert_eq!(registry.pending_count().await, 1);
 
         // Respond with approval
-        let responded = registry.respond("req-1", true).await;
+        let responded = registry.respond("req-1", ConfirmationResponse::Once).await;
         assert!(responded);
 
         // Check the response was received
         let result = rx.await;
         assert!(result.is_ok());
-        assert!(result.unwrap());
+        assert!(result.unwrap().is_approved());
 
         // Should no longer be pending
         assert!(!registry.is_pending("req-1").await);
@@ -337,11 +337,11 @@ mod tests {
             .await;
 
         // Respond with rejection
-        registry.respond("req-2", false).await;
+        registry.respond("req-2", ConfirmationResponse::Reject).await;
 
         let result = rx.await;
         assert!(result.is_ok());
-        assert!(!result.unwrap());
+        assert!(!result.unwrap().is_approved());
     }
 
     #[tokio::test]
@@ -349,7 +349,7 @@ mod tests {
         let registry = ConfirmationRegistry::new();
 
         // Try to respond to unknown request
-        let responded = registry.respond("unknown-req", true).await;
+        let responded = registry.respond("unknown-req", ConfirmationResponse::Once).await;
         assert!(!responded);
     }
 
@@ -423,16 +423,16 @@ mod tests {
         let reg2 = registry.clone();
 
         let (r1, r2) = tokio::join!(
-            async move { reg1.respond("concurrent-1", true).await },
-            async move { reg2.respond("concurrent-2", false).await }
+            async move { reg1.respond("concurrent-1", ConfirmationResponse::Once).await },
+            async move { reg2.respond("concurrent-2", ConfirmationResponse::Reject).await }
         );
 
         assert!(r1);
         assert!(r2);
 
         // Check results
-        assert!(rx1.await.unwrap());
-        assert!(!rx2.await.unwrap());
+        assert!(rx1.await.unwrap().is_approved());
+        assert!(!rx2.await.unwrap().is_approved());
     }
 
     #[test]

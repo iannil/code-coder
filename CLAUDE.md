@@ -151,6 +151,18 @@ bun run --cwd packages/ccode build
 ./script/generate.ts
 ```
 
+### 端口配置
+
+- CodeCoder API Server Port: 4400
+- Web Frontend (Vite) Port: 4401
+- ZeroBot Daemon Port: 4402
+- Faster Whisper Server Port: 4403
+
+### 统一配置
+
+- 所有服务的配置文件统一为：`~/.codecoder/config.json`
+- 禁止使用`.toml`格式
+
 ## 架构
 
 ### Monorepo 结构

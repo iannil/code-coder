@@ -3,51 +3,48 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Runtime-Bun-black.svg)](https://bun.sh/)
+[![Rust](https://img.shields.io/badge/Gateway-Rust-orange.svg)](https://www.rust-lang.org/)
 
 [English](./README.md)
 
 **融合工程能力与决策智慧的 AI 个人工作台。**
 
-CodeCoder 不只是一个编程助手。它是为所有正在被 AI 改变工作方式的人设计的综合平台——开发者、分析师、写作者、决策者、独立创作者。基于[祝融说](https://zhurongshuo.com)哲学框架构建，它将结构化思维与实用工具融为一体。
+CodeCoder 不只是一个编程助手。它是为所有正在被 AI 改变工作方式的人设计的综合平台——开发者、分析师、写作者、决策者、独立创作者。基于[祝融说](https://zhurongshuo.com)哲学框架构建，将结构化思维与实用工具融为一体。
 
-## 我们解决什么问题
+## 为什么选择 CodeCoder
 
 在 AI 普及的时代，挑战不在于如何访问 AI，而在于**如何与 AI 一起思考**。
 
-大多数 AI 工具专注于回答问题。CodeCoder 专注于帮助你提出更好的问题、做出更好的决策。我们相信：
+大多数 AI 工具专注于回答问题。CodeCoder 专注于帮助你提出更好的问题、做出更好的决策：
 
-- **多维度辅助** - 不止于代码，还有决策、分析和内容创作
-- **哲学根基** - CLOSE 框架支撑可持续决策
-- **提供商灵活性** - 通过统一接口连接 30+ AI 提供商
-- **专业化能力** - 25+ 面向不同领域的专业 Agent
+- **多维度辅助** — 不止于代码，还有决策、分析和内容创作
+- **哲学根基** — CLOSE 框架支撑可持续决策
+- **提供商灵活性** — 通过统一接口连接 30+ AI 提供商
+- **专业化能力** — 25+ 面向不同领域的专业 Agent
 
-## 核心哲学
+## 核心功能
+
+| 功能 | 描述 |
+|------|------|
+| **25+ 专业 Agent** | 工程、领域分析、决策支持、内容创作 |
+| **30+ AI 提供商** | Anthropic、OpenAI、Google、AWS Bedrock、Azure、本地模型（通过 MCP） |
+| **20+ 内置工具** | 文件操作、代码搜索、网络获取、任务管理 |
+| **LSP 支持** | 30+ 语言服务器，自动安装 |
+| **MCP 协议** | 本地/远程服务器、OAuth 2.0、动态工具发现 |
+| **ZeroBot 网关** | 轻量级 Rust 网关（~3.4MB），多通道访问 |
+| **记忆系统** | 透明、Git 友好的 Markdown 记忆架构 |
+
+## 哲学框架
+
+### 祝融说
 
 CodeCoder 构建在**祝融说**之上，这是一套独特的哲学框架，它重新定义了我们应对不确定性和做出决策的方式。
 
-### 本体论：实在的生成
-
-**可能性基底**
-- 终极实在不是静态的「实体」，而是包含一切潜能的无限场域
-- 一切确定的现实都是从这个「可能性海洋」中涌现的
-- 过程优先于实体，生成（Becoming）优先于存在（Being）
-
-**观察即收敛**
-- 「观察」是一种创造性行为，而非被动接收
-- 观察导致可能性「坍缩」为确定性
-- 存在即被观察（To be is to be observed）
-
-**观察共识**
-- 宏观世界的稳定性源于多层级观察者的「共同投票」
-- 物理定律是宇宙最底层的「规则共识」
-- 社会现实是人类集体观察的「符号共识」
-
-### 实践论：可持续决策
-
-**可用余量（Available Surplus）**
-- 尚未被固化的潜能空间
-- 自由意志、创造力和系统韧性的来源
-- 可持续决策保留余量；最优决策往往消耗余量
+| 核心概念 | 描述 |
+|----------|------|
+| **可能性基底** | 终极实在不是静态的「实体」，而是包含一切潜能的无限场域。一切确定的现实都是从这个「可能性海洋」中涌现的。 |
+| **观察即收敛** | 「观察」是一种创造性行为，而非被动接收。观察导致可能性「坍缩」为确定性。宏观世界的稳定性源于多层级观察者的「共同投票」。 |
+| **可用余量** | 尚未被固化的潜能空间。自由意志、创造力和系统韧性的来源。可持续决策保留余量；最优决策往往消耗余量。 |
 
 ### CLOSE 五维评估框架
 
@@ -63,17 +60,36 @@ CodeCoder 构建在**祝融说**之上，这是一套独特的哲学框架，它
 
 > 「可持续决策 > 最优决策。能够继续玩下去，比赢一次更重要。」
 
-## 三层架构
+## 架构
 
-CodeCoder 将能力组织为三个相互关联的层次：
+### 三层智慧架构
 
-| 层次 | 能力 |
-|------|------|
-| **工程层** | 代码审查、安全分析、TDD 指导、架构设计、逆向工程、验证 |
-| **领域层** | 宏观经济、交易分析、选品策略、极小产品开发、AI 工程 |
-| **思维层** | 观察者理论分析、CLOSE 框架决策评估、可能性空间探索 |
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        思维智囊层                             │
+│   observer · decision                                        │
+├─────────────────────────────────────────────────────────────┤
+│                        领域智囊层                             │
+│   macro · trader · picker · miniproduct · ai-engineer        │
+├─────────────────────────────────────────────────────────────┤
+│                        工程智囊层                             │
+│   code-reviewer · security-reviewer · tdd-guide · architect  │
+│   code-reverse · jar-code-reverse · explore · general        │
+├─────────────────────────────────────────────────────────────┤
+│                        内容智囊层                             │
+│   writer · proofreader · expander                            │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## 专业 Agent（25+）
+### 技术栈
+
+- **运行时**：Bun 1.3+ + TypeScript ESM
+- **TUI 框架**：OpenTUI + SolidJS
+- **AI SDK**：Vercel AI SDK 多提供商支持
+- **网关**：ZeroBot（Rust，~3.4MB 二进制文件）
+- **验证**：Zod schemas
+
+## Agent 概览
 
 ### 主模式
 
@@ -87,187 +103,78 @@ CodeCoder 将能力组织为三个相互关联的层次：
 
 | Agent | 用途 |
 |-------|------|
-| `general` | 通用研究代理 - 多步骤任务、并行工作执行 |
-| `code-reviewer` | 代码质量审查 - 识别代码异味、命名问题、可维护性 |
-| `security-reviewer` | 安全漏洞分析 - OWASP Top 10、注入风险、认证问题 |
-| `tdd-guide` | 测试驱动开发指导 - 红-绿-重构循环、覆盖率 |
-| `architect` | 系统架构设计 - 接口定义、设计模式、技术决策 |
-| `verifier` | 全面验证 - 构建、类型、lint 检查、测试套件、覆盖率 |
-| `explore` | 快速代码库探索 - 模式搜索、结构理解 |
+| `general` | 多步骤任务、并行工作执行 |
+| `code-reviewer` | 代码质量、命名、可维护性 |
+| `security-reviewer` | OWASP Top 10、注入风险、认证问题 |
+| `tdd-guide` | 红-绿-重构循环、覆盖率 |
+| `architect` | 系统设计、接口定义、设计模式 |
+| `verifier` | 构建、类型、lint 检查、测试套件 |
+| `explore` | 快速代码库探索 |
 
 ### 逆向工程
 
 | Agent | 用途 |
 |-------|------|
 | `code-reverse` | 网站像素级复刻规划 |
-| `jar-code-reverse` | Java JAR 文件分析与源码重建 |
+| `jar-code-reverse` | Java JAR 分析与源码重建 |
 
 ### 领域类 Agent（祝融说系列）
 
 | Agent | 用途 |
 |-------|------|
-| `macro` | 宏观经济分析 - GDP、通胀、货币政策、贸易数据 |
-| `trader` | 超短线交易指导 - 情绪周期、模式识别（仅供教育参考） |
-| `picker` | 选品策略 - 七宗罪选品法、市场机会发现 |
-| `miniproduct` | 极小产品教练 - MVP 设计、AI 辅助开发、变现策略 |
-| `ai-engineer` | AI 工程师导师 - Python、LLM 应用、RAG、微调、MLOps |
-| `synton-assistant` | SYNTON-DB 助手 - LLM 记忆数据库、张量图存储、PaQL 查询 |
+| `macro` | 宏观经济分析——GDP、通胀、货币政策 |
+| `trader` | 超短线交易指导（仅供教育参考） |
+| `picker` | 选品策略——七宗罪选品法 |
+| `miniproduct` | 极小产品教练——MVP、变现策略 |
+| `ai-engineer` | AI 工程师导师——Python、LLM 应用、RAG、MLOps |
 
 ### 思维类 Agent（祝融说系列）
 
 | Agent | 用途 |
 |-------|------|
-| `observer` | 观察者理论顾问 - 可能性空间分析、认知框架 |
-| `decision` | 决策指导 - CLOSE 框架评估、可持续选择 |
+| `observer` | 可能性空间分析、认知框架 |
+| `decision` | CLOSE 框架评估、可持续选择 |
 
 ### 内容类 Agent
 
 | Agent | 用途 |
 |-------|------|
-| `writer` | 长文写作 - 2 万字以上文档、章节规划、风格一致性 |
-| `proofreader` | 内容校对 - 语法、风格、PROOF 框架验证 |
-| `expander` | 内容扩展 - 将想法转化为完整书籍 |
-| `expander-fiction` | 虚构类扩展 - 小说创作、世界观构建、角色弧线 |
-| `expander-nonfiction` | 非虚构类扩展 - 逻辑论证、证据框架 |
+| `writer` | 长文写作（2 万字以上）、章节规划 |
+| `proofreader` | 语法、风格、PROOF 框架验证 |
+| `expander` | 将想法转化为完整书籍 |
 
-## 功能特性
-
-### 多 AI 提供商支持
-
-通过统一接口连接 30+ AI 提供商：
-
-| 类别 | 提供商 |
-|------|--------|
-| 主流 | Anthropic Claude、OpenAI、Google Gemini、Amazon Bedrock、Azure |
-| 专业 | xAI Grok、Mistral、Groq、Cerebras、Cohere、Perplexity |
-| 聚合 | OpenRouter、Together AI、DeepInfra、Vercel AI |
-| 企业 | GitHub Copilot、GitLab Duo、Google Vertex AI |
-| 本地 | 任何 OpenAI 兼容端点（通过 MCP） |
-
-### 内置工具
-
-CodeCoder 包含 20+ 内置工具：
-
-| 类别 | 工具 |
-|------|------|
-| 文件操作 | `read`、`write`、`edit`、`glob`、`grep`、`ls` |
-| 代码智能 | `codesearch`、`lsp`、`bash` |
-| 网络 | `webfetch`、`websearch` |
-| 规划 | `task`、`todo`、`plan`、`question` |
-| 高级 | `batch`、`multiedit`、`apply_patch`、`network-analyzer` |
-
-### 语言服务器协议（LSP）
-
-内置支持 30+ 语言服务器，自动安装：
-
-TypeScript、Go、Rust、Python、Ruby、Java、Kotlin、C/C++、C#、Swift、Dart、Elixir、Zig、PHP、Lua、OCaml、Haskell、Clojure、Gleam 等。
-
-### 模型上下文协议（MCP）
-
-- 本地和远程 MCP 服务器
-- OAuth 2.0 认证流程
-- 动态工具发现
-- SSE 流式支持
-
-### 终端界面
-
-基于 SolidJS 和 OpenTUI 构建的丰富终端界面：
-
-- 完整键盘导航
-- 支持分支的会话管理
-- 实时流式响应
-- 代码变更差异可视化
-
-### 记忆系统
-
-透明、Git 友好的记忆架构：
-
-```
-memory/
-├── daily/              # 只追加的每日日志
-│   └── {YYYY-MM-DD}.md
-└── MEMORY.md           # 整理后的长期知识
-```
-
-所有记忆都是人类可读的 Markdown，受版本控制，可手动编辑。
-
-### HTTP API 服务器
-
-以无头服务器模式运行 CodeCoder：
-
-```bash
-ccode serve --port 4096
-```
-
-通过 HTTP API 暴露所有 Agent，便于与其他工具集成。
-
-### ZeroBot 集成
-
-CodeCoder 包含 [ZeroBot](./services/zero-bot/)，一个轻量级的 Rust AI 助手网关：
-
-| 特性 | 描述 |
-|------|------|
-| 多通道 | Telegram、Discord、Slack、WhatsApp、Matrix、iMessage、Email |
-| 24 个提供商 | OpenAI、Claude、Gemini、Groq、Mistral 等 |
-| 超小体积 | ~3.4MB 二进制文件，<5MB 内存 |
-| 双向集成 | ZeroBot 通过 HTTP API 调用 CodeCoder Agent |
-
-```toml
-# ~/.codecoder/config.toml
-[codecoder]
-enabled = true
-endpoint = "http://localhost:4096"
-```
-
-两个系统互为补充：
-- **ZeroBot**：多通道消息访问的轻量级网关
-- **CodeCoder**：复杂 AI 任务的全功能工作台
-
-## 安装
+## 快速开始
 
 ### 环境要求
 
 - [Bun](https://bun.sh/) 1.3 或更高版本
 - macOS、Linux 或 Windows（推荐 WSL）
 
-### 从源码安装
+### 安装
 
 ```bash
 git clone https://github.com/iannil/code-coder.git
 cd code-coder
 bun install
+```
+
+### 运行
+
+```bash
+# 启动交互式 TUI
 bun dev
+
+# 或指定工作目录
+bun dev /path/to/project
+
+# 启动无头 API 服务器
+bun dev serve --port 4096
 ```
 
 ### 构建独立可执行文件
 
 ```bash
-cd packages/ccode
-bun run build
-```
-
-## 快速开始
-
-```bash
-# 启动交互式 TUI
-ccode
-
-# 或指定工作目录
-ccode /path/to/project
-
-# CLI 模式直接发送消息
-ccode run "解释这个代码库的架构"
-
-# 继续上次会话
-ccode run --continue
-
-# 使用特定 Agent
-ccode run --agent architect "设计一个用户管理的 REST API"
-ccode run --agent decision "我应该接受这份工作邀请吗？"
-ccode run --agent macro "解读最新的 PMI 数据"
-
-# 无头服务器模式
-ccode serve --port 4096
+bun run --cwd packages/ccode build
 ```
 
 ## 配置
@@ -296,50 +203,35 @@ ccode serve --port 4096
       "git *": "allow",
       "npm *": "allow"
     }
-  },
-  "mcp": {
-    "filesystem": {
-      "type": "local",
-      "command": ["npx", "@anthropic/mcp-filesystem"]
-    }
   }
 }
 ```
 
-## 架构
+## 使用示例
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      CodeCoder CLI                          │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   TUI 应用   │  │  CLI 命令   │  │   服务器    │          │
-│  │  (SolidJS)  │  │  (yargs)    │  │   (API)     │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-├─────────────────────────────────────────────────────────────┤
-│                       核心引擎                               │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │  Agent   │ │  Session │ │   Tool   │ │ Provider │        │
-│  │  系统    │ │  管理器   │ │   系统   │ │   系统   │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │   MCP    │ │   记忆   │ │   LSP    │ │   Hook   │        │
-│  │   协议   │ │   系统   │ │   系统   │ │   系统   │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
-├─────────────────────────────────────────────────────────────┤
-│                      AI 提供商                               │
-│  Anthropic │ OpenAI │ Google │ AWS │ Azure │ OpenRouter...  │
-└─────────────────────────────────────────────────────────────┘
+### 代码审查
+
+```bash
+ccode run --agent code-reviewer "审查认证模块的代码"
 ```
 
-### 技术栈
+### 决策分析（CLOSE 框架）
 
-- **运行时**：Bun 1.3+ + TypeScript ESM
-- **UI 框架**：OpenTUI + SolidJS
-- **验证**：Zod schemas
-- **AI SDK**：Vercel AI SDK 多提供商支持
-- **构建**：Bun 原生打包器
+```bash
+ccode run --agent decision "我应该接受这份工作邀请吗？"
+```
+
+### 经济数据分析
+
+```bash
+ccode run --agent macro "解读最新的 PMI 数据"
+```
+
+### 产品选品
+
+```bash
+ccode run --agent picker "分析 AI 写作工具的市场机会"
+```
 
 ## 项目结构
 
@@ -357,7 +249,7 @@ codecoder/
 │   │   └── test/        # 测试套件
 │   └── util/            # 共享工具库
 ├── services/
-│   └── zero-bot/        # Rust 消息网关（可选）
+│   └── zero-bot/        # Rust 消息网关
 ├── script/              # 构建和生成脚本
 ├── docs/                # 文档
 └── memory/              # 记忆存储
@@ -380,42 +272,19 @@ cd packages/ccode && bun test
 
 # 构建可执行文件
 bun run --cwd packages/ccode build
+
+# 重新生成 SDK
+./script/generate.ts
 ```
 
-## 命令参考
+### 端口配置
 
-```bash
-# 认证
-ccode auth login <provider>
-ccode auth logout <provider>
-ccode auth list
-
-# 会话管理
-ccode session list
-ccode session show <id>
-ccode session delete <id>
-
-# Agent 管理
-ccode agent list
-ccode agent generate
-
-# 模型管理
-ccode models list
-ccode models default
-
-# MCP 服务器管理
-ccode mcp list
-ccode mcp auth <name>
-ccode mcp connect <name>
-
-# 记忆管理
-ccode memory show
-ccode memory clear
-
-# 逆向工程
-ccode reverse <url>
-ccode jar-reverse <file>
-```
+| 服务 | 端口 |
+|------|------|
+| CodeCoder API Server | 4400 |
+| Web Frontend (Vite) | 4401 |
+| ZeroBot Daemon | 4402 |
+| Faster Whisper Server | 4403 |
 
 ## 贡献
 
@@ -429,16 +298,10 @@ ccode jar-reverse <file>
 
 ## 许可证
 
-本项目基于 MIT 许可证开源 - 详情请参阅 [LICENSE](LICENSE) 文件。
+本项目基于 MIT 许可证开源——详情请参阅 [LICENSE](LICENSE) 文件。
 
 ## 致谢
 
-- 使用 [Bun](https://bun.sh) 构建 - 快速的一体化 JavaScript 运行时
-- 由 [Vercel AI SDK](https://sdk.vercel.ai) 驱动 - 多提供商 AI 集成
-- UI 由 [OpenTUI](https://github.com/sst/opentui) 提供支持 - 终端 UI 框架
-
----
-
-<p align="center">
-  <strong>CodeCoder</strong> - 工程与智慧的交汇
-</p>
+- 使用 [Bun](https://bun.sh) 构建——快速的一体化 JavaScript 运行时
+- 由 [Vercel AI SDK](https://sdk.vercel.ai) 驱动——多提供商 AI 集成
+- UI 由 [OpenTUI](https://github.com/sst/opentui) 提供支持——终端 UI 框架

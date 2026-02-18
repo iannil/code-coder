@@ -221,6 +221,83 @@ api_key = "enc2:..."  # 加密值
 
 ---
 
+## [channels_config.telegram.voice]
+
+Telegram 语音消息转文字配置。
+
+```toml
+[channels_config.telegram.voice]
+enabled = true
+stt_provider = "openai"  # STT 提供商
+# stt_api_key = "sk-..."  # 可选，默认使用主 api_key
+# stt_model = "whisper-1"  # 可选
+```
+
+### 支持的 STT 提供商
+
+| provider | 说明 | 需要 api_key | 需要 base_url |
+|----------|------|-------------|---------------|
+| `openai` | OpenAI Whisper API | 是 | 否 |
+| `uniapi` | UniAPI 兼容服务 | 是 | 否 |
+| `groq` | Groq Whisper | 是 | 否 |
+| `deepinfra` | DeepInfra | 是 | 否 |
+| `local` | 本地 Whisper 服务 | 否 | 是 |
+| `compatible` | OpenAI 兼容 API | 是 | 是 |
+
+### 本地 Whisper 服务
+
+使用 `faster-whisper-server` Docker 容器在本地运行 Whisper。
+
+**前置要求:**
+
+- Docker Desktop 已安装并运行
+
+**使用运维脚本管理:**
+
+```bash
+# 启动服务（端口 4403，默认模型 base）
+./ops.sh start whisper
+
+# 查看状态
+./ops.sh status
+
+# 停止服务
+./ops.sh stop whisper
+
+# 查看日志
+./ops.sh logs whisper
+./ops.sh tail whisper  # 实时跟踪
+
+# 使用其他模型启动
+WHISPER_MODEL=small ./ops.sh start whisper
+
+# 使用 GPU 镜像（需要 NVIDIA GPU + nvidia-docker）
+WHISPER_IMAGE=fedirz/faster-whisper-server:latest-cuda ./ops.sh start whisper
+```
+
+**配置:**
+
+```toml
+[channels_config.telegram.voice]
+enabled = true
+stt_provider = "local"
+stt_base_url = "http://localhost:4403"
+stt_model = "base"  # 可选: tiny, base, small, medium, large
+# stt_api_key 可省略
+```
+
+**可用模型:**
+
+| 模型 | VRAM | 速度 | 质量 |
+|------|------|------|------|
+| `tiny` | ~1GB | 最快 | 一般 |
+| `base` | ~1GB | 快 | 良好 |
+| `small` | ~2GB | 中等 | 很好 |
+| `medium` | ~5GB | 较慢 | 优秀 |
+| `large` | ~10GB | 慢 | 最佳 |
+
+---
+
 ## 完整示例
 
 ```toml
