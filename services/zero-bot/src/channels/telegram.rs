@@ -893,6 +893,103 @@ impl TelegramChannel {
             data,
         })
     }
+
+    /// Send a single message chunk with Markdown parsing.
+    /// Falls back to plain text if Markdown parsing fails.
+    async fn send_single_chunk(&self, message: &str, chat_id: &str) -> anyhow::Result<()> {
+        // First, try with Markdown parsing
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("sendMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if resp.status().is_success() {
+            tracing::debug!("Telegram message sent to {chat_id} (Markdown)");
+            return Ok(());
+        }
+
+        // Check if it's a Markdown parsing error (status 400)
+        let status = resp.status();
+        let error_text = resp.text().await.unwrap_or_default();
+
+        // Telegram returns "Bad Request: can't parse entities" for Markdown errors
+        if status.as_u16() == 400 && error_text.contains("parse entities") {
+            tracing::warn!(
+                "Telegram Markdown parsing failed for {chat_id}, retrying without parse_mode: {}",
+                error_text
+            );
+
+            // Retry without parse_mode (plain text)
+            let body_plain = serde_json::json!({
+                "chat_id": chat_id,
+                "text": message
+            });
+
+            let resp_plain = self
+                .client
+                .post(self.api_url("sendMessage"))
+                .json(&body_plain)
+                .send()
+                .await?;
+
+            if resp_plain.status().is_success() {
+                tracing::info!("Telegram message sent to {chat_id} (plain text fallback)");
+                return Ok(());
+            }
+
+            let plain_error = resp_plain.text().await.unwrap_or_default();
+            tracing::error!("Telegram sendMessage failed (plain text): {plain_error}");
+            anyhow::bail!("Telegram sendMessage failed: {plain_error}");
+        }
+
+        tracing::error!("Telegram sendMessage failed: status={status}, error={error_text}");
+        anyhow::bail!("Telegram sendMessage failed: {error_text}")
+    }
+}
+
+/// Split a message into chunks that fit within Telegram's limit.
+/// Tries to split at natural boundaries (double newlines, single newlines, spaces).
+fn split_message(message: &str, max_len: usize) -> Vec<String> {
+    if message.len() <= max_len {
+        return vec![message.to_string()];
+    }
+
+    let mut chunks = Vec::new();
+    let mut remaining = message;
+
+    while !remaining.is_empty() {
+        if remaining.len() <= max_len {
+            chunks.push(remaining.to_string());
+            break;
+        }
+
+        // Find the best split point within max_len
+        let chunk = &remaining[..max_len];
+
+        // Try to split at natural boundaries (in order of preference)
+        let split_pos = chunk
+            .rfind("\n\n")
+            .or_else(|| chunk.rfind('\n'))
+            .or_else(|| chunk.rfind(". "))
+            .or_else(|| chunk.rfind(' '))
+            .unwrap_or(max_len);
+
+        // Ensure we make progress
+        let actual_split = if split_pos == 0 { max_len } else { split_pos };
+
+        chunks.push(remaining[..actual_split].to_string());
+        remaining = remaining[actual_split..].trim_start();
+    }
+
+    chunks
 }
 
 #[allow(clippy::too_many_lines)]
@@ -903,17 +1000,15 @@ impl Channel for TelegramChannel {
     }
 
     async fn send(&self, message: &str, chat_id: &str) -> anyhow::Result<()> {
-        let body = serde_json::json!({
-            "chat_id": chat_id,
-            "text": message,
-            "parse_mode": "Markdown"
-        });
+        // Telegram message limit is 4096 characters
+        const MAX_MESSAGE_LEN: usize = 4096;
 
-        self.client
-            .post(self.api_url("sendMessage"))
-            .json(&body)
-            .send()
-            .await?;
+        // Split long messages into chunks
+        let chunks = split_message(message, MAX_MESSAGE_LEN);
+
+        for chunk in chunks {
+            self.send_single_chunk(&chunk, chat_id).await?;
+        }
 
         Ok(())
     }
@@ -1848,5 +1943,64 @@ mod tests {
         assert!(result.contains("--- Content Preview ---"));
         assert!(result.contains("--- End Preview ---"));
         // Should be truncated since content > 32KB
+    }
+
+    // ── Message splitting tests ──────────────────────────────────────
+
+    #[test]
+    fn split_message_short_message() {
+        let result = super::split_message("Hello, World!", 4096);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "Hello, World!");
+    }
+
+    #[test]
+    fn split_message_exact_limit() {
+        let msg = "x".repeat(4096);
+        let result = super::split_message(&msg, 4096);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].len(), 4096);
+    }
+
+    #[test]
+    fn split_message_over_limit_at_newline() {
+        let msg = format!("{}\n\n{}", "a".repeat(100), "b".repeat(100));
+        let result = super::split_message(&msg, 150);
+        assert_eq!(result.len(), 2);
+        assert!(result[0].starts_with("aaaa"));
+        assert!(result[1].starts_with("bbbb"));
+    }
+
+    #[test]
+    fn split_message_over_limit_at_space() {
+        let msg = format!("{} {}", "a".repeat(50), "b".repeat(50));
+        let result = super::split_message(&msg, 60);
+        assert_eq!(result.len(), 2);
+        assert!(result[0].ends_with('a'));
+        assert!(result[1].starts_with('b'));
+    }
+
+    #[test]
+    fn split_message_no_natural_boundary() {
+        let msg = "x".repeat(5000);
+        let result = super::split_message(&msg, 4096);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].len(), 4096);
+        assert_eq!(result[1].len(), 904);
+    }
+
+    #[test]
+    fn split_message_empty() {
+        let result = super::split_message("", 4096);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0], "");
+    }
+
+    #[test]
+    fn split_message_trims_leading_whitespace_on_subsequent_chunks() {
+        let msg = "First part\n   \n   Second part with leading spaces";
+        let result = super::split_message(msg, 15);
+        // Should trim leading whitespace from second chunk
+        assert!(!result[1].starts_with(' '));
     }
 }

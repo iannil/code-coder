@@ -2624,6 +2624,7 @@ default_temperature = 0.7
             identity: None,
             codecoder: None,
             session: None,
+            tts: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test-zerobot");
@@ -2677,6 +2678,7 @@ default_temperature = 0.7
             identity: None,
             codecoder: None,
             session: None,
+            tts: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test");
