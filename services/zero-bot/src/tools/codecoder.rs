@@ -19,7 +19,8 @@ use std::error::Error as StdError;
 use std::time::Duration;
 
 /// Default `CodeCoder` API endpoint
-const DEFAULT_ENDPOINT: &str = "http://localhost:4400";
+/// Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues
+const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:4400";
 /// HTTP request timeout in seconds
 const REQUEST_TIMEOUT_SECS: u64 = 300; // 5 minutes for long-running tasks
 /// SSE per-chunk timeout in seconds (how long to wait between chunks)
@@ -363,12 +364,16 @@ impl CodeCoderTool {
         tracing::info!("Connecting to SSE stream: {}", url);
 
         // Create a client optimized for SSE connections
-        // - connect_timeout: time to establish TCP connection (handles IPv6->IPv4 fallback)
+        // - http1_only: force HTTP/1.1 for SSE compatibility (Bun doesn't support HTTP/2 for SSE)
+        // - connect_timeout: time to establish TCP connection
         // - no overall timeout: SSE streams are long-lived
         // - tcp_nodelay: reduce latency for event streaming
+        // - pool_max_idle_per_host(0): disable connection pooling to avoid stale connections
         let sse_client = reqwest::Client::builder()
+            .http1_only()
             .connect_timeout(Duration::from_secs(SSE_CONNECT_TIMEOUT_SECS))
             .tcp_nodelay(true)
+            .pool_max_idle_per_host(0)
             .build()
             .unwrap_or_default();
 
@@ -442,16 +447,13 @@ impl CodeCoderTool {
         }
 
         // If all retries failed, fall back to polling
-        let resp = match resp {
-            Some(r) => r,
-            None => {
-                tracing::warn!(
-                    "All {} SSE connection attempts failed, falling back to polling. Last error: {:?}",
-                    SSE_MAX_RETRIES,
-                    last_error
-                );
-                return self.poll_task_result(task_id).await;
-            }
+        let Some(resp) = resp else {
+            tracing::warn!(
+                "All {} SSE connection attempts failed, falling back to polling. Last error: {:?}",
+                SSE_MAX_RETRIES,
+                last_error
+            );
+            return self.poll_task_result(task_id).await;
         };
 
         let mut stream = resp.bytes_stream();

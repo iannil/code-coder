@@ -4,5 +4,5 @@ pub use schema::{
     AutonomyConfig, BrowserConfig, ChannelsConfig, CodeCoderConfig, ComposioConfig, Config,
     DiscordConfig, GatewayConfig, HeartbeatConfig, IMessageConfig, IdentityConfig, MatrixConfig,
     MemoryConfig, ObservabilityConfig, ReliabilityConfig, RuntimeConfig, SecretsConfig,
-    SlackConfig, TelegramConfig, TunnelConfig, WebhookConfig,
+    SessionConfig, SlackConfig, TelegramConfig, TunnelConfig, WebhookConfig,
 };

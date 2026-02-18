@@ -30,7 +30,7 @@ impl CompatibleStt {
     /// * `api_key` - API key for the provider (can be empty for local services)
     /// * `base_url` - Base URL for the API (e.g., `https://hk.uniapi.io` or `http://localhost:8000`)
     /// * `model` - Model name (default: "whisper-1")
-    pub fn new(api_key: String, base_url: String, model: Option<String>) -> Self {
+    pub fn new(api_key: String, base_url: &str, model: Option<String>) -> Self {
         // Normalize base URL (remove trailing slash)
         let base_url = base_url.trim_end_matches('/').to_string();
 
@@ -166,7 +166,7 @@ mod tests {
     fn creates_with_default_model() {
         let stt = CompatibleStt::new(
             "sk-test".to_string(),
-            "https://api.example.com".to_string(),
+            "https://api.example.com",
             None,
         );
         assert_eq!(stt.model, "whisper-1");
@@ -177,7 +177,7 @@ mod tests {
     fn creates_with_custom_model() {
         let stt = CompatibleStt::new(
             "sk-test".to_string(),
-            "https://api.example.com/".to_string(),
+            "https://api.example.com/",
             Some("qwen3-asr-flash".to_string()),
         );
         assert_eq!(stt.model, "qwen3-asr-flash");
@@ -197,7 +197,7 @@ mod tests {
         // Local services (faster-whisper-server) don't require API key
         let stt = CompatibleStt::new(
             String::new(),
-            "http://localhost:8000".to_string(),
+            "http://localhost:8000",
             Some("base".to_string()),
         );
         assert!(stt.api_key.is_empty());

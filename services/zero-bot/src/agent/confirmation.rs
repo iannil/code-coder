@@ -22,11 +22,11 @@ pub enum ConfirmationResponse {
 }
 
 impl ConfirmationResponse {
-    pub fn is_approved(&self) -> bool {
+    pub fn is_approved(self) -> bool {
         matches!(self, Self::Once | Self::Always)
     }
 
-    pub fn is_always(&self) -> bool {
+    pub fn is_always(self) -> bool {
         matches!(self, Self::Always)
     }
 }

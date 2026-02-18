@@ -41,6 +41,8 @@ struct ZeroBotJsonConfig {
     identity: Option<ZeroBotJsonIdentity>,
     #[serde(default)]
     codecoder: Option<ZeroBotJsonCodeCoder>,
+    #[serde(default)]
+    session: Option<ZeroBotJsonSession>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -205,6 +207,14 @@ struct ZeroBotJsonCodeCoder {
     endpoint: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ZeroBotJsonSession {
+    enabled: Option<bool>,
+    context_window: Option<usize>,
+    compact_threshold: Option<f32>,
+    keep_recent: Option<usize>,
+}
+
 /// Strip JSONC-style comments (// and /* */)
 fn strip_json_comments(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
@@ -317,6 +327,9 @@ pub struct Config {
 
     #[serde(default)]
     pub identity: IdentityConfig,
+
+    #[serde(default)]
+    pub session: SessionConfig,
 }
 
 // ── Identity (AIEOS / OpenClaw format) ──────────────────────────
@@ -459,13 +472,16 @@ pub struct CodeCoderConfig {
     /// Enable `CodeCoder` tool for invoking 23 AI agents
     #[serde(default)]
     pub enabled: bool,
-    /// `CodeCoder` API endpoint (default: `<http://localhost:4400>`)
+    /// `CodeCoder` API endpoint (default: `http://127.0.0.1:4400`)
     #[serde(default = "default_codecoder_endpoint")]
     pub endpoint: String,
 }
 
 fn default_codecoder_endpoint() -> String {
-    "http://localhost:4400".into()
+    // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues.
+    // When using 'localhost', the system may first try IPv6 (::1) which fails
+    // if the server only listens on IPv4, causing SSE connection failures.
+    "http://127.0.0.1:4400".into()
 }
 
 impl Default for CodeCoderConfig {
@@ -473,6 +489,55 @@ impl Default for CodeCoderConfig {
         Self {
             enabled: false,
             endpoint: default_codecoder_endpoint(),
+        }
+    }
+}
+
+// ── Session (conversation context management) ──────────────────
+
+/// Session management configuration for multi-turn conversations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionConfig {
+    /// Whether session management is enabled (default: true)
+    #[serde(default = "default_session_enabled")]
+    pub enabled: bool,
+
+    /// Model context window size in tokens (default: 128000)
+    #[serde(default = "default_context_window")]
+    pub context_window: usize,
+
+    /// Threshold ratio to trigger auto-compaction (default: 0.8)
+    #[serde(default = "default_compact_threshold")]
+    pub compact_threshold: f32,
+
+    /// Number of recent messages to keep after compaction (default: 5)
+    #[serde(default = "default_keep_recent")]
+    pub keep_recent: usize,
+}
+
+fn default_session_enabled() -> bool {
+    true
+}
+
+fn default_context_window() -> usize {
+    128_000
+}
+
+fn default_compact_threshold() -> f32 {
+    0.8
+}
+
+fn default_keep_recent() -> usize {
+    5
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_session_enabled(),
+            context_window: default_context_window(),
+            compact_threshold: default_compact_threshold(),
+            keep_recent: default_keep_recent(),
         }
     }
 }
@@ -956,6 +1021,7 @@ impl Default for Config {
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
+            session: SessionConfig::default(),
         }
     }
 }
@@ -1266,6 +1332,14 @@ impl Config {
             endpoint: c.endpoint.unwrap_or(defaults.codecoder.endpoint.clone()),
         });
 
+        // Build session config
+        let session = json.session.map_or(defaults.session.clone(), |s| SessionConfig {
+            enabled: s.enabled.unwrap_or(defaults.session.enabled),
+            context_window: s.context_window.unwrap_or(defaults.session.context_window),
+            compact_threshold: s.compact_threshold.unwrap_or(defaults.session.compact_threshold),
+            keep_recent: s.keep_recent.unwrap_or(defaults.session.keep_recent),
+        });
+
         Config {
             workspace_dir: json
                 .workspace_dir
@@ -1289,6 +1363,7 @@ impl Config {
             browser,
             codecoder,
             identity,
+            session,
         }
     }
 
@@ -1515,6 +1590,7 @@ mod tests {
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
+            session: SessionConfig::default(),
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1586,6 +1662,7 @@ default_temperature = 0.7
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
+            session: SessionConfig::default(),
         };
 
         config.save().unwrap();
@@ -2460,6 +2537,7 @@ default_temperature = 0.7
             browser: None,
             identity: None,
             codecoder: None,
+            session: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test-zerobot");
@@ -2513,6 +2591,7 @@ default_temperature = 0.7
             browser: None,
             identity: None,
             codecoder: None,
+            session: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test");

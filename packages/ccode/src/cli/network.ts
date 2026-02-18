@@ -9,8 +9,8 @@ const options = {
   },
   hostname: {
     type: "string" as const,
-    describe: "hostname to listen on",
-    default: "127.0.0.1",
+    describe: "hostname to listen on (use :: for IPv4+IPv6, 0.0.0.0 for all IPv4)",
+    default: "::",
   },
   mdns: {
     type: "boolean" as const,

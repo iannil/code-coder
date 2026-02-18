@@ -37,23 +37,17 @@ pub fn create_stt(
         // OpenAI-compatible providers with known base URLs
         "uniapi" => Ok(Arc::new(CompatibleStt::new(
             api_key.to_string(),
-            base_url
-                .unwrap_or("https://hk.uniapi.io")
-                .to_string(),
+            base_url.unwrap_or("https://hk.uniapi.io"),
             model.map(ToString::to_string),
         ))),
         "groq" => Ok(Arc::new(CompatibleStt::new(
             api_key.to_string(),
-            base_url
-                .unwrap_or("https://api.groq.com/openai")
-                .to_string(),
+            base_url.unwrap_or("https://api.groq.com/openai"),
             model.map(ToString::to_string),
         ))),
         "deepinfra" => Ok(Arc::new(CompatibleStt::new(
             api_key.to_string(),
-            base_url
-                .unwrap_or("https://api.deepinfra.com")
-                .to_string(),
+            base_url.unwrap_or("https://api.deepinfra.com"),
             model.map(ToString::to_string),
         ))),
         // Generic OpenAI-compatible provider (requires base_url)
@@ -63,7 +57,7 @@ pub fn create_stt(
             })?;
             Ok(Arc::new(CompatibleStt::new(
                 api_key.to_string(),
-                url.to_string(),
+                url,
                 model.map(ToString::to_string),
             )))
         }
@@ -77,7 +71,7 @@ pub fn create_stt(
             })?;
             Ok(Arc::new(CompatibleStt::new(
                 api_key.to_string(), // Can be empty for local services
-                url.to_string(),
+                url,
                 model.map(ToString::to_string),
             )))
         }

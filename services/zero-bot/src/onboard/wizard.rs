@@ -106,6 +106,7 @@ pub fn run_wizard() -> Result<Config> {
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
         identity: crate::config::IdentityConfig::default(),
+        session: crate::config::SessionConfig::default(),
     };
 
     println!(
@@ -295,6 +296,7 @@ pub fn run_quick_setup(
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
         identity: crate::config::IdentityConfig::default(),
+        session: crate::config::SessionConfig::default(),
     };
 
     config.save()?;

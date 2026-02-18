@@ -23,6 +23,9 @@ use crate::config::Config;
 use crate::memory::{self, Memory};
 use crate::providers::{self, Provider};
 use crate::security::SecurityPolicy;
+use crate::session::compactor::format_session_context;
+use crate::session::types::MessageRole;
+use crate::session::{SessionCompactor, SessionStore};
 use crate::tools;
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
@@ -642,6 +645,31 @@ pub async fn start_channels(config: Config) -> Result<()> {
         config.api_key.as_deref(),
     )?);
 
+    // Initialize session store for multi-turn conversation context
+    let session_store: Option<Arc<SessionStore>> = if config.session.enabled {
+        let db_path = config.workspace_dir.join("sessions.db");
+        match SessionStore::new(&db_path) {
+            Ok(store) => {
+                tracing::info!("Session store initialized: {}", db_path.display());
+                Some(Arc::new(store))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize session store: {e}");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Initialize session compactor for context compression
+    let session_compactor: Option<Arc<SessionCompactor>> = session_store.as_ref().map(|_| {
+        Arc::new(SessionCompactor::new(provider.clone(), model.clone()))
+    });
+
+    // Session configuration for auto-compaction
+    let session_config = config.session.clone();
+
     // Create security policy
     let security = Arc::new(SecurityPolicy::from_config(
         &config.autonomy,
@@ -934,12 +962,128 @@ pub async fn start_channels(config: Config) -> Result<()> {
 
     // Process incoming messages — use the agent executor
     while let Some(msg) = rx.recv().await {
+        let session_key = format!("{}:{}", msg.channel, msg.sender);
+
         println!(
             "  💬 [{}] from {}: {}",
             msg.channel,
             msg.sender,
             truncate_with_ellipsis(&msg.content, 80)
         );
+
+        // Handle session commands (/new, /compact)
+        if let Some(ref store) = session_store {
+            let content_trimmed = msg.content.trim();
+
+            // /new - Reset session
+            if content_trimmed == "/new" {
+                match store.clear_session(&session_key) {
+                    Ok(deleted) => {
+                        let reply = format!("🆕 会话已重置，开始新对话。（已清除 {deleted} 条消息）");
+                        for ch in &channels {
+                            if ch.name() == msg.channel {
+                                let _ = ch.send(&reply, &msg.sender).await;
+                                break;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to clear session: {e}");
+                    }
+                }
+                continue;
+            }
+
+            // /compact - Manual compaction
+            if content_trimmed == "/compact" {
+                if let Some(ref compactor) = session_compactor {
+                    let messages = store.get_messages(&session_key).unwrap_or_default();
+                    if messages.is_empty() {
+                        for ch in &channels {
+                            if ch.name() == msg.channel {
+                                let _ = ch.send("📭 当前会话为空，无需压缩。", &msg.sender).await;
+                                break;
+                            }
+                        }
+                    } else {
+                        match compactor.compact(&messages).await {
+                            Ok(summary) => {
+                                if let Err(e) = store.compact_session(&session_key, &summary, session_config.keep_recent) {
+                                    tracing::error!("Failed to compact session: {e}");
+                                } else {
+                                    for ch in &channels {
+                                        if ch.name() == msg.channel {
+                                            let _ = ch.send("📦 上下文已压缩。", &msg.sender).await;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to generate summary: {e}");
+                                for ch in &channels {
+                                    if ch.name() == msg.channel {
+                                        let _ = ch.send(&format!("⚠️ 压缩失败: {e}"), &msg.sender).await;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        // Auto-compaction check
+        if let (Some(ref store), Some(ref compactor)) = (&session_store, &session_compactor) {
+            let token_count = store.get_token_count(&session_key).unwrap_or(0);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+            let threshold = (session_config.context_window as f32 * session_config.compact_threshold) as usize;
+
+            if token_count > threshold {
+                tracing::info!(
+                    "Session {} exceeds threshold ({} > {}), auto-compacting",
+                    session_key, token_count, threshold
+                );
+
+                let messages = store.get_messages(&session_key).unwrap_or_default();
+                if !messages.is_empty() {
+                    if let Ok(summary) = compactor.compact(&messages).await {
+                        if let Err(e) = store.compact_session(&session_key, &summary, session_config.keep_recent) {
+                            tracing::error!("Auto-compact failed: {e}");
+                        } else {
+                            for ch in &channels {
+                                if ch.name() == msg.channel {
+                                    let _ = ch.send("📦 上下文已自动压缩以保持响应质量。", &msg.sender).await;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build enriched message with session context
+        let enriched_content = if let Some(ref store) = session_store {
+            let history = store.get_messages(&session_key).unwrap_or_default();
+            if history.is_empty() {
+                msg.content.clone()
+            } else {
+                let context = format_session_context(&history);
+                format!("{context}\n[当前消息]\n{}", msg.content)
+            }
+        } else {
+            msg.content.clone()
+        };
+
+        // Save user message to session
+        if let Some(ref store) = session_store {
+            if let Err(e) = store.add_message(&session_key, MessageRole::User, &msg.content) {
+                tracing::warn!("Failed to save user message to session: {e}");
+            }
+        }
 
         // Auto-save to memory
         if config.memory.auto_save {
@@ -956,8 +1100,15 @@ pub async fn start_channels(config: Config) -> Result<()> {
         let tool_context = crate::agent::ToolContext::new(&msg.channel, &msg.sender);
 
         // Use the agent executor for tool-calling loop with context
-        match executor.execute_with_context(&msg.content, Some(tool_context)).await {
+        match executor.execute_with_context(&enriched_content, Some(tool_context)).await {
             Ok(response) => {
+                // Save assistant response to session
+                if let Some(ref store) = session_store {
+                    if let Err(e) = store.add_message(&session_key, MessageRole::Assistant, &response) {
+                        tracing::warn!("Failed to save assistant message to session: {e}");
+                    }
+                }
+
                 println!(
                     "  🤖 Reply: {}",
                     truncate_with_ellipsis(&response, 200)

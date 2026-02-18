@@ -2,10 +2,40 @@ use super::traits::{Channel, ChannelMessage};
 use crate::stt::SpeechToText;
 use async_trait::async_trait;
 use reqwest::multipart::{Form, Part};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+// ============================================================================
+// Document Processing Constants
+// ============================================================================
+
+/// Maximum file size in bytes for inline content injection (32KB)
+const MAX_INLINE_SIZE: usize = 32 * 1024;
+
+/// MIME types that can be read as UTF-8 text
+const TEXT_MIME_TYPES: &[&str] = &[
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "text/xml",
+    "text/html",
+    "application/json",
+    "application/xml",
+    "application/x-yaml",
+    "text/x-python",
+    "text/x-rust",
+    "text/x-c",
+    "text/x-java",
+];
+
+/// File extensions that should be treated as text files
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "md", "markdown", "csv", "json", "xml", "yaml", "yml", "toml", "ini", "cfg", "conf",
+    "log", "py", "rs", "js", "ts", "jsx", "tsx", "java", "c", "cpp", "h", "hpp", "go", "rb",
+    "php", "sh", "bash", "zsh", "html", "htm", "css", "scss", "less", "sql", "graphql", "proto",
+];
 
 // ============================================================================
 // Inline Keyboard Types
@@ -142,6 +172,181 @@ impl TelegramChannel {
 
         let bytes = file_resp.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    /// Check if a MIME type or file extension represents a text file
+    fn is_text_file(mime_type: Option<&str>, file_name: &str) -> bool {
+        // Check MIME type first
+        if let Some(mime) = mime_type {
+            if TEXT_MIME_TYPES.iter().any(|t| mime.starts_with(t)) {
+                return true;
+            }
+        }
+
+        // Fall back to extension check
+        let ext = file_name
+            .rsplit('.')
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
+        TEXT_EXTENSIONS.contains(&ext.as_str())
+    }
+
+    /// Extract text content from a document.
+    ///
+    /// Returns `Some(text)` for supported formats, `None` for unsupported.
+    fn extract_document_content(
+        file_bytes: &[u8],
+        file_name: &str,
+        mime_type: Option<&str>,
+    ) -> Option<String> {
+        // Handle PDF files
+        if mime_type == Some("application/pdf")
+            || file_name.to_lowercase().ends_with(".pdf")
+        {
+            return Some(Self::extract_pdf_content(file_bytes));
+        }
+
+        // Handle text-based files
+        if Self::is_text_file(mime_type, file_name) {
+            return match String::from_utf8(file_bytes.to_vec()) {
+                Ok(text) => Some(text),
+                Err(_) => {
+                    // Try lossy conversion for non-UTF8 text
+                    Some(String::from_utf8_lossy(file_bytes).into_owned())
+                }
+            };
+        }
+
+        // Unsupported format
+        None
+    }
+
+    /// Extract text content from a PDF file using pdf-extract
+    fn extract_pdf_content(file_bytes: &[u8]) -> String {
+        match pdf_extract::extract_text_from_mem(file_bytes) {
+            Ok(text) => {
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    "[PDF contains no extractable text - may be image-based]".to_string()
+                } else {
+                    trimmed.to_string()
+                }
+            }
+            Err(e) => {
+                tracing::warn!("PDF extraction failed: {e}");
+                format!("[Failed to extract PDF text: {e}]")
+            }
+        }
+    }
+
+    /// Save file bytes to the workspace uploads directory.
+    ///
+    /// Creates `.zerobot/uploads/` directory if it doesn't exist.
+    #[allow(dead_code)]
+    async fn save_to_workspace(
+        file_bytes: &[u8],
+        file_name: &str,
+        workspace_dir: &Path,
+    ) -> anyhow::Result<PathBuf> {
+        let uploads_dir = workspace_dir.join(".zerobot").join("uploads");
+        tokio::fs::create_dir_all(&uploads_dir).await?;
+
+        // Sanitize filename to prevent path traversal
+        let safe_name = Path::new(file_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("document");
+
+        // Add timestamp to avoid collisions
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        let dest_name = format!("{timestamp}_{safe_name}");
+        let dest_path = uploads_dir.join(&dest_name);
+
+        tokio::fs::write(&dest_path, file_bytes).await?;
+        tracing::info!("Document saved to: {}", dest_path.display());
+
+        Ok(dest_path)
+    }
+
+    /// Format document message for agent consumption.
+    ///
+    /// Small files: inline content injection.
+    /// Large files: truncate and provide preview.
+    fn format_document_message(
+        file_bytes: &[u8],
+        file_name: &str,
+        mime_type: Option<&str>,
+        caption: Option<&str>,
+    ) -> String {
+        let file_size = file_bytes.len();
+        let size_str = Self::format_file_size(file_size);
+
+        // Try to extract text content
+        let content = Self::extract_document_content(file_bytes, file_name, mime_type);
+
+        match content {
+            Some(text) if file_size <= MAX_INLINE_SIZE => {
+                // Small file: inline content
+                let mut message = format!(
+                    "[Document: {file_name} ({size_str})]\n--- Content Start ---\n{text}\n--- Content End ---"
+                );
+                if let Some(cap) = caption {
+                    if !cap.is_empty() {
+                        message.push_str("\n\n");
+                        message.push_str(cap);
+                    }
+                }
+                message
+            }
+            Some(text) => {
+                // Large file with extractable text: truncate and provide preview
+                let truncated = if text.len() > 2000 {
+                    format!("{}...\n[Content truncated, {size_str} total]", &text[..2000])
+                } else {
+                    text
+                };
+                let mut message = format!(
+                    "[Document: {file_name} ({size_str})]\n--- Content Preview ---\n{truncated}\n--- End Preview ---"
+                );
+                if let Some(cap) = caption {
+                    if !cap.is_empty() {
+                        message.push_str("\n\n");
+                        message.push_str(cap);
+                    }
+                }
+                message
+            }
+            None => {
+                // Unsupported format
+                let mut message = format!(
+                    "[Document received: {file_name} ({size_str})] - Unsupported format for text extraction"
+                );
+                if let Some(cap) = caption {
+                    if !cap.is_empty() {
+                        message.push_str("\n\n");
+                        message.push_str(cap);
+                    }
+                }
+                message
+            }
+        }
+    }
+
+    /// Format file size in human-readable form
+    #[allow(clippy::cast_precision_loss)]
+    fn format_file_size(bytes: usize) -> String {
+        if bytes < 1024 {
+            format!("{bytes} B")
+        } else if bytes < 1024 * 1024 {
+            format!("{:.1} KB", bytes as f64 / 1024.0)
+        } else {
+            format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+        }
     }
 
     /// Send a document/file to a Telegram chat
@@ -829,6 +1034,78 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                                 continue;
                             }
                         }
+                    } else if let Some(doc) = message.get("document") {
+                        // Document message handling
+                        let Some(file_id) = doc.get("file_id").and_then(|v| v.as_str()) else {
+                            tracing::warn!("Document message missing file_id");
+                            continue;
+                        };
+
+                        let file_name = doc
+                            .get("file_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("document");
+
+                        let mime_type = doc
+                            .get("mime_type")
+                            .and_then(|v| v.as_str());
+
+                        let caption = message
+                            .get("caption")
+                            .and_then(|v| v.as_str());
+
+                        // Check file size (Telegram Bot API limit is 20MB)
+                        #[allow(clippy::cast_possible_truncation)]
+                        let file_size = doc
+                            .get("file_size")
+                            .and_then(serde_json::Value::as_u64)
+                            .unwrap_or(0) as usize;
+
+                        if file_size > 20 * 1024 * 1024 {
+                            tracing::warn!("Document too large: {} bytes", file_size);
+                            let _ = self
+                                .send(
+                                    "Document is too large (>20MB). Please send a smaller file.",
+                                    &chat_id,
+                                )
+                                .await;
+                            continue;
+                        }
+
+                        // Download the document
+                        let doc_bytes = match self.download_file(file_id).await {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                tracing::error!("Failed to download document: {e}");
+                                let _ = self
+                                    .send("Unable to download document, please try again", &chat_id)
+                                    .await;
+                                continue;
+                            }
+                        };
+
+                        if doc_bytes.is_empty() {
+                            tracing::error!("Downloaded document is empty (0 bytes)");
+                            let _ = self
+                                .send("Document appears to be empty, please try again", &chat_id)
+                                .await;
+                            continue;
+                        }
+
+                        tracing::info!(
+                            "Document received: {} ({} bytes, mime: {:?})",
+                            file_name,
+                            doc_bytes.len(),
+                            mime_type
+                        );
+
+                        // Format the document message for agent consumption
+                        Self::format_document_message(
+                            &doc_bytes,
+                            file_name,
+                            mime_type,
+                            caption,
+                        )
                     } else {
                         // Other message types (photo, video, etc.) — skip
                         continue;
@@ -1365,5 +1642,142 @@ mod tests {
             ch.api_url("editMessageText"),
             "https://api.telegram.org/bot123:ABC/editMessageText"
         );
+    }
+
+    // ── Document handling tests ────────────────────────────────────────
+
+    #[test]
+    fn is_text_file_by_mime_type() {
+        assert!(TelegramChannel::is_text_file(Some("text/plain"), "file.bin"));
+        assert!(TelegramChannel::is_text_file(Some("application/json"), "data"));
+        assert!(TelegramChannel::is_text_file(Some("text/markdown"), "readme"));
+        assert!(!TelegramChannel::is_text_file(Some("application/pdf"), "doc.pdf"));
+        assert!(!TelegramChannel::is_text_file(Some("image/png"), "image.png"));
+    }
+
+    #[test]
+    fn is_text_file_by_extension() {
+        assert!(TelegramChannel::is_text_file(None, "file.txt"));
+        assert!(TelegramChannel::is_text_file(None, "readme.md"));
+        assert!(TelegramChannel::is_text_file(None, "data.json"));
+        assert!(TelegramChannel::is_text_file(None, "script.py"));
+        assert!(TelegramChannel::is_text_file(None, "code.rs"));
+        assert!(TelegramChannel::is_text_file(None, "CAPS.TXT")); // Case insensitive
+        assert!(!TelegramChannel::is_text_file(None, "image.png"));
+        assert!(!TelegramChannel::is_text_file(None, "archive.zip"));
+    }
+
+    #[test]
+    fn extract_text_content() {
+        let content = b"Hello, World!";
+        let result = TelegramChannel::extract_document_content(content, "test.txt", None);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "Hello, World!");
+    }
+
+    #[test]
+    fn extract_text_content_from_json() {
+        let content = br#"{"key": "value"}"#;
+        let result = TelegramChannel::extract_document_content(
+            content,
+            "data.json",
+            Some("application/json"),
+        );
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), r#"{"key": "value"}"#);
+    }
+
+    #[test]
+    fn extract_unsupported_format_returns_none() {
+        let content = b"\x89PNG\r\n\x1a\n"; // PNG header
+        let result = TelegramChannel::extract_document_content(content, "image.png", Some("image/png"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn extract_non_utf8_text_uses_lossy_conversion() {
+        // Invalid UTF-8 sequence
+        let content = vec![0x48, 0x65, 0x6c, 0x6c, 0x6f, 0xff, 0xfe];
+        let result = TelegramChannel::extract_document_content(&content, "test.txt", None);
+        assert!(result.is_some());
+        // Should contain replacement characters for invalid bytes
+        assert!(result.unwrap().contains("Hello"));
+    }
+
+    #[test]
+    fn format_file_size_bytes() {
+        assert_eq!(TelegramChannel::format_file_size(0), "0 B");
+        assert_eq!(TelegramChannel::format_file_size(500), "500 B");
+        assert_eq!(TelegramChannel::format_file_size(1023), "1023 B");
+    }
+
+    #[test]
+    fn format_file_size_kilobytes() {
+        assert_eq!(TelegramChannel::format_file_size(1024), "1.0 KB");
+        assert_eq!(TelegramChannel::format_file_size(2048), "2.0 KB");
+        assert_eq!(TelegramChannel::format_file_size(1536), "1.5 KB");
+    }
+
+    #[test]
+    fn format_file_size_megabytes() {
+        assert_eq!(TelegramChannel::format_file_size(1024 * 1024), "1.0 MB");
+        assert_eq!(TelegramChannel::format_file_size(5 * 1024 * 1024), "5.0 MB");
+    }
+
+    #[test]
+    fn format_document_message_small_text_file() {
+        let content = b"Hello, this is a test document.";
+        let result = TelegramChannel::format_document_message(
+            content,
+            "test.txt",
+            Some("text/plain"),
+            None,
+        );
+        assert!(result.contains("[Document: test.txt"));
+        assert!(result.contains("--- Content Start ---"));
+        assert!(result.contains("Hello, this is a test document."));
+        assert!(result.contains("--- Content End ---"));
+    }
+
+    #[test]
+    fn format_document_message_with_caption() {
+        let content = b"File content here";
+        let result = TelegramChannel::format_document_message(
+            content,
+            "readme.md",
+            Some("text/markdown"),
+            Some("Please review this"),
+        );
+        assert!(result.contains("File content here"));
+        assert!(result.contains("Please review this"));
+    }
+
+    #[test]
+    fn format_document_message_unsupported_format() {
+        let content = b"\x89PNG\r\n\x1a\n";
+        let result = TelegramChannel::format_document_message(
+            content,
+            "image.png",
+            Some("image/png"),
+            None,
+        );
+        assert!(result.contains("[Document received: image.png"));
+        assert!(result.contains("Unsupported format"));
+    }
+
+    #[test]
+    fn format_document_message_large_file_truncated() {
+        // Create content larger than MAX_INLINE_SIZE (32KB)
+        let large_content = "x".repeat(50_000);
+        let result = TelegramChannel::format_document_message(
+            large_content.as_bytes(),
+            "large.txt",
+            Some("text/plain"),
+            None,
+        );
+        assert!(result.contains("[Document: large.txt"));
+        assert!(result.contains("--- Content Preview ---"));
+        assert!(result.contains("--- End Preview ---"));
+        // Should be truncated since content > 32KB
     }
 }

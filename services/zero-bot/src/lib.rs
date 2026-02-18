@@ -31,6 +31,7 @@ pub mod providers;
 pub mod runtime;
 pub mod security;
 pub mod service;
+pub mod session;
 pub mod skills;
 pub mod stt;
 pub mod tools;

@@ -176,7 +176,9 @@ function createRequestHandler() {
 
 export async function start(options: StartOptions = {}): Promise<void> {
   const port = options.port ?? 4096
-  const hostname = options.hostname ?? "127.0.0.1"
+  // Use "::" to listen on both IPv4 and IPv6, avoiding connection issues
+  // when clients resolve "localhost" to IPv6 (::1) first
+  const hostname = options.hostname ?? "::"
   const cors = typeof options.cors === "string" ? [options.cors] : (options.cors ?? [])
 
   // Save the current directory for request handling context

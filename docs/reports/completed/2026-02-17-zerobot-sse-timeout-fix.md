@@ -34,6 +34,43 @@
 - 缺少 `.connect_timeout()` 导致连接建立时等待过长
 - IPv6 连接失败后切换到 IPv4 的时间不足
 
+### 问题 5: IPv6/IPv4 地址解析问题 (2026-02-18 发现) - 根本原因
+
+**这是 SSE 连接持续失败的根本原因**
+
+**现象分析：**
+```
+SSE connection error (attempt 1/3): error sending request for url
+(http://localhost:4400/api/v1/tasks/.../events)
+[connect=false, timeout=false, source=Some("client error (SendRequest)")]
+```
+
+- `connect=false` 表示不是连接超时
+- `timeout=false` 表示不是整体超时
+- `source=Some("client error (SendRequest)")` 表示请求发送阶段失败
+
+**根本原因：**
+
+1. CodeCoder API 服务器默认监听 `127.0.0.1:4400`（仅 IPv4）
+2. ZeroBot 客户端连接 `localhost:4400`
+3. 系统 DNS 解析 `localhost` 时优先返回 IPv6 地址 `::1`
+4. reqwest 尝试连接 `[::1]:4400`，但服务器不监听 IPv6，连接被拒绝
+5. reqwest 可能没有正确实现 Happy Eyeballs 算法回退到 IPv4
+
+**验证：**
+```bash
+$ curl -v http://localhost:4400/
+* Host localhost:4400 was resolved.
+* IPv6: ::1
+* IPv4: 127.0.0.1
+*   Trying [::1]:4400...
+* connect to ::1 port 4400 from ::1 port 65176 failed: Connection refused
+*   Trying 127.0.0.1:4400...
+* Connected to localhost (127.0.0.1) port 4400
+```
+
+curl 能正确回退到 IPv4，但 reqwest 客户端没有正确处理这种情况。
+
 ## 完成的修改
 
 ### 1. 修复端口配置
@@ -150,12 +187,51 @@ await Promise.race([
 - 任务完成时记录：taskID, agent, elapsedMs, outputLength
 - 任务失败时记录：taskID, agent, elapsedMs, isTimeout, error
 
+### 7. 修复 IPv6/IPv4 地址解析问题 (2026-02-18) - 关键修复
+
+**客户端修复 - 使用 IPv4 地址代替 localhost：**
+
+#### `services/zero-bot/src/tools/codecoder.rs`
+```rust
+// 修改前
+const DEFAULT_ENDPOINT: &str = "http://localhost:4400";
+
+// 修改后 - 避免 IPv6 解析问题
+/// Default `CodeCoder` API endpoint
+/// Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues
+const DEFAULT_ENDPOINT: &str = "http://127.0.0.1:4400";
+```
+
+#### `services/zero-bot/src/config/schema.rs`
+```rust
+fn default_codecoder_endpoint() -> String {
+    // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues.
+    // When using 'localhost', the system may first try IPv6 (::1) which fails
+    // if the server only listens on IPv4, causing SSE connection failures.
+    "http://127.0.0.1:4400".into()
+}
+```
+
+**服务器端修复 - 同时监听 IPv4 和 IPv6：**
+
+#### `packages/ccode/src/api/server/index.ts`
+```typescript
+// 修改前
+const hostname = options.hostname ?? "127.0.0.1"
+
+// 修改后 - 监听所有接口（IPv4 和 IPv6）
+// Use "::" to listen on both IPv4 and IPv6, avoiding connection issues
+// when clients resolve "localhost" to IPv6 (::1) first
+const hostname = options.hostname ?? "::"
+```
+
 ## 验证结果
 
 - ✅ Rust 编译成功（无警告）
-- ✅ TypeScript 类型检查通过
+- ✅ TypeScript 类型检查通过（预先存在的 provider.ts 错误不影响）
 - ✅ curl 测试 SSE 端点成功
-- ⏳ 等待用户实际测试验证
+- ✅ ZeroBot release 构建成功
+- ⏳ 等待服务重启后实际测试验证
 
 ## 配置说明
 
@@ -176,6 +252,30 @@ await Promise.race([
 | CodeCoder API Server | 4400 |
 | Web Frontend | 4401 |
 | ZeroBot Daemon | 4402 |
+
+### 地址配置
+
+| 配置 | 修改前 | 修改后 | 原因 |
+|------|--------|--------|------|
+| 客户端默认端点 | `localhost:4400` | `127.0.0.1:4400` | 避免 IPv6 解析 |
+| 服务器监听地址 | `127.0.0.1` | `::` | 同时支持 IPv4/IPv6 |
+
+## 重启服务
+
+修改生效需要重启以下服务：
+
+```bash
+# 1. 重启 CodeCoder API 服务器
+# 停止当前服务
+pkill -f "bun.*serve"
+
+# 启动新服务（会使用新的监听地址 ::）
+cd /path/to/project && bun dev serve --port 4400
+
+# 2. 重启 ZeroBot（使用新构建的 release 版本）
+pkill -f "zero-bot"
+./target/release/zero-bot daemon
+```
 
 ## 临时解决方案
 

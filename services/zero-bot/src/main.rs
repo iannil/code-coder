@@ -31,6 +31,7 @@ mod providers;
 mod runtime;
 mod security;
 mod service;
+mod session;
 mod skills;
 mod stt;
 mod tools;
