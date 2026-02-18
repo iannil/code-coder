@@ -155,7 +155,6 @@ pub struct ToolSpec {
 | `MemoryForgetTool` | `memory_forget.rs` | 遗忘记忆 |
 | `BrowserTool` | `browser.rs` | 浏览器自动化 |
 | `BrowserOpenTool` | `browser_open.rs` | 打开 URL |
-| `ComposioTool` | `composio.rs` | Composio 集成 |
 
 ---
 

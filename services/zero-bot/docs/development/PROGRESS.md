@@ -97,7 +97,7 @@
 | memory_forget | ✅ | 选择性遗忘 |
 | browser | ✅ | Playwright 自动化 |
 | browser_open | ✅ | 打开 URL |
-| composio | ✅ | 外部 API 集成 |
+| codecoder | ✅ | CodeCoder 代理集成 |
 
 ### Memory (2 个)
 

@@ -28,7 +28,7 @@ ZeroBot v0.1.0
 ├── 24 个 LLM Providers (Anthropic, OpenAI, Gemini, OpenRouter, ...)
 ├── 8 个 Channels (CLI, Telegram, Discord, Slack, Matrix, WhatsApp, iMessage, Email)
 ├── 2 个 Memory 后端 (SQLite+向量, Markdown)
-├── 9 个 Tools (shell, file_read/write, memory_*, browser, composio)
+├── 8 个 Tools (shell, file_read/write, memory_*, browser, codecoder)
 ├── 5 个 Tunnel 类型 (Cloudflare, ngrok, Tailscale, Custom, None)
 ├── 1,811+ 测试
 ├── ~3.4MB 二进制

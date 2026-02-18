@@ -854,15 +854,6 @@ export namespace Config {
     .strict()
     .meta({ ref: "ZeroBotChannelsConfig" })
 
-  export const ZeroBotComposio = z
-    .object({
-      enabled: z.boolean().optional().describe("Enable Composio integration"),
-      api_key: z.string().optional().describe("Composio API key"),
-      entity_id: z.string().optional().describe("Default entity ID for multi-user setups"),
-    })
-    .strict()
-    .meta({ ref: "ZeroBotComposioConfig" })
-
   export const ZeroBotBrowser = z
     .object({
       enabled: z.boolean().optional().describe("Enable browser tool"),
@@ -907,7 +898,6 @@ export namespace Config {
       gateway: ZeroBotGateway.optional(),
       tunnel: ZeroBotTunnel.optional(),
       channels: ZeroBotChannels.optional(),
-      composio: ZeroBotComposio.optional(),
       browser: ZeroBotBrowser.optional(),
       identity: ZeroBotIdentity.optional(),
       codecoder: ZeroBotCodeCoder.optional().describe("CodeCoder integration for accessing AI agents"),

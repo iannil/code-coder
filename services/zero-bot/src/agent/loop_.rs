@@ -55,12 +55,7 @@ pub async fn run(
     tracing::info!(backend = mem.name(), "Memory initialized");
 
     // ── Tools (including memory tools) ────────────────────────────
-    let composio_key = if config.composio.enabled {
-        config.composio.api_key.as_deref()
-    } else {
-        None
-    };
-    let _tools = tools::all_tools(&security, mem.clone(), composio_key, &config.browser, &config.codecoder);
+    let _tools = tools::all_tools(&security, mem.clone(), &config.browser, &config.codecoder);
 
     // ── Resolve provider ─────────────────────────────────────────
     let provider_name = provider_override

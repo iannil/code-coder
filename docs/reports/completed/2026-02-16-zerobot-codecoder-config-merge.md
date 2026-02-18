@@ -23,7 +23,6 @@
 - `ZeroBotGateway` - 网关配置 (端口、主机、配对)
 - `ZeroBotTunnel` - 隧道配置 (cloudflare, tailscale, ngrok)
 - `ZeroBotChannels` - 渠道配置 (telegram, discord, slack, whatsapp)
-- `ZeroBotComposio` - Composio 集成
 - `ZeroBotBrowser` - 浏览器配置
 - `ZeroBotIdentity` - 身份配置 (openclaw, aieos)
 - `ZeroBot` - 顶层 ZeroBot 配置

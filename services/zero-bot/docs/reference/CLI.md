@@ -277,11 +277,6 @@ zero-bot cron remove task-id
 
 外部集成管理。
 
-```bash
-# 查看集成信息
-zero-bot integration info composio
-```
-
 **子命令**:
 | 子命令 | 说明 |
 |--------|------|

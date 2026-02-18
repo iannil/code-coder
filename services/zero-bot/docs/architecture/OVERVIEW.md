@@ -86,7 +86,7 @@ src/                         # 78 个源文件
 │   ├── memory_forget.rs    # 遗忘记忆
 │   ├── browser.rs          # 浏览器自动化
 │   ├── browser_open.rs     # 打开 URL
-│   └── composio.rs         # Composio 集成
+│   └── codecoder.rs        # CodeCoder 集成
 ├── memory/                  # 记忆后端
 │   ├── mod.rs              # Memory 工厂
 │   ├── traits.rs           # Memory trait 定义

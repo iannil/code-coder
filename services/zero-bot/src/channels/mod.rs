@@ -677,15 +677,9 @@ pub async fn start_channels(config: Config) -> Result<()> {
     ));
 
     // Create actual tools for execution
-    let composio_key = if config.composio.enabled {
-        config.composio.api_key.as_deref()
-    } else {
-        None
-    };
     let tool_instances = tools::all_tools(
         &security,
         mem.clone(),
-        composio_key,
         &config.browser,
         &config.codecoder,
     );

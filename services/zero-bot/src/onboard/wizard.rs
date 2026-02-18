@@ -1,6 +1,6 @@
 use crate::config::schema::WhatsAppConfig;
 use crate::config::{
-    AutonomyConfig, BrowserConfig, ChannelsConfig, ComposioConfig, Config, DiscordConfig,
+    AutonomyConfig, BrowserConfig, ChannelsConfig, Config, DiscordConfig,
     HeartbeatConfig, IMessageConfig, MatrixConfig, MemoryConfig, ObservabilityConfig,
     RuntimeConfig, SecretsConfig, SlackConfig, TelegramConfig, WebhookConfig,
 };
@@ -67,8 +67,8 @@ pub fn run_wizard() -> Result<Config> {
     print_step(4, 8, "Tunnel (Expose to Internet)");
     let tunnel_config = setup_tunnel()?;
 
-    print_step(5, 8, "Tool Mode & Security");
-    let (composio_config, secrets_config) = setup_tool_mode()?;
+    print_step(5, 8, "Security Settings");
+    let secrets_config = setup_security()?;
 
     print_step(6, 8, "Memory Configuration");
     let memory_config = setup_memory()?;
@@ -101,7 +101,6 @@ pub fn run_wizard() -> Result<Config> {
         memory: memory_config, // User-selected memory backend
         tunnel: tunnel_config,
         gateway: crate::config::GatewayConfig::default(),
-        composio: composio_config,
         secrets: secrets_config,
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
@@ -291,7 +290,6 @@ pub fn run_quick_setup(
         memory: memory_config,
         tunnel: crate::config::TunnelConfig::default(),
         gateway: crate::config::GatewayConfig::default(),
-        composio: ComposioConfig::default(),
         secrets: SecretsConfig::default(),
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
@@ -365,11 +363,6 @@ pub fn run_quick_setup(
         "  {} Tunnel:     {}",
         style("✓").green().bold(),
         style("none (local only)").dim()
-    );
-    println!(
-        "  {} Composio:   {}",
-        style("✓").green().bold(),
-        style("disabled (sovereign mode)").dim()
     );
     println!();
     println!(
@@ -854,69 +847,10 @@ fn provider_env_var(name: &str) -> &'static str {
     }
 }
 
-// ── Step 5: Tool Mode & Security ────────────────────────────────
+// ── Step 5: Security Settings ────────────────────────────────────
 
-fn setup_tool_mode() -> Result<(ComposioConfig, SecretsConfig)> {
-    print_bullet("Choose how ZeroBot connects to external apps.");
-    print_bullet("You can always change this later in config.toml.");
-    println!();
-
-    let options = vec![
-        "Sovereign (local only) — you manage API keys, full privacy (default)",
-        "Composio (managed OAuth) — 1000+ apps via OAuth, no raw keys shared",
-    ];
-
-    let choice = Select::new()
-        .with_prompt("  Select tool mode")
-        .items(&options)
-        .default(0)
-        .interact()?;
-
-    let composio_config = if choice == 1 {
-        println!();
-        println!(
-            "  {} {}",
-            style("Composio Setup").white().bold(),
-            style("— 1000+ OAuth integrations (Gmail, Notion, GitHub, Slack, ...)").dim()
-        );
-        print_bullet("Get your API key at: https://app.composio.dev/settings");
-        print_bullet("ZeroBot uses Composio as a tool — your core agent stays local.");
-        println!();
-
-        let api_key: String = Input::new()
-            .with_prompt("  Composio API key (or Enter to skip)")
-            .allow_empty(true)
-            .interact_text()?;
-
-        if api_key.trim().is_empty() {
-            println!(
-                "  {} Skipped — set composio.api_key in config.toml later",
-                style("→").dim()
-            );
-            ComposioConfig::default()
-        } else {
-            println!(
-                "  {} Composio: {} (1000+ OAuth tools available)",
-                style("✓").green().bold(),
-                style("enabled").green()
-            );
-            ComposioConfig {
-                enabled: true,
-                api_key: Some(api_key),
-                ..ComposioConfig::default()
-            }
-        }
-    } else {
-        println!(
-            "  {} Tool mode: {} — full privacy, you own every key",
-            style("✓").green().bold(),
-            style("Sovereign (local only)").green()
-        );
-        ComposioConfig::default()
-    };
-
+fn setup_security() -> Result<SecretsConfig> {
     // ── Encrypted secrets ──
-    println!();
     print_bullet("ZeroBot can encrypt API keys stored in config.toml.");
     print_bullet("A local key file protects against plaintext exposure and accidental leaks.");
 
@@ -941,7 +875,7 @@ fn setup_tool_mode() -> Result<(ComposioConfig, SecretsConfig)> {
         );
     }
 
-    Ok((composio_config, secrets_config))
+    Ok(secrets_config)
 }
 
 // ── Step 6: Project Context ─────────────────────────────────────
@@ -2292,17 +2226,6 @@ fn print_summary(config: &Config) {
             "none (local only)".to_string()
         } else {
             config.tunnel.provider.clone()
-        }
-    );
-
-    // Composio
-    println!(
-        "    {} Composio:      {}",
-        style("🔗").cyan(),
-        if config.composio.enabled {
-            style("enabled (1000+ OAuth apps)").green().to_string()
-        } else {
-            "disabled (sovereign mode)".to_string()
         }
     );
 

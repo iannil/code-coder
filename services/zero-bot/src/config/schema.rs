@@ -34,8 +34,6 @@ struct ZeroBotJsonConfig {
     #[serde(default)]
     channels: Option<ZeroBotJsonChannels>,
     #[serde(default)]
-    composio: Option<ZeroBotJsonComposio>,
-    #[serde(default)]
     browser: Option<ZeroBotJsonBrowser>,
     #[serde(default)]
     identity: Option<ZeroBotJsonIdentity>,
@@ -183,13 +181,6 @@ struct ZeroBotJsonWhatsApp {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
-struct ZeroBotJsonComposio {
-    enabled: Option<bool>,
-    api_key: Option<String>,
-    entity_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default)]
 struct ZeroBotJsonBrowser {
     enabled: Option<bool>,
     allowed_domains: Option<Vec<String>>,
@@ -314,9 +305,6 @@ pub struct Config {
     pub gateway: GatewayConfig,
 
     #[serde(default)]
-    pub composio: ComposioConfig,
-
-    #[serde(default)]
     pub secrets: SecretsConfig,
 
     #[serde(default)]
@@ -402,35 +390,6 @@ impl Default for GatewayConfig {
             require_pairing: true,
             allow_public_bind: false,
             paired_tokens: Vec::new(),
-        }
-    }
-}
-
-// ── Composio (managed tool surface) ─────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComposioConfig {
-    /// Enable Composio integration for 1000+ OAuth tools
-    #[serde(default)]
-    pub enabled: bool,
-    /// Composio API key (stored encrypted when secrets.encrypt = true)
-    #[serde(default)]
-    pub api_key: Option<String>,
-    /// Default entity ID for multi-user setups
-    #[serde(default = "default_entity_id")]
-    pub entity_id: String,
-}
-
-fn default_entity_id() -> String {
-    "default".into()
-}
-
-impl Default for ComposioConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            api_key: None,
-            entity_id: default_entity_id(),
         }
     }
 }
@@ -1016,7 +975,6 @@ impl Default for Config {
             memory: MemoryConfig::default(),
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
-            composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
@@ -1303,13 +1261,6 @@ impl Config {
             }
         });
 
-        // Build composio config
-        let composio = json.composio.map_or(defaults.composio.clone(), |c| ComposioConfig {
-            enabled: c.enabled.unwrap_or(defaults.composio.enabled),
-            api_key: c.api_key.or(defaults.composio.api_key.clone()),
-            entity_id: c.entity_id.unwrap_or(defaults.composio.entity_id.clone()),
-        });
-
         // Build browser config
         let browser = json.browser.map_or(defaults.browser.clone(), |b| BrowserConfig {
             enabled: b.enabled.unwrap_or(defaults.browser.enabled),
@@ -1358,7 +1309,6 @@ impl Config {
             memory,
             tunnel,
             gateway,
-            composio,
             secrets: defaults.secrets,
             browser,
             codecoder,
@@ -1585,7 +1535,6 @@ mod tests {
             memory: MemoryConfig::default(),
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
-            composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
@@ -1657,7 +1606,6 @@ default_temperature = 0.7
             memory: MemoryConfig::default(),
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
-            composio: ComposioConfig::default(),
             secrets: SecretsConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
@@ -2066,58 +2014,6 @@ default_temperature = 0.7
     }
 
     // ══════════════════════════════════════════════════════════
-    // COMPOSIO CONFIG TESTS
-    // ══════════════════════════════════════════════════════════
-
-    #[test]
-    fn composio_config_default_disabled() {
-        let c = ComposioConfig::default();
-        assert!(!c.enabled, "Composio must be disabled by default");
-        assert!(c.api_key.is_none(), "No API key by default");
-        assert_eq!(c.entity_id, "default");
-    }
-
-    #[test]
-    fn composio_config_serde_roundtrip() {
-        let c = ComposioConfig {
-            enabled: true,
-            api_key: Some("comp-key-123".into()),
-            entity_id: "user42".into(),
-        };
-        let toml_str = toml::to_string(&c).unwrap();
-        let parsed: ComposioConfig = toml::from_str(&toml_str).unwrap();
-        assert!(parsed.enabled);
-        assert_eq!(parsed.api_key.as_deref(), Some("comp-key-123"));
-        assert_eq!(parsed.entity_id, "user42");
-    }
-
-    #[test]
-    fn composio_config_backward_compat_missing_section() {
-        let minimal = r#"
-workspace_dir = "/tmp/ws"
-config_path = "/tmp/config.toml"
-default_temperature = 0.7
-"#;
-        let parsed: Config = toml::from_str(minimal).unwrap();
-        assert!(
-            !parsed.composio.enabled,
-            "Missing [composio] must default to disabled"
-        );
-        assert!(parsed.composio.api_key.is_none());
-    }
-
-    #[test]
-    fn composio_config_partial_toml() {
-        let toml_str = r"
-enabled = true
-";
-        let parsed: ComposioConfig = toml::from_str(toml_str).unwrap();
-        assert!(parsed.enabled);
-        assert!(parsed.api_key.is_none());
-        assert_eq!(parsed.entity_id, "default");
-    }
-
-    // ══════════════════════════════════════════════════════════
     // SECRETS CONFIG TESTS
     // ══════════════════════════════════════════════════════════
 
@@ -2150,10 +2046,8 @@ default_temperature = 0.7
     }
 
     #[test]
-    fn config_default_has_composio_and_secrets() {
+    fn config_default_has_secrets_and_browser() {
         let c = Config::default();
-        assert!(!c.composio.enabled);
-        assert!(c.composio.api_key.is_none());
         assert!(c.secrets.encrypt);
         assert!(!c.browser.enabled);
         assert!(c.browser.allowed_domains.is_empty());
@@ -2533,7 +2427,6 @@ default_temperature = 0.7
             gateway: None,
             tunnel: None,
             channels: None,
-            composio: None,
             browser: None,
             identity: None,
             codecoder: None,
@@ -2587,7 +2480,6 @@ default_temperature = 0.7
             }),
             tunnel: None,
             channels: None,
-            composio: None,
             browser: None,
             identity: None,
             codecoder: None,

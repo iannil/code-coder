@@ -1,7 +1,6 @@
 pub mod browser;
 pub mod browser_open;
 pub mod codecoder;
-pub mod composio;
 pub mod file_read;
 pub mod file_write;
 pub mod memory_forget;
@@ -13,7 +12,6 @@ pub mod traits;
 pub use browser::BrowserTool;
 pub use browser_open::BrowserOpenTool;
 pub use codecoder::CodeCoderTool;
-pub use composio::ComposioTool;
 pub use file_read::FileReadTool;
 pub use file_write::FileWriteTool;
 pub use memory_forget::MemoryForgetTool;
@@ -37,11 +35,10 @@ pub fn default_tools(security: Arc<SecurityPolicy>) -> Vec<Box<dyn Tool>> {
     ]
 }
 
-/// Create full tool registry including memory tools and optional Composio/CodeCoder
+/// Create full tool registry including memory tools and optional `CodeCoder`
 pub fn all_tools(
     security: &Arc<SecurityPolicy>,
     memory: Arc<dyn Memory>,
-    composio_key: Option<&str>,
     browser_config: &crate::config::BrowserConfig,
     codecoder_config: &crate::config::CodeCoderConfig,
 ) -> Vec<Box<dyn Tool>> {
@@ -66,12 +63,6 @@ pub fn all_tools(
             browser_config.allowed_domains.clone(),
             browser_config.session_name.clone(),
         )));
-    }
-
-    if let Some(key) = composio_key {
-        if !key.is_empty() {
-            tools.push(Box::new(ComposioTool::new(key)));
-        }
     }
 
     // Add CodeCoder tool for invoking 23 AI agents
@@ -113,7 +104,7 @@ mod tests {
         };
         let codecoder = CodeCoderConfig::default();
 
-        let tools = all_tools(&security, mem, None, &browser, &codecoder);
+        let tools = all_tools(&security, mem, &browser, &codecoder);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(!names.contains(&"browser_open"));
     }
@@ -136,7 +127,7 @@ mod tests {
         };
         let codecoder = CodeCoderConfig::default();
 
-        let tools = all_tools(&security, mem, None, &browser, &codecoder);
+        let tools = all_tools(&security, mem, &browser, &codecoder);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"browser_open"));
     }
