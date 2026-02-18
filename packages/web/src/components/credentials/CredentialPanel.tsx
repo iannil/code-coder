@@ -19,6 +19,7 @@ import {
   Globe,
   Clock,
   AlertCircle,
+  Pencil,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/AlertDialog"
 import { useToast } from "@/hooks/use-toast"
 import { useCredentialStore, useCredentials, useCredentialLoading, useCredentialError } from "@/stores/credential"
-import type { CredentialSummary, CredentialType } from "@/lib/types"
+import type { CredentialSummary, CredentialType, CredentialEntry } from "@/lib/types"
 import { CredentialForm } from "./CredentialForm"
 
 // ============================================================================
@@ -82,11 +83,13 @@ function TypeBadge({ type }: { type: CredentialType }) {
 
 interface CredentialCardProps {
   credential: CredentialSummary
+  onEdit: (id: string) => void
   onDelete: (id: string) => void
   isDeleting: boolean
+  isEditing: boolean
 }
 
-function CredentialCard({ credential, onDelete, isDeleting }: CredentialCardProps) {
+function CredentialCard({ credential, onEdit, onDelete, isDeleting, isEditing }: CredentialCardProps) {
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false)
 
   const formatDate = (dateStr: string) => {
@@ -138,19 +141,34 @@ function CredentialCard({ credential, onDelete, isDeleting }: CredentialCardProp
                 </div>
               </div>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={isDeleting}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              {isDeleting ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <Trash2 className="h-4 w-4" />
-              )}
-            </Button>
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => onEdit(credential.id)}
+                disabled={isEditing || isDeleting}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {isEditing ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4" />
+                )}
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowDeleteDialog(true)}
+                disabled={isDeleting || isEditing}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                {isDeleting ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -185,7 +203,12 @@ function CredentialCard({ credential, onDelete, isDeleting }: CredentialCardProp
 // Credentials List Component
 // ============================================================================
 
-function CredentialsList() {
+interface CredentialsListProps {
+  onEdit: (id: string) => void
+  editingId: string | null
+}
+
+function CredentialsList({ onEdit, editingId }: CredentialsListProps) {
   const credentials = useCredentials()
   const { isLoading, isLoaded, isDeleting } = useCredentialLoading()
   const error = useCredentialError()
@@ -302,8 +325,10 @@ function CredentialsList() {
                   <CredentialCard
                     key={cred.id}
                     credential={cred}
+                    onEdit={onEdit}
                     onDelete={handleDelete}
                     isDeleting={isDeleting === cred.id}
+                    isEditing={editingId === cred.id}
                   />
                 ))}
               </div>
@@ -320,6 +345,9 @@ function CredentialsList() {
 
 export function CredentialPanel() {
   const [showAddForm, setShowAddForm] = React.useState(false)
+  const [editingCredential, setEditingCredential] = React.useState<CredentialEntry | null>(null)
+  const [loadingEditId, setLoadingEditId] = React.useState<string | null>(null)
+  const getCredential = useCredentialStore((s) => s.getCredential)
   const { toast } = useToast()
 
   const handleAddSuccess = () => {
@@ -330,39 +358,95 @@ export function CredentialPanel() {
     })
   }
 
+  const handleEditSuccess = () => {
+    setEditingCredential(null)
+    toast({
+      title: "Credential updated",
+      description: "The credential has been updated successfully.",
+    })
+  }
+
+  const handleEdit = async (id: string) => {
+    setLoadingEditId(id)
+    try {
+      const credential = await getCredential(id)
+      if (credential) {
+        setEditingCredential(credential)
+        setShowAddForm(false) // Close add form if open
+      } else {
+        toast({
+          title: "Failed to load credential",
+          description: "Could not retrieve credential details.",
+          variant: "destructive",
+        })
+      }
+    } catch {
+      toast({
+        title: "Failed to load credential",
+        description: "An error occurred while loading the credential.",
+        variant: "destructive",
+      })
+    } finally {
+      setLoadingEditId(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      {/* Add Credential Button / Form */}
-      {!showAddForm ? (
-        <Button
-          variant="outline"
-          onClick={() => setShowAddForm(true)}
-          className="w-full border-dashed"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Add new credential
-        </Button>
-      ) : (
+      {/* Edit Credential Form */}
+      {editingCredential && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Key className="h-4 w-4" />
-              Add Credential
+              <Pencil className="h-4 w-4" />
+              Edit Credential: {editingCredential.name}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <CredentialForm
-              onSuccess={handleAddSuccess}
-              onCancel={() => setShowAddForm(false)}
+              editCredential={editingCredential}
+              onSuccess={handleEditSuccess}
+              onCancel={() => setEditingCredential(null)}
             />
           </CardContent>
         </Card>
       )}
 
+      {/* Add Credential Button / Form */}
+      {!editingCredential && (
+        <>
+          {!showAddForm ? (
+            <Button
+              variant="outline"
+              onClick={() => setShowAddForm(true)}
+              className="w-full border-dashed"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add new credential
+            </Button>
+          ) : (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Key className="h-4 w-4" />
+                  Add Credential
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CredentialForm
+                  onSuccess={handleAddSuccess}
+                  onCancel={() => setShowAddForm(false)}
+                />
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+
       <Separator />
 
       {/* Credentials List */}
-      <CredentialsList />
+      <CredentialsList onEdit={handleEdit} editingId={loadingEditId} />
     </div>
   )
 }

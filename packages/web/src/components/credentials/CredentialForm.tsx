@@ -1,11 +1,11 @@
 /**
  * Credential Form Component
  *
- * Form for adding new credentials with dynamic fields based on type
+ * Form for adding or editing credentials with dynamic fields based on type
  */
 
 import * as React from "react"
-import { Plus, X, Check, Key, Shield, User, Lock } from "lucide-react"
+import { Plus, X, Check, Key, Shield, User, Lock, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Label } from "@/components/ui/Label"
@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/Select"
 import { useCredentialStore, useCredentialLoading } from "@/stores/credential"
-import type { CredentialType, CredentialCreateInput } from "@/lib/types"
+import type { CredentialType, CredentialCreateInput, CredentialEntry } from "@/lib/types"
 
 // ============================================================================
 // Types
@@ -27,6 +27,7 @@ import type { CredentialType, CredentialCreateInput } from "@/lib/types"
 interface CredentialFormProps {
   onSuccess: () => void
   onCancel: () => void
+  editCredential?: CredentialEntry
 }
 
 // ============================================================================
@@ -131,29 +132,35 @@ function PatternInput({ patterns, onChange }: PatternInputProps) {
 // Main Form Component
 // ============================================================================
 
-export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
-  const [type, setType] = React.useState<CredentialType>("api_key")
-  const [name, setName] = React.useState("")
-  const [service, setService] = React.useState("")
-  const [patterns, setPatterns] = React.useState<string[]>([])
+export function CredentialForm({ onSuccess, onCancel, editCredential }: CredentialFormProps) {
+  const isEditMode = !!editCredential
+  const [type, setType] = React.useState<CredentialType>(editCredential?.type ?? "api_key")
+  const [name, setName] = React.useState(editCredential?.name ?? "")
+  const [service, setService] = React.useState(editCredential?.service ?? "")
+  const [patterns, setPatterns] = React.useState<string[]>(editCredential?.patterns ?? [])
 
   // API Key / Bearer Token
-  const [apiKey, setApiKey] = React.useState("")
+  const [apiKey, setApiKey] = React.useState(editCredential?.apiKey ?? "")
 
   // OAuth
-  const [clientId, setClientId] = React.useState("")
-  const [clientSecret, setClientSecret] = React.useState("")
+  const [clientId, setClientId] = React.useState(editCredential?.oauth?.clientId ?? "")
+  const [clientSecret, setClientSecret] = React.useState(editCredential?.oauth?.clientSecret ?? "")
 
   // Login
-  const [username, setUsername] = React.useState("")
-  const [password, setPassword] = React.useState("")
-  const [totpSecret, setTotpSecret] = React.useState("")
+  const [username, setUsername] = React.useState(editCredential?.login?.username ?? "")
+  const [password, setPassword] = React.useState(editCredential?.login?.password ?? "")
+  const [totpSecret, setTotpSecret] = React.useState(editCredential?.login?.totpSecret ?? "")
 
-  const { isAdding } = useCredentialLoading()
+  const { isAdding, isUpdating } = useCredentialLoading()
   const addCredential = useCredentialStore((s) => s.addCredential)
+  const updateCredential = useCredentialStore((s) => s.updateCredential)
+  const isSubmitting = isAdding || isUpdating === editCredential?.id
 
   const isValid = () => {
     if (!name.trim() || !service.trim()) return false
+
+    // In edit mode, sensitive fields are optional (empty means keep existing)
+    if (isEditMode) return true
 
     switch (type) {
       case "api_key":
@@ -181,25 +188,33 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
     switch (type) {
       case "api_key":
       case "bearer_token":
-        input.apiKey = apiKey.trim()
+        if (apiKey.trim()) input.apiKey = apiKey.trim()
         break
       case "oauth":
-        input.oauth = {
-          clientId: clientId.trim(),
-          clientSecret: clientSecret.trim() || undefined,
+        if (clientId.trim() || clientSecret.trim()) {
+          input.oauth = {
+            clientId: clientId.trim(),
+            clientSecret: clientSecret.trim() || undefined,
+          }
         }
         break
       case "login":
-        input.login = {
-          username: username.trim(),
-          password: password.trim(),
-          totpSecret: totpSecret.trim() || undefined,
+        if (username.trim() || password.trim()) {
+          input.login = {
+            username: username.trim(),
+            password: password.trim(),
+            totpSecret: totpSecret.trim() || undefined,
+          }
         }
         break
     }
 
     try {
-      await addCredential(input)
+      if (isEditMode && editCredential) {
+        await updateCredential(editCredential.id, input)
+      } else {
+        await addCredential(input)
+      }
       onSuccess()
     } catch {
       // Error is handled by the store
@@ -262,10 +277,16 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
           <Input
             id="apiKey"
             type="password"
-            placeholder={type === "api_key" ? "sk-..." : "token..."}
+            autoComplete="off"
+            placeholder={isEditMode ? "Leave empty to keep existing" : (type === "api_key" ? "sk-..." : "token...")}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
+          {isEditMode && (
+            <p className="text-sm text-muted-foreground">
+              Leave empty to keep the existing value
+            </p>
+          )}
         </div>
       )}
 
@@ -275,7 +296,8 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
             <Label htmlFor="clientId">Client ID</Label>
             <Input
               id="clientId"
-              placeholder="Client ID"
+              autoComplete="off"
+              placeholder={isEditMode ? "Leave empty to keep existing" : "Client ID"}
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
             />
@@ -285,11 +307,17 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
             <Input
               id="clientSecret"
               type="password"
-              placeholder="Client Secret"
+              autoComplete="off"
+              placeholder={isEditMode ? "Leave empty to keep existing" : "Client Secret"}
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
             />
           </div>
+          {isEditMode && (
+            <p className="text-sm text-muted-foreground">
+              Leave fields empty to keep existing values
+            </p>
+          )}
         </>
       )}
 
@@ -300,7 +328,8 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
               <Label htmlFor="username">Username</Label>
               <Input
                 id="username"
-                placeholder="Username or email"
+                autoComplete="off"
+                placeholder={isEditMode ? "Leave empty to keep existing" : "Username or email"}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
@@ -310,7 +339,8 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
               <Input
                 id="password"
                 type="password"
-                placeholder="Password"
+                autoComplete="new-password"
+                placeholder={isEditMode ? "Leave empty to keep existing" : "Password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -321,12 +351,13 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
             <Input
               id="totpSecret"
               type="password"
-              placeholder="For 2FA auto-fill"
+              autoComplete="off"
+              placeholder={isEditMode ? "Leave empty to keep existing" : "For 2FA auto-fill"}
               value={totpSecret}
               onChange={(e) => setTotpSecret(e.target.value)}
             />
             <p className="text-sm text-muted-foreground">
-              If provided, 2FA codes will be generated automatically
+              {isEditMode ? "Leave fields empty to keep existing values" : "If provided, 2FA codes will be generated automatically"}
             </p>
           </div>
         </>
@@ -343,13 +374,16 @@ export function CredentialForm({ onSuccess, onCancel }: CredentialFormProps) {
 
       {/* Actions */}
       <div className="flex gap-2 pt-2">
-        <Button type="submit" disabled={!isValid() || isAdding}>
-          {isAdding ? (
-            "Adding..."
+        <Button type="submit" disabled={!isValid() || isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              {isEditMode ? "Updating..." : "Adding..."}
+            </>
           ) : (
             <>
               <Check className="mr-2 h-4 w-4" />
-              Add Credential
+              {isEditMode ? "Update Credential" : "Add Credential"}
             </>
           )}
         </Button>

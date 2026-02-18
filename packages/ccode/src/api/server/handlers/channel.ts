@@ -19,7 +19,7 @@ import { join } from "path"
 // Types
 // ============================================================================
 
-type ChannelType = "cli" | "telegram" | "discord" | "slack" | "matrix" | "whatsapp" | "imessage" | "email"
+type ChannelType = "cli" | "telegram" | "discord" | "slack" | "matrix" | "whatsapp" | "imessage" | "email" | "feishu"
 type ChannelHealth = "healthy" | "degraded" | "unhealthy"
 
 interface ChannelStatus {
@@ -54,6 +54,13 @@ interface ZeroBotChannels {
     phone_number_id: string
     verify_token: string
     allowed_numbers?: string[]
+  }
+  feishu?: {
+    app_id: string
+    app_secret: string
+    encrypt_key?: string
+    verification_token?: string
+    allowed_users?: string[]
   }
 }
 
@@ -205,6 +212,24 @@ async function buildChannelStatuses(config: CodeCoderConfig): Promise<ChannelSta
         phoneNumberId: wa.phone_number_id,
       },
       error: hasConfig ? undefined : "WhatsApp configuration incomplete",
+    })
+  }
+
+  // Feishu channel
+  if (channelsConfig.feishu) {
+    const fs = channelsConfig.feishu
+    const hasConfig = !!fs.app_id && !!fs.app_secret
+
+    channels.push({
+      name: "feishu",
+      type: "feishu",
+      enabled: hasConfig,
+      health: hasConfig ? "healthy" : "unhealthy",
+      config: {
+        appId: fs.app_id ? "***" + fs.app_id.slice(-4) : undefined,
+        allowedUsers: fs.allowed_users,
+      },
+      error: hasConfig ? undefined : "Feishu app credentials not configured",
     })
   }
 

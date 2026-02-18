@@ -24,7 +24,7 @@ use tokio::time::{interval, sleep};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::traits::{Channel, ChannelMessage};
+use super::traits::{Channel, ChannelMessage, MessageSource};
 
 /// Email channel configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -416,6 +416,7 @@ impl Channel for EmailChannel {
                             content,
                             channel: "email".to_string(),
                             timestamp: ts,
+                            source: MessageSource::default(),
                         };
                         if tx.send(msg).await.is_err() {
                             return Ok(());

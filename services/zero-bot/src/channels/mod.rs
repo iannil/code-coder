@@ -16,7 +16,7 @@ pub use imessage::IMessageChannel;
 pub use matrix::MatrixChannel;
 pub use slack::SlackChannel;
 pub use telegram::TelegramChannel;
-pub use traits::Channel;
+pub use traits::{Channel, MessageSource};
 pub use whatsapp::WhatsAppChannel;
 
 use crate::agent::confirmation::{self, NotificationSink, ConfirmationResponse};
@@ -28,6 +28,7 @@ use crate::security::SecurityPolicy;
 use crate::session::compactor::format_session_context;
 use crate::session::types::MessageRole;
 use crate::session::{SessionCompactor, SessionStore};
+use crate::tts::TextToSpeech;
 use crate::tools;
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
@@ -789,6 +790,35 @@ pub async fn start_channels(config: Config) -> Result<()> {
     let mut telegram_channel_ref: Option<Arc<TelegramChannel>> = None;
     // Callback channel for Telegram inline button confirmations
     let mut telegram_callback_rx: Option<tokio::sync::mpsc::Receiver<CallbackQuery>> = None;
+    // TTS client for voice responses (shared across channels)
+    let mut tts_client: Option<Arc<dyn TextToSpeech>> = None;
+
+    // Initialize TTS client if enabled
+    if config.tts.enabled {
+        if let Some(ref api_key) = config.tts.api_key {
+            match crate::tts::create_tts(
+                &config.tts.provider,
+                api_key,
+                config.tts.model.as_deref(),
+                config.tts.voice.as_deref(),
+                config.tts.base_url.as_deref(),
+            ) {
+                Ok(tts) => {
+                    tracing::info!(
+                        "TTS enabled (provider: {}, voice: {:?})",
+                        config.tts.provider,
+                        config.tts.voice
+                    );
+                    tts_client = Some(tts);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to create TTS client: {e}");
+                }
+            }
+        } else {
+            tracing::warn!("TTS enabled but no API key configured");
+        }
+    }
 
     if let Some(ref tg) = config.channels_config.telegram {
         // Create callback channel for inline button clicks
@@ -796,7 +826,7 @@ pub async fn start_channels(config: Config) -> Result<()> {
         telegram_callback_rx = Some(callback_rx);
 
         // Create STT client if voice transcription is enabled
-        let mut telegram_channel =
+        let stt_client: Option<std::sync::Arc<dyn crate::stt::SpeechToText>> =
             if let Some(ref voice) = tg.voice {
                 if voice.enabled {
                     // Get API key: prefer voice-specific key, then fall back to main key
@@ -817,43 +847,35 @@ pub async fn start_channels(config: Config) -> Result<()> {
                                     "Telegram voice transcription enabled (provider: {})",
                                     voice.stt_provider
                                 );
-                                TelegramChannel::with_stt(
-                                    tg.bot_token.clone(),
-                                    tg.allowed_users.clone(),
-                                    stt,
-                                )
+                                Some(stt)
                             }
                             Err(e) => {
                                 tracing::warn!(
                                     "Failed to create STT client, voice disabled: {e}"
                                 );
-                                TelegramChannel::new(
-                                    tg.bot_token.clone(),
-                                    tg.allowed_users.clone(),
-                                )
+                                None
                             }
                         }
                     } else {
                         tracing::warn!(
                             "Voice transcription enabled but no API key configured, voice disabled"
                         );
-                        TelegramChannel::new(
-                            tg.bot_token.clone(),
-                            tg.allowed_users.clone(),
-                        )
+                        None
                     }
                 } else {
-                    TelegramChannel::new(
-                        tg.bot_token.clone(),
-                        tg.allowed_users.clone(),
-                    )
+                    None
                 }
             } else {
-                TelegramChannel::new(
-                    tg.bot_token.clone(),
-                    tg.allowed_users.clone(),
-                )
+                None
             };
+
+        // Create Telegram channel with voice capabilities
+        let mut telegram_channel = TelegramChannel::with_voice(
+            tg.bot_token.clone(),
+            tg.allowed_users.clone(),
+            stt_client,
+            tts_client.clone(),
+        );
 
         // Set callback sender BEFORE wrapping in Arc
         telegram_channel.set_callback_sender(callback_tx);
@@ -1138,13 +1160,54 @@ pub async fn start_channels(config: Config) -> Result<()> {
                     "  🤖 Reply: {}",
                     truncate_with_ellipsis(&response, 200)
                 );
-                // Find the channel that sent this message and reply
-                for ch in &channels {
-                    if ch.name() == msg.channel {
-                        if let Err(e) = ch.send(&response, &msg.sender).await {
-                            eprintln!("  ❌ Failed to reply on {}: {e}", ch.name());
+
+                // Check if we should respond with voice (if input was voice and TTS is enabled)
+                let should_use_voice = msg.source == MessageSource::Voice
+                    && msg.channel == "telegram"
+                    && tts_client.is_some();
+
+                if should_use_voice {
+                    // Use TTS to respond with voice
+                    if let Some(ref tts) = tts_client {
+                        match tts.synthesize(&response, None).await {
+                            Ok(audio_bytes) => {
+                                // Send voice response via Telegram
+                                if let Some(ref tg) = telegram_channel_ref {
+                                    if let Err(e) = tg.send_voice_bytes(
+                                        &msg.sender,
+                                        audio_bytes,
+                                        "reply.mp3",
+                                        None,
+                                    ).await {
+                                        tracing::warn!("Failed to send voice reply, falling back to text: {e}");
+                                        // Fallback to text
+                                        let _ = tg.send(&response, &msg.sender).await;
+                                    } else {
+                                        println!("  🔊 Voice reply sent");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("TTS synthesis failed, falling back to text: {e}");
+                                // Fallback to text
+                                for ch in &channels {
+                                    if ch.name() == msg.channel {
+                                        let _ = ch.send(&response, &msg.sender).await;
+                                        break;
+                                    }
+                                }
+                            }
                         }
-                        break;
+                    }
+                } else {
+                    // Normal text response
+                    for ch in &channels {
+                        if ch.name() == msg.channel {
+                            if let Err(e) = ch.send(&response, &msg.sender).await {
+                                eprintln!("  ❌ Failed to reply on {}: {e}", ch.name());
+                            }
+                            break;
+                        }
                     }
                 }
             }

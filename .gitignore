@@ -41,3 +41,4 @@ services/zero-bot/target/
 # Ops script runtime files
 .pids/
 .logs/
+.reports/

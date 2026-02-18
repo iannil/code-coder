@@ -175,7 +175,7 @@ function createRequestHandler() {
 // ============================================================================
 
 export async function start(options: StartOptions = {}): Promise<void> {
-  const port = options.port ?? 4096
+  const port = options.port ?? 4400
   // Use "::" to listen on both IPv4 and IPv6, avoiding connection issues
   // when clients resolve "localhost" to IPv6 (::1) first
   const hostname = options.hostname ?? "::"

@@ -1,4 +1,4 @@
-use crate::channels::traits::{Channel, ChannelMessage};
+use crate::channels::traits::{Channel, ChannelMessage, MessageSource};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
@@ -236,6 +236,7 @@ impl Channel for MatrixChannel {
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_secs(),
+                        source: MessageSource::default(),
                     };
 
                     if tx.send(msg).await.is_err() {

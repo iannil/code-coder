@@ -843,6 +843,18 @@ export namespace Config {
     })
     .strict()
 
+  export const ZeroBotFeishu = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable Feishu channel"),
+      app_id: z.string().describe("App ID from Feishu Open Platform"),
+      app_secret: z.string().describe("App Secret from Feishu Open Platform"),
+      encrypt_key: z.string().optional().describe("Encrypt key for event callback decryption"),
+      verification_token: z.string().optional().describe("Verification token for event callback verification"),
+      allowed_users: z.array(z.string()).optional().describe("Allowed user open_ids or '*' for all"),
+      use_lark_api: z.boolean().optional().describe("Use Lark API instead of Feishu API (for international users)"),
+    })
+    .strict()
+
   export const ZeroBotChannels = z
     .object({
       cli: z.boolean().optional().describe("Enable CLI channel"),
@@ -850,6 +862,7 @@ export namespace Config {
       discord: ZeroBotDiscord.optional(),
       slack: ZeroBotSlack.optional(),
       whatsapp: ZeroBotWhatsApp.optional(),
+      feishu: ZeroBotFeishu.optional(),
     })
     .strict()
     .meta({ ref: "ZeroBotChannelsConfig" })
@@ -888,6 +901,19 @@ export namespace Config {
     .strict()
     .meta({ ref: "ZeroBotSessionConfig" })
 
+  export const ZeroBotTts = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable TTS responses (default: false)"),
+      provider: z.string().optional().describe("TTS provider: openai, elevenlabs, compatible (default: openai)"),
+      api_key: z.string().optional().describe("API key for TTS provider"),
+      model: z.string().optional().describe("TTS model name (e.g., tts-1 for OpenAI)"),
+      voice: z.string().optional().describe("Voice ID (e.g., alloy for OpenAI)"),
+      default_voice: z.string().optional().describe("Voice ID (alias for voice)"),
+      base_url: z.string().optional().describe("Base URL for OpenAI-compatible TTS providers"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotTtsConfig" })
+
   export const ZeroBot = z
     .object({
       // Provider configuration (can reuse CodeCoder's provider config)
@@ -912,6 +938,7 @@ export namespace Config {
       identity: ZeroBotIdentity.optional(),
       codecoder: ZeroBotCodeCoder.optional().describe("CodeCoder integration for accessing AI agents"),
       session: ZeroBotSession.optional().describe("Session/conversation context management configuration"),
+      tts: ZeroBotTts.optional().describe("Text-to-Speech configuration for voice responses"),
     })
     .strict()
     .meta({ ref: "ZeroBotConfig" })

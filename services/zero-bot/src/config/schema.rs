@@ -41,6 +41,8 @@ struct ZeroBotJsonConfig {
     codecoder: Option<ZeroBotJsonCodeCoder>,
     #[serde(default)]
     session: Option<ZeroBotJsonSession>,
+    #[serde(default)]
+    tts: Option<ZeroBotJsonTts>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -132,6 +134,8 @@ struct ZeroBotJsonChannels {
 
 #[derive(Debug, Clone, Deserialize)]
 struct ZeroBotJsonFeishu {
+    #[serde(default)]
+    enabled: Option<bool>,
     app_id: String,
     app_secret: String,
     #[serde(default)]
@@ -140,6 +144,8 @@ struct ZeroBotJsonFeishu {
     verification_token: Option<String>,
     #[serde(default)]
     allowed_users: Vec<String>,
+    #[serde(default)]
+    use_lark_api: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -218,6 +224,18 @@ struct ZeroBotJsonSession {
     context_window: Option<usize>,
     compact_threshold: Option<f32>,
     keep_recent: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ZeroBotJsonTts {
+    enabled: Option<bool>,
+    provider: Option<String>,
+    api_key: Option<String>,
+    model: Option<String>,
+    voice: Option<String>,
+    #[serde(alias = "default_voice")]
+    default_voice: Option<String>,
+    base_url: Option<String>,
 }
 
 /// Strip JSONC-style comments (// and /* */)
@@ -1443,6 +1461,17 @@ impl Config {
             keep_recent: s.keep_recent.unwrap_or(defaults.session.keep_recent),
         });
 
+        // Build TTS config
+        let tts = json.tts.map_or(defaults.tts.clone(), |t| TtsConfig {
+            enabled: t.enabled.unwrap_or(defaults.tts.enabled),
+            provider: t.provider.unwrap_or(defaults.tts.provider.clone()),
+            api_key: t.api_key.or(defaults.tts.api_key.clone()),
+            model: t.model.or(defaults.tts.model.clone()),
+            // Prefer 'voice' but fall back to 'default_voice' for backwards compatibility
+            voice: t.voice.or(t.default_voice).or(defaults.tts.voice.clone()),
+            base_url: t.base_url.or(defaults.tts.base_url.clone()),
+        });
+
         Config {
             workspace_dir: json
                 .workspace_dir
@@ -1467,7 +1496,7 @@ impl Config {
             codecoder,
             identity,
             session,
-            tts: defaults.tts,
+            tts,
             voice_wake: defaults.voice_wake,
         }
     }

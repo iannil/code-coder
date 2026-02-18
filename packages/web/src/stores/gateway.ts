@@ -39,12 +39,13 @@ type GatewayStore = GatewayState & GatewayActions
 const MOCK_STATUS: GatewayStatus = {
   running: true,
   host: "127.0.0.1",
-  port: 4096,
+  port: 4402,
   uptime: 3600000,
   endpoints: [
     { path: "/webhook/telegram", method: "POST", description: "Telegram webhook endpoint" },
     { path: "/webhook/discord", method: "POST", description: "Discord webhook endpoint" },
     { path: "/webhook/slack", method: "POST", description: "Slack webhook endpoint" },
+    { path: "/webhook/feishu", method: "POST", description: "Feishu webhook endpoint" },
     { path: "/health", method: "GET", description: "Health check endpoint" },
   ],
   requestCount: 142,
@@ -94,7 +95,7 @@ export const useGatewayStore = create<GatewayStore>((set) => ({
           : {
               running: true,
               host: "127.0.0.1",
-              port: 4096,
+              port: 4402,
               uptime: 0,
               endpoints: [],
               requestCount: 0,

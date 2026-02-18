@@ -1,4 +1,4 @@
-use super::traits::{Channel, ChannelMessage};
+use super::traits::{Channel, ChannelMessage, MessageSource};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -123,6 +123,7 @@ impl WhatsAppChannel {
                         content,
                         channel: "whatsapp".to_string(),
                         timestamp,
+                        source: MessageSource::default(),
                     });
                 }
             }

@@ -26,6 +26,7 @@ import { Truncate } from "./truncation"
 import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
 import { NetworkAnalyzerTool } from "./network-analyzer"
+import { GetCredentialTool } from "./credential"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -90,6 +91,7 @@ export namespace ToolRegistry {
       SkillTool,
       ApplyPatchTool,
       NetworkAnalyzerTool,
+      GetCredentialTool,
       ...(Flag.CCODE_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
       ...(config.experimental?.batch_tool === true ? [BatchTool] : []),
       ...(Flag.CCODE_EXPERIMENTAL_PLAN_MODE && Flag.CCODE_CLIENT === "cli"

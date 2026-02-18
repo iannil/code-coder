@@ -6,7 +6,7 @@
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
 import { useShallow } from "zustand/react/shallow"
-import type { CredentialSummary, CredentialCreateInput } from "../lib/types"
+import type { CredentialSummary, CredentialEntry, CredentialCreateInput } from "../lib/types"
 import { api } from "../lib/api"
 
 // ============================================================================
@@ -18,13 +18,16 @@ interface CredentialState {
   isLoading: boolean
   isLoaded: boolean
   isAdding: boolean
+  isUpdating: string | null
   isDeleting: string | null
   error: string | null
 }
 
 interface CredentialActions {
   fetchCredentials: () => Promise<void>
+  getCredential: (id: string) => Promise<CredentialEntry | null>
   addCredential: (input: CredentialCreateInput) => Promise<string>
+  updateCredential: (id: string, input: Partial<CredentialCreateInput>) => Promise<void>
   deleteCredential: (id: string) => Promise<void>
   clearError: () => void
 }
@@ -40,6 +43,7 @@ const initialState: CredentialState = {
   isLoading: false,
   isLoaded: false,
   isAdding: false,
+  isUpdating: null,
   isDeleting: null,
   error: null,
 }
@@ -72,6 +76,18 @@ export const useCredentialStore = create<CredentialStore>()(
       }
     },
 
+    getCredential: async (id) => {
+      try {
+        const credential = await api.getCredential(id)
+        return credential
+      } catch (error) {
+        set((state) => {
+          state.error = error instanceof Error ? error.message : "Failed to get credential"
+        })
+        return null
+      }
+    },
+
     addCredential: async (input) => {
       set((state) => {
         state.isAdding = true
@@ -90,6 +106,28 @@ export const useCredentialStore = create<CredentialStore>()(
         set((state) => {
           state.isAdding = false
           state.error = error instanceof Error ? error.message : "Failed to add credential"
+        })
+        throw error
+      }
+    },
+
+    updateCredential: async (id, input) => {
+      set((state) => {
+        state.isUpdating = id
+        state.error = null
+      })
+      try {
+        await api.updateCredential(id, input)
+        // Refresh credentials list after updating
+        const credentials = await api.listCredentials()
+        set((state) => {
+          state.credentials = credentials
+          state.isUpdating = null
+        })
+      } catch (error) {
+        set((state) => {
+          state.isUpdating = null
+          state.error = error instanceof Error ? error.message : "Failed to update credential"
         })
         throw error
       }
@@ -134,6 +172,7 @@ export const useCredentialLoading = () =>
       isLoading: s.isLoading,
       isLoaded: s.isLoaded,
       isAdding: s.isAdding,
+      isUpdating: s.isUpdating,
       isDeleting: s.isDeleting,
     })),
   )

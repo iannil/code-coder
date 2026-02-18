@@ -1,4 +1,4 @@
-use super::traits::{Channel, ChannelMessage};
+use super::traits::{Channel, ChannelMessage, MessageSource};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -147,6 +147,7 @@ impl Channel for SlackChannel {
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_secs(),
+                        source: MessageSource::default(),
                     };
 
                     if tx.send(channel_msg).await.is_err() {

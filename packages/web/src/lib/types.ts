@@ -971,7 +971,7 @@ export type TaskEvent =
 // ============================================================================
 
 // Channel Types
-export type ChannelType = "cli" | "telegram" | "discord" | "slack" | "matrix" | "whatsapp" | "imessage" | "email"
+export type ChannelType = "cli" | "telegram" | "discord" | "slack" | "matrix" | "whatsapp" | "imessage" | "email" | "feishu"
 export type ChannelHealth = "healthy" | "degraded" | "unhealthy"
 
 export interface ChannelConfig {

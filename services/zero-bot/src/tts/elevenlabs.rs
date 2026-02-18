@@ -25,6 +25,7 @@ struct ElevenLabsVoice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct VoiceLabels {
     accent: Option<String>,
     gender: Option<String>,

@@ -46,6 +46,7 @@ const CHANNEL_ICONS: Record<ChannelType, React.ReactNode> = {
   whatsapp: <Phone className="h-4 w-4" />,
   imessage: <MessageSquare className="h-4 w-4" />,
   email: <Mail className="h-4 w-4" />,
+  feishu: <MessageSquare className="h-4 w-4" />,
 }
 
 const CHANNEL_LABELS: Record<ChannelType, string> = {
@@ -57,6 +58,7 @@ const CHANNEL_LABELS: Record<ChannelType, string> = {
   whatsapp: "WhatsApp",
   imessage: "iMessage",
   email: "Email",
+  feishu: "飞书",
 }
 
 // ============================================================================

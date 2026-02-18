@@ -69,6 +69,12 @@ export namespace RemotePolicy {
     "mcp__playwright__browser_drag",
     "mcp__playwright__browser_press_key",
     "mcp__playwright__browser_handle_dialog",
+
+    // MCP Puppeteer browser operations (mutating/navigating)
+    "mcp__puppeteer__puppeteer_navigate",
+    "mcp__puppeteer__puppeteer_click",
+    "mcp__puppeteer__puppeteer_fill",
+    "mcp__puppeteer__puppeteer_evaluate",
   ])
 
   /**
@@ -97,6 +103,9 @@ export namespace RemotePolicy {
     "mcp__playwright__browser_hover",
     "mcp__playwright__browser_close",
     "mcp__playwright__browser_install",
+
+    // MCP Puppeteer read-only operations
+    "mcp__puppeteer__puppeteer_screenshot",
   ])
 
   /**
@@ -307,13 +316,16 @@ export namespace RemotePolicy {
 
       // MCP Playwright operations
       case "mcp__playwright__browser_navigate":
+      case "mcp__puppeteer__puppeteer_navigate":
         return `Navigate browser to: ${(args as { url?: string })?.url ?? "unknown URL"}`
 
       case "mcp__playwright__browser_click":
-        return `Click element: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? "unknown"}`
+      case "mcp__puppeteer__puppeteer_click":
+        return `Click element: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? (args as { selector?: string })?.selector ?? "unknown"}`
 
       case "mcp__playwright__browser_type":
-        return `Type text into: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? "unknown"}`
+      case "mcp__puppeteer__puppeteer_fill":
+        return `Type text into: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? (args as { selector?: string })?.selector ?? "unknown"}`
 
       case "mcp__playwright__browser_fill_form":
         return `Fill form with ${((args as { fields?: unknown[] })?.fields?.length ?? 0)} fields`
@@ -323,12 +335,17 @@ export namespace RemotePolicy {
 
       case "mcp__playwright__browser_evaluate":
       case "mcp__playwright__browser_run_code":
+      case "mcp__puppeteer__puppeteer_evaluate":
         return `Execute JavaScript in browser`
 
       default:
         // Handle other MCP tools generically
         if (normalizedTool.startsWith("mcp__playwright__")) {
           const action = normalizedTool.replace("mcp__playwright__browser_", "")
+          return `Browser ${action} operation`
+        }
+        if (normalizedTool.startsWith("mcp__puppeteer__")) {
+          const action = normalizedTool.replace("mcp__puppeteer__puppeteer_", "")
           return `Browser ${action} operation`
         }
         if (normalizedTool.startsWith("mcp__")) {

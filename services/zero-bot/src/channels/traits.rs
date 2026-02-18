@@ -1,5 +1,17 @@
 use async_trait::async_trait;
 
+/// Source type of the message
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MessageSource {
+    /// Text message
+    #[default]
+    Text,
+    /// Voice message (transcribed via STT)
+    Voice,
+    /// Document/file message
+    Document,
+}
+
 /// A message received from or sent to a channel
 #[derive(Debug, Clone)]
 pub struct ChannelMessage {
@@ -8,6 +20,8 @@ pub struct ChannelMessage {
     pub content: String,
     pub channel: String,
     pub timestamp: u64,
+    /// Source type of the message (text, voice, document)
+    pub source: MessageSource,
 }
 
 /// Core channel trait — implement for any messaging platform

@@ -3,7 +3,7 @@
 //! Uses the Feishu Open Platform Bot API for messaging.
 //! Supports text messages, event callbacks, and user authorization.
 
-use super::traits::{Channel, ChannelMessage};
+use super::traits::{Channel, ChannelMessage, MessageSource};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -483,6 +483,7 @@ pub async fn process_event_callback(
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
+                            source: MessageSource::default(),
                         };
 
                         if let Err(e) = tx.send(msg).await {

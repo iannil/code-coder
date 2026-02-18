@@ -1,5 +1,6 @@
-use super::traits::{Channel, ChannelMessage};
+use super::traits::{Channel, ChannelMessage, MessageSource};
 use crate::stt::SpeechToText;
+use crate::tts::TextToSpeech;
 use async_trait::async_trait;
 use reqwest::multipart::{Form, Part};
 use std::path::{Path, PathBuf};
@@ -75,6 +76,8 @@ pub struct TelegramChannel {
     client: reqwest::Client,
     /// Optional STT client for voice message transcription
     stt: Option<Arc<dyn SpeechToText>>,
+    /// Optional TTS client for voice responses
+    tts: Option<Arc<dyn TextToSpeech>>,
     /// Optional callback query sender for inline button clicks
     callback_tx: Option<mpsc::Sender<CallbackQuery>>,
 }
@@ -86,6 +89,7 @@ impl TelegramChannel {
             allowed_users,
             client: reqwest::Client::new(),
             stt: None,
+            tts: None,
             callback_tx: None,
         }
     }
@@ -101,8 +105,36 @@ impl TelegramChannel {
             allowed_users,
             client: reqwest::Client::new(),
             stt: Some(stt),
+            tts: None,
             callback_tx: None,
         }
+    }
+
+    /// Create a new Telegram channel with both STT and TTS support.
+    pub fn with_voice(
+        bot_token: String,
+        allowed_users: Vec<String>,
+        stt: Option<Arc<dyn SpeechToText>>,
+        tts: Option<Arc<dyn TextToSpeech>>,
+    ) -> Self {
+        Self {
+            bot_token,
+            allowed_users,
+            client: reqwest::Client::new(),
+            stt,
+            tts,
+            callback_tx: None,
+        }
+    }
+
+    /// Set the TTS client for voice responses.
+    pub fn set_tts(&mut self, tts: Arc<dyn TextToSpeech>) {
+        self.tts = Some(tts);
+    }
+
+    /// Get a reference to the TTS client if configured.
+    pub fn tts(&self) -> Option<&Arc<dyn TextToSpeech>> {
+        self.tts.as_ref()
     }
 
     /// Set a callback query sender for inline button click handling.
@@ -1007,8 +1039,8 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                     }
 
                     // Handle text message or voice message
-                    let text = if let Some(text) = message.get("text").and_then(|v| v.as_str()) {
-                        text.to_string()
+                    let (text, message_source) = if let Some(text) = message.get("text").and_then(|v| v.as_str()) {
+                        (text.to_string(), MessageSource::Text)
                     } else if let Some(voice) = message.get("voice") {
                         // Voice message handling
                         let Some(ref stt) = self.stt else {
@@ -1057,7 +1089,7 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                                     "Voice transcribed: {} chars",
                                     transcription.len()
                                 );
-                                transcription
+                                (transcription, MessageSource::Voice)
                             }
                             Err(e) => {
                                 tracing::error!("Voice transcription failed: {e}");
@@ -1136,12 +1168,12 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                         );
 
                         // Format the document message for agent consumption
-                        Self::format_document_message(
+                        (Self::format_document_message(
                             &doc_bytes,
                             file_name,
                             mime_type,
                             caption,
-                        )
+                        ), MessageSource::Document)
                     } else {
                         // Other message types (photo, video, etc.) — skip
                         continue;
@@ -1156,6 +1188,7 @@ Allowlist Telegram @username or numeric user ID, then run `zero-bot onboard --ch
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_secs(),
+                        source: message_source,
                     };
 
                     if tx.send(msg).await.is_err() {

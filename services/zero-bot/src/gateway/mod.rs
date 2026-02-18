@@ -7,7 +7,7 @@
 //! - Request timeouts (30s) to prevent slow-loris attacks
 //! - Header sanitization (handled by axum/hyper)
 
-use crate::channels::{Channel, WhatsAppChannel};
+use crate::channels::{Channel, FeishuChannel, WhatsAppChannel};
 use crate::config::Config;
 use crate::memory::{self, Memory, MemoryCategory};
 use crate::providers::{self, Provider};
@@ -46,6 +46,10 @@ pub struct AppState {
     pub whatsapp: Option<Arc<WhatsAppChannel>>,
     /// `WhatsApp` app secret for webhook signature verification (`X-Hub-Signature-256`)
     pub whatsapp_app_secret: Option<Arc<str>>,
+    /// Feishu channel for messaging
+    pub feishu: Option<Arc<FeishuChannel>>,
+    /// Channel for sending messages to the main message bus
+    pub message_tx: Option<tokio::sync::mpsc::Sender<crate::channels::traits::ChannelMessage>>,
 }
 
 /// Run the HTTP gateway using axum with proper HTTP/1.1 compliance.
@@ -120,6 +124,18 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         })
         .map(Arc::from);
 
+    // Feishu channel (if configured)
+    let feishu_channel: Option<Arc<FeishuChannel>> =
+        config.channels_config.feishu.as_ref().map(|fs| {
+            Arc::new(FeishuChannel::with_encryption(
+                fs.app_id.clone(),
+                fs.app_secret.clone(),
+                fs.encrypt_key.clone(),
+                fs.verification_token.clone(),
+                fs.allowed_users.clone(),
+            ))
+        });
+
     // ── Pairing guard ──────────────────────────────────────
     let pairing = Arc::new(PairingGuard::new(
         config.gateway.require_pairing,
@@ -154,6 +170,9 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         println!("  GET  /whatsapp  — Meta webhook verification");
         println!("  POST /whatsapp  — WhatsApp message webhook");
     }
+    if feishu_channel.is_some() {
+        println!("  POST /feishu    — Feishu event callback");
+    }
     println!("  GET  /health    — health check");
     if let Some(code) = pairing.pairing_code() {
         println!();
@@ -185,6 +204,8 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         pairing,
         whatsapp: whatsapp_channel,
         whatsapp_app_secret,
+        feishu: feishu_channel,
+        message_tx: None, // Gateway mode doesn't use the channel message bus
     };
 
     // Build router with middleware
@@ -194,6 +215,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .route("/webhook", post(handle_webhook))
         .route("/whatsapp", get(handle_whatsapp_verify))
         .route("/whatsapp", post(handle_whatsapp_message))
+        .route("/feishu", post(handle_feishu_event))
         .with_state(state)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .layer(TimeoutLayer::with_status_code(
@@ -495,6 +517,128 @@ async fn handle_whatsapp_message(
                         &msg.sender,
                     )
                     .await;
+            }
+        }
+    }
+
+    // Acknowledge the webhook
+    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
+}
+
+/// POST /feishu — Feishu event callback
+async fn handle_feishu_event(
+    State(state): State<AppState>,
+    body: Bytes,
+) -> impl IntoResponse {
+    let Some(ref feishu) = state.feishu else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "Feishu not configured"})),
+        );
+    };
+
+    // Parse JSON body
+    let payload = match std::str::from_utf8(&body) {
+        Ok(s) => s,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": "Invalid UTF-8 in request body"})),
+            );
+        }
+    };
+
+    let Ok(event) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "Invalid JSON payload"})),
+        );
+    };
+
+    // Handle URL verification challenge
+    if let Some(challenge) = event.get("challenge").and_then(|c| c.as_str()) {
+        tracing::info!("Feishu URL verification challenge received");
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({ "challenge": challenge })),
+        );
+    }
+
+    // Handle encrypted events (v2.0)
+    if event.get("encrypt").is_some() {
+        tracing::warn!("Feishu encrypted events not yet supported, please disable encryption in Feishu Open Platform");
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({"error": "Encrypted events not supported"})),
+        );
+    }
+
+    // Parse event header
+    let header = event.get("header");
+    let event_data = event.get("event");
+
+    if let (Some(header), Some(event_data)) = (header, event_data) {
+        let event_type = header.get("event_type").and_then(|t| t.as_str()).unwrap_or("");
+
+        // Handle message events
+        if event_type == "im.message.receive_v1" {
+            if let Some(message) = event_data.get("message") {
+                let chat_id = message.get("chat_id").and_then(|c| c.as_str()).unwrap_or("");
+                let msg_type = message.get("message_type").and_then(|t| t.as_str()).unwrap_or("");
+                let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("{}");
+
+                // Get sender info
+                let sender = event_data.get("sender").and_then(|s| s.get("sender_id"));
+                let sender_open_id = sender
+                    .and_then(|s| s.get("open_id"))
+                    .and_then(|id| id.as_str())
+                    .unwrap_or("unknown");
+
+                tracing::info!(
+                    "Feishu message from {}: type={}, chat_id={}",
+                    sender_open_id,
+                    msg_type,
+                    chat_id
+                );
+
+                // Extract text content
+                if msg_type == "text" {
+                    if let Ok(content_json) = serde_json::from_str::<serde_json::Value>(content) {
+                        if let Some(text) = content_json.get("text").and_then(|t| t.as_str()) {
+                            // Auto-save to memory
+                            if state.auto_save {
+                                let _ = state
+                                    .mem
+                                    .store(
+                                        &format!("feishu_{}", sender_open_id),
+                                        text,
+                                        MemoryCategory::Conversation,
+                                    )
+                                    .await;
+                            }
+
+                            // Call the LLM
+                            match state
+                                .provider
+                                .chat(text, &state.model, state.temperature)
+                                .await
+                            {
+                                Ok(response) => {
+                                    // Send reply via Feishu
+                                    if let Err(e) = feishu.send(&response, chat_id).await {
+                                        tracing::error!("Failed to send Feishu reply: {e}");
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!("LLM error for Feishu message: {e:#}");
+                                    let _ = feishu
+                                        .send("抱歉，我暂时无法处理您的消息。", chat_id)
+                                        .await;
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
