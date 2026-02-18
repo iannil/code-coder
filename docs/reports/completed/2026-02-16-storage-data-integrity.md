@@ -84,7 +84,7 @@
 
    # 手动测试损坏恢复流程
    # 1. 创建一个 session
-   # 2. 手动损坏 ~/.ccode/storage/session/{projectID}/{sessionID}.json
+   # 2. 手动损坏 ~/.codecoder/storage/session/{projectID}/{sessionID}.json
    # 3. 重新加载，验证错误处理和隔离
    # 4. 调用 restore，验证恢复
    ```

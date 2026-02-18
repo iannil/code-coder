@@ -13,9 +13,19 @@ export namespace LocalFind {
   export async function files(input: FilesInput): Promise<string[]> {
     const directory = process.cwd()
 
-    // If no query, return empty
+    // If no query, return recent/common files
     if (!input.query || input.query.trim() === "") {
-      return []
+      try {
+        const defaultFiles = await glob("**/*", {
+          cwd: directory,
+          absolute: false,
+          nodir: true,
+          ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**", "**/.next/**", "**/coverage/**"],
+        })
+        return defaultFiles.slice(0, 100)
+      } catch {
+        return []
+      }
     }
 
     const query = input.query.trim()

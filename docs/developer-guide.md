@@ -250,11 +250,11 @@ Model Context Protocol 支持，可扩展的工具生态系统。
 ```
 1. 远程 well-known 配置 (.well-known/codecoder)
    ↓ 合并
-2. 全局用户配置 (~/.ccode/config.jsonc)
+2. 全局用户配置 (~/.codecoder/config.jsonc)
    ↓ 合并
 3. 自定义配置路径 (CCODE_CONFIG 环境变量)
    ↓ 合并
-4. 项目配置 (.ccode/ 或 .codecoder/ 目录)
+4. 项目配置 (.codecoder/ 或 .codecoder/ 目录)
    ↓ 合并
 5. 环境变量覆盖 (CCODE_CONFIG_CONTENT)
 ```
@@ -274,10 +274,10 @@ Model Context Protocol 支持，可扩展的工具生态系统。
 
 ### 7.1 添加新工具
 
-在 `.ccode/tools/` 目录下创建工具：
+在 `.codecoder/tools/` 目录下创建工具：
 
 ```typescript
-// .ccode/tools/my-tool.ts
+// .codecoder/tools/my-tool.ts
 import { z } from "zod"
 
 export const tool = {
@@ -318,7 +318,7 @@ export const tool = {
 在配置文件中定义：
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   "agent": {
     "reviewer": {
@@ -337,7 +337,7 @@ export const tool = {
 ### 7.4 MCP Server 集成
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   "mcp": {
     "servers": {

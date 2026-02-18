@@ -626,7 +626,7 @@ interface Session.Info {
 2. 全局配置: `~/.config/codecoder/codecoder.json(c)`
 3. `CCODE_CONFIG` 环境变量指定的配置
 4. 项目配置: `./codecoder.json(c)`
-5. `.ccode/` 目录下的配置
+5. `.codecoder/` 目录下的配置
 6. `CCODE_CONFIG_CONTENT` 环境变量
 
 ### 9.2 主要配置项
@@ -743,7 +743,7 @@ Skill 定义: `packages/ccode/src/skill/skill.ts`
 
 1. 内置 Skills: `packages/ccode/src/skill/builtin/*/SKILL.md`
 2. 项目 Skills: `.claude/skills/**/SKILL.md`
-3. 项目 Skills: `.ccode/skills/**/SKILL.md`
+3. 项目 Skills: `.codecoder/skills/**/SKILL.md`
 4. 全局 Skills: `~/.claude/skills/**/SKILL.md`
 5. 配置目录 Skills
 
@@ -805,7 +805,7 @@ Hook 定义: `packages/ccode/src/hook/hook.ts`
 ### 12.3 钩子配置
 
 ```json
-// .ccode/hooks/hooks.json
+// .codecoder/hooks/hooks.json
 {
   "hooks": {
     "PreToolUse": {

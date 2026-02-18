@@ -961,7 +961,7 @@ ccode mcp add <服务器名称>
 
 #### 配置文件
 
-CodeCoder 将配置存储在 `~/.ccode/config.json`：
+CodeCoder 将配置存储在 `~/.codecoder/config.json`：
 
 ```json
 {
@@ -991,12 +991,12 @@ export GOOGLE_API_KEY=你的密钥
 export GROQ_API_KEY=你的密钥
 
 ## 或使用 .env 文件
-echo "ANTHROPIC_API_KEY=你的密钥" > ~/.ccode/.env
+echo "ANTHROPIC_API_KEY=你的密钥" > ~/.codecoder/.env
 ```
 
 #### 自定义代理
 
-在 `~/.ccode/agents.json` 中定义自定义代理：
+在 `~/.codecoder/agents.json` 中定义自定义代理：
 
 ```json
 {
@@ -1189,7 +1189,7 @@ bun test:verify
 
 - 设置相应的环境变量
 - 示例：`export ANTHROPIC_API_KEY=你的密钥`
-- 或添加到 `~/.ccode/.env`
+- 或添加到 `~/.codecoder/.env`
 
 **TUI 显示问题**
 

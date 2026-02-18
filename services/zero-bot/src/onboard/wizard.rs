@@ -102,10 +102,13 @@ pub fn run_wizard() -> Result<Config> {
         tunnel: tunnel_config,
         gateway: crate::config::GatewayConfig::default(),
         secrets: secrets_config,
+        vault: crate::config::VaultConfig::default(),
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
         identity: crate::config::IdentityConfig::default(),
         session: crate::config::SessionConfig::default(),
+        tts: crate::config::TtsConfig::default(),
+        voice_wake: crate::config::VoiceWakeConfig::default(),
     };
 
     println!(
@@ -291,10 +294,13 @@ pub fn run_quick_setup(
         tunnel: crate::config::TunnelConfig::default(),
         gateway: crate::config::GatewayConfig::default(),
         secrets: SecretsConfig::default(),
+        vault: crate::config::VaultConfig::default(),
         browser: BrowserConfig::default(),
         codecoder: crate::config::CodeCoderConfig::default(),
         identity: crate::config::IdentityConfig::default(),
         session: crate::config::SessionConfig::default(),
+        tts: crate::config::TtsConfig::default(),
+        voice_wake: crate::config::VoiceWakeConfig::default(),
     };
 
     config.save()?;
@@ -1052,6 +1058,7 @@ fn setup_channels() -> Result<ChannelsConfig> {
         imessage: None,
         matrix: None,
         whatsapp: None,
+        feishu: None,
     };
 
     loop {

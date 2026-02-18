@@ -294,7 +294,7 @@ export namespace Ripgrep {
       children: [],
     }
     for (const file of files) {
-      if (file.includes(".ccode") || file.includes(".codecoder")) continue
+      if (file.includes(".codecoder")) continue
       const parts = file.split(path.sep)
       getPath(root, parts, true)
     }

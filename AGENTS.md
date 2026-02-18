@@ -393,7 +393,7 @@ parallel:
 
 ## 自定义 Agent
 
-可以在 `~/.ccode/agents.json` 中定义自定义 Agent：
+可以在 `~/.codecoder/agents.json` 中定义自定义 Agent：
 
 ```json
 {

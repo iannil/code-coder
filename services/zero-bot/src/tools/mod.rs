@@ -1,3 +1,4 @@
+pub mod auto_login;
 pub mod browser;
 pub mod browser_open;
 pub mod codecoder;
@@ -9,6 +10,7 @@ pub mod memory_store;
 pub mod shell;
 pub mod traits;
 
+pub use auto_login::AutoLoginTool;
 pub use browser::BrowserTool;
 pub use browser_open::BrowserOpenTool;
 pub use codecoder::CodeCoderTool;
@@ -41,6 +43,8 @@ pub fn all_tools(
     memory: Arc<dyn Memory>,
     browser_config: &crate::config::BrowserConfig,
     codecoder_config: &crate::config::CodeCoderConfig,
+    vault_config: &crate::config::VaultConfig,
+    vault_path: &std::path::Path,
 ) -> Vec<Box<dyn Tool>> {
     let mut tools: Vec<Box<dyn Tool>> = vec![
         Box::new(ShellTool::new(security.clone())),
@@ -63,11 +67,22 @@ pub fn all_tools(
             browser_config.allowed_domains.clone(),
             browser_config.session_name.clone(),
         )));
+
+        // Add auto-login tool (requires browser automation)
+        if vault_config.enabled {
+            tools.push(Box::new(AutoLoginTool::new(
+                security.clone(),
+                vault_path.to_path_buf(),
+            )));
+        }
     }
 
     // Add CodeCoder tool for invoking 23 AI agents
     if codecoder_config.enabled {
-        tools.push(Box::new(CodeCoderTool::new(Some(&codecoder_config.endpoint))));
+        tools.push(Box::new(CodeCoderTool::new(
+            Some(&codecoder_config.endpoint),
+            codecoder_config.api_key.as_deref(),
+        )));
     }
 
     tools
@@ -103,8 +118,9 @@ mod tests {
             session_name: None,
         };
         let codecoder = CodeCoderConfig::default();
+        let vault = crate::config::VaultConfig::default();
 
-        let tools = all_tools(&security, mem, &browser, &codecoder);
+        let tools = all_tools(&security, mem, &browser, &codecoder, &vault, tmp.path());
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(!names.contains(&"browser_open"));
     }
@@ -126,8 +142,9 @@ mod tests {
             session_name: None,
         };
         let codecoder = CodeCoderConfig::default();
+        let vault = crate::config::VaultConfig::default();
 
-        let tools = all_tools(&security, mem, &browser, &codecoder);
+        let tools = all_tools(&security, mem, &browser, &codecoder, &vault, tmp.path());
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"browser_open"));
     }

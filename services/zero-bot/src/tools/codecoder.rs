@@ -37,11 +37,12 @@ const SSE_RETRY_DELAY_SECS: u64 = 2;
 /// `CodeCoder` HTTP client tool with SSE support
 pub struct CodeCoderTool {
     endpoint: String,
+    api_key: Option<String>,
     client: reqwest::Client,
 }
 
 impl CodeCoderTool {
-    pub fn new(endpoint: Option<&str>) -> Self {
+    pub fn new(endpoint: Option<&str>, api_key: Option<&str>) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .build()
@@ -49,7 +50,17 @@ impl CodeCoderTool {
 
         Self {
             endpoint: endpoint.unwrap_or(DEFAULT_ENDPOINT).to_string(),
+            api_key: api_key.map(String::from),
             client,
+        }
+    }
+
+    /// Build a request with authentication headers if API key is configured
+    fn add_auth_headers(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if let Some(ref key) = self.api_key {
+            request.header("Authorization", format!("Bearer {}", key))
+        } else {
+            request
         }
     }
 }
@@ -326,10 +337,11 @@ impl CodeCoderTool {
             }),
         };
 
-        let resp = self
+        let req = self
             .client
             .post(format!("{}/api/v1/tasks", self.endpoint))
-            .json(&request)
+            .json(&request);
+        let resp = self.add_auth_headers(req)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create task: {e}"))?;
@@ -389,13 +401,17 @@ impl CodeCoderTool {
                 task_id
             );
 
-            match sse_client
+            let mut req = sse_client
                 .get(&url)
                 .header("Accept", "text/event-stream")
-                .header("Cache-Control", "no-cache")
-                .send()
-                .await
-            {
+                .header("Cache-Control", "no-cache");
+
+            // Add auth header if API key is configured
+            if let Some(ref key) = self.api_key {
+                req = req.header("Authorization", format!("Bearer {}", key));
+            }
+
+            match req.send().await {
                 Ok(r) => {
                     let status = r.status();
                     tracing::info!("SSE response status: {} (attempt {})", status, attempt);
@@ -648,14 +664,15 @@ impl CodeCoderTool {
 
     /// Approve a permission request with specific reply type
     async fn approve_task_with_reply(&self, task_id: &str, request_id: &str, reply: &str) -> anyhow::Result<()> {
-        let resp = self
+        let req = self
             .client
             .post(format!("{}/api/v1/tasks/{}/interact", self.endpoint, task_id))
             .json(&json!({
                 "action": "approve",
                 "reply": reply,
                 "requestID": request_id
-            }))
+            }));
+        let resp = self.add_auth_headers(req)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to approve task: {e}"))?;
@@ -671,14 +688,15 @@ impl CodeCoderTool {
     /// Reject a permission request (user declined)
     #[allow(dead_code)]
     async fn reject_task(&self, task_id: &str, request_id: &str) -> anyhow::Result<()> {
-        let resp = self
+        let req = self
             .client
             .post(format!("{}/api/v1/tasks/{}/interact", self.endpoint, task_id))
             .json(&json!({
                 "action": "reject",
                 "reply": "session",
                 "requestID": request_id
-            }))
+            }));
+        let resp = self.add_auth_headers(req)
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to reject task: {e}"))?;
@@ -700,9 +718,10 @@ impl CodeCoderTool {
         for attempt in 0..max_attempts {
             tokio::time::sleep(poll_interval).await;
 
-            let resp = self
+            let req = self
                 .client
-                .get(format!("{}/api/v1/tasks/{}", self.endpoint, task_id))
+                .get(format!("{}/api/v1/tasks/{}", self.endpoint, task_id));
+            let resp = self.add_auth_headers(req)
                 .send()
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to get task status: {e}"))?;
@@ -760,13 +779,13 @@ mod tests {
 
     #[test]
     fn codecoder_tool_name() {
-        let tool = CodeCoderTool::new(None);
+        let tool = CodeCoderTool::new(None, None);
         assert_eq!(tool.name(), "codecoder");
     }
 
     #[test]
     fn codecoder_tool_description() {
-        let tool = CodeCoderTool::new(None);
+        let tool = CodeCoderTool::new(None, None);
         assert!(!tool.description().is_empty());
         assert!(tool.description().contains("build"));
         assert!(tool.description().contains("decision"));
@@ -774,7 +793,7 @@ mod tests {
 
     #[test]
     fn codecoder_tool_schema_has_required_fields() {
-        let tool = CodeCoderTool::new(None);
+        let tool = CodeCoderTool::new(None, None);
         let schema = tool.parameters_schema();
         assert!(schema["properties"]["agent"].is_object());
         assert!(schema["properties"]["prompt"].is_object());
@@ -792,13 +811,14 @@ mod tests {
 
     #[test]
     fn codecoder_tool_custom_endpoint() {
-        let tool = CodeCoderTool::new(Some("http://custom:8080"));
+        let tool = CodeCoderTool::new(Some("http://custom:8080"), Some("test-api-key"));
         assert_eq!(tool.endpoint, "http://custom:8080");
+        assert_eq!(tool.api_key.as_deref(), Some("test-api-key"));
     }
 
     #[tokio::test]
     async fn codecoder_missing_agent() {
-        let tool = CodeCoderTool::new(None);
+        let tool = CodeCoderTool::new(None, None);
         let result = tool.execute(json!({"prompt": "hello"})).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("agent"));
@@ -806,7 +826,7 @@ mod tests {
 
     #[tokio::test]
     async fn codecoder_missing_prompt() {
-        let tool = CodeCoderTool::new(None);
+        let tool = CodeCoderTool::new(None, None);
         let result = tool.execute(json!({"agent": "build"})).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("prompt"));

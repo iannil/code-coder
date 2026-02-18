@@ -136,7 +136,7 @@ export class Reporter {
 
     const defaultPath = [
       Instance.worktree,
-      ".ccode",
+      ".codecoder",
       "autonomous-reports",
       `${this.sessionId}-${type}.md`,
     ].join("/")

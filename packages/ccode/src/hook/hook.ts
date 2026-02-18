@@ -88,9 +88,9 @@ export namespace Hook {
 
     const directories = [Global.Path.config, ...(await Config.directories())]
 
-    // Also check the instance directory directly for .ccode/hooks
+    // Also check the instance directory directly for .codecoder/hooks
     const instanceDir = Instance.directory
-    const instanceCcodeHooks = path.join(instanceDir, ".ccode", "hooks", "hooks.json")
+    const instanceCcodeHooks = path.join(instanceDir, ".codecoder", "hooks", "hooks.json")
     const instanceHookFile = Bun.file(instanceCcodeHooks)
     if (await instanceHookFile.exists()) {
       const content = await instanceHookFile.json().catch((err) => {

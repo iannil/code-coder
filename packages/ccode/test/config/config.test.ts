@@ -317,10 +317,10 @@ test("migrates mode field to agent field", async () => {
   })
 })
 
-test("loads config from .ccode directory", async () => {
+test("loads config from .codecoder directory", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      const codecoderDir = path.join(dir, ".ccode")
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
       const agentDir = path.join(codecoderDir, "agent")
       await fs.mkdir(agentDir, { recursive: true })
@@ -349,10 +349,10 @@ Test agent prompt`,
   })
 })
 
-test("loads agents from .ccode/agents (plural)", async () => {
+test("loads agents from .codecoder/agents (plural)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      const codecoderDir = path.join(dir, ".ccode")
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
 
       const agentsDir = path.join(codecoderDir, "agents")
@@ -400,10 +400,10 @@ Nested agent prompt`,
   })
 })
 
-test("loads commands from .ccode/command (singular)", async () => {
+test("loads commands from .codecoder/command (singular)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      const codecoderDir = path.join(dir, ".ccode")
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
 
       const commandDir = path.join(codecoderDir, "command")
@@ -445,10 +445,10 @@ Nested command template`,
   })
 })
 
-test("loads commands from .ccode/commands (plural)", async () => {
+test("loads commands from .codecoder/commands (plural)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      const codecoderDir = path.join(dir, ".ccode")
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
 
       const commandsDir = path.join(codecoderDir, "commands")
@@ -518,7 +518,7 @@ test("gets config directories", async () => {
 test("does not error when only custom agent is a subagent", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
-      const codecoderDir = path.join(dir, ".ccode")
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
       const agentDir = path.join(codecoderDir, "agent")
       await fs.mkdir(agentDir, { recursive: true })
@@ -551,7 +551,7 @@ test("merges instructions arrays from global and local configs", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       const projectDir = path.join(dir, "project")
-      const codecoderDir = path.join(projectDir, ".ccode")
+      const codecoderDir = path.join(projectDir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
 
       await Bun.write(
@@ -590,7 +590,7 @@ test("deduplicates duplicate instructions from global and local configs", async 
   await using tmp = await tmpdir({
     init: async (dir) => {
       const projectDir = path.join(dir, "project")
-      const codecoderDir = path.join(projectDir, ".ccode")
+      const codecoderDir = path.join(projectDir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
 
       await Bun.write(
@@ -1033,7 +1033,7 @@ test("MCP config deep merges preserving base config properties", async () => {
   })
 })
 
-test("local .ccode config can override MCP from project config", async () => {
+test("local .codecoder config can override MCP from project config", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       // Project config with disabled MCP
@@ -1050,8 +1050,8 @@ test("local .ccode config can override MCP from project config", async () => {
           },
         }),
       )
-      // Local .ccode directory config enables it
-      const codecoderDir = path.join(dir, ".ccode")
+      // Local .codecoder directory config enables it
+      const codecoderDir = path.join(dir, ".codecoder")
       await fs.mkdir(codecoderDir, { recursive: true })
       await Bun.write(
         path.join(codecoderDir, "codecoder.json"),
@@ -1114,15 +1114,15 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
     }
   })
 
-  test("skips project .ccode/ directories when flag is set", async () => {
+  test("skips project .codecoder/ directories when flag is set", async () => {
     const originalEnv = process.env["CCODE_DISABLE_PROJECT_CONFIG"]
     process.env["CCODE_DISABLE_PROJECT_CONFIG"] = "true"
 
     try {
       await using tmp = await tmpdir({
         init: async (dir) => {
-          // Create a .ccode directory with a command
-          const codecoderDir = path.join(dir, ".ccode", "command")
+          // Create a .codecoder directory with a command
+          const codecoderDir = path.join(dir, ".codecoder", "command")
           await fs.mkdir(codecoderDir, { recursive: true })
           await Bun.write(path.join(codecoderDir, "test-cmd.md"), "# Test Command\nThis is a test command.")
         },
@@ -1131,7 +1131,7 @@ describe("CCODE_DISABLE_PROJECT_CONFIG", () => {
         directory: tmp.path,
         fn: async () => {
           const directories = await Config.directories()
-          // Project .ccode should NOT be in directories list
+          // Project .codecoder should NOT be in directories list
           const hasProjectCodecoder = directories.some((d) => d.startsWith(tmp.path))
           expect(hasProjectCodecoder).toBe(false)
         },

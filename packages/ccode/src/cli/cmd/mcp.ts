@@ -380,7 +380,7 @@ export const McpLogoutCommand = cmd({
 })
 
 async function resolveConfigPath(baseDir: string, global = false) {
-  // Check for existing config files (prefer .jsonc over .json, check .ccode/ subdirectory too)
+  // Check for existing config files (prefer .jsonc over .json, check .codecoder/ subdirectory too)
   const candidates = [
     path.join(baseDir, "codecoder.json"),
     path.join(baseDir, "codecoder.jsonc"),
@@ -389,9 +389,7 @@ async function resolveConfigPath(baseDir: string, global = false) {
 
   if (!global) {
     candidates.push(
-      path.join(baseDir, ".ccode", "config.jsonc"),
-      path.join(baseDir, ".ccode", "codecoder.json"),
-      path.join(baseDir, ".ccode", "codecoder.jsonc"),
+      path.join(baseDir, ".codecoder", "config.jsonc"),
       path.join(baseDir, ".codecoder", "codecoder.json"),
       path.join(baseDir, ".codecoder", "codecoder.jsonc"),
     )

@@ -127,6 +127,19 @@ struct ZeroBotJsonChannels {
     discord: Option<ZeroBotJsonDiscord>,
     slack: Option<ZeroBotJsonSlack>,
     whatsapp: Option<ZeroBotJsonWhatsApp>,
+    feishu: Option<ZeroBotJsonFeishu>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ZeroBotJsonFeishu {
+    app_id: String,
+    app_secret: String,
+    #[serde(default)]
+    encrypt_key: Option<String>,
+    #[serde(default)]
+    verification_token: Option<String>,
+    #[serde(default)]
+    allowed_users: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -196,6 +209,7 @@ struct ZeroBotJsonIdentity {
 struct ZeroBotJsonCodeCoder {
     enabled: Option<bool>,
     endpoint: Option<String>,
+    api_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -308,6 +322,9 @@ pub struct Config {
     pub secrets: SecretsConfig,
 
     #[serde(default)]
+    pub vault: VaultConfig,
+
+    #[serde(default)]
     pub browser: BrowserConfig,
 
     #[serde(default)]
@@ -318,6 +335,12 @@ pub struct Config {
 
     #[serde(default)]
     pub session: SessionConfig,
+
+    #[serde(default)]
+    pub tts: TtsConfig,
+
+    #[serde(default)]
+    pub voice_wake: VoiceWakeConfig,
 }
 
 // ── Identity (AIEOS / OpenClaw format) ──────────────────────────
@@ -409,6 +432,28 @@ impl Default for SecretsConfig {
     }
 }
 
+// ── Credential Vault ────────────────────────────────────────────
+
+/// Configuration for the credential vault (API keys, OAuth, login creds)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultConfig {
+    /// Enable the credential vault (default: true)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Auto-inject credentials into HTTP requests (default: true)
+    #[serde(default = "default_true")]
+    pub auto_inject: bool,
+}
+
+impl Default for VaultConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            auto_inject: true,
+        }
+    }
+}
+
 // ── Browser (friendly-service browsing only) ───────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -434,6 +479,9 @@ pub struct CodeCoderConfig {
     /// `CodeCoder` API endpoint (default: `http://127.0.0.1:4400`)
     #[serde(default = "default_codecoder_endpoint")]
     pub endpoint: String,
+    /// API key for authenticating with `CodeCoder` server
+    #[serde(default)]
+    pub api_key: Option<String>,
 }
 
 fn default_codecoder_endpoint() -> String {
@@ -448,6 +496,7 @@ impl Default for CodeCoderConfig {
         Self {
             enabled: false,
             endpoint: default_codecoder_endpoint(),
+            api_key: None,
         }
     }
 }
@@ -849,6 +898,7 @@ pub struct ChannelsConfig {
     pub imessage: Option<IMessageConfig>,
     pub matrix: Option<MatrixConfig>,
     pub whatsapp: Option<WhatsAppConfig>,
+    pub feishu: Option<FeishuConfig>,
 }
 
 impl Default for ChannelsConfig {
@@ -862,6 +912,7 @@ impl Default for ChannelsConfig {
             imessage: None,
             matrix: None,
             whatsapp: None,
+            feishu: None,
         }
     }
 }
@@ -951,6 +1002,100 @@ pub struct WhatsAppConfig {
     pub allowed_numbers: Vec<String>,
 }
 
+/// Feishu/Lark channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeishuConfig {
+    /// App ID from Feishu Open Platform
+    pub app_id: String,
+    /// App Secret from Feishu Open Platform
+    pub app_secret: String,
+    /// Encrypt key for event callback decryption (optional)
+    #[serde(default)]
+    pub encrypt_key: Option<String>,
+    /// Verification token for event callback verification (optional)
+    #[serde(default)]
+    pub verification_token: Option<String>,
+    /// Allowed user `open_ids` or "*" for all
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+}
+
+// ── TTS (Text-to-Speech) ────────────────────────────────────────
+
+/// Text-to-Speech configuration for voice responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TtsConfig {
+    /// Enable TTS responses (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+    /// TTS provider: "openai", "elevenlabs" (default: "openai")
+    #[serde(default = "default_tts_provider")]
+    pub provider: String,
+    /// API key for TTS provider (optional, defaults to main `api_key`)
+    #[serde(default)]
+    pub api_key: Option<String>,
+    /// TTS model name (optional, e.g., `tts-1` for `OpenAI`, `eleven_multilingual_v2` for `ElevenLabs`)
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Voice ID (e.g., `alloy` for `OpenAI`, `voice_id` for `ElevenLabs`)
+    #[serde(default)]
+    pub voice: Option<String>,
+    /// Base URL for OpenAI-compatible TTS providers (optional)
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+fn default_tts_provider() -> String {
+    "openai".into()
+}
+
+impl Default for TtsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: default_tts_provider(),
+            api_key: None,
+            model: None,
+            voice: None,
+            base_url: None,
+        }
+    }
+}
+
+// ── Voice Wake ──────────────────────────────────────────────────
+
+/// Voice wake word detection configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceWakeConfig {
+    /// Enable voice wake detection (default: false)
+    #[serde(default)]
+    pub enabled: bool,
+    /// Wake phrases to listen for (e.g., `["hey zero", "小零"]`)
+    #[serde(default)]
+    pub wake_phrases: Vec<String>,
+    /// Detection sensitivity (0.0 - 1.0, default: 0.5)
+    #[serde(default = "default_wake_sensitivity")]
+    pub sensitivity: f32,
+    /// Audio input device name (optional, uses default if not specified)
+    #[serde(default)]
+    pub audio_device: Option<String>,
+}
+
+fn default_wake_sensitivity() -> f32 {
+    0.5
+}
+
+impl Default for VoiceWakeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wake_phrases: vec!["hey zero".into()],
+            sensitivity: default_wake_sensitivity(),
+            audio_device: None,
+        }
+    }
+}
+
 // ── Config impl ──────────────────────────────────────────────────
 
 impl Default for Config {
@@ -976,10 +1121,13 @@ impl Default for Config {
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
             secrets: SecretsConfig::default(),
+            vault: VaultConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
             session: SessionConfig::default(),
+            tts: TtsConfig::default(),
+            voice_wake: VoiceWakeConfig::default(),
         }
     }
 }
@@ -996,10 +1144,6 @@ impl Config {
             home.join(".codecoder/config.json"),
             home.join(".codecoder/codecoder.json"),
             home.join(".codecoder/codecoder.jsonc"),
-            // Legacy: ~/.ccode/ paths
-            home.join(".ccode/codecoder.json"),
-            home.join(".ccode/codecoder.jsonc"),
-            home.join(".ccode/config.json"),
         ];
 
         for path in candidates {
@@ -1258,6 +1402,13 @@ impl Config {
                     app_secret: None,
                     allowed_numbers: w.allowed_numbers,
                 }),
+                feishu: c.feishu.map(|f| FeishuConfig {
+                    app_id: f.app_id,
+                    app_secret: f.app_secret,
+                    encrypt_key: f.encrypt_key,
+                    verification_token: f.verification_token,
+                    allowed_users: f.allowed_users,
+                }),
             }
         });
 
@@ -1281,6 +1432,7 @@ impl Config {
         let codecoder = json.codecoder.map_or(defaults.codecoder.clone(), |c| CodeCoderConfig {
             enabled: c.enabled.unwrap_or(defaults.codecoder.enabled),
             endpoint: c.endpoint.unwrap_or(defaults.codecoder.endpoint.clone()),
+            api_key: c.api_key.or(defaults.codecoder.api_key.clone()),
         });
 
         // Build session config
@@ -1310,10 +1462,13 @@ impl Config {
             tunnel,
             gateway,
             secrets: defaults.secrets,
+            vault: defaults.vault,
             browser,
             codecoder,
             identity,
             session,
+            tts: defaults.tts,
+            voice_wake: defaults.voice_wake,
         }
     }
 
@@ -1531,15 +1686,19 @@ mod tests {
                 imessage: None,
                 matrix: None,
                 whatsapp: None,
+                feishu: None,
             },
             memory: MemoryConfig::default(),
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
             secrets: SecretsConfig::default(),
+            vault: VaultConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
             session: SessionConfig::default(),
+            tts: TtsConfig::default(),
+            voice_wake: VoiceWakeConfig::default(),
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1607,10 +1766,13 @@ default_temperature = 0.7
             tunnel: TunnelConfig::default(),
             gateway: GatewayConfig::default(),
             secrets: SecretsConfig::default(),
+            vault: VaultConfig::default(),
             browser: BrowserConfig::default(),
             codecoder: CodeCoderConfig::default(),
             identity: IdentityConfig::default(),
             session: SessionConfig::default(),
+            tts: TtsConfig::default(),
+            voice_wake: VoiceWakeConfig::default(),
         };
 
         config.save().unwrap();
@@ -1746,6 +1908,7 @@ default_temperature = 0.7
                 allowed_users: vec!["@u:m".into()],
             }),
             whatsapp: None,
+            feishu: None,
         };
         let toml_str = toml::to_string_pretty(&c).unwrap();
         let parsed: ChannelsConfig = toml::from_str(&toml_str).unwrap();
@@ -1902,6 +2065,7 @@ channel_id = "C123"
                 app_secret: None,
                 allowed_numbers: vec!["+1".into()],
             }),
+            feishu: None,
         };
         let toml_str = toml::to_string_pretty(&c).unwrap();
         let parsed: ChannelsConfig = toml::from_str(&toml_str).unwrap();

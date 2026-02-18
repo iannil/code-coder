@@ -48,11 +48,11 @@ describe("E2E High: Skill System", () => {
       })
     })
 
-    test("should discover project skills from .ccode/skills", async () => {
+    test("should discover project skills from .codecoder/skills", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "my-project-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "my-project-skill")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -77,7 +77,7 @@ This skill does something specific to this project.
 
           expect(projectSkill).toBeDefined()
           expect(projectSkill!.description).toBe("A custom project skill for testing.")
-          expect(projectSkill!.location).toContain(".ccode/skills/my-project-skill/SKILL.md")
+          expect(projectSkill!.location).toContain(".codecoder/skills/my-project-skill/SKILL.md")
         },
       })
     })
@@ -162,7 +162,7 @@ This skill is available in all projects.
           // Create multiple skills
           const skills = ["alpha-skill", "beta-skill", "gamma-skill"]
           for (const skillName of skills) {
-            const skillDir = path.join(dir, ".ccode", "skills", skillName)
+            const skillDir = path.join(dir, ".codecoder", "skills", skillName)
             await fs.mkdir(skillDir, { recursive: true })
             await Bun.write(
               path.join(skillDir, "SKILL.md"),
@@ -200,7 +200,7 @@ Instructions for ${skillName}.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "loadable-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "loadable-skill")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -233,7 +233,7 @@ Instructions for the loadable skill.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "frontmatter-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "frontmatter-skill")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -278,7 +278,7 @@ This skill tests frontmatter parsing.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "mixed-test-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "mixed-test-skill")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -316,7 +316,7 @@ description: A skill for testing mixed skill lists.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "custom-workflow")
+          const skillDir = path.join(dir, ".codecoder", "skills", "custom-workflow")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -358,7 +358,7 @@ Call this skill when you need to perform the custom workflow.
         git: true,
         init: async (dir) => {
           // Create a skill with the same name as a builtin
-          const skillDir = path.join(dir, ".ccode", "skills", "commit")
+          const skillDir = path.join(dir, ".codecoder", "skills", "commit")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -393,7 +393,7 @@ This project-specific commit skill overrides the builtin one.
         git: true,
         init: async (dir) => {
           // Create a deeply nested skill
-          const skillDir = path.join(dir, ".ccode", "skills", "category", "subcategory", "nested-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "category", "subcategory", "nested-skill")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -428,7 +428,7 @@ This skill is nested in subdirectories.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "no-frontmatter")
+          const skillDir = path.join(dir, ".codecoder", "skills", "no-frontmatter")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -456,7 +456,7 @@ This skill has no YAML frontmatter and should be skipped.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "missing-fields")
+          const skillDir = path.join(dir, ".codecoder", "skills", "missing-fields")
           await fs.mkdir(skillDir, { recursive: true })
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
@@ -488,7 +488,7 @@ name: missing-fields
         git: true,
         init: async (dir) => {
           // Create empty skills directory
-          await fs.mkdir(path.join(dir, ".ccode", "skills"), { recursive: true })
+          await fs.mkdir(path.join(dir, ".codecoder", "skills"), { recursive: true })
         },
       })
 
@@ -529,8 +529,8 @@ name: missing-fields
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          // Create same skill in both .ccode and .claude directories
-          const ccodeSkillDir = path.join(dir, ".ccode", "skills", "duplicate-skill")
+          // Create same skill in both .codecoder and .claude directories
+          const ccodeSkillDir = path.join(dir, ".codecoder", "skills", "duplicate-skill")
           const claudeSkillDir = path.join(dir, ".claude", "skills", "duplicate-skill")
 
           await fs.mkdir(ccodeSkillDir, { recursive: true })
@@ -540,10 +540,10 @@ name: missing-fields
             path.join(ccodeSkillDir, "SKILL.md"),
             `---
 name: duplicate-skill
-description: Duplicate skill from .ccode.
+description: Duplicate skill from .codecoder.
 ---
 
-# Duplicate from .ccode
+# Duplicate from .codecoder
 `,
           )
 

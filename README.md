@@ -182,7 +182,7 @@ bun run --cwd packages/ccode build
 ### Configuration Locations (Priority Order)
 
 1. Global: `~/.config/codecoder/codecoder.json`
-2. Project: `./codecoder.json` or `./.ccode/codecoder.json`
+2. Project: `./codecoder.json` or `./.codecoder/codecoder.json`
 3. Environment: `CCODE_CONFIG` or `CCODE_CONFIG_CONTENT`
 
 ### Example Configuration

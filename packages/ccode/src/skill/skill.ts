@@ -87,10 +87,10 @@ export namespace Skill {
       await addSkill(match)
     }
 
-    // Scan .claude/skills/ and .ccode/skills/ directories (project-level)
+    // Scan .claude/skills/ and .codecoder/skills/ directories (project-level)
     const claudeDirs = await Array.fromAsync(
       Filesystem.up({
-        targets: [".claude", ".ccode"],
+        targets: [".claude", ".codecoder"],
         start: Instance.directory,
         stop: Instance.worktree,
       }),
@@ -122,7 +122,7 @@ export namespace Skill {
       }
     }
 
-    // Scan .ccode/skills/ directories
+    // Scan .codecoder/skills/ directories
     for (const dir of await Config.directories()) {
       for await (const match of CCODE_SKILL_GLOB.scan({
         cwd: dir,

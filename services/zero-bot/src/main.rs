@@ -16,6 +16,7 @@ use tracing_subscriber::FmtSubscriber;
 mod agent;
 mod channels;
 mod config;
+mod credential;
 mod cron;
 mod daemon;
 mod doctor;
@@ -35,6 +36,7 @@ mod session;
 mod skills;
 mod stt;
 mod tools;
+mod tts;
 mod tunnel;
 mod util;
 
@@ -167,6 +169,12 @@ enum Commands {
         skill_command: SkillCommands,
     },
 
+    /// Manage credentials (API keys, OAuth, login)
+    Credential {
+        #[command(subcommand)]
+        credential_command: CredentialCommands,
+    },
+
     /// Migrate data from other agent runtimes
     Migrate {
         #[command(subcommand)]
@@ -250,6 +258,52 @@ enum IntegrationCommands {
     Info {
         /// Integration name
         name: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum CredentialCommands {
+    /// List all credentials (without sensitive data)
+    List,
+    /// Add a new credential
+    Add {
+        /// Credential type: `api_key`, oauth, login, `bearer_token`
+        #[arg(short = 't', long)]
+        credential_type: String,
+        /// Service name (e.g., github, openai, google)
+        #[arg(short, long)]
+        service: String,
+        /// Human-readable name for the credential
+        #[arg(short, long)]
+        name: Option<String>,
+        /// API key or bearer token (for `api_key`/`bearer_token` types)
+        #[arg(short, long)]
+        key: Option<String>,
+        /// Username (for login type)
+        #[arg(long)]
+        username: Option<String>,
+        /// Password (for login type) - will prompt if not provided
+        #[arg(long)]
+        password: Option<String>,
+        /// OAuth client ID (for oauth type)
+        #[arg(long)]
+        client_id: Option<String>,
+        /// OAuth client secret (for oauth type)
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// URL patterns this credential applies to (comma-separated)
+        #[arg(short, long)]
+        patterns: Option<String>,
+    },
+    /// Remove a credential by ID
+    Remove {
+        /// Credential ID
+        id: String,
+    },
+    /// Show details of a specific credential
+    Show {
+        /// Credential ID or service name
+        id: String,
     },
 }
 
@@ -413,6 +467,10 @@ async fn main() -> Result<()> {
 
         Commands::Skills { skill_command } => {
             skills::handle_command(skill_command, &config.workspace_dir)
+        }
+
+        Commands::Credential { credential_command } => {
+            credential::handle_command(credential_command, &config)
         }
 
         Commands::Migrate { migrate_command } => {

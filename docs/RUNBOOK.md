@@ -40,7 +40,7 @@ docker build -t codecoder:latest .
 
 # 2. 运行容器 (独立网络)
 docker network create codecoder-net
-docker run --network codecoder-net -v ~/.ccode:/app/.ccode codecoder:latest
+docker run --network codecoder-net -v ~/.codecoder:/app/.codecoder codecoder:latest
 
 # 3. 发布文件夹
 # 固定在 /release 文件夹
@@ -69,16 +69,16 @@ git push origin v0.0.1
 ### 日志位置
 
 - 开发日志: 控制台输出
-- 用户日志: `~/.ccode/logs/` 或 `~/.codecoder/logs/`
+- 用户日志: `~/.codecoder/logs/` 或 `~/.codecoder/logs/`
 - 系统日志: 系统日志服务
-- 缓存目录: `~/.ccode/cache/` (包含版本标记)
-- 配置目录: `~/.ccode/` 或 `~/.codecoder/`
+- 缓存目录: `~/.codecoder/cache/` (包含版本标记)
+- 配置目录: `~/.codecoder/` 或 `~/.codecoder/`
 
 ### 数据目录结构
 
 ```
-~/.ccode/                    # 主配置目录
-~/.ccode/logs/               # 日志文件
+~/.codecoder/                    # 主配置目录
+~/.codecoder/logs/               # 日志文件
 ~/.local/share/ccode/        # XDG 数据目录
 ~/.local/share/ccode/bin/    # 可执行文件
 ~/.local/share/ccode/log/    # 运行时日志

@@ -462,6 +462,10 @@ export interface SessionListQuery {
 export interface SessionCreateInput {
   title?: string
   parentID?: string
+  projectID?: string
+  directory?: string
+  agent?: string
+  model?: string
 }
 
 export interface SessionMessagesQuery {
@@ -1051,4 +1055,99 @@ export interface TunnelStatus {
   latency?: number
   error?: string
   startedAt?: number
+}
+
+// ============================================================================
+// Project Types
+// ============================================================================
+
+export interface ProjectInfo {
+  id: string
+  worktree: string
+  name?: string
+  icon?: {
+    url?: string
+    override?: string
+    color?: string
+  }
+  vcs?: "git" | { branch?: string }
+  sandboxes: string[]
+  time: {
+    created: number
+    updated: number
+    initialized?: number
+  }
+}
+
+export interface ProjectCreateInput {
+  directory: string
+  name?: string
+}
+
+export interface DirectoryEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
+export interface DirectoryListResponse {
+  path: string
+  directories: DirectoryEntry[]
+  parent: string | null
+}
+
+// ============================================================================
+// Credential Types
+// ============================================================================
+
+export type CredentialType = "api_key" | "oauth" | "login" | "bearer_token"
+
+export interface OAuthCredential {
+  clientId: string
+  clientSecret?: string
+  accessToken?: string
+  refreshToken?: string
+  expiresAt?: number
+  scope?: string
+}
+
+export interface LoginCredential {
+  username: string
+  password: string
+  totpSecret?: string
+  sessionPath?: string
+  sessionUpdatedAt?: number
+}
+
+export interface CredentialEntry {
+  id: string
+  type: CredentialType
+  name: string
+  service: string
+  apiKey?: string
+  oauth?: OAuthCredential
+  login?: LoginCredential
+  patterns: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CredentialSummary {
+  id: string
+  type: CredentialType
+  name: string
+  service: string
+  patterns: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CredentialCreateInput {
+  type: CredentialType
+  name: string
+  service: string
+  apiKey?: string
+  oauth?: OAuthCredential
+  login?: LoginCredential
+  patterns: string[]
 }

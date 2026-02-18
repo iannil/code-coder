@@ -25,11 +25,11 @@ This skill is loaded from the global home directory.
   )
 }
 
-test("discovers skills from .ccode/skills/ directory", async () => {
+test("discovers skills from .codecoder/skills/ directory", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {
-      const skillDir = path.join(dir, ".ccode", "skills", "test-skill")
+      const skillDir = path.join(dir, ".codecoder", "skills", "test-skill")
       await Bun.write(
         path.join(skillDir, "SKILL.md"),
         `---
@@ -58,12 +58,12 @@ Instructions here.
   })
 })
 
-test("discovers multiple skills from .ccode/skills/ directory", async () => {
+test("discovers multiple skills from .codecoder/skills/ directory", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {
-      const skillDir1 = path.join(dir, ".ccode", "skills", "skill-one")
-      const skillDir2 = path.join(dir, ".ccode", "skills", "skill-two")
+      const skillDir1 = path.join(dir, ".codecoder", "skills", "skill-one")
+      const skillDir2 = path.join(dir, ".codecoder", "skills", "skill-two")
       await Bun.write(
         path.join(skillDir1, "SKILL.md"),
         `---
@@ -102,7 +102,7 @@ test("skips skills with missing frontmatter", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {
-      const skillDir = path.join(dir, ".ccode", "skills", "no-frontmatter")
+      const skillDir = path.join(dir, ".codecoder", "skills", "no-frontmatter")
       await Bun.write(
         path.join(skillDir, "SKILL.md"),
         `# No Frontmatter
@@ -153,16 +153,16 @@ description: A skill in the .claude/skills directory.
   })
 })
 
-test("discovers skills from .ccode/skills/ directory", async () => {
+test("discovers skills from .codecoder/skills/ directory", async () => {
   await using tmp = await tmpdir({
     git: true,
     init: async (dir) => {
-      const skillDir = path.join(dir, ".ccode", "skills", "ccode-skill")
+      const skillDir = path.join(dir, ".codecoder", "skills", "ccode-skill")
       await Bun.write(
         path.join(skillDir, "SKILL.md"),
         `---
 name: ccode-skill
-description: A skill in the .ccode/skills directory.
+description: A skill in the .codecoder/skills directory.
 ---
 
 # CCode Skill
@@ -178,7 +178,7 @@ description: A skill in the .ccode/skills directory.
       expect(skills.length).toBe(1 + BUILTIN_SKILL_COUNT)
       const ccodeSkill = skills.find((s) => s.name === "ccode-skill")
       expect(ccodeSkill).toBeDefined()
-      expect(ccodeSkill!.location).toContain(".ccode/skills/ccode-skill/SKILL.md")
+      expect(ccodeSkill!.location).toContain(".codecoder/skills/ccode-skill/SKILL.md")
     },
   })
 })

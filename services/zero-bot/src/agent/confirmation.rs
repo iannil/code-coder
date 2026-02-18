@@ -179,6 +179,122 @@ pub async fn handle_confirmation_response_with_type(request_id: &str, response: 
     }
 }
 
+/// Text input response for 2FA codes and other user input
+#[derive(Debug, Clone)]
+pub struct TextInputResponse {
+    pub text: String,
+}
+
+/// Global text input registry
+static TEXT_INPUT_REGISTRY: RwLock<Option<Arc<TextInputRegistry>>> = RwLock::const_new(None);
+
+/// Initialize the text input registry
+pub async fn init_text_input_registry() {
+    let mut guard = TEXT_INPUT_REGISTRY.write().await;
+    if guard.is_none() {
+        *guard = Some(Arc::new(TextInputRegistry::new()));
+    }
+}
+
+/// Get the global text input registry
+pub async fn get_text_input_registry() -> Option<Arc<TextInputRegistry>> {
+    TEXT_INPUT_REGISTRY.read().await.clone()
+}
+
+/// Request text input from user (e.g., 2FA codes)
+///
+/// This function:
+/// 1. Registers the request in the text input registry
+/// 2. Sends a message asking for text input
+/// 3. Waits for the user to reply with text
+/// 4. Returns the text response
+pub async fn request_text_input(
+    channel: &str,
+    user_id: &str,
+    message: &str,
+    timeout_secs: u64,
+) -> anyhow::Result<String> {
+    let registry = get_text_input_registry()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Text input registry not initialized"))?;
+
+    let sink = get_notification_sink()
+        .await
+        .ok_or_else(|| anyhow::anyhow!("Notification sink not initialized"))?;
+
+    // Generate unique request ID
+    let request_id = format!("txt_{}", uuid::Uuid::new_v4());
+
+    // Register the pending text input request
+    let rx = registry.register(request_id.clone()).await;
+
+    // Send the message asking for input
+    sink.send_notification(channel, user_id, message).await;
+
+    // Wait for user response with timeout
+    let timeout = Duration::from_secs(timeout_secs);
+
+    match tokio::time::timeout(timeout, rx).await {
+        Ok(Ok(response)) => Ok(response.text),
+        Ok(Err(_)) => Err(anyhow::anyhow!("Text input channel closed unexpectedly")),
+        Err(_) => {
+            // Timeout - clean up
+            registry.cleanup(&request_id).await;
+            Err(anyhow::anyhow!("Text input request timed out after {timeout_secs} seconds"))
+        }
+    }
+}
+
+/// Handle text input response from user
+pub async fn handle_text_input_response(request_id: &str, text: String) -> bool {
+    if let Some(registry) = get_text_input_registry().await {
+        registry.respond(request_id, TextInputResponse { text }).await
+    } else {
+        false
+    }
+}
+
+/// Registry for pending text input requests
+#[derive(Default)]
+pub struct TextInputRegistry {
+    pending: Mutex<HashMap<String, oneshot::Sender<TextInputResponse>>>,
+}
+
+impl TextInputRegistry {
+    pub fn new() -> Self {
+        Self {
+            pending: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Register a pending text input request
+    pub async fn register(&self, request_id: String) -> oneshot::Receiver<TextInputResponse> {
+        let (tx, rx) = oneshot::channel();
+        self.pending.lock().await.insert(request_id, tx);
+        rx
+    }
+
+    /// Respond to a pending text input request
+    pub async fn respond(&self, request_id: &str, response: TextInputResponse) -> bool {
+        if let Some(sender) = self.pending.lock().await.remove(request_id) {
+            let _ = sender.send(response);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Clean up a pending request
+    pub async fn cleanup(&self, request_id: &str) {
+        self.pending.lock().await.remove(request_id);
+    }
+
+    /// Check if a request is pending
+    pub async fn is_pending(&self, request_id: &str) -> bool {
+        self.pending.lock().await.contains_key(request_id)
+    }
+}
+
 /// Pending confirmation request
 pub struct PendingConfirmation {
     pub request_id: String,

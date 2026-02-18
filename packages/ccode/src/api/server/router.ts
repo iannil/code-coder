@@ -145,6 +145,7 @@ export async function registerRoutes(): Promise<void> {
     getSession,
     createSession,
     deleteSession,
+    updateSession,
     getSessionMessages,
     sendSessionMessage,
     getSessionChildren,
@@ -235,10 +236,34 @@ export async function registerRoutes(): Promise<void> {
   // Channel handlers (ZeroBot integration)
   const { listChannels, getChannel, checkChannelHealth } = await import("./handlers/channel")
 
+  // Directory handlers
+  const { listDirectories } = await import("./handlers/directory")
+
+  // Project handlers
+  const { listProjects, getProject, createProject, updateProject, deleteProject, getProjectSessions } = await import(
+    "./handlers/project"
+  )
+
+  // Credential handlers
+  const {
+    listCredentials,
+    getCredential,
+    addCredential,
+    updateCredential,
+    deleteCredential,
+    resolveCredential,
+    listSessions: listCredentialSessions,
+    getSession: getCredentialSession,
+    saveSession: saveCredentialSession,
+    clearSession: clearCredentialSession,
+    cleanupSessions: cleanupCredentialSessions,
+  } = await import("./handlers/credential")
+
   // Session routes
   router.get("/api/sessions", listSessions)
   router.get("/api/sessions/:id", getSession)
   router.post("/api/sessions", createSession)
+  router.patch("/api/sessions/:id", updateSession)
   router.delete("/api/sessions/:id", deleteSession)
   router.get("/api/sessions/:id/messages", getSessionMessages)
   router.post("/api/sessions/:id/messages", sendSessionMessage)
@@ -353,6 +378,30 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/channels", listChannels)
   router.get("/api/channels/:name", getChannel)
   router.post("/api/channels/:name/health", checkChannelHealth)
+
+  // Directory routes
+  router.get("/api/directories", listDirectories)
+
+  // Project routes
+  router.get("/api/projects", listProjects)
+  router.get("/api/projects/:id", getProject)
+  router.post("/api/projects", createProject)
+  router.patch("/api/projects/:id", updateProject)
+  router.delete("/api/projects/:id", deleteProject)
+  router.get("/api/projects/:id/sessions", getProjectSessions)
+
+  // Credential routes
+  router.get("/api/credentials", listCredentials)
+  router.get("/api/credentials/resolve", resolveCredential)
+  router.get("/api/credentials/sessions", listCredentialSessions)
+  router.post("/api/credentials/sessions/cleanup", cleanupCredentialSessions)
+  router.get("/api/credentials/:id", getCredential)
+  router.post("/api/credentials", addCredential)
+  router.put("/api/credentials/:id", updateCredential)
+  router.delete("/api/credentials/:id", deleteCredential)
+  router.get("/api/credentials/:id/session", getCredentialSession)
+  router.put("/api/credentials/:id/session", saveCredentialSession)
+  router.delete("/api/credentials/:id/session", clearCredentialSession)
 }
 
 // ============================================================================

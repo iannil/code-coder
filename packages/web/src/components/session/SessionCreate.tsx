@@ -4,7 +4,9 @@
  * Provides functionality for creating new sessions:
  * - New session button
  * - Title input dialog
+ * - Project selection
  * - Agent selection
+ * - Model selection
  */
 
 import * as React from "react"
@@ -25,7 +27,9 @@ import { Input } from "@/components/ui/Input"
 import { Label } from "@/components/ui/Label"
 import { useSessionStore } from "@/stores/session"
 import { useAgents } from "@/stores/agent"
-import type { AgentInfo } from "@/lib/types"
+import { useProjects, useProjectStore } from "@/stores/project"
+import { useProviders } from "@/stores/provider"
+import type { AgentInfo, ProjectInfo, ProviderModel } from "@/lib/types"
 
 // ============================================================================
 // Types
@@ -46,6 +50,9 @@ export interface SessionCreateProps {
 
   /** Trigger element (use DialogTrigger as child) */
   children?: React.ReactNode
+
+  /** Pre-selected project ID */
+  defaultProjectId?: string
 }
 
 // ============================================================================
@@ -68,6 +75,15 @@ function getAgentDisplayName(agent: AgentInfo): string {
   return agent.name ?? agent.id
 }
 
+/**
+ * Get project display name
+ */
+function getProjectDisplayName(project: ProjectInfo): string {
+  if (project.name) return project.name
+  const parts = project.worktree.split("/")
+  return parts[parts.length - 1] || project.worktree
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -80,30 +96,56 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
       size = "default",
       className,
       children,
+      defaultProjectId,
     },
     ref
   ) => {
     const [open, setOpen] = React.useState(false)
     const [title, setTitle] = React.useState(generateDefaultTitle())
+    const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(defaultProjectId ?? null)
     const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null)
+    const [selectedModel, setSelectedModel] = React.useState<string>("")
     const [isCreating, setIsCreating] = React.useState(false)
     const titleInputRef = React.useRef<HTMLInputElement>(null)
 
     const agents = useAgents()
+    const projects = useProjects()
+    const providers = useProviders()
     const createSession = useSessionStore((s) => s.createSession)
+    const loadProjects = useProjectStore((s) => s.loadProjects)
+
+    // Load projects when dialog opens
+    React.useEffect(() => {
+      if (open && projects.length === 0) {
+        loadProjects()
+      }
+    }, [open, projects.length, loadProjects])
+
+    // Get all available models from providers
+    const allModels = React.useMemo(() => {
+      const models: Array<{ providerId: string; model: ProviderModel }> = []
+      for (const provider of providers) {
+        for (const model of Object.values(provider.models)) {
+          models.push({ providerId: provider.id, model })
+        }
+      }
+      return models
+    }, [providers])
 
     // Reset form when dialog opens
     React.useEffect(() => {
       if (open) {
         setTitle(generateDefaultTitle())
+        setSelectedProjectId(defaultProjectId ?? null)
         setSelectedAgentId(null)
+        setSelectedModel("")
         // Focus input after a small delay to ensure dialog is rendered
         setTimeout(() => {
           titleInputRef.current?.focus()
           titleInputRef.current?.select()
         }, 50)
       }
-    }, [open])
+    }, [open, defaultProjectId])
 
     // Handle create session
     const handleCreate = async (e: React.FormEvent) => {
@@ -115,13 +157,14 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
       try {
         const session = await createSession({
           title: finalTitle,
-          // parentID can be added here if needed
+          projectID: selectedProjectId ?? undefined,
+          agent: selectedAgentId ?? undefined,
+          model: selectedModel || undefined,
         })
 
         setOpen(false)
         onCreate?.(session.id)
       } catch (error) {
-        console.error("Failed to create session:", error)
         // Dialog stays open on error to show the issue
       } finally {
         setIsCreating(false)
@@ -137,7 +180,7 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
         })
         onCreate?.(session.id)
       } catch (error) {
-        console.error("Failed to create session:", error)
+        // Silent fail for quick create
       } finally {
         setIsCreating(false)
       }
@@ -176,7 +219,7 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
                 Create New Session
               </DialogTitle>
               <DialogDescription>
-                Start a new conversation. You can optionally provide a title and select an agent.
+                Start a new conversation. Configure the session settings below.
               </DialogDescription>
             </DialogHeader>
 
@@ -193,10 +236,31 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
                   onKeyDown={handleKeyDown}
                   disabled={isCreating}
                 />
-                <p className="text-xs text-muted-foreground">
-                  A descriptive title helps you organize your sessions.
-                </p>
               </div>
+
+              {/* Project Selection */}
+              {projects.length > 0 && (
+                <div className="grid gap-2">
+                  <Label htmlFor="project-select">Project</Label>
+                  <select
+                    id="project-select"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={selectedProjectId ?? ""}
+                    onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                    disabled={isCreating}
+                  >
+                    <option value="">Current Project</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {getProjectDisplayName(project)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Associate the session with a project.
+                  </p>
+                </div>
+              )}
 
               {/* Agent Selection */}
               {agents.length > 0 && (
@@ -218,6 +282,30 @@ export const SessionCreate = React.forwardRef<HTMLButtonElement, SessionCreatePr
                   </select>
                   <p className="text-xs text-muted-foreground">
                     Select an agent to specialize the session behavior.
+                  </p>
+                </div>
+              )}
+
+              {/* Model Selection */}
+              {allModels.length > 0 && (
+                <div className="grid gap-2">
+                  <Label htmlFor="model-select">Model</Label>
+                  <select
+                    id="model-select"
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    disabled={isCreating}
+                  >
+                    <option value="">Default Model</option>
+                    {allModels.map(({ providerId, model }) => (
+                      <option key={`${providerId}:${model.id}`} value={`${providerId}:${model.id}`}>
+                        {model.name || model.id} ({providerId})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose the AI model to use for this session.
                   </p>
                 </div>
               )}

@@ -17,17 +17,22 @@ import { jsonResponse, errorResponse } from "../middleware"
 export async function findFiles(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
     const url = req.url
-    const query = url.searchParams.get("q")
-
-    if (!query) {
-      return jsonResponse({
-        success: true,
-        data: [],
-      })
-    }
+    const query = url.searchParams.get("q") ?? undefined
 
     const { LocalFind } = await import("../../../api")
-    const files = await LocalFind.files({ query })
+    const filePaths = await LocalFind.files({ query })
+
+    // Convert paths to FileInfo objects
+    const files = filePaths.map((filePath) => {
+      const name = filePath.split("/").pop() ?? filePath
+      const ext = name.includes(".") ? name.split(".").pop() : undefined
+      return {
+        path: filePath,
+        name,
+        type: ext ? "file" : "unknown",
+        extension: ext,
+      }
+    })
 
     return jsonResponse({
       success: true,

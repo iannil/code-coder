@@ -5,6 +5,7 @@
  * - Complete session list with search/filter
  * - Create/delete session functionality
  * - Navigation to individual sessions
+ * - Rename session dialog
  */
 
 import * as React from "react"
@@ -13,6 +14,15 @@ import { MessageSquare, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent } from "@/components/ui/Card"
+import { Input } from "@/components/ui/Input"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/Dialog"
 import { SessionList } from "@/components/session/SessionList"
 import { useSessionStore, useSessions, useSessionsLoading } from "@/stores/session"
 import { useToast } from "@/hooks/use-toast"
@@ -93,8 +103,14 @@ export function Sessions() {
   const navigate = useNavigate()
   const sessions = useSessions()
   const { isLoaded, isCreating } = useSessionsLoading()
-  const { createSession, deleteSession, loadSessions } = useSessionStore()
+  const { createSession, deleteSession, renameSession, loadSessions } = useSessionStore()
   const { toast } = useToast()
+
+  // Rename dialog state
+  const [renameDialogOpen, setRenameDialogOpen] = React.useState(false)
+  const [renameSessionId, setRenameSessionId] = React.useState<string | null>(null)
+  const [renameTitle, setRenameTitle] = React.useState("")
+  const [isRenaming, setIsRenaming] = React.useState(false)
 
   // Load sessions on mount
   React.useEffect(() => {
@@ -139,8 +155,42 @@ export function Sessions() {
   }
 
   const handleSessionRename = (sessionId: string) => {
-    // TODO: Implement rename dialog
-    console.log("Rename session:", sessionId)
+    const session = sessions.find((s) => s.id === sessionId)
+    if (session) {
+      setRenameSessionId(sessionId)
+      setRenameTitle(session.title)
+      setRenameDialogOpen(true)
+    }
+  }
+
+  const handleRenameSubmit = async () => {
+    if (!renameSessionId || !renameTitle.trim()) return
+
+    setIsRenaming(true)
+    try {
+      await renameSession(renameSessionId, renameTitle.trim())
+      setRenameDialogOpen(false)
+      setRenameSessionId(null)
+      setRenameTitle("")
+      toast({
+        title: "Session renamed",
+        description: "The session has been renamed.",
+      })
+    } catch {
+      toast({
+        title: "Failed to rename session",
+        description: "An error occurred. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsRenaming(false)
+    }
+  }
+
+  const handleRenameCancel = () => {
+    setRenameDialogOpen(false)
+    setRenameSessionId(null)
+    setRenameTitle("")
   }
 
   // Show empty state if no sessions after loading
@@ -170,6 +220,37 @@ export function Sessions() {
         onSessionRename={handleSessionRename}
         className="flex-1"
       />
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Session</DialogTitle>
+            <DialogDescription>Enter a new name for this session.</DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Input
+              value={renameTitle}
+              onChange={(e) => setRenameTitle(e.target.value)}
+              placeholder="Session name"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isRenaming) {
+                  handleRenameSubmit()
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleRenameCancel} disabled={isRenaming}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit} disabled={isRenaming || !renameTitle.trim()}>
+              {isRenaming ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

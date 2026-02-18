@@ -37,8 +37,16 @@ interface SessionActions {
   // Session management
   loadSessions: () => Promise<void>
   setActiveSession: (sessionId: string | null) => void
-  createSession: (input?: { title?: string; parentID?: string }) => Promise<SessionInfo>
+  createSession: (input?: {
+    title?: string
+    parentID?: string
+    projectID?: string
+    directory?: string
+    agent?: string
+    model?: string
+  }) => Promise<SessionInfo>
   deleteSession: (sessionId: string) => Promise<void>
+  renameSession: (sessionId: string, title: string) => Promise<void>
   refreshSession: (sessionId: string) => Promise<void>
 
   // State management
@@ -168,6 +176,24 @@ const useSessionStoreBase = create<SessionStore>()(
           set((state) => {
             state.isDeleting.delete(sessionId)
             state.error = error instanceof Error ? error.message : "Failed to delete session"
+          })
+          throw error
+        }
+      },
+
+      /**
+       * Rename a session by ID
+       */
+      renameSession: async (sessionId, title) => {
+        try {
+          const session = await api.updateSession(sessionId, { title })
+
+          set((state) => {
+            state.sessions.set(sessionId, session)
+          })
+        } catch (error) {
+          set((state) => {
+            state.error = error instanceof Error ? error.message : "Failed to rename session"
           })
           throw error
         }

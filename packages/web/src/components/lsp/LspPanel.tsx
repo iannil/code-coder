@@ -32,8 +32,8 @@ import {
   useLspStatusLoading,
   useLspDiagnostics,
   useLspConfig,
-  useConnectedServers,
-  useErrorServers,
+  useConnectedServersCount,
+  useErrorServersCount,
   useTotalDiagnostics,
 } from "@/stores"
 
@@ -84,8 +84,8 @@ function SeverityBadge({ severity }: { severity: 1 | 2 | 3 | 4 }) {
 function ServerStatus() {
   const servers = useLspServers()
   const isLoading = useLspStatusLoading()
-  const connectedCount = useConnectedServers().length
-  const errorCount = useErrorServers().length
+  const connectedCount = useConnectedServersCount()
+  const errorCount = useErrorServersCount()
   const fetchStatus = useLspStore((s) => s.fetchStatus)
   const initLsp = useLspStore((s) => s.initLsp)
 

@@ -6,7 +6,7 @@ CodeCoder supports the [Model Context Protocol (MCP)](https://modelcontextprotoc
 
 ## Configuration
 
-MCP servers are configured in your `~/.ccode/config.jsonc` (or `~/.codecoder/config.jsonc`) file.
+MCP servers are configured in your `~/.codecoder/config.jsonc` file.
 
 ### Configuration Structure
 

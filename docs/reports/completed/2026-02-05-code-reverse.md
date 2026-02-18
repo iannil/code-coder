@@ -75,7 +75,7 @@ Registered the new tool in the tool registry.
 Implemented report generation with:
 - Markdown report generation
 - TUI data structure generation
-- File saving to `~/.ccode/data/reports/reverse/`
+- File saving to `~/.codecoder/data/reports/reverse/`
 - Report parsing from LLM responses
 - Automatic filename generation
 

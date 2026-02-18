@@ -719,11 +719,11 @@ describe("Power User Lifecycle - ULC-PU", () => {
   })
 
   describe("ULC-PU-HOOK-001: Hook configuration loading", () => {
-    test("should load hooks from .ccode/hooks directory", async () => {
+    test("should load hooks from .codecoder/hooks directory", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -816,7 +816,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -863,7 +863,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -909,7 +909,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -958,7 +958,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -1003,7 +1003,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -1049,7 +1049,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -1093,7 +1093,7 @@ describe("Power User Lifecycle - ULC-PU", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({

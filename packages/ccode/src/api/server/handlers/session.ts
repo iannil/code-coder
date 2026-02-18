@@ -90,9 +90,18 @@ export async function getSession(_req: HttpRequest, params: RouteParams): Promis
 export async function createSession(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
     const body = await readRequestBody(req.body)
-    const input = JSON.parse(body) as { title?: string; parentID?: string }
+    const input = JSON.parse(body) as {
+      title?: string
+      parentID?: string
+      projectID?: string
+      directory?: string
+      agent?: string
+      model?: string
+    }
 
     const { LocalSession } = await import("../../../api")
+
+    // Create session with the provided parameters
     const session = await LocalSession.create({
       title: input.title,
       parentID: input.parentID,
@@ -131,6 +140,40 @@ export async function deleteSession(_req: HttpRequest, params: RouteParams): Pro
       },
       200,
     )
+  } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error), 500)
+  }
+}
+
+/**
+ * PATCH /api/sessions/:id
+ * Update a session (rename)
+ */
+export async function updateSession(req: HttpRequest, params: RouteParams): Promise<HttpResponse> {
+  try {
+    const { id } = params
+
+    if (!id) {
+      return errorResponse("Session ID is required", 400)
+    }
+
+    const body = await readRequestBody(req.body)
+    const input = JSON.parse(body) as { title?: string }
+
+    if (!input.title) {
+      return errorResponse("title is required", 400)
+    }
+
+    const { LocalSession } = await import("../../../api")
+    const session = await LocalSession.rename({
+      sessionID: id,
+      title: input.title,
+    })
+
+    return jsonResponse({
+      success: true,
+      data: session,
+    })
   } catch (error) {
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }

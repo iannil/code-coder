@@ -82,11 +82,11 @@ describe("Hook", () => {
       })
     })
 
-    test("should load hooks from .ccode directory and block on pattern match", async () => {
+    test("should load hooks from .codecoder directory and block on pattern match", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -129,7 +129,7 @@ describe("Hook", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -171,7 +171,7 @@ describe("Hook", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -213,7 +213,7 @@ describe("Hook", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({

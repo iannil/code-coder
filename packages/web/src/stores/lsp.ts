@@ -8,6 +8,7 @@
  */
 
 import { create } from "zustand"
+import { useShallow } from "zustand/react/shallow"
 import type {
   LspStatus,
   LspFileDiagnostics,
@@ -227,12 +228,23 @@ export const useReferences = () => useLspStore((state) => state.references)
 export const useWorkspaceSymbols = () => useLspStore((state) => state.workspaceSymbols)
 export const useDocumentSymbols = () => useLspStore((state) => state.documentSymbols)
 
-// Computed selectors
+// Computed selectors with stable references
 export const useConnectedServers = () =>
-  useLspStore((state) => state.servers.filter((s) => s.status === "connected"))
+  useLspStore(
+    useShallow((state) => state.servers.filter((s) => s.status === "connected"))
+  )
 
 export const useErrorServers = () =>
-  useLspStore((state) => state.servers.filter((s) => s.status === "error"))
+  useLspStore(
+    useShallow((state) => state.servers.filter((s) => s.status === "error"))
+  )
+
+// Count selectors (primitive values, no need for useShallow)
+export const useConnectedServersCount = () =>
+  useLspStore((state) => state.servers.filter((s) => s.status === "connected").length)
+
+export const useErrorServersCount = () =>
+  useLspStore((state) => state.servers.filter((s) => s.status === "error").length)
 
 export const useTotalDiagnostics = () =>
   useLspStore((state) =>
@@ -240,10 +252,12 @@ export const useTotalDiagnostics = () =>
   )
 
 export const useErrorDiagnostics = () =>
-  useLspStore((state) =>
-    state.diagnostics.flatMap((file) =>
-      file.diagnostics
-        .filter((d) => d.severity === 1)
-        .map((d) => ({ ...d, filePath: file.filePath }))
+  useLspStore(
+    useShallow((state) =>
+      state.diagnostics.flatMap((file) =>
+        file.diagnostics
+          .filter((d) => d.severity === 1)
+          .map((d) => ({ ...d, filePath: file.filePath }))
+      )
     )
   )

@@ -55,7 +55,16 @@ pub async fn run(
     tracing::info!(backend = mem.name(), "Memory initialized");
 
     // ── Tools (including memory tools) ────────────────────────────
-    let _tools = tools::all_tools(&security, mem.clone(), &config.browser, &config.codecoder);
+    let vault_path = config.config_path.parent()
+        .map_or_else(|| config.workspace_dir.clone(), std::path::Path::to_path_buf);
+    let _tools = tools::all_tools(
+        &security,
+        mem.clone(),
+        &config.browser,
+        &config.codecoder,
+        &config.vault,
+        &vault_path,
+    );
 
     // ── Resolve provider ─────────────────────────────────────────
     let provider_name = provider_override

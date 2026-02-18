@@ -112,6 +112,16 @@ const documentsRoute = createRoute({
 })
 
 // ============================================================================
+// Projects Route
+// ============================================================================
+
+const projectsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/projects",
+  component: lazyRouteComponent(() => import("./pages/Projects"), "Projects"),
+})
+
+// ============================================================================
 // Tasks Route
 // ============================================================================
 
@@ -131,6 +141,7 @@ const routeTree = rootRoute.addChildren([
   settingsRoute,
   filesRoute,
   documentsRoute,
+  projectsRoute,
   tasksRoute,
   agentsRoute,
   memoryRoute,

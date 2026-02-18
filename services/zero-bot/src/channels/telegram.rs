@@ -612,6 +612,42 @@ impl TelegramChannel {
         Ok(())
     }
 
+    /// Send a voice message from bytes (in-memory) to a Telegram chat.
+    ///
+    /// This is useful for TTS output that generates audio bytes directly.
+    pub async fn send_voice_bytes(
+        &self,
+        chat_id: &str,
+        file_bytes: Vec<u8>,
+        file_name: &str,
+        caption: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let part = Part::bytes(file_bytes).file_name(file_name.to_string());
+
+        let mut form = Form::new()
+            .text("chat_id", chat_id.to_string())
+            .part("voice", part);
+
+        if let Some(cap) = caption {
+            form = form.text("caption", cap.to_string());
+        }
+
+        let resp = self
+            .client
+            .post(self.api_url("sendVoice"))
+            .multipart(form)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram sendVoice (bytes) failed: {err}");
+        }
+
+        tracing::info!("Telegram voice (bytes) sent to {chat_id}: {file_name}");
+        Ok(())
+    }
+
     /// Send a file by URL (Telegram will download it)
     pub async fn send_document_by_url(
         &self,

@@ -5,7 +5,7 @@
 
 ## 概述
 
-将 ZeroBot 配置合并到 CodeCoder 配置文件中，实现配置统一管理。用户只需在 `~/.ccode/codecoder.json` 中配置 API keys 和其他设置，ZeroBot 即可自动读取并使用。
+将 ZeroBot 配置合并到 CodeCoder 配置文件中，实现配置统一管理。用户只需在 `~/.codecoder/codecoder.json` 中配置 API keys 和其他设置，ZeroBot 即可自动读取并使用。
 
 ## 修改内容
 
@@ -51,7 +51,7 @@
    - 与 CodeCoder 保持一致
 
 4. **配置加载**: `load_from_codecoder()` 方法
-   - 尝试读取 `~/.ccode/codecoder.json`、`codecoder.jsonc`、`config.json`
+   - 尝试读取 `~/.codecoder/codecoder.json`、`codecoder.jsonc`、`config.json`
    - 从 `provider` 节提取 API key
    - 转换为 ZeroBot 配置结构
 
@@ -132,7 +132,7 @@
 
 ## 迁移指南
 
-用户可以将现有的 `~/.codecoder/config.toml` 配置迁移到 `~/.ccode/codecoder.json`:
+用户可以将现有的 `~/.codecoder/config.toml` 配置迁移到 `~/.codecoder/codecoder.json`:
 
 1. 在 `codecoder.json` 中添加 `zerobot` 节
 2. 将 API keys 移至 `provider` 节

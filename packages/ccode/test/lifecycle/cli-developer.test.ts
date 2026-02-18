@@ -1231,11 +1231,11 @@ describe("CLI Developer Lifecycle - ULC-CD", () => {
   })
 
   describe("ULC-CD-SKILL-002: Skill discovery from project", () => {
-    test("should discover skills from .ccode/skills directory", async () => {
+    test("should discover skills from .codecoder/skills directory", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "custom-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "custom-skill")
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
             `---
@@ -1266,7 +1266,7 @@ Instructions here.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "invalid-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "invalid-skill")
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
             `# No Frontmatter
@@ -1293,13 +1293,13 @@ Just content without YAML frontmatter.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          // Create skills in .ccode/skills
-          const ccodeSkillDir = path.join(dir, ".ccode", "skills", "ccode-skill")
+          // Create skills in .codecoder/skills
+          const ccodeSkillDir = path.join(dir, ".codecoder", "skills", "ccode-skill")
           await Bun.write(
             path.join(ccodeSkillDir, "SKILL.md"),
             `---
 name: ccode-skill
-description: Skill from .ccode directory.
+description: Skill from .codecoder directory.
 ---
 
 # CCode Skill
@@ -1340,7 +1340,7 @@ description: Skill from .claude directory.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "my-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "my-skill")
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
             `---
@@ -1404,7 +1404,7 @@ Do something useful.
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const skillDir = path.join(dir, ".ccode", "skills", "located-skill")
+          const skillDir = path.join(dir, ".codecoder", "skills", "located-skill")
           await Bun.write(
             path.join(skillDir, "SKILL.md"),
             `---

@@ -89,7 +89,7 @@
 <text x="1628.8625" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;User Input&quot;</text>
 <text x="1792.1125" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;File Attachments&quot;</text>
 <text x="1976.8125000000002" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;MCP Tool Results&quot;</text>
-<text x="314.9000000000002" y="270" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;~/.ccode/codecoder.jsonc&quot;</text>
+<text x="314.9000000000002" y="270" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;~/.codecoder/codecoder.jsonc&quot;</text>
 <text x="145.9250000000001" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;./codecoder.jsonc&quot;</text>
 <text x="352.07500000000016" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Environment Variables&quot;</text>
 <text x="543.9250000000002" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;rules/**/*.md&quot;</text>

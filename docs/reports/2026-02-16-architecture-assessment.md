@@ -431,7 +431,7 @@ read: {
 ┌─────────────────────────────────────────────────┐
 │ 优先级 (从低到高)                                 │
 ├─────────────────────────────────────────────────┤
-│ 1. 全局配置 (~/.ccode/codecoder.jsonc)           │
+│ 1. 全局配置 (~/.codecoder/codecoder.jsonc)           │
 │ 2. 自定义路径 (CCODE_CONFIG 环境变量)            │
 │ 3. 项目配置 (./codecoder.jsonc)                 │
 │ 4. 内联配置 (CCODE_CONFIG_CONTENT)              │
@@ -626,7 +626,7 @@ SystemPrompt.markdownMemory()       // 记忆层内容
 ### 17.1 Agent 扩展
 
 ```
-~/.ccode/agents/my-agent.md
+~/.codecoder/agents/my-agent.md
 ---
 description: "自定义 Agent"
 model: anthropic/claude-sonnet-4-20250514
@@ -638,7 +638,7 @@ temperature: 0.7
 ### 17.2 命令扩展
 
 ```
-~/.ccode/commands/my-command.md
+~/.codecoder/commands/my-command.md
 ---
 description: "自定义命令"
 agent: build

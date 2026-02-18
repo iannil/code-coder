@@ -1,8 +1,10 @@
 pub mod schema;
 
+#[allow(unused_imports)]
 pub use schema::{
     AutonomyConfig, BrowserConfig, ChannelsConfig, CodeCoderConfig, Config,
-    DiscordConfig, GatewayConfig, HeartbeatConfig, IMessageConfig, IdentityConfig, MatrixConfig,
-    MemoryConfig, ObservabilityConfig, ReliabilityConfig, RuntimeConfig, SecretsConfig,
-    SessionConfig, SlackConfig, TelegramConfig, TunnelConfig, WebhookConfig,
+    DiscordConfig, FeishuConfig, GatewayConfig, HeartbeatConfig, IMessageConfig, IdentityConfig,
+    MatrixConfig, MemoryConfig, ObservabilityConfig, ReliabilityConfig, RuntimeConfig,
+    SecretsConfig, SessionConfig, SlackConfig, TelegramConfig, TtsConfig, TunnelConfig,
+    VaultConfig, VoiceWakeConfig, WebhookConfig,
 };

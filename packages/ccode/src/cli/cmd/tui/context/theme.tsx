@@ -397,7 +397,7 @@ async function getCustomThemes() {
     Global.Path.config,
     ...(await Array.fromAsync(
       Filesystem.up({
-        targets: [".ccode"],
+        targets: [".codecoder"],
         start: process.cwd(),
       }),
     )),

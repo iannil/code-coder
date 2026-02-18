@@ -52,6 +52,14 @@ import type {
   InteractTaskInput,
   // Channel Types
   ChannelStatus,
+  // Project Types
+  ProjectInfo,
+  ProjectCreateInput,
+  DirectoryListResponse,
+  // Credential Types
+  CredentialSummary,
+  CredentialEntry,
+  CredentialCreateInput,
 } from "./types"
 
 // ============================================================================
@@ -210,6 +218,10 @@ export class ApiClient {
     return this.request<T>("DELETE", path, undefined, options)
   }
 
+  private patch<T>(path: string, body?: unknown, options?: RequestInit): Promise<T> {
+    return this.request<T>("PATCH", path, body, options)
+  }
+
   // ========================================================================
   // Health Check
   // ========================================================================
@@ -263,6 +275,13 @@ export class ApiClient {
    */
   async deleteSession(id: string): Promise<void> {
     return this.delete<void>(`/sessions/${id}`)
+  }
+
+  /**
+   * Update a session (rename)
+   */
+  async updateSession(id: string, input: { title: string }): Promise<SessionInfo> {
+    return this.patch<SessionInfo>(`/sessions/${id}`, input)
   }
 
   /**
@@ -912,6 +931,109 @@ export class ApiClient {
   async checkChannelHealth(name: string): Promise<ChannelStatus> {
     return this.post<ChannelStatus>(`/channels/${name}/health`)
   }
+
+  // ========================================================================
+  // Directories
+  // ========================================================================
+
+  /**
+   * List directories at a path
+   */
+  async listDirectories(path?: string): Promise<DirectoryListResponse> {
+    const params = new URLSearchParams()
+    if (path) params.append("path", path)
+    const queryString = params.toString()
+    const apiPath = queryString ? `/directories?${queryString}` : "/directories"
+    return this.get<DirectoryListResponse>(apiPath)
+  }
+
+  // ========================================================================
+  // Projects
+  // ========================================================================
+
+  /**
+   * List all projects
+   */
+  async listProjects(): Promise<ProjectInfo[]> {
+    return this.get<ProjectInfo[]>("/projects")
+  }
+
+  /**
+   * Get a specific project
+   */
+  async getProject(id: string): Promise<ProjectInfo> {
+    return this.get<ProjectInfo>(`/projects/${id}`)
+  }
+
+  /**
+   * Create a new project
+   */
+  async createProject(input: ProjectCreateInput): Promise<ProjectInfo> {
+    return this.post<ProjectInfo>("/projects", input)
+  }
+
+  /**
+   * Update a project
+   */
+  async updateProject(
+    id: string,
+    input: { name?: string; icon?: { url?: string; override?: string; color?: string } },
+  ): Promise<ProjectInfo> {
+    return this.patch<ProjectInfo>(`/projects/${id}`, input)
+  }
+
+  /**
+   * Delete a project
+   */
+  async deleteProject(id: string): Promise<void> {
+    return this.delete<void>(`/projects/${id}`)
+  }
+
+  /**
+   * Get sessions for a project
+   */
+  async getProjectSessions(id: string): Promise<SessionInfo[]> {
+    return this.get<SessionInfo[]>(`/projects/${id}/sessions`)
+  }
+
+  // ========================================================================
+  // Credentials
+  // ========================================================================
+
+  /**
+   * List all credentials (without sensitive data)
+   */
+  async listCredentials(): Promise<CredentialSummary[]> {
+    return this.get<CredentialSummary[]>("/credentials")
+  }
+
+  /**
+   * Get a specific credential (includes sensitive data)
+   */
+  async getCredential(id: string): Promise<CredentialEntry> {
+    return this.get<CredentialEntry>(`/credentials/${id}`)
+  }
+
+  /**
+   * Add a new credential
+   */
+  async addCredential(input: CredentialCreateInput): Promise<{ id: string }> {
+    return this.post<{ id: string }>("/credentials", input)
+  }
+
+  /**
+   * Update an existing credential
+   */
+  async updateCredential(id: string, input: Partial<CredentialCreateInput>): Promise<void> {
+    return this.put<void>(`/credentials/${id}`, input)
+  }
+
+  /**
+   * Delete a credential
+   */
+  async deleteCredential(id: string): Promise<void> {
+    return this.delete<void>(`/credentials/${id}`)
+  }
 }
 
 // ============================================================================
@@ -942,6 +1064,7 @@ export const api = {
   getSession: (id: string) => getClient().getSession(id),
   createSession: (input: SessionCreateInput) => getClient().createSession(input),
   deleteSession: (id: string) => getClient().deleteSession(id),
+  updateSession: (id: string, input: { title: string }) => getClient().updateSession(id, input),
   getSessionChildren: (id: string) => getClient().getSessionChildren(id),
   forkSession: (id: string, input?: { messageID?: string }) => getClient().forkSession(id, input),
   getSessionMessages: (id: string, query?: SessionMessagesQuery) => getClient().getSessionMessages(id, query),
@@ -1047,4 +1170,20 @@ export const api = {
   listChannels: () => getClient().listChannels(),
   getChannel: (name: string) => getClient().getChannel(name),
   checkChannelHealth: (name: string) => getClient().checkChannelHealth(name),
+  // Directory APIs
+  listDirectories: (path?: string) => getClient().listDirectories(path),
+  // Project APIs
+  listProjects: () => getClient().listProjects(),
+  getProject: (id: string) => getClient().getProject(id),
+  createProject: (input: ProjectCreateInput) => getClient().createProject(input),
+  updateProject: (id: string, input: { name?: string; icon?: { url?: string; override?: string; color?: string } }) =>
+    getClient().updateProject(id, input),
+  deleteProject: (id: string) => getClient().deleteProject(id),
+  getProjectSessions: (id: string) => getClient().getProjectSessions(id),
+  // Credential APIs
+  listCredentials: () => getClient().listCredentials(),
+  getCredential: (id: string) => getClient().getCredential(id),
+  addCredential: (input: CredentialCreateInput) => getClient().addCredential(input),
+  updateCredential: (id: string, input: Partial<CredentialCreateInput>) => getClient().updateCredential(id, input),
+  deleteCredential: (id: string) => getClient().deleteCredential(id),
 }

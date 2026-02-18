@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod discord;
 pub mod email_channel;
+pub mod feishu;
 pub mod imessage;
 pub mod matrix;
 pub mod slack;
@@ -10,6 +11,7 @@ pub mod whatsapp;
 
 pub use cli::CliChannel;
 pub use discord::DiscordChannel;
+pub use feishu::FeishuChannel;
 pub use imessage::IMessageChannel;
 pub use matrix::MatrixChannel;
 pub use slack::SlackChannel;
@@ -471,6 +473,7 @@ pub fn handle_command(command: crate::ChannelCommands, config: &Config) -> Resul
                 ("iMessage", config.channels_config.imessage.is_some()),
                 ("Matrix", config.channels_config.matrix.is_some()),
                 ("WhatsApp", config.channels_config.whatsapp.is_some()),
+                ("Feishu", config.channels_config.feishu.is_some()),
             ] {
                 println!("  {} {name}", if configured { "✅" } else { "❌" });
             }
@@ -511,6 +514,7 @@ fn classify_health_result(
 }
 
 /// Run health checks for configured channels.
+#[allow(clippy::too_many_lines)]
 pub async fn doctor_channels(config: Config) -> Result<()> {
     let mut channels: Vec<(&'static str, Arc<dyn Channel>)> = Vec::new();
 
@@ -574,6 +578,19 @@ pub async fn doctor_channels(config: Config) -> Result<()> {
                 wa.phone_number_id.clone(),
                 wa.verify_token.clone(),
                 wa.allowed_numbers.clone(),
+            )),
+        ));
+    }
+
+    if let Some(ref fs) = config.channels_config.feishu {
+        channels.push((
+            "Feishu",
+            Arc::new(FeishuChannel::with_encryption(
+                fs.app_id.clone(),
+                fs.app_secret.clone(),
+                fs.encrypt_key.clone(),
+                fs.verification_token.clone(),
+                fs.allowed_users.clone(),
             )),
         ));
     }
@@ -677,11 +694,15 @@ pub async fn start_channels(config: Config) -> Result<()> {
     ));
 
     // Create actual tools for execution
+    let vault_path = config.config_path.parent()
+        .map_or_else(|| config.workspace_dir.clone(), std::path::Path::to_path_buf);
     let tool_instances = tools::all_tools(
         &security,
         mem.clone(),
         &config.browser,
         &config.codecoder,
+        &config.vault,
+        &vault_path,
     );
 
     // Build system prompt from workspace identity files + skills
@@ -877,6 +898,16 @@ pub async fn start_channels(config: Config) -> Result<()> {
             wa.phone_number_id.clone(),
             wa.verify_token.clone(),
             wa.allowed_numbers.clone(),
+        )));
+    }
+
+    if let Some(ref fs) = config.channels_config.feishu {
+        channels.push(Arc::new(FeishuChannel::with_encryption(
+            fs.app_id.clone(),
+            fs.app_secret.clone(),
+            fs.encrypt_key.clone(),
+            fs.verification_token.clone(),
+            fs.allowed_users.clone(),
         )));
     }
 

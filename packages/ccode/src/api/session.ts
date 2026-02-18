@@ -71,6 +71,19 @@ export namespace LocalSession {
 
   export const remove = fn(Session.remove.schema, Session.remove)
 
+  export const rename = fn(
+    z.object({
+      sessionID: Session.Info.shape.id,
+      title: Session.Info.shape.title,
+    }),
+    async (input) => {
+      await Session.update(input.sessionID, (draft) => {
+        draft.title = input.title
+      })
+      return Session.get(input.sessionID)
+    },
+  )
+
   export const compact = async (sessionID: string) => {
     await SessionCompaction.prune({ sessionID })
     return true

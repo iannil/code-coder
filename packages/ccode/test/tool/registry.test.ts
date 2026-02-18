@@ -6,10 +6,10 @@ import { Instance } from "../../src/project/instance"
 import { ToolRegistry } from "../../src/tool/registry"
 
 describe("tool.registry", () => {
-  test("loads tools from .ccode/tool (singular)", async () => {
+  test("loads tools from .codecoder/tool (singular)", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        const ccodeDir = path.join(dir, ".ccode")
+        const ccodeDir = path.join(dir, ".codecoder")
         await fs.mkdir(ccodeDir, { recursive: true })
 
         const toolDir = path.join(ccodeDir, "tool")
@@ -47,10 +47,10 @@ describe("tool.registry", () => {
     })
   })
 
-  test("loads tools from .ccode/tools (plural)", async () => {
+  test("loads tools from .codecoder/tools (plural)", async () => {
     await using tmp = await tmpdir({
       init: async (dir) => {
-        const ccodeDir = path.join(dir, ".ccode")
+        const ccodeDir = path.join(dir, ".codecoder")
         await fs.mkdir(ccodeDir, { recursive: true })
 
         const toolsDir = path.join(ccodeDir, "tools")

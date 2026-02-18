@@ -236,7 +236,7 @@ codecoder/
 项目不使用 `.env` 文件。配置通过:
 
 - **CLI 参数**: 命令行传入
-- **配置文件**: `~/.ccode/config.json` 或 `~/.codecoder/`
+- **配置文件**: `~/.codecoder/config.json` 或 `~/.codecoder/`
 - **交互式输入**: 首次使用时的配置向导
 
 ## 获取帮助

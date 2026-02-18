@@ -182,7 +182,7 @@ bun run --cwd packages/ccode build
 ### 配置文件位置（优先级顺序）
 
 1. 全局：`~/.config/codecoder/codecoder.json`
-2. 项目：`./codecoder.json` 或 `./.ccode/codecoder.json`
+2. 项目：`./codecoder.json` 或 `./.codecoder/codecoder.json`
 3. 环境变量：`CCODE_CONFIG` 或 `CCODE_CONFIG_CONTENT`
 
 ### 配置示例

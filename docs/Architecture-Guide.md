@@ -177,11 +177,11 @@ export namespace Instance {
 ```
 1. 远程 well-known 配置 (.well-known/codecoder)
    ↓ 合并
-2. 全局用户配置 (~/.ccode/config.jsonc)
+2. 全局用户配置 (~/.codecoder/config.jsonc)
    ↓ 合并
 3. 自定义配置路径 (CCODE_CONFIG 环境变量)
    ↓ 合并
-4. 项目配置 (.ccode/ 或 .codecoder/ 目录)
+4. 项目配置 (.codecoder/ 或 .codecoder/ 目录)
    ↓ 合并
 5. 环境变量覆盖 (CCODE_CONFIG_CONTENT)
 ```
@@ -471,7 +471,7 @@ LLM 输出 tool_call
 
 工具注册支持：
 1. **内置工具**: 在 `tool/` 目录下定义
-2. **自定义工具**: 在 `.ccode/tools/` 目录下的 JS/TS 模块
+2. **自定义工具**: 在 `.codecoder/tools/` 目录下的 JS/TS 模块
 3. **MCP 工具**: 通过 MCP 协议从外部服务器加载
 
 ---
@@ -657,7 +657,7 @@ const planAgent = {
     plan_exit: "allow",
     edit: {
       "*": "deny",        // 禁止编辑所有文件
-      ".ccode/plans/*.md": "allow",  // 只能编辑计划文件
+      ".codecoder/plans/*.md": "allow",  // 只能编辑计划文件
     }
   })
 }
@@ -689,7 +689,7 @@ const exploreAgent = {
 用户可以在配置文件中定义自己的 Agent：
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   "agent": {
     "reviewer": {
@@ -996,10 +996,10 @@ packages/ccode/src/
 
 ### 12.1 自定义工具
 
-在 `.ccode/tools/` 目录下创建工具：
+在 `.codecoder/tools/` 目录下创建工具：
 
 ```typescript
-// .ccode/tools/my-tool.ts
+// .codecoder/tools/my-tool.ts
 import { z } from "zod"
 
 export const tool = {
@@ -1041,7 +1041,7 @@ export const tool = {
 Hooks 允许在工具执行前后运行自定义脚本：
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   "hooks": {
     "PreToolUse": [
@@ -1069,7 +1069,7 @@ Hook 脚本接收环境变量：
 ### 12.3 MCP Server 集成
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   "mcp": {
     "servers": {
@@ -1124,7 +1124,7 @@ const response = await fetch(`${baseUrl}/session/${session.id}/message`, {
 ### 12.5 自定义配置示例
 
 ```jsonc
-// .ccode/config.jsonc
+// .codecoder/config.jsonc
 {
   // 默认 Agent
   "default_agent": "build",
@@ -1162,7 +1162,7 @@ const response = await fetch(`${baseUrl}/session/${session.id}/message`, {
 
   // 指令文件
   "instructions": [
-    ".ccode/instructions.md",
+    ".codecoder/instructions.md",
     "CONTRIBUTING.md"
   ]
 }

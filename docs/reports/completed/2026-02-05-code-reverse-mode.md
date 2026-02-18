@@ -107,7 +107,7 @@ The `code-reverse` agent has the following permissions:
 
 For enhanced browser automation capabilities, configure the Playwright MCP server:
 
-**Step 1**: Add to `~/.ccode/config.jsonc`:
+**Step 1**: Add to `~/.codecoder/config.jsonc`:
 
 ```jsonc
 {
@@ -133,7 +133,7 @@ codecoder mcp list
 ### Markdown Report
 
 The default output is a comprehensive Markdown report saved to:
-- `~/.ccode/data/reports/reverse/<hostname>-<date>.md`
+- `~/.codecoder/data/reports/reverse/<hostname>-<date>.md`
 
 Report structure:
 ```markdown
@@ -354,7 +354,7 @@ codecoder mcp connect playwright
 
 Check the reports directory:
 ```bash
-ls -la ~/.ccode/data/reports/reverse/
+ls -la ~/.codecoder/data/reports/reverse/
 ```
 
 ## Future Enhancements

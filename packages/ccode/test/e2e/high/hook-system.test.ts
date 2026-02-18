@@ -18,7 +18,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -94,7 +94,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -153,7 +153,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -208,7 +208,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -268,7 +268,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -311,7 +311,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -369,7 +369,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -435,7 +435,7 @@ describe("E2E High: Hook System", () => {
         git: true,
         init: async (dir) => {
           // Project-level hooks
-          const ccodeHooksDir = path.join(dir, ".ccode", "hooks")
+          const ccodeHooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(ccodeHooksDir, "hooks.json"),
             JSON.stringify({
@@ -500,11 +500,11 @@ describe("E2E High: Hook System", () => {
   })
 
   describe("Hook Configuration", () => {
-    test("should load hooks from .ccode directory", async () => {
+    test("should load hooks from .codecoder directory", async () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -536,7 +536,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -594,7 +594,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(path.join(hooksDir, "hooks.json"), "{ invalid json }")
         },
       })
@@ -618,7 +618,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({
@@ -686,7 +686,7 @@ describe("E2E High: Hook System", () => {
       await using tmp = await tmpdir({
         git: true,
         init: async (dir) => {
-          const hooksDir = path.join(dir, ".ccode", "hooks")
+          const hooksDir = path.join(dir, ".codecoder", "hooks")
           await Bun.write(
             path.join(hooksDir, "hooks.json"),
             JSON.stringify({

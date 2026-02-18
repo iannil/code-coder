@@ -154,7 +154,7 @@ export namespace SystemPrompt {
         .then((x) => (x ? "Instructions from: " + url + "\n" + x : "")),
     )
 
-    // Load rules from .ccode/{rule,rules}/**/*.md
+    // Load rules from .codecoder/{rule,rules}/**/*.md
     const rulesContent = await loadRules()
 
     return Promise.all([...foundFiles, ...foundUrls]).then((result) => [...result.filter(Boolean), ...rulesContent])

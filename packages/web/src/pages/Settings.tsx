@@ -1,7 +1,7 @@
 /**
  * Settings Page
  *
- * Application settings with:
+ * Application settings with sidebar navigation:
  * - Config form
  * - Provider management
  * - MCP server management
@@ -34,16 +34,18 @@ import {
   Code,
   Database,
   Palette,
+  ChevronRight,
+  Vault,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Label } from "@/components/ui/Label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs"
 import { Separator } from "@/components/ui/Separator"
 import { Skeleton } from "@/components/ui/Skeleton"
 import { Badge } from "@/components/ui/Badge"
+import { ScrollArea } from "@/components/ui/ScrollArea"
 import {
   Select,
   SelectContent,
@@ -73,6 +75,7 @@ import { HooksPanel } from "@/components/hooks"
 import { LspPanel } from "@/components/lsp"
 import { StoragePanel } from "@/components/storage"
 import { ThemeSelector } from "@/components/theme"
+import { CredentialPanel } from "@/components/credentials"
 
 // ============================================================================
 // Types
@@ -85,6 +88,83 @@ interface ConfigField {
   type: "text" | "password" | "textarea" | "number" | "boolean"
   placeholder?: string
   sensitive?: boolean
+}
+
+interface NavItem {
+  id: string
+  label: string
+  icon: React.ReactNode
+  group: string
+}
+
+// ============================================================================
+// Navigation Items
+// ============================================================================
+
+const NAV_ITEMS: NavItem[] = [
+  { id: "general", label: "General", icon: <SettingsIcon className="h-4 w-4" />, group: "Preferences" },
+  { id: "appearance", label: "Appearance", icon: <Palette className="h-4 w-4" />, group: "Preferences" },
+  { id: "providers", label: "Providers", icon: <Sparkles className="h-4 w-4" />, group: "AI" },
+  { id: "mcp", label: "MCP Servers", icon: <Plug className="h-4 w-4" />, group: "AI" },
+  { id: "agents", label: "Agents", icon: <Bot className="h-4 w-4" />, group: "AI" },
+  { id: "credentials", label: "Credentials", icon: <Vault className="h-4 w-4" />, group: "Security" },
+  { id: "permissions", label: "Permissions", icon: <Shield className="h-4 w-4" />, group: "Security" },
+  { id: "api", label: "API Keys", icon: <Key className="h-4 w-4" />, group: "Security" },
+  { id: "memory", label: "Memory", icon: <Brain className="h-4 w-4" />, group: "System" },
+  { id: "hooks", label: "Hooks", icon: <Zap className="h-4 w-4" />, group: "System" },
+  { id: "lsp", label: "LSP", icon: <Code className="h-4 w-4" />, group: "System" },
+  { id: "storage", label: "Storage", icon: <Database className="h-4 w-4" />, group: "System" },
+]
+
+const NAV_GROUPS = ["Preferences", "AI", "Security", "System"]
+
+// ============================================================================
+// Settings Navigation Component
+// ============================================================================
+
+interface SettingsNavProps {
+  activeSection: string
+  onSectionChange: (section: string) => void
+}
+
+function SettingsNav({ activeSection, onSectionChange }: SettingsNavProps) {
+  return (
+    <nav className="space-y-4">
+      {NAV_GROUPS.map((group) => {
+        const items = NAV_ITEMS.filter((item) => item.group === group)
+        if (items.length === 0) return null
+
+        return (
+          <div key={group} className="space-y-1">
+            <h3 className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {group}
+            </h3>
+            <div className="space-y-0.5">
+              {items.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSectionChange(item.id)}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors",
+                    activeSection === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                  {activeSection === item.id && (
+                    <ChevronRight className="h-4 w-4 ml-auto" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </nav>
+  )
 }
 
 // ============================================================================
@@ -1068,10 +1148,155 @@ function McpServerCard({ name, status, isToggling, onToggle }: McpServerCardProp
 }
 
 // ============================================================================
+// Settings Content Component
+// ============================================================================
+
+interface SettingsContentProps {
+  section: string
+  config: Record<string, unknown> | null
+  isLoading: boolean
+  isUpdating: boolean
+  updateConfig: (updates: Partial<ConfigData>) => Promise<ConfigData>
+  agents: Array<{ id: string; name: string; description?: string; category?: string }>
+  agentsLoading: boolean
+}
+
+function SettingsContent({
+  section,
+  config,
+  isLoading,
+  isUpdating,
+  updateConfig,
+  agents,
+  agentsLoading,
+}: SettingsContentProps) {
+  const sectionInfo = NAV_ITEMS.find((item) => item.id === section)
+
+  const getTitle = () => {
+    switch (section) {
+      case "general":
+        return "General Configuration"
+      case "appearance":
+        return "Appearance"
+      case "providers":
+        return "AI Providers"
+      case "mcp":
+        return "MCP Servers"
+      case "agents":
+        return "Agent Configuration"
+      case "credentials":
+        return "Credential Management"
+      case "permissions":
+        return "Permission Rules"
+      case "api":
+        return "API Key Management"
+      case "memory":
+        return "Memory System"
+      case "hooks":
+        return "Hooks Configuration"
+      case "lsp":
+        return "Language Server Protocol"
+      case "storage":
+        return "Storage Management"
+      default:
+        return "Settings"
+    }
+  }
+
+  const getDescription = () => {
+    switch (section) {
+      case "general":
+        return "Manage your application settings and preferences"
+      case "appearance":
+        return "Customize the look and feel of the application"
+      case "providers":
+        return "Manage AI model providers and API keys"
+      case "mcp":
+        return "Manage Model Context Protocol server connections"
+      case "agents":
+        return "Configure and manage available AI agents"
+      case "credentials":
+        return "Store and manage authentication credentials for external services"
+      case "permissions":
+        return "Set default behavior for sensitive operations"
+      case "api":
+        return "Create and manage your API keys for external integrations"
+      case "memory":
+        return "View and manage daily notes and long-term memory"
+      case "hooks":
+        return "View and manage lifecycle hooks"
+      case "lsp":
+        return "Manage LSP servers and view diagnostics"
+      case "storage":
+        return "View storage usage and manage cached data"
+      default:
+        return ""
+    }
+  }
+
+  const renderContent = () => {
+    switch (section) {
+      case "general":
+        return (
+          <ConfigForm
+            config={config}
+            isLoading={isLoading}
+            isSaving={isUpdating}
+            onSave={updateConfig}
+          />
+        )
+      case "appearance":
+        return (
+          <div>
+            <h4 className="text-sm font-medium mb-3">Theme</h4>
+            <ThemeSelector />
+          </div>
+        )
+      case "providers":
+        return <ProviderManagement />
+      case "mcp":
+        return <McpManagement />
+      case "agents":
+        return <AgentConfiguration agents={agents} isLoading={agentsLoading} />
+      case "credentials":
+        return <CredentialPanel />
+      case "permissions":
+        return <PermissionSettings />
+      case "api":
+        return <ApiKeyManagement apiKeys={[]} />
+      case "memory":
+        return <MemoryPanel />
+      case "hooks":
+        return <HooksPanel />
+      case "lsp":
+        return <LspPanel />
+      case "storage":
+        return <StoragePanel />
+      default:
+        return <div>Select a setting from the sidebar</div>
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {sectionInfo?.icon}
+          {getTitle()}
+        </CardTitle>
+        <CardDescription>{getDescription()}</CardDescription>
+      </CardHeader>
+      <CardContent>{renderContent()}</CardContent>
+    </Card>
+  )
+}
+
+// ============================================================================
 // Main Settings Component
 // ============================================================================
 
 export function Settings() {
+  const [activeSection, setActiveSection] = React.useState("general")
   const config = useConfig()
   const { isLoading, isUpdating } = useConfigLoading()
   const updateConfig = useConfigStore((state) => state.updateConfig)
@@ -1080,229 +1305,35 @@ export function Settings() {
   const { isLoading: agentsLoading } = useAgentsLoading()
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="container max-w-3xl mx-auto p-6 space-y-8">
-        {/* Header */}
-        <div className="space-y-2">
+    <div className="flex-1 flex overflow-hidden">
+      {/* Sidebar Navigation */}
+      <div className="w-56 shrink-0 border-r bg-muted/30">
+        <div className="p-4 border-b">
           <div className="flex items-center gap-2">
-            <SettingsIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
+            <SettingsIcon className="h-5 w-5 text-primary" />
+            <h1 className="text-lg font-semibold">Settings</h1>
           </div>
-          <p className="text-muted-foreground">
-            Configure your CodeCoder experience
-          </p>
         </div>
+        <ScrollArea className="h-[calc(100vh-10rem)]">
+          <div className="p-2">
+            <SettingsNav activeSection={activeSection} onSectionChange={setActiveSection} />
+          </div>
+        </ScrollArea>
+      </div>
 
-        {/* Settings Tabs */}
-        <Tabs defaultValue="general" className="space-y-6">
-          <TabsList className="flex flex-wrap gap-1">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="appearance">Appearance</TabsTrigger>
-            <TabsTrigger value="providers">Providers</TabsTrigger>
-            <TabsTrigger value="mcp">MCP</TabsTrigger>
-            <TabsTrigger value="agents">Agents</TabsTrigger>
-            <TabsTrigger value="permissions">Permissions</TabsTrigger>
-            <TabsTrigger value="memory">Memory</TabsTrigger>
-            <TabsTrigger value="hooks">Hooks</TabsTrigger>
-            <TabsTrigger value="lsp">LSP</TabsTrigger>
-            <TabsTrigger value="storage">Storage</TabsTrigger>
-            <TabsTrigger value="api">API Keys</TabsTrigger>
-          </TabsList>
-
-          {/* General Settings */}
-          <TabsContent value="general" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>General Configuration</CardTitle>
-                <CardDescription>
-                  Manage your application settings and preferences
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ConfigForm
-                  config={config as Record<string, unknown> | null}
-                  isLoading={isLoading}
-                  isSaving={isUpdating}
-                  onSave={updateConfig}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Appearance Settings */}
-          <TabsContent value="appearance" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Palette className="h-5 w-5 text-primary" />
-                  Appearance
-                </CardTitle>
-                <CardDescription>
-                  Customize the look and feel of the application
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h4 className="text-sm font-medium mb-3">Theme</h4>
-                  <ThemeSelector />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Providers Settings */}
-          <TabsContent value="providers" className="space-y-6" data-testid="provider-settings">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  AI Providers
-                </CardTitle>
-                <CardDescription>
-                  Manage AI model providers and API keys
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ProviderManagement />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* MCP Settings */}
-          <TabsContent value="mcp" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plug className="h-5 w-5 text-primary" />
-                  MCP Servers
-                </CardTitle>
-                <CardDescription>
-                  Manage Model Context Protocol server connections
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <McpManagement />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Agents Settings */}
-          <TabsContent value="agents" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Agent Configuration</CardTitle>
-                <CardDescription>
-                  Configure and manage available AI agents
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AgentConfiguration agents={agents} isLoading={agentsLoading} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Permissions Settings */}
-          <TabsContent value="permissions" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Permission Rules</CardTitle>
-                <CardDescription>
-                  Set default behavior for sensitive operations
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <PermissionSettings />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Memory Settings */}
-          <TabsContent value="memory" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-primary" />
-                  Memory System
-                </CardTitle>
-                <CardDescription>
-                  View and manage daily notes and long-term memory
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <MemoryPanel />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Hooks Settings */}
-          <TabsContent value="hooks" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-primary" />
-                  Hooks Configuration
-                </CardTitle>
-                <CardDescription>
-                  View and manage lifecycle hooks
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <HooksPanel />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* LSP Settings */}
-          <TabsContent value="lsp" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Code className="h-5 w-5 text-primary" />
-                  Language Server Protocol
-                </CardTitle>
-                <CardDescription>
-                  Manage LSP servers and view diagnostics
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <LspPanel />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Storage Settings */}
-          <TabsContent value="storage" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Database className="h-5 w-5 text-primary" />
-                  Storage Management
-                </CardTitle>
-                <CardDescription>
-                  View storage usage and manage cached data
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <StoragePanel />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* API Keys Settings */}
-          <TabsContent value="api" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>API Key Management</CardTitle>
-                <CardDescription>
-                  Create and manage your API keys for external integrations
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ApiKeyManagement apiKeys={[]} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+      {/* Content Area */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-3xl mx-auto p-6">
+          <SettingsContent
+            section={activeSection}
+            config={config as Record<string, unknown> | null}
+            isLoading={isLoading}
+            isUpdating={isUpdating}
+            updateConfig={updateConfig}
+            agents={agents}
+            agentsLoading={agentsLoading}
+          />
+        </div>
       </div>
     </div>
   )

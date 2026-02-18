@@ -70,20 +70,20 @@ export namespace Config {
 
     const directories = [
       Global.Path.config,
-      // Only scan project .ccode/ directories when project discovery is enabled
+      // Only scan project .codecoder/ directories when project discovery is enabled
       ...(!Flag.CCODE_DISABLE_PROJECT_CONFIG
         ? await Array.fromAsync(
             Filesystem.up({
-              targets: [".ccode"],
+              targets: [".codecoder"],
               start: Instance.directory,
               stop: Instance.worktree,
             }),
           )
         : []),
-      // Always scan ~/.ccode/ (user home directory)
+      // Always scan ~/.codecoder/ (user home directory)
       ...(await Array.fromAsync(
         Filesystem.up({
-          targets: [".ccode"],
+          targets: [".codecoder"],
           start: Global.Path.home,
           stop: Global.Path.home,
         }),
@@ -96,7 +96,7 @@ export namespace Config {
     }
 
     for (const dir of unique(directories)) {
-      if (dir.endsWith(".ccode") || dir === Flag.CCODE_CONFIG_DIR) {
+      if (dir.endsWith(".codecoder") || dir === Flag.CCODE_CONFIG_DIR) {
         for (const file of ["config.jsonc", "codecoder.jsonc", "codecoder.json"]) {
           log.debug(`loading config from ${path.join(dir, file)}`)
           result = mergeConfigConcatArrays(result, await loadFile(path.join(dir, file)))
@@ -209,7 +209,7 @@ export namespace Config {
       })
       if (!md) continue
 
-      const patterns = ["/.ccode/commands/", "/.codecoder/commands/", "/.codecoder/command/", "/command/", "/commands/"]
+      const patterns = ["/.codecoder/commands/", "/.codecoder/command/", "/command/", "/commands/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const name = trim(file)
 
@@ -249,7 +249,7 @@ export namespace Config {
       })
       if (!md) continue
 
-      const patterns = ["/.ccode/agents/", "/.codecoder/agents/", "/.codecoder/agent/", "/agent/", "/agents/"]
+      const patterns = ["/.codecoder/agents/", "/.codecoder/agent/", "/agent/", "/agents/"]
       const file = rel(item, patterns) ?? path.basename(item)
       const agentName = trim(file)
 
@@ -878,6 +878,16 @@ export namespace Config {
     .strict()
     .meta({ ref: "ZeroBotCodeCoderConfig" })
 
+  export const ZeroBotSession = z
+    .object({
+      enabled: z.boolean().optional().describe("Whether session management is enabled (default: true)"),
+      context_window: z.number().int().positive().optional().describe("Model context window size in tokens (default: 128000)"),
+      compact_threshold: z.number().min(0).max(1).optional().describe("Compact when usage exceeds this ratio (default: 0.8)"),
+      keep_recent: z.number().int().positive().optional().describe("Number of recent messages to always keep (default: 5)"),
+    })
+    .strict()
+    .meta({ ref: "ZeroBotSessionConfig" })
+
   export const ZeroBot = z
     .object({
       // Provider configuration (can reuse CodeCoder's provider config)
@@ -901,6 +911,7 @@ export namespace Config {
       browser: ZeroBotBrowser.optional(),
       identity: ZeroBotIdentity.optional(),
       codecoder: ZeroBotCodeCoder.optional().describe("CodeCoder integration for accessing AI agents"),
+      session: ZeroBotSession.optional().describe("Session/conversation context management configuration"),
     })
     .strict()
     .meta({ ref: "ZeroBotConfig" })
@@ -912,10 +923,21 @@ export namespace Config {
       hostname: z.string().optional().describe("Hostname to listen on"),
       mdns: z.boolean().optional().describe("Enable mDNS service discovery"),
       cors: z.array(z.string()).optional().describe("Additional domains to allow for CORS"),
+      apiKey: z.string().optional().describe("API key for authenticating incoming requests"),
     })
     .strict()
     .meta({
       ref: "ServerConfig",
+    })
+
+  export const Vault = z
+    .object({
+      enabled: z.boolean().optional().describe("Enable the credential vault (default: true)"),
+      autoInject: z.boolean().optional().describe("Auto-inject credentials into HTTP requests (default: true)"),
+    })
+    .strict()
+    .meta({
+      ref: "VaultConfig",
     })
 
   export const Layout = z.enum(["auto", "stretch"]).meta({
@@ -1208,6 +1230,7 @@ export namespace Config {
         })
         .optional()
         .describe("Autonomous Mode autonomous execution configuration"),
+      vault: Vault.optional().describe("Credential vault configuration"),
       zerobot: ZeroBot.optional().describe("ZeroBot daemon and channel configuration"),
     })
     .strict()

@@ -166,6 +166,8 @@ export {
   useDocumentSymbols,
   useConnectedServers,
   useErrorServers,
+  useConnectedServersCount,
+  useErrorServersCount,
   useTotalDiagnostics,
   useErrorDiagnostics,
 } from "./lsp"
@@ -221,3 +223,29 @@ export {
   useAvailableTunnelTypes,
   useTunnelLoading,
 } from "./tunnel"
+
+// ============================================================================
+// Project Store
+// ============================================================================
+
+export {
+  useProjectStore,
+  useProjects,
+  useProject,
+  useSelectedProject,
+  useSelectedProjectId,
+  useProjectsLoading,
+  useProjectError,
+  useProjectDeleting,
+} from "./project"
+
+// ============================================================================
+// Credential Store
+// ============================================================================
+
+export {
+  useCredentialStore,
+  useCredentials,
+  useCredentialLoading,
+  useCredentialError,
+} from "./credential"

@@ -208,8 +208,8 @@
 ### 6.1 配置文件层级 (优先级从低到高)
 
 1. 全局配置: `~/.config/codecoder/codecoder.jsonc`
-2. 用户 home: `~/.ccode/config.jsonc`
-3. 项目配置: `.ccode/config.jsonc`
+2. 用户 home: `~/.codecoder/config.jsonc`
+3. 项目配置: `.codecoder/config.jsonc`
 4. 环境变量: `CCODE_CONFIG_CONTENT`
 
 ### 6.2 主要配置项
