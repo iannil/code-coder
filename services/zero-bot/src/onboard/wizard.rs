@@ -109,6 +109,7 @@ pub fn run_wizard() -> Result<Config> {
         session: crate::config::SessionConfig::default(),
         tts: crate::config::TtsConfig::default(),
         voice_wake: crate::config::VoiceWakeConfig::default(),
+        mcp: crate::config::McpConfig::default(),
     };
 
     println!(
@@ -301,6 +302,7 @@ pub fn run_quick_setup(
         session: crate::config::SessionConfig::default(),
         tts: crate::config::TtsConfig::default(),
         voice_wake: crate::config::VoiceWakeConfig::default(),
+        mcp: crate::config::McpConfig::default(),
     };
 
     config.save()?;

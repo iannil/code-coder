@@ -63,6 +63,14 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
+# AES encryption for Feishu event decryption
+aes = "0.8"
+cbc = "0.1"
+base64 = "0.22"
+
+# Regex for Telegram Markdown conversion
+regex = "1.11"
+
 # Async traits
 async-trait = "0.1"
 

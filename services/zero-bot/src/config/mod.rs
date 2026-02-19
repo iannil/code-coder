@@ -4,7 +4,7 @@ pub mod schema;
 pub use schema::{
     AutonomyConfig, BrowserConfig, ChannelsConfig, CodeCoderConfig, Config,
     DiscordConfig, FeishuConfig, GatewayConfig, HeartbeatConfig, IMessageConfig, IdentityConfig,
-    MatrixConfig, MemoryConfig, ObservabilityConfig, ReliabilityConfig, RuntimeConfig,
-    SecretsConfig, SessionConfig, SlackConfig, TelegramConfig, TtsConfig, TunnelConfig,
-    VaultConfig, VoiceWakeConfig, WebhookConfig,
+    MatrixConfig, McpConfig, McpServerConfig, MemoryConfig, ObservabilityConfig, ReliabilityConfig,
+    RuntimeConfig, SecretsConfig, SessionConfig, SlackConfig, TelegramConfig, TtsConfig,
+    TunnelConfig, VaultConfig, VoiceWakeConfig, WebhookConfig,
 };

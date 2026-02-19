@@ -24,6 +24,7 @@ mod gateway;
 mod health;
 mod heartbeat;
 mod integrations;
+mod mcp;
 mod memory;
 mod migration;
 mod observability;
@@ -180,6 +181,14 @@ enum Commands {
         #[command(subcommand)]
         migrate_command: MigrateCommands,
     },
+
+    /// Start MCP server to expose `ZeroBot` tools via Model Context Protocol
+    #[command(name = "mcp-server")]
+    McpServer {
+        /// Run in stdio mode (for subprocess communication)
+        #[arg(long)]
+        stdio: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -249,6 +258,29 @@ enum SkillCommands {
     Remove {
         /// Skill name
         name: String,
+    },
+    /// Search for skills in `SkillHub` registry
+    Search {
+        /// Search query
+        query: String,
+        /// Limit results (default: 10)
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    /// Update installed skills
+    Update {
+        /// Skill name (omit to check all)
+        name: Option<String>,
+    },
+    /// Show detailed information about a skill
+    Info {
+        /// Skill name
+        name: String,
+    },
+    /// Publish a skill to `SkillHub` (requires GitHub account)
+    Publish {
+        /// Path to skill directory
+        path: std::path::PathBuf,
     },
 }
 
@@ -475,6 +507,55 @@ async fn main() -> Result<()> {
 
         Commands::Migrate { migrate_command } => {
             migration::handle_command(migrate_command, &config).await
+        }
+
+        Commands::McpServer { stdio } => {
+            use std::sync::Arc;
+
+            // Build tools for MCP server
+            let security = Arc::new(security::SecurityPolicy::from_config(
+                &config.autonomy,
+                &config.workspace_dir,
+            ));
+
+            let mem: Arc<dyn memory::Memory> = Arc::from(memory::create_memory(
+                &config.memory,
+                &config.workspace_dir,
+                config.api_key.as_deref(),
+            )?);
+
+            let tools_vec = tools::all_tools(
+                &security,
+                mem,
+                &config.browser,
+                &config.codecoder,
+                &config.vault,
+                &config.workspace_dir,
+            );
+
+            // Convert to Arc<dyn Tool>
+            let tools: Vec<Arc<dyn tools::Tool>> = tools_vec
+                .into_iter()
+                .map(|t| Arc::from(t) as Arc<dyn tools::Tool>)
+                .collect();
+
+            let server = mcp::McpServer::new(tools);
+
+            if stdio {
+                info!("Starting MCP server in stdio mode");
+                server.serve_stdio().await
+            } else {
+                // HTTP mode - use the gateway port
+                let port = if config.mcp.server_api_key.is_some() { config.gateway.port } else { 8081 };
+
+                info!("Starting MCP server on http://127.0.0.1:{port}/mcp");
+                let app = Arc::new(server).routes();
+
+                let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse()?;
+                let listener = tokio::net::TcpListener::bind(addr).await?;
+                axum::serve(listener, app).await?;
+                Ok(())
+            }
         }
     }
 }

@@ -1,3 +1,5 @@
+pub mod hub;
+
 use anyhow::Result;
 use directories::UserDirs;
 use serde::{Deserialize, Serialize};
@@ -5,6 +7,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, SystemTime};
+
+pub use hub::SkillHub;
 
 const OPEN_SKILLS_REPO_URL: &str = "https://github.com/besoeasy/open-skills";
 const OPEN_SKILLS_SYNC_MARKER: &str = ".zero-bot-open-skills-sync";
@@ -612,6 +616,237 @@ pub fn handle_command(command: crate::SkillCommands, workspace_dir: &Path) -> Re
                 console::style("✓").green().bold(),
                 name
             );
+            Ok(())
+        }
+        crate::SkillCommands::Search { query, limit } => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                let hub = SkillHub::new();
+                match hub.search(&query, limit).await {
+                    Ok(results) => {
+                        if results.is_empty() {
+                            println!("No skills found matching '{query}'");
+                        } else {
+                            println!("Found {} skill(s):\n", results.len());
+                            for skill in &results {
+                                println!(
+                                    "  {} {} — {}",
+                                    console::style(&skill.name).white().bold(),
+                                    console::style(format!("v{}", skill.version)).dim(),
+                                    skill.description
+                                );
+                                println!(
+                                    "    {} | {} downloads",
+                                    console::style(&skill.repo_url).cyan(),
+                                    skill.downloads
+                                );
+                                if !skill.tags.is_empty() {
+                                    println!("    Tags: {}", skill.tags.join(", "));
+                                }
+                                println!();
+                            }
+                            println!("Install with: zero-bot skills install <repo-url>");
+                        }
+                        Ok(())
+                    }
+                    Err(e) => {
+                        println!(
+                            "  {} Failed to search registry: {}",
+                            console::style("✗").red().bold(),
+                            e
+                        );
+                        println!("  The SkillHub registry may be unavailable.");
+                        println!("  You can still install skills directly:");
+                        println!("    zero-bot skills install <github-url>");
+                        Ok(())
+                    }
+                }
+            })
+        }
+        crate::SkillCommands::Update { name } => {
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                let hub = SkillHub::new();
+                let installed = load_skills(workspace_dir);
+
+                let to_check: Vec<_> = if let Some(ref n) = name {
+                    installed.into_iter().filter(|s| &s.name == n).collect()
+                } else {
+                    installed
+                };
+
+                if to_check.is_empty() {
+                    if name.is_some() {
+                        println!("Skill '{}' is not installed.", name.unwrap());
+                    } else {
+                        println!("No skills installed to check for updates.");
+                    }
+                    return Ok(());
+                }
+
+                match hub.check_updates(&to_check).await {
+                    Ok(updates) => {
+                        if updates.is_empty() {
+                            println!(
+                                "  {} All {} skill(s) are up to date.",
+                                console::style("✓").green().bold(),
+                                to_check.len()
+                            );
+                        } else {
+                            println!("Updates available:\n");
+                            for (name, current, latest) in &updates {
+                                println!(
+                                    "  {} {} → {}",
+                                    console::style(name).white().bold(),
+                                    console::style(current).red(),
+                                    console::style(latest).green()
+                                );
+                            }
+                            println!();
+                            println!("To update, reinstall the skill:");
+                            println!("  zero-bot skills remove <name>");
+                            println!("  zero-bot skills install <repo-url>");
+                        }
+                        Ok(())
+                    }
+                    Err(e) => {
+                        println!(
+                            "  {} Failed to check for updates: {}",
+                            console::style("✗").red().bold(),
+                            e
+                        );
+                        Ok(())
+                    }
+                }
+            })
+        }
+        crate::SkillCommands::Info { name } => {
+            // First check local skills
+            let skills = load_skills(workspace_dir);
+            if let Some(skill) = skills.iter().find(|s| s.name == name) {
+                println!(
+                    "Skill: {} (installed)",
+                    console::style(&skill.name).white().bold()
+                );
+                println!("Version: {}", skill.version);
+                println!("Description: {}", skill.description);
+                if let Some(ref author) = skill.author {
+                    println!("Author: {author}");
+                }
+                if !skill.tags.is_empty() {
+                    println!("Tags: {}", skill.tags.join(", "));
+                }
+                if !skill.tools.is_empty() {
+                    println!("Tools:");
+                    for tool in &skill.tools {
+                        println!("  - {} ({}): {}", tool.name, tool.kind, tool.description);
+                    }
+                }
+                if let Some(ref loc) = skill.location {
+                    println!("Location: {}", loc.display());
+                }
+                return Ok(());
+            }
+
+            // Check remote registry
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(async {
+                let hub = SkillHub::new();
+                match hub.get_info(&name).await {
+                    Ok(Some(meta)) => {
+                        println!(
+                            "Skill: {} (not installed)",
+                            console::style(&meta.name).white().bold()
+                        );
+                        println!("Version: {}", meta.version);
+                        println!("Description: {}", meta.description);
+                        println!("Author: {}", meta.author);
+                        println!("Repository: {}", console::style(&meta.repo_url).cyan());
+                        println!("Downloads: {}", meta.downloads);
+                        if !meta.tags.is_empty() {
+                            println!("Tags: {}", meta.tags.join(", "));
+                        }
+                        if !meta.updated_at.is_empty() {
+                            println!("Updated: {}", meta.updated_at);
+                        }
+                        println!();
+                        println!(
+                            "Install with: zero-bot skills install {}",
+                            meta.repo_url
+                        );
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        anyhow::bail!("Skill '{name}' not found locally or in registry")
+                    }
+                    Err(e) => {
+                        anyhow::bail!("Failed to query registry: {e}")
+                    }
+                }
+            })
+        }
+        crate::SkillCommands::Publish { path } => {
+            // Validate skill structure
+            let manifest_path = path.join("SKILL.toml");
+            let md_path = path.join("SKILL.md");
+
+            if !manifest_path.exists() && !md_path.exists() {
+                anyhow::bail!(
+                    "No SKILL.toml or SKILL.md found in {}",
+                    path.display()
+                );
+            }
+
+            // Load and display skill info
+            let skill = if manifest_path.exists() {
+                load_skill_toml(&manifest_path)?
+            } else {
+                load_skill_md(&md_path, &path)?
+            };
+
+            println!(
+                "  {} Skill '{}' validated.",
+                console::style("✓").green().bold(),
+                skill.name
+            );
+            println!();
+            println!("To publish your skill to SkillHub:");
+            println!();
+            println!("1. Create a GitHub repository for your skill");
+            println!("2. Push your skill code to the repository");
+            println!("3. Submit a PR to https://github.com/zerobot-skills/registry");
+            println!("   adding your skill to index.json:");
+            println!();
+            println!(
+                "   {}",
+                console::style(format!(
+                    r#"{{
+  "name": "{}",
+  "description": "{}",
+  "version": "{}",
+  "author": "your-github-username",
+  "repo_url": "https://github.com/your-username/{}",
+  "tags": [{}],
+  "downloads": 0,
+  "updated_at": "{}"
+}}"#,
+                    skill.name,
+                    skill.description,
+                    skill.version,
+                    skill.name,
+                    skill
+                        .tags
+                        .iter()
+                        .map(|t| format!("\"{t}\""))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+                ))
+                .dim()
+            );
+            println!();
+            println!("Skill location: {}", path.display());
+
             Ok(())
         }
     }

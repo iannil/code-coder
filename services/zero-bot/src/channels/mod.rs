@@ -6,6 +6,7 @@ pub mod imessage;
 pub mod matrix;
 pub mod slack;
 pub mod telegram;
+mod telegram_format;
 pub mod traits;
 pub mod whatsapp;
 

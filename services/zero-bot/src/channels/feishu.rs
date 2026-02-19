@@ -2,14 +2,20 @@
 //!
 //! Uses the Feishu Open Platform Bot API for messaging.
 //! Supports text messages, event callbacks, and user authorization.
+//! Implements AES-256-CBC decryption for encrypted event callbacks.
 
 use super::traits::{Channel, ChannelMessage, MessageSource};
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
 use async_trait::async_trait;
+use base64::Engine;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use uuid::Uuid;
+
+type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
 // ============================================================================
 // Feishu API Constants
@@ -336,15 +342,95 @@ impl FeishuChannel {
 
     /// Parse event callback payload.
     fn parse_event(&self, payload: &str) -> anyhow::Result<EventCallback> {
-        // If encrypt_key is set, decrypt first
-        if self.encrypt_key.is_some() {
-            // TODO: Implement AES decryption for encrypted events
-            // For now, try to parse as plain JSON
-            tracing::warn!("Encrypted events not yet implemented, trying plain parse");
-        }
+        // Check if the payload is encrypted (has "encrypt" field)
+        let json_value: serde_json::Value = serde_json::from_str(payload)?;
 
-        let event: EventCallback = serde_json::from_str(payload)?;
+        let decrypted_payload = if let Some(encrypt) = json_value.get("encrypt").and_then(|e| e.as_str()) {
+            // Decrypt the payload
+            match &self.encrypt_key {
+                Some(key) => {
+                    let decrypted = Self::decrypt_aes_cbc(key, encrypt)?;
+                    tracing::debug!("Feishu event decrypted successfully");
+                    decrypted
+                }
+                None => {
+                    anyhow::bail!(
+                        "Received encrypted Feishu event but no encrypt_key configured. \
+                         Please configure encrypt_key in your Feishu channel settings."
+                    );
+                }
+            }
+        } else {
+            // Plain JSON payload
+            payload.to_string()
+        };
+
+        let event: EventCallback = serde_json::from_str(&decrypted_payload)?;
         Ok(event)
+    }
+
+    /// Decrypt Feishu encrypted event using AES-256-CBC.
+    ///
+    /// Feishu uses the following encryption scheme:
+    /// 1. Key derivation: `SHA256(encrypt_key)`
+    /// 2. IV: First 16 bytes of the key hash
+    /// 3. Cipher: AES-256-CBC with PKCS7 padding
+    /// 4. Encoding: Base64
+    fn decrypt_aes_cbc(encrypt_key: &str, ciphertext_b64: &str) -> anyhow::Result<String> {
+        // Step 1: Derive key using SHA256
+        let mut hasher = Sha256::new();
+        hasher.update(encrypt_key.as_bytes());
+        let key_hash = hasher.finalize();
+
+        // Step 2: Extract key (32 bytes) and IV (first 16 bytes of key hash)
+        let key: [u8; 32] = key_hash.into();
+        let iv: [u8; 16] = key_hash[..16].try_into()?;
+
+        // Step 3: Decode base64 ciphertext
+        let ciphertext = base64::engine::general_purpose::STANDARD
+            .decode(ciphertext_b64)
+            .map_err(|e| anyhow::anyhow!("Failed to decode base64 ciphertext: {e}"))?;
+
+        // Step 4: Decrypt using AES-256-CBC
+        let decryptor = Aes256CbcDec::new(&key.into(), &iv.into());
+        let mut buffer = ciphertext.clone();
+        let decrypted = decryptor
+            .decrypt_padded_mut::<Pkcs7>(&mut buffer)
+            .map_err(|e| anyhow::anyhow!("AES decryption failed: {e}"))?;
+
+        // Step 5: Convert to UTF-8 string
+        String::from_utf8(decrypted.to_vec())
+            .map_err(|e| anyhow::anyhow!("Decrypted content is not valid UTF-8: {e}"))
+    }
+
+    /// Parse event callback payload for gateway use.
+    ///
+    /// Returns the decrypted event as a JSON Value for gateway processing.
+    /// Handles both encrypted and plain events.
+    pub fn parse_event_gateway(&self, payload: &str) -> anyhow::Result<serde_json::Value> {
+        // Check if the payload is encrypted (has "encrypt" field)
+        let json_value: serde_json::Value = serde_json::from_str(payload)?;
+
+        if let Some(encrypt) = json_value.get("encrypt").and_then(|e| e.as_str()) {
+            // Decrypt the payload
+            match &self.encrypt_key {
+                Some(key) => {
+                    let decrypted = Self::decrypt_aes_cbc(key, encrypt)?;
+                    tracing::debug!("Feishu event decrypted successfully");
+                    serde_json::from_str(&decrypted)
+                        .map_err(|e| anyhow::anyhow!("Failed to parse decrypted JSON: {e}"))
+                }
+                None => {
+                    anyhow::bail!(
+                        "Received encrypted Feishu event but no encrypt_key configured. \
+                         Please configure encrypt_key in your Feishu channel settings."
+                    );
+                }
+            }
+        } else {
+            // Plain JSON payload
+            Ok(json_value)
+        }
     }
 
     /// Extract text content from message content JSON.
@@ -573,5 +659,91 @@ mod tests {
         // This should fail because credentials are invalid
         let result = ch.health_check().await;
         assert!(!result);
+    }
+
+    #[test]
+    fn feishu_aes_decrypt_roundtrip() {
+        use aes::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+
+        type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
+
+        let encrypt_key = "test_encrypt_key_12345";
+        let plaintext = r#"{"challenge":"test_challenge_123"}"#;
+
+        // Encrypt using the same scheme as Feishu
+        let mut hasher = Sha256::new();
+        hasher.update(encrypt_key.as_bytes());
+        let key_hash = hasher.finalize();
+        let key: [u8; 32] = key_hash.into();
+        let iv: [u8; 16] = key_hash[..16].try_into().unwrap();
+
+        let encryptor = Aes256CbcEnc::new(&key.into(), &iv.into());
+        let mut buffer = vec![0u8; plaintext.len() + 16]; // Extra space for padding
+        buffer[..plaintext.len()].copy_from_slice(plaintext.as_bytes());
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<Pkcs7>(&mut buffer, plaintext.len())
+            .unwrap();
+        let ciphertext_b64 = base64::engine::general_purpose::STANDARD.encode(ciphertext);
+
+        // Decrypt using our implementation
+        let decrypted = FeishuChannel::decrypt_aes_cbc(encrypt_key, &ciphertext_b64).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn feishu_parse_encrypted_event() {
+        use aes::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
+        use base64::Engine;
+        use sha2::{Digest, Sha256};
+
+        type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
+
+        let encrypt_key = "feishu_test_key";
+        let event_json = r#"{"challenge":"verify_123"}"#;
+
+        // Encrypt the event
+        let mut hasher = Sha256::new();
+        hasher.update(encrypt_key.as_bytes());
+        let key_hash = hasher.finalize();
+        let key: [u8; 32] = key_hash.into();
+        let iv: [u8; 16] = key_hash[..16].try_into().unwrap();
+
+        let encryptor = Aes256CbcEnc::new(&key.into(), &iv.into());
+        let mut buffer = vec![0u8; event_json.len() + 16];
+        buffer[..event_json.len()].copy_from_slice(event_json.as_bytes());
+        let ciphertext = encryptor
+            .encrypt_padded_mut::<Pkcs7>(&mut buffer, event_json.len())
+            .unwrap();
+        let ciphertext_b64 = base64::engine::general_purpose::STANDARD.encode(ciphertext);
+
+        // Create encrypted payload
+        let encrypted_payload = format!(r#"{{"encrypt":"{}"}}"#, ciphertext_b64);
+
+        // Create channel with encryption key and parse event
+        let ch = FeishuChannel::with_encryption(
+            "app".into(),
+            "secret".into(),
+            Some(encrypt_key.into()),
+            None,
+            vec!["*".into()],
+        );
+
+        let event = ch.parse_event(&encrypted_payload).unwrap();
+        assert_eq!(event.challenge, Some("verify_123".into()));
+    }
+
+    #[test]
+    fn feishu_parse_encrypted_event_fails_without_key() {
+        let encrypted_payload = r#"{"encrypt":"somebase64data=="}"#;
+        let ch = FeishuChannel::new("app".into(), "secret".into(), vec!["*".into()]);
+
+        let result = ch.parse_event(encrypted_payload);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("no encrypt_key configured"));
     }
 }

@@ -897,10 +897,13 @@ impl TelegramChannel {
     /// Send a single message chunk with Markdown parsing.
     /// Falls back to plain text if Markdown parsing fails.
     async fn send_single_chunk(&self, message: &str, chat_id: &str) -> anyhow::Result<()> {
+        // Convert standard Markdown to Telegram-compatible format
+        let converted = super::telegram_format::convert_to_telegram_markdown(message);
+
         // First, try with Markdown parsing
         let body = serde_json::json!({
             "chat_id": chat_id,
-            "text": message,
+            "text": converted,
             "parse_mode": "Markdown"
         });
 

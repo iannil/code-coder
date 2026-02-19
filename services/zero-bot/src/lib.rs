@@ -23,6 +23,7 @@ pub mod gateway;
 pub mod health;
 pub mod heartbeat;
 pub mod integrations;
+pub mod mcp;
 pub mod memory;
 pub mod migration;
 pub mod observability;
@@ -93,6 +94,29 @@ pub enum SkillCommands {
     Remove {
         /// Skill name to remove
         name: String,
+    },
+    /// Search for skills in `SkillHub` registry
+    Search {
+        /// Search query
+        query: String,
+        /// Limit results (default: 10)
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    /// Update installed skills
+    Update {
+        /// Skill name (omit to check all)
+        name: Option<String>,
+    },
+    /// Show detailed information about a skill
+    Info {
+        /// Skill name
+        name: String,
+    },
+    /// Publish a skill to `SkillHub` (requires GitHub account)
+    Publish {
+        /// Path to skill directory
+        path: std::path::PathBuf,
     },
 }
 

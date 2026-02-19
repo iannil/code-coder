@@ -43,6 +43,8 @@ struct ZeroBotJsonConfig {
     session: Option<ZeroBotJsonSession>,
     #[serde(default)]
     tts: Option<ZeroBotJsonTts>,
+    #[serde(default)]
+    mcp: Option<ZeroBotJsonMcp>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -132,7 +134,9 @@ struct ZeroBotJsonChannels {
     feishu: Option<ZeroBotJsonFeishu>,
 }
 
+/// Feishu config fields - some reserved for future use
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct ZeroBotJsonFeishu {
     #[serde(default)]
     enabled: Option<bool>,
@@ -236,6 +240,41 @@ struct ZeroBotJsonTts {
     #[serde(alias = "default_voice")]
     default_voice: Option<String>,
     base_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+struct ZeroBotJsonMcp {
+    #[serde(default)]
+    servers: Option<std::collections::HashMap<String, ZeroBotJsonMcpServer>>,
+    #[serde(default)]
+    server_enabled: Option<bool>,
+    #[serde(default)]
+    server_api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+enum ZeroBotJsonMcpServer {
+    #[serde(rename = "local")]
+    Local {
+        command: Vec<String>,
+        #[serde(default)]
+        environment: Option<std::collections::HashMap<String, String>>,
+        #[serde(default = "default_mcp_enabled")]
+        enabled: bool,
+    },
+    #[serde(rename = "remote")]
+    Remote {
+        url: String,
+        #[serde(default)]
+        headers: Option<std::collections::HashMap<String, String>>,
+        #[serde(default = "default_mcp_enabled")]
+        enabled: bool,
+    },
+}
+
+fn default_mcp_enabled() -> bool {
+    true
 }
 
 /// Strip JSONC-style comments (// and /* */)
@@ -359,6 +398,9 @@ pub struct Config {
 
     #[serde(default)]
     pub voice_wake: VoiceWakeConfig,
+
+    #[serde(default)]
+    pub mcp: McpConfig,
 }
 
 // ── Identity (AIEOS / OpenClaw format) ──────────────────────────
@@ -515,6 +557,65 @@ impl Default for CodeCoderConfig {
             enabled: false,
             endpoint: default_codecoder_endpoint(),
             api_key: None,
+        }
+    }
+}
+
+// ── MCP (Model Context Protocol) ────────────────────────────────
+
+/// MCP configuration for connecting to external MCP servers and exposing tools
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
+pub struct McpConfig {
+    /// MCP servers to connect to
+    #[serde(default)]
+    pub servers: std::collections::HashMap<String, McpServerConfig>,
+    /// Enable MCP server mode (expose `ZeroBot` tools via MCP)
+    #[serde(default)]
+    pub server_enabled: bool,
+    /// API key for MCP server authentication
+    #[serde(default)]
+    pub server_api_key: Option<String>,
+}
+
+
+/// Configuration for a single MCP server
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum McpServerConfig {
+    /// Local MCP server via stdio
+    #[serde(rename = "local")]
+    Local {
+        /// Command to spawn the MCP server
+        command: Vec<String>,
+        /// Environment variables for the process
+        #[serde(default)]
+        environment: Option<std::collections::HashMap<String, String>>,
+        /// Whether this server is enabled
+        #[serde(default = "default_true")]
+        enabled: bool,
+    },
+    /// Remote MCP server via HTTP
+    #[serde(rename = "remote")]
+    Remote {
+        /// URL of the MCP server
+        url: String,
+        /// HTTP headers for authentication
+        #[serde(default)]
+        headers: Option<std::collections::HashMap<String, String>>,
+        /// Whether this server is enabled
+        #[serde(default = "default_true")]
+        enabled: bool,
+    },
+}
+
+impl McpServerConfig {
+    /// Check if this server is enabled
+    pub fn enabled(&self) -> bool {
+        match self {
+            McpServerConfig::Local { enabled, .. } | McpServerConfig::Remote { enabled, .. } => {
+                *enabled
+            }
         }
     }
 }
@@ -1146,6 +1247,7 @@ impl Default for Config {
             session: SessionConfig::default(),
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
+            mcp: McpConfig::default(),
         }
     }
 }
@@ -1472,6 +1574,44 @@ impl Config {
             base_url: t.base_url.or(defaults.tts.base_url.clone()),
         });
 
+        // Build MCP config
+        let mcp = json.mcp.map_or(defaults.mcp.clone(), |m| {
+            let servers = m.servers.map_or(std::collections::HashMap::new(), |servers| {
+                servers
+                    .into_iter()
+                    .map(|(name, server)| {
+                        let config = match server {
+                            ZeroBotJsonMcpServer::Local {
+                                command,
+                                environment,
+                                enabled,
+                            } => McpServerConfig::Local {
+                                command,
+                                environment,
+                                enabled,
+                            },
+                            ZeroBotJsonMcpServer::Remote {
+                                url,
+                                headers,
+                                enabled,
+                            } => McpServerConfig::Remote {
+                                url,
+                                headers,
+                                enabled,
+                            },
+                        };
+                        (name, config)
+                    })
+                    .collect()
+            });
+
+            McpConfig {
+                servers,
+                server_enabled: m.server_enabled.unwrap_or(defaults.mcp.server_enabled),
+                server_api_key: m.server_api_key.or(defaults.mcp.server_api_key.clone()),
+            }
+        });
+
         Config {
             workspace_dir: json
                 .workspace_dir
@@ -1498,6 +1638,7 @@ impl Config {
             session,
             tts,
             voice_wake: defaults.voice_wake,
+            mcp,
         }
     }
 
@@ -1728,6 +1869,7 @@ mod tests {
             session: SessionConfig::default(),
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
+            mcp: McpConfig::default(),
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1802,6 +1944,7 @@ default_temperature = 0.7
             session: SessionConfig::default(),
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
+            mcp: McpConfig::default(),
         };
 
         config.save().unwrap();
@@ -2625,6 +2768,7 @@ default_temperature = 0.7
             codecoder: None,
             session: None,
             tts: None,
+            mcp: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test-zerobot");
@@ -2679,6 +2823,7 @@ default_temperature = 0.7
             codecoder: None,
             session: None,
             tts: None,
+            mcp: None,
         };
 
         let zerobot_dir = PathBuf::from("/tmp/test");

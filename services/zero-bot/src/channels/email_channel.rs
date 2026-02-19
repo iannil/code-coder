@@ -400,7 +400,11 @@ impl Channel for EmailChannel {
                 Ok(Ok(messages)) => {
                     for (id, sender, content, ts) in messages {
                         {
-                            let mut seen = self.seen_messages.lock().unwrap();
+                            let Ok(mut seen) = self.seen_messages.lock() else {
+                                // Mutex poisoned - skip deduplication but continue
+                                tracing::warn!("Email seen_messages mutex poisoned, skipping dedup");
+                                continue;
+                            };
                             if seen.contains(&id) {
                                 continue;
                             }

@@ -1,12 +1,23 @@
 use crate::config::Config;
+use crate::tools::ToolRegistry;
 use anyhow::Result;
 use chrono::Utc;
 use std::future::Future;
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
 const STATUS_FLUSH_SECONDS: u64 = 5;
+
+/// Shared tool registry for the daemon, accessible to all components
+static TOOL_REGISTRY: std::sync::OnceLock<Arc<RwLock<ToolRegistry>>> = std::sync::OnceLock::new();
+
+/// Get the global tool registry (initialized during daemon startup)
+pub fn get_tool_registry() -> Option<&'static Arc<RwLock<ToolRegistry>>> {
+    TOOL_REGISTRY.get()
+}
 
 pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     let initial_backoff = config.reliability.channel_initial_backoff_secs.max(1);
@@ -17,6 +28,49 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
 
     crate::health::mark_component_ok("daemon");
 
+    // ── Initialize tool registry with MCP support ──────────────
+    let security = Arc::new(crate::security::SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+    ));
+    let mem: Arc<dyn crate::memory::Memory> = Arc::from(crate::memory::create_memory(
+        &config.memory,
+        &config.workspace_dir,
+        config.api_key.as_deref(),
+    )?);
+    let vault_path = config
+        .config_path
+        .parent()
+        .map_or_else(|| config.workspace_dir.clone(), std::path::Path::to_path_buf);
+
+    let registry = ToolRegistry::with_native_tools(
+        &security,
+        mem,
+        &config.browser,
+        &config.codecoder,
+        &config.vault,
+        &vault_path,
+    );
+
+    // Connect to MCP servers if configured
+    if !config.mcp.servers.is_empty() {
+        match registry.connect_mcp_servers(&config.mcp).await {
+            Ok(()) => {
+                let mcp_count = registry.mcp_tool_count().await;
+                if mcp_count > 0 {
+                    println!("  🔌 MCP: {mcp_count} tools loaded from external servers");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to connect to some MCP servers: {e}");
+            }
+        }
+    }
+
+    // Store registry globally for other components
+    let _ = TOOL_REGISTRY.set(Arc::new(RwLock::new(registry)));
+    crate::health::mark_component_ok("mcp");
+
     if config.heartbeat.enabled {
         let _ =
             crate::heartbeat::engine::HeartbeatEngine::ensure_heartbeat_file(&config.workspace_dir)
@@ -24,6 +78,20 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     }
 
     let mut handles: Vec<JoinHandle<()>> = vec![spawn_state_writer(config.clone())];
+
+    // Start MCP supervisor if there are configured servers
+    if !config.mcp.servers.is_empty() {
+        let mcp_cfg = config.clone();
+        handles.push(spawn_component_supervisor(
+            "mcp",
+            initial_backoff,
+            max_backoff,
+            move || {
+                let cfg = mcp_cfg.clone();
+                async move { run_mcp_refresh_worker(cfg).await }
+            },
+        ));
+    }
 
     {
         let gateway_cfg = config.clone();
@@ -86,11 +154,23 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
 
     println!("🧠 ZeroBot daemon started");
     println!("   Gateway:  http://{host}:{port}");
-    println!("   Components: gateway, channels, heartbeat, scheduler");
+    let mcp_status = if config.mcp.servers.is_empty() {
+        ""
+    } else {
+        ", mcp"
+    };
+    println!("   Components: gateway, channels, heartbeat, scheduler{mcp_status}");
     println!("   Ctrl+C to stop");
 
     tokio::signal::ctrl_c().await?;
     crate::health::mark_component_error("daemon", "shutdown requested");
+
+    // Close MCP connections gracefully
+    if let Some(registry) = get_tool_registry() {
+        if let Ok(reg) = registry.try_read() {
+            let _ = reg.close().await;
+        }
+    }
 
     for handle in &handles {
         handle.abort();
@@ -196,6 +276,35 @@ async fn run_heartbeat_worker(config: Config) -> Result<()> {
                 tracing::warn!("Heartbeat task failed: {e}");
             } else {
                 crate::health::mark_component_ok("heartbeat");
+            }
+        }
+    }
+}
+
+/// MCP refresh worker - periodically refreshes tools from connected MCP servers
+async fn run_mcp_refresh_worker(_config: Config) -> Result<()> {
+    // Refresh MCP tools every 5 minutes
+    let refresh_interval_secs = 300_u64;
+    let mut interval = tokio::time::interval(Duration::from_secs(refresh_interval_secs));
+
+    loop {
+        interval.tick().await;
+
+        if let Some(registry) = get_tool_registry() {
+            match registry.try_write() {
+                Ok(reg) => {
+                    if let Err(e) = reg.refresh_mcp_tools().await {
+                        tracing::warn!("Failed to refresh MCP tools: {e}");
+                        crate::health::mark_component_error("mcp", e.to_string());
+                    } else {
+                        let count = reg.mcp_tool_count().await;
+                        tracing::debug!("MCP tools refreshed: {count} tools available");
+                        crate::health::mark_component_ok("mcp");
+                    }
+                }
+                Err(_) => {
+                    tracing::debug!("MCP registry busy, skipping refresh");
+                }
             }
         }
     }

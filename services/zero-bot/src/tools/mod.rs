@@ -7,7 +7,9 @@ pub mod file_write;
 pub mod memory_forget;
 pub mod memory_recall;
 pub mod memory_store;
+pub mod registry;
 pub mod shell;
+pub mod skill_search;
 pub mod traits;
 
 pub use auto_login::AutoLoginTool;
@@ -19,7 +21,9 @@ pub use file_write::FileWriteTool;
 pub use memory_forget::MemoryForgetTool;
 pub use memory_recall::MemoryRecallTool;
 pub use memory_store::MemoryStoreTool;
+pub use registry::ToolRegistry;
 pub use shell::ShellTool;
+pub use skill_search::SkillSearchTool;
 pub use traits::Tool;
 #[allow(unused_imports)]
 pub use traits::{ToolResult, ToolSpec};
@@ -53,6 +57,7 @@ pub fn all_tools(
         Box::new(MemoryStoreTool::new(memory.clone())),
         Box::new(MemoryRecallTool::new(memory.clone())),
         Box::new(MemoryForgetTool::new(memory)),
+        Box::new(SkillSearchTool::new()),
     ];
 
     if browser_config.enabled {
@@ -123,6 +128,7 @@ mod tests {
         let tools = all_tools(&security, mem, &browser, &codecoder, &vault, tmp.path());
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(!names.contains(&"browser_open"));
+        assert!(names.contains(&"skill_search")); // skill_search is always included
     }
 
     #[test]
@@ -147,6 +153,26 @@ mod tests {
         let tools = all_tools(&security, mem, &browser, &codecoder, &vault, tmp.path());
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"browser_open"));
+    }
+
+    #[test]
+    fn all_tools_includes_skill_search() {
+        let tmp = TempDir::new().unwrap();
+        let security = Arc::new(SecurityPolicy::default());
+        let mem_cfg = MemoryConfig {
+            backend: "markdown".into(),
+            ..MemoryConfig::default()
+        };
+        let mem: Arc<dyn Memory> =
+            Arc::from(crate::memory::create_memory(&mem_cfg, tmp.path(), None).unwrap());
+
+        let browser = BrowserConfig::default();
+        let codecoder = CodeCoderConfig::default();
+        let vault = crate::config::VaultConfig::default();
+
+        let tools = all_tools(&security, mem, &browser, &codecoder, &vault, tmp.path());
+        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
+        assert!(names.contains(&"skill_search"));
     }
 
     #[test]

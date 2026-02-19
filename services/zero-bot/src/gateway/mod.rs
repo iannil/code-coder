@@ -9,9 +9,12 @@
 
 use crate::channels::{Channel, FeishuChannel, WhatsAppChannel};
 use crate::config::Config;
+use crate::mcp::McpServer;
 use crate::memory::{self, Memory, MemoryCategory};
 use crate::providers::{self, Provider};
 use crate::security::pairing::{constant_time_eq, is_public_bind, PairingGuard};
+use crate::security::SecurityPolicy;
+use crate::tools;
 use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use axum::{
@@ -198,7 +201,7 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         provider,
         model,
         temperature,
-        mem,
+        mem: mem.clone(),
         auto_save: config.memory.auto_save,
         webhook_secret,
         pairing,
@@ -208,15 +211,51 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         message_tx: None, // Gateway mode doesn't use the channel message bus
     };
 
+    // Build MCP server if enabled
+    let mcp_router = if config.mcp.server_enabled {
+        let security = Arc::new(SecurityPolicy::from_config(
+            &config.autonomy,
+            &config.workspace_dir,
+        ));
+
+        let tools_vec = tools::all_tools(
+            &security,
+            mem,
+            &config.browser,
+            &config.codecoder,
+            &config.vault,
+            &config.workspace_dir,
+        );
+
+        // Convert to Arc<dyn Tool>
+        let mcp_tools: Vec<Arc<dyn tools::Tool>> = tools_vec
+            .into_iter()
+            .map(|t| Arc::from(t) as Arc<dyn tools::Tool>)
+            .collect();
+
+        let mcp_server = Arc::new(McpServer::new(mcp_tools));
+        println!("  POST /mcp       — MCP JSON-RPC endpoint");
+        Some(mcp_server.routes())
+    } else {
+        None
+    };
+
     // Build router with middleware
-    let app = Router::new()
+    let mut app = Router::new()
         .route("/health", get(handle_health))
         .route("/pair", post(handle_pair))
         .route("/webhook", post(handle_webhook))
         .route("/whatsapp", get(handle_whatsapp_verify))
         .route("/whatsapp", post(handle_whatsapp_message))
         .route("/feishu", post(handle_feishu_event))
-        .with_state(state)
+        .with_state(state);
+
+    // Add MCP routes if enabled
+    if let Some(mcp) = mcp_router {
+        app = app.nest("/mcp", mcp);
+    }
+
+    let app = app
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
         .layer(TimeoutLayer::with_status_code(
             StatusCode::REQUEST_TIMEOUT,
@@ -548,11 +587,16 @@ async fn handle_feishu_event(
         }
     };
 
-    let Ok(event) = serde_json::from_str::<serde_json::Value>(payload) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Invalid JSON payload"})),
-        );
+    // Use the channel's parse_event method which handles encryption
+    let event = match feishu.parse_event_gateway(payload) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::error!("Failed to parse Feishu event: {e}");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("Failed to parse event: {e}")})),
+            );
+        }
     };
 
     // Handle URL verification challenge
@@ -561,15 +605,6 @@ async fn handle_feishu_event(
         return (
             StatusCode::OK,
             Json(serde_json::json!({ "challenge": challenge })),
-        );
-    }
-
-    // Handle encrypted events (v2.0)
-    if event.get("encrypt").is_some() {
-        tracing::warn!("Feishu encrypted events not yet supported, please disable encryption in Feishu Open Platform");
-        return (
-            StatusCode::OK,
-            Json(serde_json::json!({"error": "Encrypted events not supported"})),
         );
     }
 
@@ -610,7 +645,7 @@ async fn handle_feishu_event(
                                 let _ = state
                                     .mem
                                     .store(
-                                        &format!("feishu_{}", sender_open_id),
+                                        &format!("feishu_{sender_open_id}"),
                                         text,
                                         MemoryCategory::Conversation,
                                     )
