@@ -264,12 +264,205 @@ Here are some popular MCP servers you can use:
 
 | Server | Description | Installation |
 |--------|-------------|--------------|
+| `codecoder` (built-in) | CodeCoder's 20+ development tools | `ccode mcp serve` |
 | `@executeautomation/playwright-mcp-server` | Browser automation | `npx -y @executeautomation/playwright-mcp-server` |
 | `@modelcontextprotocol/server-filesystem` | Filesystem access | `npx -y @modelcontextprotocol/server-filesystem /path` |
 | `@modelcontextprotocol/server-github` | GitHub integration | `npx -y @modelcontextprotocol/server-github` |
 | `@modelcontextprotocol/server-sqlite` | SQLite database | `npx -y @modelcontextprotocol/server-sqlite --db-path ./data.db` |
 | `@modelcontextprotocol/server-postgres` | PostgreSQL database | `npx -y @modelcontextprotocol/server-postgres` |
 | `@modelcontextprotocol/server-brave-search` | Web search | `npx -y @modelcontextprotocol/server-brave-search` |
+
+## CodeCoder MCP Server
+
+CodeCoder includes a built-in MCP server that exposes all of its 20+ development tools, agent prompts, and project resources via MCP protocol. This allows external clients like ZeroBot to access CodeCoder's powerful capabilities.
+
+### Features
+
+- **Tools**: 20+ development tools (read, write, edit, bash, etc.)
+- **Prompts**: 27 agent prompts (build, plan, code-reviewer, etc.)
+- **Resources**: Project files (CLAUDE.md, README.md, package.json)
+- **Transports**: stdio and HTTP (Streamable HTTP)
+- **Authentication**: API key authentication for HTTP transport
+
+### Starting the MCP Server
+
+```bash
+# Start in stdio mode (default)
+ccode mcp serve
+
+# Start with HTTP transport
+ccode mcp serve --transport http --port 4405
+
+# Start with API key authentication
+ccode mcp serve --transport http --port 4405 --api-key your-secret-key
+
+# Filter tools by agent
+ccode mcp serve --agent code-reviewer
+
+# Enable only specific tools
+ccode mcp serve --tools "read,write,edit,glob,grep"
+```
+
+### CLI Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--transport` | Transport mode: `stdio` or `http` | `stdio` |
+| `--port` | Port for HTTP transport | `4405` |
+| `--api-key` | API key for HTTP authentication | none |
+| `--agent` | Filter tools by agent name | all |
+| `--tools` | Comma-separated list of enabled tools | all |
+
+### Server Configuration (config.json)
+
+You can configure the MCP server in `~/.codecoder/config.json` to set defaults:
+
+```jsonc
+{
+  "mcp": {
+    "server": {
+      "apiKey": "your-secret-key",
+      "port": 4405,
+      "defaultTransport": "http",
+      "resources": ["src/**/*.ts", "docs/**/*.md"]
+    }
+  }
+}
+```
+
+**Configuration Options:**
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `apiKey` | `string` | Default API key for HTTP authentication |
+| `port` | `number` | Default port for HTTP transport |
+| `defaultTransport` | `"stdio"` \| `"http"` | Default transport mode |
+| `resources` | `string[]` | Glob patterns for additional resources to expose |
+
+CLI arguments override config file values. For example:
+
+```bash
+# Uses apiKey and port from config
+ccode mcp serve --transport http
+
+# Overrides config values
+ccode mcp serve --transport http --port 5000 --api-key different-key
+```
+
+### HTTP Transport
+
+The HTTP transport uses Streamable HTTP (MCP spec 2025-03-26), providing:
+
+- **Session management**: Each client gets its own session
+- **Resumability**: Sessions can be resumed after disconnection
+- **Authentication**: API key via `Authorization: Bearer <key>` or `X-API-Key` header
+- **Health check**: `/health` endpoint returns server status
+
+### Configuring ZeroBot to use CodeCoder MCP Server
+
+**Local (stdio) connection:**
+
+```jsonc
+{
+  "mcp": {
+    "codecoder": {
+      "type": "local",
+      "command": ["ccode", "mcp", "serve"],
+      "enabled": true
+    }
+  }
+}
+```
+
+**Remote (HTTP) connection:**
+
+```jsonc
+{
+  "mcp": {
+    "codecoder": {
+      "type": "remote",
+      "url": "http://localhost:4405/mcp",
+      "headers": {
+        "X-API-Key": "your-secret-key"
+      }
+    }
+  }
+}
+```
+
+### Available Tools
+
+The CodeCoder MCP Server exposes these tools:
+
+| Category | Tools |
+|----------|-------|
+| File Operations | `read`, `write`, `edit`, `glob`, `grep` |
+| Shell | `bash` |
+| Web | `webfetch`, `websearch` |
+| Code Search | `codesearch` |
+| Task Management | `task`, `todo_write`, `todo_read` |
+| Questions | `question` |
+| Skills | `skill` |
+| Credentials | `get_credential` |
+| Network | `network_analyzer` |
+| Batch | `batch` (experimental) |
+| LSP | `lsp` (experimental) |
+
+### Available Prompts
+
+The MCP server exposes agent prompts for use by clients:
+
+| Category | Prompts |
+|----------|---------|
+| Primary Modes | `build`, `plan`, `writer`, `autonomous` |
+| Reverse Engineering | `code-reverse`, `jar-code-reverse` |
+| Code Quality | `code-reviewer`, `security-reviewer`, `tdd-guide`, `architect`, `verifier` |
+| Content | `writer`, `proofreader`, `expander`, `expander-fiction`, `expander-nonfiction` |
+| Exploration | `general`, `explore` |
+| 祝融说 (Zhurong) | `observer`, `decision`, `macro`, `trader`, `picker`, `miniproduct`, `ai-engineer` |
+| Utility | `synton-assistant` |
+
+### Available Resources
+
+The MCP server exposes project files as resources:
+
+**Built-in Resources:**
+
+| Resource | Description | URI |
+|----------|-------------|-----|
+| `CLAUDE.md` | Project instructions | `file://<workdir>/CLAUDE.md` |
+| `README.md` | Project documentation | `file://<workdir>/README.md` |
+| `package.json` | Package configuration | `file://<workdir>/package.json` |
+
+**Dynamic Resources:**
+
+Configure glob patterns in `~/.codecoder/config.json` to expose additional files:
+
+```jsonc
+{
+  "mcp": {
+    "server": {
+      "resources": ["src/**/*.ts", "docs/**/*.md", "*.yaml"]
+    }
+  }
+}
+```
+
+The server also provides resource templates for dynamic resource discovery:
+
+```bash
+# List resource templates
+mcp resources/templates/list
+# Returns templates like: file://<workdir>/src/**/*.ts
+```
+
+### Integration with ZeroBot
+
+When configured, ZeroBot will automatically receive tools from CodeCoder via MCP, replacing the need for the direct `codecoder` HTTP tool. This provides:
+
+- **Unified tool registry**: All tools available through standard MCP protocol
+- **Better performance**: Direct stdio communication instead of HTTP/SSE
+- **Consistency**: Same tool definitions used by both CodeCoder and ZeroBot
 
 ## Best Practices
 

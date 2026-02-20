@@ -368,6 +368,26 @@ export namespace Config {
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
 
+  export const McpDisabled = z
+    .object({
+      enabled: z.boolean(),
+    })
+    .strict()
+  export type McpDisabled = z.infer<typeof McpDisabled>
+
+  export const McpServerConfig = z
+    .object({
+      apiKey: z.string().optional().describe("API key for MCP server authentication"),
+      port: z.number().int().positive().optional().describe("Default port for HTTP transport"),
+      defaultTransport: z.enum(["stdio", "http"]).optional().describe("Default transport mode"),
+      resources: z.array(z.string()).optional().describe("Glob patterns for additional resources to expose"),
+    })
+    .strict()
+    .meta({
+      ref: "McpServerConfig",
+    })
+  export type McpServerConfig = z.infer<typeof McpServerConfig>
+
   export const PermissionAction = z.enum(["ask", "allow", "deny"]).meta({
     ref: "PermissionActionConfig",
   })
@@ -1098,15 +1118,13 @@ export namespace Config {
         .optional()
         .describe("Custom provider configurations and model overrides"),
       mcp: z
-        .record(
-          z.string(),
+        .object({
+          server: McpServerConfig.optional().describe("MCP server configuration for 'mcp serve' command"),
+        })
+        .catchall(
           z.union([
             Mcp,
-            z
-              .object({
-                enabled: z.boolean(),
-              })
-              .strict(),
+            McpDisabled,
           ]),
         )
         .optional()

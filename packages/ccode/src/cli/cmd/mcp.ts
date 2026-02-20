@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
-import { MCP } from "../../mcp"
+import { MCP, McpServer } from "../../mcp"
 import { McpAuth } from "../../mcp/auth"
 import { McpOAuthProvider } from "../../mcp/oauth-provider"
 import { Config } from "../../config/config"
@@ -37,16 +37,26 @@ function getAuthStatusText(status: MCP.AuthStatus): string {
   }
 }
 
-type McpEntry = NonNullable<Config.Info["mcp"]>[string]
+type McpClientEntry = Config.Mcp | Config.McpDisabled
 
 type McpConfigured = Config.Mcp
-function isMcpConfigured(config: McpEntry): config is McpConfigured {
+function isMcpConfigured(config: McpClientEntry): config is McpConfigured {
   return typeof config === "object" && config !== null && "type" in config
 }
 
 type McpRemote = Extract<McpConfigured, { type: "remote" }>
-function isMcpRemote(config: McpEntry): config is McpRemote {
+function isMcpRemote(config: McpClientEntry): config is McpRemote {
   return isMcpConfigured(config) && config.type === "remote"
+}
+
+/** Extract MCP client configs, excluding server config */
+function getMcpClientEntries(mcp: NonNullable<Config.Info["mcp"]>): Record<string, McpClientEntry> {
+  const result: Record<string, McpClientEntry> = {}
+  for (const [key, value] of Object.entries(mcp)) {
+    if (key === "server") continue
+    result[key] = value as McpClientEntry
+  }
+  return result
 }
 
 export const McpCommand = cmd({
@@ -54,6 +64,7 @@ export const McpCommand = cmd({
   describe: "manage MCP (Model Context Protocol) servers",
   builder: (yargs) =>
     yargs
+      .command(McpServeCommand)
       .command(McpAddCommand)
       .command(McpListCommand)
       .command(McpAuthCommand)
@@ -61,6 +72,49 @@ export const McpCommand = cmd({
       .command(McpDebugCommand)
       .demandCommand(),
   async handler() {},
+})
+
+export const McpServeCommand = cmd({
+  command: "serve",
+  describe: "start MCP server to expose CodeCoder tools",
+  builder: (yargs) =>
+    yargs
+      .option("transport", {
+        describe: "transport mode",
+        choices: ["stdio", "http"] as const,
+        default: "stdio" as const,
+      })
+      .option("port", {
+        describe: "port for HTTP transport",
+        type: "number",
+        default: 4405,
+      })
+      .option("api-key", {
+        describe: "API key for HTTP authentication",
+        type: "string",
+      })
+      .option("agent", {
+        describe: "filter tools by agent",
+        type: "string",
+      })
+      .option("tools", {
+        describe: "comma-separated list of tools to enable",
+        type: "string",
+      }),
+  async handler(args) {
+    await Instance.provide({
+      directory: process.cwd(),
+      async fn() {
+        await McpServer.serve({
+          transport: args.transport,
+          port: args.port,
+          apiKey: args.apiKey,
+          agentFilter: args.agent,
+          enabledTools: args.tools?.split(",").map((t) => t.trim()),
+        })
+      },
+    })
+  },
 })
 
 export const McpListCommand = cmd({
@@ -75,11 +129,11 @@ export const McpListCommand = cmd({
         prompts.intro("MCP Servers")
 
         const config = await Config.get()
-        const mcpServers = config.mcp ?? {}
+        const mcpClientEntries = getMcpClientEntries(config.mcp ?? {})
         const statuses = await MCP.status()
 
-        const servers = Object.entries(mcpServers).filter((entry): entry is [string, McpConfigured] =>
-          isMcpConfigured(entry[1]),
+        const servers = Object.entries(mcpClientEntries).filter(
+          (entry): entry is [string, McpConfigured] => isMcpConfigured(entry[1]),
         )
 
         if (servers.length === 0) {
@@ -152,10 +206,10 @@ export const McpAuthCommand = cmd({
         prompts.intro("MCP OAuth Authentication")
 
         const config = await Config.get()
-        const mcpServers = config.mcp ?? {}
+        const mcpClientEntries = getMcpClientEntries(config.mcp ?? {})
 
         // Get OAuth-capable servers (remote servers with oauth not explicitly disabled)
-        const oauthServers = Object.entries(mcpServers).filter(
+        const oauthServers = Object.entries(mcpClientEntries).filter(
           (entry): entry is [string, McpRemote] => isMcpRemote(entry[1]) && entry[1].oauth !== false,
         )
 
@@ -198,7 +252,7 @@ export const McpAuthCommand = cmd({
           serverName = selected
         }
 
-        const serverConfig = mcpServers[serverName]
+        const serverConfig = mcpClientEntries[serverName]
         if (!serverConfig) {
           prompts.log.error(`MCP server not found: ${serverName}`)
           prompts.outro("Done")
@@ -289,10 +343,10 @@ export const McpAuthListCommand = cmd({
         prompts.intro("MCP OAuth Status")
 
         const config = await Config.get()
-        const mcpServers = config.mcp ?? {}
+        const mcpClientEntries = getMcpClientEntries(config.mcp ?? {})
 
         // Get OAuth-capable servers
-        const oauthServers = Object.entries(mcpServers).filter(
+        const oauthServers = Object.entries(mcpClientEntries).filter(
           (entry): entry is [string, McpRemote] => isMcpRemote(entry[1]) && entry[1].oauth !== false,
         )
 
@@ -605,10 +659,10 @@ export const McpDebugCommand = cmd({
         prompts.intro("MCP OAuth Debug")
 
         const config = await Config.get()
-        const mcpServers = config.mcp ?? {}
+        const mcpClientEntries = getMcpClientEntries(config.mcp ?? {})
         const serverName = args.name
 
-        const serverConfig = mcpServers[serverName]
+        const serverConfig = mcpClientEntries[serverName]
         if (!serverConfig) {
           prompts.log.error(`MCP server not found: ${serverName}`)
           prompts.outro("Done")

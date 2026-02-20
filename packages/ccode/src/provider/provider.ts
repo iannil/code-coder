@@ -823,13 +823,13 @@ export namespace Provider {
         if (isBundledProvider) {
           // Create a minimal Info object for bundled providers not in database
           // This allows providers like gitlab to be loaded via environment variables
-          const bundledLoader = BUNDLED_PROVIDERS[providerID]
-          const result = await bundledLoader({
+          const result = await fn({
             id: providerID,
             name: providerID,
+            source: "custom",
             env: [],
+            options: {},
             models: {},
-            status: "active",
           })
           if (result && (result.autoload || providers[providerID])) {
             if (result.getModel) modelLoaders[providerID] = result.getModel

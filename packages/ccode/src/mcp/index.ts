@@ -155,20 +155,31 @@ export namespace MCP {
   type PromptInfo = Awaited<ReturnType<MCPClient["listPrompts"]>>["prompts"][number]
 
   type ResourceInfo = Awaited<ReturnType<MCPClient["listResources"]>>["resources"][number]
-  type McpEntry = NonNullable<Config.Info["mcp"]>[string]
-  function isMcpConfigured(entry: McpEntry): entry is Config.Mcp {
+  type McpClientEntry = Config.Mcp | Config.McpDisabled
+
+  function isMcpConfigured(entry: McpClientEntry): entry is Config.Mcp {
     return typeof entry === "object" && entry !== null && "type" in entry
+  }
+
+  /** Extract MCP client configs, excluding server config */
+  function getMcpClientEntries(mcp: NonNullable<Config.Info["mcp"]>): Record<string, McpClientEntry> {
+    const result: Record<string, McpClientEntry> = {}
+    for (const [key, value] of Object.entries(mcp)) {
+      if (key === "server") continue
+      result[key] = value as McpClientEntry
+    }
+    return result
   }
 
   const state = Instance.state(
     async () => {
       const cfg = await Config.get()
-      const config = cfg.mcp ?? {}
+      const mcpClientEntries = getMcpClientEntries(cfg.mcp ?? {})
       const clients: Record<string, MCPClient> = {}
       const status: Record<string, Status> = {}
 
       await Promise.all(
-        Object.entries(config).map(async ([key, mcp]) => {
+        Object.entries(mcpClientEntries).map(async ([key, mcp]) => {
           if (!isMcpConfigured(mcp)) {
             log.error("Ignoring MCP config entry without type", { key })
             return
@@ -496,11 +507,11 @@ export namespace MCP {
   export async function status() {
     const s = await state()
     const cfg = await Config.get()
-    const config = cfg.mcp ?? {}
+    const mcpClientEntries = getMcpClientEntries(cfg.mcp ?? {})
     const result: Record<string, Status> = {}
 
     // Include all configured MCPs from config, not just connected ones
-    for (const [key, mcp] of Object.entries(config)) {
+    for (const [key, mcp] of Object.entries(mcpClientEntries)) {
       if (!isMcpConfigured(mcp)) continue
       result[key] = s.status[key] ?? { status: "disabled" }
     }
@@ -932,3 +943,6 @@ export namespace MCP {
     return expired ? "expired" : "authenticated"
   }
 }
+
+// Re-export McpServer for MCP server functionality
+export { McpServer } from "./server"
