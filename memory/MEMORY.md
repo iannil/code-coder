@@ -94,6 +94,46 @@
 - **影响**: storage.ts 路径常量更新，需要手动迁移现有数据
 - **迁移命令**: `mv ~/.zero-bot/* ~/.codecoder/`
 
+### 2026-02-17: Telegram 交互增强
+- **决策**: 添加 Telegram 交互式确认和语音消息支持
+- **理由**: 提升用户体验，支持语音输入
+- **影响**: Telegram channel 添加 interactive confirmation、voice message support
+
+### 2026-02-18: Playwright 集成 + 本地 Whisper STT
+- **决策**: 集成 Playwright 浏览器自动化，使用本地 Faster Whisper 替代云端 STT
+- **理由**: 支持网页交互任务，降低语音转文本延迟和成本
+- **影响**: 新增 Playwright tools、Faster Whisper Server (端口 4403)
+
+### 2026-02-19: MCP 集成 + SkillHub 实现
+- **决策**: 实现 MCP (Model Context Protocol) 集成和 SkillHub 技能市场
+- **理由**: 支持与外部 MCP 服务器交互，实现技能发现与安装
+- **影响**: 新增 MCP client 支持、Skill API 端点
+
+### 2026-02-20: CodeCoder MCP Server 实现
+- **决策**: 将 CodeCoder 作为 MCP Server 暴露工具、提示和资源
+- **理由**: 允许 ZeroBot 和其他 MCP 客户端使用 CodeCoder 能力
+- **影响**: 新增 `ccode mcp serve` 命令，支持 stdio/HTTP 传输
+
+### 2026-02-21: Zero-CLI 重构
+- **决策**: 将 zero-bot 单体重构拆分为 zero-cli + zero-* 服务
+- **理由**: 降低耦合，提高可维护性和模块化
+- **影响**: 移除 zero-bot，新增 zero-cli、zero-gateway、zero-channels、zero-workflow、zero-memory、zero-tools、zero-agent、zero-common
+
+### 2026-02-21: 智擎工作舱 (Omni-Nexus) v3 核心功能
+- **决策**: 完成平台无业务感知的核心能力层
+- **理由**: 实现可配置驱动的差异化场景支持
+- **影响**: 资源级 RBAC、敏感数据路由、统一配置中心、Agent 注册发现、Skill 打包安装、Prompt 模板引擎、Workflow DSL 引擎
+
+### 2026-02-21: Agent 自举飞轮系统
+- **决策**: 实现 Agent 从经验中学习并固化为可复用技能的能力
+- **理由**: 实现真正的自主学习和能力积累
+- **影响**: 新增 bootstrap/ 模块（候选存储、自省、生成、验证、置信度、压缩、成本追踪）、/crystallize 技能
+
+### 2026-02-22: 智擎工作舱 v4 Phase 1 交互层
+- **决策**: 打通 ZeroBot → CodeCoder API 的完整交互闭环
+- **理由**: 实现 Web Portal 与核心服务的完整连接
+- **影响**: Chat API、Metering API、Registry API、Admin/Chat 页面 API 连接
+
 ## 经验教训
 
 ### 代码清理

@@ -2,7 +2,7 @@
 
 > 文档类型: guide
 > 创建时间: 2026-02-05
-> 最后更新: 2026-02-16
+> 最后更新: 2026-02-22
 > 状态: active
 
 ## 开发环境设置
@@ -10,6 +10,7 @@
 ### 前置要求
 
 - **Bun** 1.3+ - 运行时和包管理器
+- **Rust** (最新稳定版) - Rust 服务开发
 - **Git** - 版本控制
 - **Node.js** 兼容环境 (通过 Bun)
 
@@ -20,18 +21,24 @@
 git clone https://github.com/iannil/code-coder.git
 cd codecoder
 
-# 安装依赖
+# 安装 TypeScript 依赖
 bun install
+
+# 安装 Rust 依赖
+cd services && cargo build --workspace
 ```
 
 ### 验证安装
 
 ```bash
-# 类型检查
+# TypeScript 类型检查
 bun typecheck
 
-# 运行测试
+# 运行 TypeScript 测试
 cd packages/ccode && bun test
+
+# Rust 测试
+cd services && cargo test --workspace
 
 # 启动开发环境
 bun dev
@@ -44,6 +51,8 @@ bun dev
 | 脚本 | 说明 |
 |------|------|
 | `bun dev` | 启动 CodeCoder TUI 开发模式 |
+| `bun dev:web` | 启动 CodeCoder Web 模式 |
+| `bun dev:serve` | 启动 CodeCoder API 服务器 |
 | `bun typecheck` | 运行所有包的 TypeScript 类型检查 (Turborepo) |
 | `bun test` | *禁止使用* - 必须在特定包内运行 |
 | `bun prepare` | 初始化 Husky Git 钩子 |
@@ -81,6 +90,37 @@ bun dev
 | `bun test:coverage` | 运行全局测试覆盖率报告 |
 | `bun test:coverage:report` | 生成覆盖率报告到 ./coverage 目录 |
 | `bun test:verify` | 验证测试覆盖率是否达标 |
+
+### web 包脚本 (`packages/web/`)
+
+| 脚本 | 说明 |
+|------|------|
+| `bun dev` | 启动 Vite 开发服务器 |
+| `bun build` | TypeScript 编译 + Vite 构建 |
+| `bun preview` | 预览构建产物 |
+| `bun typecheck` | TypeScript 类型检查 |
+| `bun lint` | ESLint 代码检查 |
+| `bun format` | 检查代码格式 (Prettier) |
+| `bun format:write` | 自动修复代码格式 |
+| `bun test` | 运行 Vitest 测试 |
+| `bun test:watch` | Vitest 监视模式 |
+| `bun test:ui` | Vitest UI 模式 |
+| `bun test:coverage` | 运行测试覆盖率报告 |
+| `bun test:e2e` | 运行 Playwright E2E 测试 |
+| `bun test:e2e:ui` | Playwright UI 模式 |
+| `bun test:e2e:headed` | Playwright 有头模式 |
+
+### Rust 服务脚本 (`services/`)
+
+| 命令 | 说明 |
+|------|------|
+| `cargo build --workspace` | 构建所有 Rust 服务 |
+| `cargo build -p zero-cli` | 构建 zero-cli 服务 |
+| `cargo build -p zero-gateway` | 构建 zero-gateway 服务 |
+| `cargo test --workspace` | 运行所有 Rust 测试 |
+| `cargo test -p <crate>` | 运行特定 crate 测试 |
+| `cargo clippy --workspace` | 运行 Clippy 代码检查 |
+| `cargo build --profile dist` | 发布优化构建 |
 
 ### util 包脚本 (`packages/util/`)
 
@@ -197,8 +237,21 @@ bun test --coverage
 ```
 codecoder/
 ├── packages/
-│   ├── ccode/          # 核心 CLI 工具
+│   ├── ccode/          # 核心 CLI 工具和 Agent 逻辑
+│   ├── web/            # Web 前端 (React + Vite)
 │   └── util/           # 共享工具库
+├── services/           # Rust 服务 workspace
+│   ├── zero-cli/       # CLI 客户端 (原 zero-bot)
+│   ├── zero-gateway/   # 网关服务 (认证、代理、配额)
+│   ├── zero-channels/  # IM 渠道适配 (Telegram, Feishu 等)
+│   ├── zero-workflow/  # 工作流引擎 (Cron, Webhook)
+│   ├── zero-memory/    # 记忆模块
+│   ├── zero-tools/     # 工具模块
+│   ├── zero-agent/     # Agent 模块
+│   └── zero-common/    # 共享组件
+├── memory/             # 双层记忆系统
+│   ├── MEMORY.md       # 长期记忆
+│   └── daily/          # 每日笔记
 ├── docs/               # 项目文档
 ├── script/             # 构建脚本
 └── CLAUDE.md           # Claude Code 指导

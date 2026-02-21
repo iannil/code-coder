@@ -2,8 +2,19 @@
 
 > 文档类型: runbook
 > 创建时间: 2026-02-05
-> 最后更新: 2026-02-16
+> 最后更新: 2026-02-22
 > 状态: active
+
+## 端口配置
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| CodeCoder API | 4400 | 核心 AI 引擎 API |
+| Web Frontend | 4401 | Vite 开发服务器 |
+| Zero Gateway | 4402 | 认证、代理、配额 |
+| Faster Whisper | 4403 | 本地 STT 服务 |
+| Zero Channels | 4404 | IM 渠道 Webhook |
+| Zero Workflow | 4405 | 工作流自动化 |
 
 ## 部署程序
 
@@ -12,24 +23,50 @@
 ```bash
 # 1. 安装依赖
 bun install
+cd services && cargo build --workspace
 
 # 2. 类型检查
 bun typecheck
 
 # 3. 运行测试
 cd packages/ccode && bun test
+cd services && cargo test --workspace
 
 # 4. 启动开发模式
-bun dev
+bun dev          # TUI 模式
+bun dev:web      # Web 模式
+bun dev:serve    # API 服务器模式
+```
+
+### Rust 服务部署
+
+```bash
+# 构建所有服务
+cd services && cargo build --release --workspace
+
+# 构建特定服务
+cargo build --release -p zero-gateway
+cargo build --release -p zero-channels
+cargo build --release -p zero-workflow
+
+# 发布优化构建 (最小体积)
+cargo build --profile dist --workspace
+
+# 输出目录: services/target/release/
 ```
 
 ### 生产构建
 
 ```bash
-# 构建独立可执行文件
+# TypeScript: 构建独立可执行文件
 bun run --cwd packages/ccode build
 
 # 输出: packages/ccode/bin/ccode
+
+# Rust: 发布构建
+cd services && cargo build --profile dist --workspace
+
+# 输出: services/target/dist/
 ```
 
 ### Docker 部署 (推荐)
@@ -40,11 +77,37 @@ docker build -t codecoder:latest .
 
 # 2. 运行容器 (独立网络)
 docker network create codecoder-net
-docker run --network codecoder-net -v ~/.codecoder:/app/.codecoder codecoder:latest
+docker run --network codecoder-net \
+  -v ~/.codecoder:/app/.codecoder \
+  -p 4400:4400 \
+  -p 4401:4401 \
+  codecoder:latest
 
-# 3. 发布文件夹
+# 3. Rust 服务容器
+docker run --network codecoder-net \
+  -p 4402:4402 \
+  -p 4404:4404 \
+  -p 4405:4405 \
+  codecoder-services:latest
+
+# 4. 发布文件夹
 # 固定在 /release 文件夹
 # Rust 服务: /release/rust
+# Docker 配置: /release/docker
+```
+
+### 多服务启动
+
+```bash
+# 启动所有 Rust 服务 (推荐使用 tmux 或 supervisor)
+
+# 方式 1: 分别启动
+./target/release/zero-gateway &
+./target/release/zero-channels &
+./target/release/zero-workflow &
+
+# 方式 2: Docker Compose
+docker compose up -d
 ```
 
 ### 发布准备
@@ -89,17 +152,32 @@ git push origin v0.0.1
 ### 健康检查
 
 ```bash
-# 检查 CLI 是否可用
+# TypeScript 服务
 ccode --version
-
-# 检查配置
 ccode config show
-
-# 检查 Agent 列表
 ccode agent list
+
+# Rust 服务健康端点
+curl http://localhost:4402/health  # Zero Gateway
+curl http://localhost:4404/health  # Zero Channels
+curl http://localhost:4405/health  # Zero Workflow
 
 # 检查缓存版本
 cat ~/.cache/ccode/version
+```
+
+### Rust 服务监控
+
+```bash
+# 查看服务日志
+journalctl -u zero-gateway -f
+journalctl -u zero-channels -f
+journalctl -u zero-workflow -f
+
+# 或使用 Docker
+docker logs -f zero-gateway
+docker logs -f zero-channels
+docker logs -f zero-workflow
 ```
 
 ### 性能指标
@@ -202,7 +280,7 @@ npx husky install
 ls -la ./memory/
 cat ./memory/MEMORY.md
 
-# 检查 ZeroBot 数据库
+# 检查数据库
 ls -la ~/.codecoder/workspace/memory/brain.db
 ```
 
@@ -210,7 +288,46 @@ ls -la ~/.codecoder/workspace/memory/brain.db
 1. 确保 `./memory/` 目录存在且可写
 2. 检查 `MEMORY.md` 格式是否正确
 3. 清除记忆缓存: 调用 `invalidateMemoryCache()`
-4. 如需写入 ZeroBot: 使用 `createZeroBotMemory({ readOnly: false })`
+4. 如需写入: 使用 `createMemory({ readOnly: false })`
+
+### 问题 7: Rust 服务构建失败
+
+**症状**: `cargo build` 报错
+
+**诊断**:
+```bash
+# 检查 Rust 版本
+rustc --version
+
+# 检查依赖
+cargo check --workspace
+```
+
+**修复**:
+1. 更新 Rust: `rustup update stable`
+2. 清理缓存: `cargo clean`
+3. 重新构建: `cargo build --workspace`
+
+### 问题 8: Rust 服务连接失败
+
+**症状**: 服务启动但无法连接
+
+**诊断**:
+```bash
+# 检查端口占用
+lsof -i :4402
+lsof -i :4404
+lsof -i :4405
+
+# 检查服务状态
+curl -v http://localhost:4402/health
+```
+
+**修复**:
+1. 检查端口是否被占用
+2. 检查配置文件 `~/.codecoder/config.json`
+3. 检查防火墙设置
+4. 查看服务日志排查错误
 
 ## 回滚程序
 
