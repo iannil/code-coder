@@ -6,7 +6,7 @@ import path from "path"
 import fs from "fs/promises"
 
 // Number of builtin skills that are always loaded
-const BUILTIN_SKILL_COUNT = 16
+const BUILTIN_SKILL_COUNT = 17
 
 async function createGlobalSkill(homeDir: string) {
   const skillDir = path.join(homeDir, ".claude", "skills", "global-test-skill")

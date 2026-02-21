@@ -14,7 +14,7 @@ import { Instance } from "../../../src/project/instance"
 import { Skill } from "../../../src/skill"
 
 // Number of builtin skills that are always loaded
-const BUILTIN_SKILL_COUNT = 16
+const BUILTIN_SKILL_COUNT = 17
 
 // List of known builtin skill names for validation
 const KNOWN_BUILTIN_SKILLS = [
