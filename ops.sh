@@ -186,7 +186,7 @@ start_service() {
             nohup bun run dev --port 4401 > "${log_file}" 2>&1 &
             ;;
         zerobot)
-            cd "${PROJECT_ROOT}/services/zero-bot"
+            cd "${PROJECT_ROOT}/services/zero-cli"
             nohup cargo run --release -- daemon --port 4402 > "${log_file}" 2>&1 &
             ;;
         whisper)
