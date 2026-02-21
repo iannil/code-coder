@@ -1,0 +1,62 @@
+[package]
+name = "zero-common"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Shared types, utilities, and configuration for the Zero ecosystem"
+readme = "README.md"
+
+[dependencies]
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Config
+directories = { workspace = true }
+shellexpand = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Cryptography (for security types)
+chacha20poly1305 = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+base64 = { workspace = true }
+
+# Secure memory
+zeroize = { workspace = true }
+
+# Random
+rand = { workspace = true }
+
+# File locking
+fs4 = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# HTTP types
+http = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+cron = { workspace = true }
+
+# Regex
+regex = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.14"

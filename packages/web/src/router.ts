@@ -92,6 +92,46 @@ const settingsRoute = createRoute({
 })
 
 // ============================================================================
+// Chat Route
+// ============================================================================
+
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat",
+  component: lazyRouteComponent(() => import("./pages/Chat"), "Chat"),
+})
+
+// ============================================================================
+// Skills Route
+// ============================================================================
+
+const skillsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/skills",
+  component: lazyRouteComponent(() => import("./pages/Skills"), "Skills"),
+})
+
+// ============================================================================
+// Workflows Route
+// ============================================================================
+
+const workflowsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/workflows",
+  component: lazyRouteComponent(() => import("./pages/Workflows"), "Workflows"),
+})
+
+// ============================================================================
+// Admin Route
+// ============================================================================
+
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  component: lazyRouteComponent(() => import("./pages/Admin"), "Admin"),
+})
+
+// ============================================================================
 // Files Route
 // ============================================================================
 
@@ -146,6 +186,10 @@ const routeTree = rootRoute.addChildren([
   agentsRoute,
   memoryRoute,
   infrastructureRoute,
+  chatRoute,
+  skillsRoute,
+  workflowsRoute,
+  adminRoute,
 ])
 
 // ============================================================================

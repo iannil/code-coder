@@ -1,0 +1,111 @@
+[workspace]
+resolver = "2"
+members = [
+    "zero-cli",
+    "zero-common",
+    "zero-gateway",
+    "zero-channels",
+    "zero-workflow",
+    "zero-memory",
+    "zero-tools",
+    "zero-agent",
+]
+
+# Shared dependencies across workspace
+# Use `workspace = true` in member Cargo.toml to inherit
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.42", default-features = false, features = ["rt-multi-thread", "macros", "time", "net", "io-util", "sync", "process", "io-std", "fs", "signal"] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "multipart"] }
+
+# HTTP server
+axum = { version = "0.7", default-features = false, features = ["http1", "json", "tokio", "query"] }
+tower = { version = "0.5", default-features = false }
+tower-http = { version = "0.6", default-features = false, features = ["limit", "timeout", "cors"] }
+http-body-util = "0.1"
+http = "1.1"
+
+# Serialization
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0", default-features = false, features = ["std"] }
+
+# Config
+directories = "5.0"
+shellexpand = "3.1"
+
+# Logging
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "json", "env-filter", "std"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# UUID
+uuid = { version = "1.11", default-features = false, features = ["v4", "std"] }
+
+# Cryptography
+chacha20poly1305 = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+
+# JWT
+jsonwebtoken = "9.3"
+
+# File locking
+fs4 = "0.11"
+
+# Secure memory
+zeroize = "1.8"
+
+# Random
+rand = "0.8"
+
+# Async traits
+async-trait = "0.1"
+
+# Time
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+cron = "0.12"
+
+# Regex
+regex = "1.11"
+
+# Password hashing
+argon2 = "0.5"
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Internal crates
+zero-common = { path = "zero-common" }
+zero-memory = { path = "zero-memory" }
+zero-tools = { path = "zero-tools" }
+zero-agent = { path = "zero-agent" }
+zero-channels = { path = "zero-channels" }
+zero-gateway = { path = "zero-gateway" }
+
+# Streams
+futures-util = "0.3"
+
+# Testing
+tempfile = "3.14"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dist]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"

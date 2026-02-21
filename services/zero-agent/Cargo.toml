@@ -1,0 +1,29 @@
+[package]
+name = "zero-agent"
+version = "0.1.0"
+edition = "2021"
+description = "AI agent execution engine with tool-calling loop"
+license = "MIT"
+
+[dependencies]
+# Internal crates
+zero-common = { workspace = true }
+zero-tools = { workspace = true }
+
+# Async
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -261,6 +261,28 @@ export function AppLayout() {
                 label="Dashboard"
               />
               <NavItem
+                to="/chat"
+                testId="nav-chat"
+                icon={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                    <path d="M12 17h.01" />
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                }
+                label="Chat"
+              />
+              <NavItem
                 to="/sessions"
                 testId="nav-sessions"
                 icon={
@@ -400,6 +422,27 @@ export function AppLayout() {
                 label="Agents"
               />
               <NavItem
+                to="/skills"
+                testId="nav-skills"
+                icon={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M19.439 7.85c-.049.322.059.648.289.878l1.568 1.568c.47.47.706 1.087.706 1.704s-.235 1.233-.706 1.704l-1.611 1.611a.98.98 0 0 1-.837.276c-.47-.07-.802-.48-.743-.95a.646.646 0 0 0-.129-.525.646.646 0 0 0-.511-.212h-5.432c-.706 0-1.279-.573-1.279-1.279V9.375c0-.706.573-1.279 1.279-1.279h5.432c.199 0 .386-.077.525-.212a.646.646 0 0 0 .13-.525c-.06-.47.27-.88.742-.95a.98.98 0 0 1 .837.276l1.612 1.611c.47.47.706 1.087.706 1.704s-.236 1.234-.706 1.704l-1.568 1.568a.985.985 0 0 1-.29.878Z" />
+                    <path d="M4 22V4c0-.5.2-1 .6-1.4C5 2.2 5.5 2 6 2h8.5L20 7.5V22c0 .5-.2 1-.6 1.4-.4.4-.9.6-1.4.6H6c-.5 0-1-.2-1.4-.6C4.2 23 4 22.5 4 22Z" />
+                  </svg>
+                }
+                label="Skills"
+              />
+              <NavItem
                 to="/memory"
                 testId="nav-memory"
                 icon={
@@ -419,6 +462,35 @@ export function AppLayout() {
                   </svg>
                 }
                 label="Memory"
+              />
+            </NavGroup>
+
+            {/* Automation Section */}
+            <NavGroup label="Automation">
+              <NavItem
+                to="/workflows"
+                testId="nav-workflows"
+                icon={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="5" cy="6" r="3" />
+                    <path d="M5 9v6" />
+                    <circle cx="5" cy="18" r="3" />
+                    <path d="M12 3v18" />
+                    <circle cx="19" cy="6" r="3" />
+                    <path d="M16 15.7A9 9 0 0 0 19 9" />
+                  </svg>
+                }
+                label="Workflows"
               />
             </NavGroup>
 
@@ -446,6 +518,27 @@ export function AppLayout() {
                   </svg>
                 }
                 label="Infrastructure"
+              />
+              <NavItem
+                to="/admin"
+                testId="nav-admin"
+                icon={
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" />
+                    <path d="m9 12 2 2 4-4" />
+                  </svg>
+                }
+                label="Admin"
               />
             </NavGroup>
           </div>

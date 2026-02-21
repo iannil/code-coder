@@ -60,6 +60,20 @@ import type {
   CredentialSummary,
   CredentialEntry,
   CredentialCreateInput,
+  // Metering Types
+  MeteringUsageResponse,
+  MeteringUserReport,
+  MeteringQuotasResponse,
+  MeteringQuota,
+  MeteringQuotaUpdate,
+  // Registry Types
+  RegistryAgentMetadata,
+  RegistrySearchResult,
+  RegistryCategory,
+  AgentRecommendation,
+  // Chat Types
+  ChatInput,
+  ChatResponse,
 } from "./types"
 
 // ============================================================================
@@ -1034,6 +1048,98 @@ export class ApiClient {
   async deleteCredential(id: string): Promise<void> {
     return this.delete<void>(`/credentials/${id}`)
   }
+
+  // ========================================================================
+  // Metering (Admin Dashboard)
+  // ========================================================================
+
+  /**
+   * Get overall usage statistics
+   */
+  async getMeteringUsage(): Promise<MeteringUsageResponse> {
+    return this.get<MeteringUsageResponse>("/v1/metering/usage")
+  }
+
+  /**
+   * Get per-user usage breakdown
+   */
+  async getMeteringUsers(): Promise<MeteringUserReport[]> {
+    return this.get<MeteringUserReport[]>("/v1/metering/users")
+  }
+
+  /**
+   * Get quota configurations
+   */
+  async getMeteringQuotas(): Promise<MeteringQuotasResponse> {
+    return this.get<MeteringQuotasResponse>("/v1/metering/quotas")
+  }
+
+  /**
+   * Update quota for a specific user
+   */
+  async updateMeteringQuota(userId: string, quota: MeteringQuotaUpdate): Promise<MeteringQuota> {
+    return this.put<MeteringQuota>(`/v1/metering/quotas/${userId}`, quota)
+  }
+
+  // ========================================================================
+  // Registry (Agent Discovery)
+  // ========================================================================
+
+  /**
+   * List all registered agents with metadata
+   */
+  async getRegistryAgents(category?: string): Promise<RegistryAgentMetadata[]> {
+    const params = category ? `?category=${encodeURIComponent(category)}` : ""
+    return this.get<RegistryAgentMetadata[]>(`/v1/registry/agents${params}`)
+  }
+
+  /**
+   * Get metadata for a specific agent
+   */
+  async getRegistryAgent(name: string): Promise<RegistryAgentMetadata> {
+    return this.get<RegistryAgentMetadata>(`/v1/registry/agents/${encodeURIComponent(name)}`)
+  }
+
+  /**
+   * Get recommended agent based on user intent
+   */
+  async recommendAgent(intent: string): Promise<AgentRecommendation> {
+    return this.post<AgentRecommendation>("/v1/registry/recommend", { intent })
+  }
+
+  /**
+   * Search agents by query
+   */
+  async searchRegistryAgents(query: string, limit?: number): Promise<RegistrySearchResult[]> {
+    const params = new URLSearchParams({ q: query })
+    if (limit) params.append("limit", String(limit))
+    return this.get<RegistrySearchResult[]>(`/v1/registry/search?${params}`)
+  }
+
+  /**
+   * List available agent categories
+   */
+  async getRegistryCategories(): Promise<RegistryCategory[]> {
+    return this.get<RegistryCategory[]>("/v1/registry/categories")
+  }
+
+  /**
+   * Get recommended agents for new users
+   */
+  async getRecommendedAgents(): Promise<RegistryAgentMetadata[]> {
+    return this.get<RegistryAgentMetadata[]>("/v1/registry/recommended")
+  }
+
+  // ========================================================================
+  // Chat (ZeroBot Bridge)
+  // ========================================================================
+
+  /**
+   * Send a chat message and receive a response
+   */
+  async chat(input: ChatInput): Promise<ChatResponse> {
+    return this.post<ChatResponse>("/v1/chat", input)
+  }
 }
 
 // ============================================================================
@@ -1186,4 +1292,18 @@ export const api = {
   addCredential: (input: CredentialCreateInput) => getClient().addCredential(input),
   updateCredential: (id: string, input: Partial<CredentialCreateInput>) => getClient().updateCredential(id, input),
   deleteCredential: (id: string) => getClient().deleteCredential(id),
+  // Metering APIs
+  getMeteringUsage: () => getClient().getMeteringUsage(),
+  getMeteringUsers: () => getClient().getMeteringUsers(),
+  getMeteringQuotas: () => getClient().getMeteringQuotas(),
+  updateMeteringQuota: (userId: string, quota: MeteringQuotaUpdate) => getClient().updateMeteringQuota(userId, quota),
+  // Registry APIs
+  getRegistryAgents: (category?: string) => getClient().getRegistryAgents(category),
+  getRegistryAgent: (name: string) => getClient().getRegistryAgent(name),
+  recommendAgent: (intent: string) => getClient().recommendAgent(intent),
+  searchRegistryAgents: (query: string, limit?: number) => getClient().searchRegistryAgents(query, limit),
+  getRegistryCategories: () => getClient().getRegistryCategories(),
+  getRecommendedAgents: () => getClient().getRecommendedAgents(),
+  // Chat API
+  chat: (input: ChatInput) => getClient().chat(input),
 }

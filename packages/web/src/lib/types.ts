@@ -1151,3 +1151,144 @@ export interface CredentialCreateInput {
   login?: LoginCredential
   patterns: string[]
 }
+
+// ============================================================================
+// Metering Types (Admin Dashboard)
+// ============================================================================
+
+export interface MeteringUsageResponse {
+  total_users: number
+  active_users_24h: number
+  tokens_used_24h: number
+  tokens_used_30d: number
+  requests_24h: number
+  requests_30d: number
+}
+
+export interface MeteringQuota {
+  user_id: string
+  daily_input_limit: number
+  daily_output_limit: number
+  monthly_input_limit: number
+  monthly_output_limit: number
+}
+
+export interface MeteringUserReport {
+  user_id: string
+  name: string
+  email?: string
+  role: string
+  daily_usage: {
+    input_tokens: number
+    output_tokens: number
+    requests: number
+  }
+  monthly_usage: {
+    input_tokens: number
+    output_tokens: number
+    requests: number
+  }
+  quota: MeteringQuota
+  percentage_used: number
+  last_active?: string
+}
+
+export interface MeteringQuotasResponse {
+  default: MeteringQuota
+  users: MeteringQuota[]
+}
+
+export interface MeteringQuotaUpdate {
+  daily_input_limit?: number
+  daily_output_limit?: number
+  monthly_input_limit?: number
+  monthly_output_limit?: number
+}
+
+// ============================================================================
+// Registry Types (Agent Discovery)
+// ============================================================================
+
+export interface RegistryAgentCapability {
+  id: string
+  name: string
+  description: string
+  primary: boolean
+}
+
+export interface RegistryAgentTrigger {
+  type: "keyword" | "pattern" | "event" | "context"
+  value: string
+  priority: number
+  description?: string
+}
+
+export interface RegistryAgentExample {
+  title: string
+  input: string
+  output: string
+  tags: string[]
+}
+
+export type RegistryAgentCategory = "engineering" | "content" | "analysis" | "philosophy" | "system" | "custom"
+
+export interface RegistryAgentMetadata {
+  name: string
+  displayName?: string
+  shortDescription?: string
+  longDescription?: string
+  category: RegistryAgentCategory
+  capabilities: RegistryAgentCapability[]
+  triggers: RegistryAgentTrigger[]
+  examples: RegistryAgentExample[]
+  tags: string[]
+  author?: string
+  version: string
+  builtin: boolean
+  icon?: string
+  recommended: boolean
+}
+
+export interface RegistrySearchResult {
+  agent: RegistryAgentMetadata
+  score: number
+  matches: Array<{
+    key: string
+    value: string
+    indices: ReadonlyArray<[number, number]>
+  }>
+}
+
+export interface RegistryCategory {
+  name: string
+  count: number
+  label: string
+}
+
+export interface AgentRecommendation {
+  recommended: RegistryAgentMetadata | null
+  alternates: RegistryAgentMetadata[]
+}
+
+// ============================================================================
+// Chat Types (ZeroBot Bridge)
+// ============================================================================
+
+export interface ChatInput {
+  message: string
+  conversation_id?: string
+  agent?: string
+  user_id: string
+  channel: string
+}
+
+export interface ChatResponse {
+  message: string
+  conversation_id: string
+  agent: string
+  usage?: {
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+  }
+}

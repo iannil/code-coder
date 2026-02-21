@@ -1,0 +1,30 @@
+[package]
+name = "zero-tools"
+version = "0.1.0"
+edition = "2021"
+description = "Tool system for AI agent capabilities"
+license = "MIT"
+
+[dependencies]
+# Internal crates
+zero-common = { workspace = true }
+zero-memory = { workspace = true }
+
+# Async
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# HTTP (for CodeCoder tool)
+reqwest = { workspace = true }
+futures-util = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

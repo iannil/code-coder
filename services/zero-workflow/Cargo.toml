@@ -1,0 +1,60 @@
+[package]
+name = "zero-workflow"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Workflow engine for the Zero ecosystem - webhooks, cron, Git integration, workflow orchestration"
+readme = "README.md"
+
+[[bin]]
+name = "zero-workflow"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+zero-common = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP
+reqwest = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+http-body-util = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Time & Cron
+chrono = { workspace = true }
+cron = { workspace = true }
+
+# Cryptography (for webhook signatures)
+hmac = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+
+# Async traits
+async-trait = { workspace = true }
+
+# YAML parsing for workflow definitions
+serde_yaml = "0.9"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.14"

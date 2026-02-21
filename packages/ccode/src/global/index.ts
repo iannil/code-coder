@@ -5,22 +5,27 @@ import os from "os"
 
 const app = "ccode"
 
+// Helper to get home directory, respecting test override
+const getHome = () => process.env.CCODE_TEST_HOME || os.homedir()
+
 const data = path.join(xdgData!, app)
 const cache = path.join(xdgCache!, app)
-const config = path.join(os.homedir(), ".codecoder")
 const state = path.join(xdgState!, app)
 
 export namespace Global {
   export const Path = {
     // Allow override via CCODE_TEST_HOME for test isolation
     get home() {
-      return process.env.CCODE_TEST_HOME || os.homedir()
+      return getHome()
     },
     data,
     bin: path.join(data, "bin"),
     log: path.join(data, "log"),
     cache,
-    config,
+    // Config path respects CCODE_TEST_HOME for test isolation
+    get config() {
+      return path.join(getHome(), ".codecoder")
+    },
     state,
   }
 }

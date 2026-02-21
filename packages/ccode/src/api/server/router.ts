@@ -259,6 +259,16 @@ export async function registerRoutes(): Promise<void> {
     cleanupSessions: cleanupCredentialSessions,
   } = await import("./handlers/credential")
 
+  // Skill handlers
+  const {
+    listSkills,
+    getSkill,
+    installSkill,
+    uninstallSkill,
+    updateSkill,
+    listSkillCategories,
+  } = await import("./handlers/skill")
+
   // Session routes
   router.get("/api/sessions", listSessions)
   router.get("/api/sessions/:id", getSession)
@@ -402,6 +412,43 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/credentials/:id/session", getCredentialSession)
   router.put("/api/credentials/:id/session", saveCredentialSession)
   router.delete("/api/credentials/:id/session", clearCredentialSession)
+
+  // Skill routes
+  router.get("/api/skills", listSkills)
+  router.get("/api/skills/categories", listSkillCategories)
+  router.get("/api/skills/:id", getSkill)
+  router.post("/api/skills/install", installSkill)
+  router.patch("/api/skills/:id", updateSkill)
+  router.delete("/api/skills/:id", uninstallSkill)
+
+  // Chat routes (for ZeroBot bridge)
+  const { chat, chatHealth } = await import("./handlers/chat")
+  router.post("/api/v1/chat", chat)
+  router.get("/api/v1/chat/health", chatHealth)
+
+  // Metering routes (for Admin dashboard)
+  const { getUsage, getUsersUsage, getQuotas, updateQuota, recordUsage } = await import("./handlers/metering")
+  router.get("/api/v1/metering/usage", getUsage)
+  router.get("/api/v1/metering/users", getUsersUsage)
+  router.get("/api/v1/metering/quotas", getQuotas)
+  router.put("/api/v1/metering/quotas/:userId", updateQuota)
+  router.post("/api/v1/metering/record", recordUsage)
+
+  // Registry routes (for Chat page and agent discovery)
+  const {
+    listAgents: registryListAgents,
+    getAgent: registryGetAgent,
+    recommendAgent,
+    searchAgents,
+    listCategories,
+    listRecommended,
+  } = await import("./handlers/registry")
+  router.get("/api/v1/registry/agents", registryListAgents)
+  router.get("/api/v1/registry/agents/:name", registryGetAgent)
+  router.post("/api/v1/registry/recommend", recommendAgent)
+  router.get("/api/v1/registry/search", searchAgents)
+  router.get("/api/v1/registry/categories", listCategories)
+  router.get("/api/v1/registry/recommended", listRecommended)
 }
 
 // ============================================================================

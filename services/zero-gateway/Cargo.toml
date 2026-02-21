@@ -1,0 +1,66 @@
+[package]
+name = "zero-gateway"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Gateway service for the Zero ecosystem - authentication, routing, quotas, and security sandbox"
+readme = "README.md"
+
+[[bin]]
+name = "zero-gateway"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+zero-common = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+http-body-util = { workspace = true }
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# JWT
+jsonwebtoken = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Regex
+regex = { workspace = true }
+
+# Directory lookup (for Gemini CLI auth)
+directories = { workspace = true }
+
+# Database
+rusqlite = { workspace = true }
+
+# Password hashing
+argon2 = { workspace = true }
+
+# Async traits
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.14"
