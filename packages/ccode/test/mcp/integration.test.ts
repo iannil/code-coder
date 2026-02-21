@@ -8,7 +8,7 @@
  * in certain CI environments where subprocess spawning is restricted.
  */
 
-import { describe, test, expect, beforeAll, afterAll } from "bun:test"
+import { describe, test, expect, beforeAll, afterAll, setDefaultTimeout } from "bun:test"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Subprocess } from "bun"
@@ -19,6 +19,9 @@ const TEST_API_KEY = "test-integration-key"
 
 // Skip integration tests in CI or when server can't start
 const SKIP_INTEGRATION = process.env.CI === "true" || process.env.SKIP_MCP_INTEGRATION === "true"
+
+// MCP server startup can take 15+ seconds
+setDefaultTimeout(30000)
 
 describe.skipIf(SKIP_INTEGRATION)("MCP Server Integration", () => {
   let serverProcess: Subprocess<"ignore", "pipe", "pipe"> | undefined
@@ -46,19 +49,27 @@ describe.skipIf(SKIP_INTEGRATION)("MCP Server Integration", () => {
       stderr: "pipe",
     })
 
-    // Wait for server to start and verify it's running
-    await Bun.sleep(2000)
+    // Wait for server to start with retry logic
+    const maxRetries = 30
+    const retryDelay = 500
 
-    // Check if server is responding
-    try {
-      const response = await fetch(`http://localhost:${TEST_PORT}/health`, {
-        signal: AbortSignal.timeout(5000),
-      })
-      if (response.ok) {
-        serverStarted = true
+    for (let i = 0; i < maxRetries; i++) {
+      await Bun.sleep(retryDelay)
+      try {
+        const response = await fetch(`http://localhost:${TEST_PORT}/health`, {
+          signal: AbortSignal.timeout(2000),
+        })
+        if (response.ok) {
+          serverStarted = true
+          break
+        }
+      } catch {
+        // Server not ready yet, continue retrying
       }
-    } catch {
-      serverStarted = false
+    }
+
+    if (!serverStarted) {
+      console.error("MCP server failed to start after 15 seconds")
     }
 
     return proc
@@ -161,6 +172,7 @@ describe.skipIf(SKIP_INTEGRATION)("MCP Server Integration", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
           Authorization: `Bearer ${TEST_API_KEY}`,
         },
         body: JSON.stringify({
@@ -182,6 +194,7 @@ describe.skipIf(SKIP_INTEGRATION)("MCP Server Integration", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
           "X-API-Key": TEST_API_KEY,
         },
         body: JSON.stringify({
