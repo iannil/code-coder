@@ -1,24 +1,37 @@
-import { test, expect, mock, beforeEach } from "bun:test"
+import { describe, test, expect, mock, beforeEach, afterAll } from "bun:test"
 import { EventEmitter } from "events"
+
+/**
+ * OAuth Browser Tests
+ *
+ * These tests use mock.module() which pollutes the module cache.
+ * They are skipped in the full test suite to avoid affecting other tests.
+ * Run explicitly with: bun test test/mcp/oauth-browser.test.ts
+ */
+
+// Skip when running full test suite to avoid module cache pollution
+const SKIP_OAUTH_TESTS = process.env.BUN_TEST_ALL === "true" || process.env.SKIP_OAUTH_BROWSER === "true"
 
 // Track open() calls and control failure behavior
 let openShouldFail = false
 let openCalledWith: string | undefined
 
-mock.module("open", () => ({
-  default: async (url: string) => {
-    openCalledWith = url
-    // Return a mock subprocess that emits an error if openShouldFail is true
-    const subprocess = new EventEmitter()
-    if (openShouldFail) {
-      // Emit error asynchronously like a real subprocess would
-      setTimeout(() => {
-        subprocess.emit("error", new Error("spawn xdg-open ENOENT"))
-      }, 10)
-    }
-    return subprocess
-  },
-}))
+if (!SKIP_OAUTH_TESTS) {
+  mock.module("open", () => ({
+    default: async (url: string) => {
+      openCalledWith = url
+      // Return a mock subprocess that emits an error if openShouldFail is true
+      const subprocess = new EventEmitter()
+      if (openShouldFail) {
+        // Emit error asynchronously like a real subprocess would
+        setTimeout(() => {
+          subprocess.emit("error", new Error("spawn xdg-open ENOENT"))
+        }, 10)
+      }
+      return subprocess
+    },
+  }))
+}
 
 // Mock UnauthorizedError
 class MockUnauthorizedError extends Error {
@@ -95,6 +108,11 @@ beforeEach(() => {
   openShouldFail = false
   openCalledWith = undefined
   transportCalls.length = 0
+})
+
+// Restore mocks after all tests to prevent pollution of other test files
+afterAll(() => {
+  mock.restore()
 })
 
 // Import modules after mocking

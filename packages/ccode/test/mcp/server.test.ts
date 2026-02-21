@@ -1,7 +1,4 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test"
-import { Server } from "@modelcontextprotocol/sdk/server/index.js"
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js"
-import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { describe, test, expect } from "bun:test"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -14,9 +11,18 @@ import {
 import z from "zod/v4"
 import path from "path"
 
+// Dynamic imports to avoid module cache pollution from other tests
+async function getMcpModules() {
+  const { Server } = await import("@modelcontextprotocol/sdk/server/index.js")
+  const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js")
+  const { Client } = await import("@modelcontextprotocol/sdk/client/index.js")
+  return { Server, InMemoryTransport, Client }
+}
+
 describe("McpServer", () => {
   describe("Tool Handlers", () => {
     test("tools/list returns tools with proper schema", async () => {
+      const { Server, InMemoryTransport, Client } = await getMcpModules()
       // Create a mock server and client using in-memory transport
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
@@ -79,6 +85,7 @@ describe("McpServer", () => {
     })
 
     test("tools/call handles missing tool gracefully", async () => {
+      const { Server, InMemoryTransport, Client } = await getMcpModules()
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
       const server = new Server(
@@ -114,6 +121,7 @@ describe("McpServer", () => {
 
   describe("Prompts Handlers", () => {
     test("prompts/list returns prompts", async () => {
+      const { Server, InMemoryTransport, Client } = await getMcpModules()
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
       const server = new Server(
@@ -162,6 +170,7 @@ describe("McpServer", () => {
 
   describe("Resources Handlers", () => {
     test("resources/list returns resources", async () => {
+      const { Server, InMemoryTransport, Client } = await getMcpModules()
       const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
 
       const server = new Server(

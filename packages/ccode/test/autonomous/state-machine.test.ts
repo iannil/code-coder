@@ -8,9 +8,10 @@ import {
 
 describe("Autonomous Mode - State Machine", () => {
   describe("VALID_TRANSITIONS Coverage", () => {
-    test("should have all 23 states defined", () => {
+    test("should have all 35 states defined", () => {
       const allStates = Object.values(AutonomousState)
-      expect(allStates.length).toBe(23)
+      // 20 core states + 15 expansion states
+      expect(allStates.length).toBe(35)
     })
 
     test("should define transitions for all states", () => {
@@ -26,7 +27,8 @@ describe("Autonomous Mode - State Machine", () => {
       const transitions = VALID_TRANSITIONS[AutonomousState.IDLE]
       expect(transitions).toContain(AutonomousState.PLANNING)
       expect(transitions).toContain(AutonomousState.TERMINATED)
-      expect(transitions.length).toBe(2)
+      expect(transitions).toContain(AutonomousState.EXPANSION_ANALYZING)
+      expect(transitions.length).toBe(3)
     })
 
     test("should have valid transitions from PLANNING", () => {
@@ -456,9 +458,10 @@ describe("Autonomous Mode - State Machine", () => {
       const tracker = new StateTransitionTracker()
       const stateMachine = createTrackedStateMachine(tracker)
 
-      // Fix workflow: IDLE -> PLANNING -> EXECUTING -> TESTING -> FIXING -> TESTING -> VERIFYING
+      // Fix workflow: IDLE -> PLANNING -> PLAN_APPROVED -> EXECUTING -> TESTING -> FIXING -> TESTING -> VERIFYING
       const workflow = [
         AutonomousState.PLANNING,
+        AutonomousState.PLAN_APPROVED,
         AutonomousState.EXECUTING,
         AutonomousState.TESTING,
         AutonomousState.FIXING,
@@ -478,9 +481,10 @@ describe("Autonomous Mode - State Machine", () => {
       const tracker = new StateTransitionTracker()
       const stateMachine = createTrackedStateMachine(tracker)
 
-      // Continue workflow: IDLE -> PLANNING -> EXECUTING -> TESTING -> VERIFYING -> EVALUATING -> SCORING -> CONTINUING -> PLANNING
+      // Continue workflow: IDLE -> PLANNING -> PLAN_APPROVED -> EXECUTING -> TESTING -> VERIFYING -> EVALUATING -> SCORING -> CONTINUING -> PLANNING
       const workflow = [
         AutonomousState.PLANNING,
+        AutonomousState.PLAN_APPROVED,
         AutonomousState.EXECUTING,
         AutonomousState.TESTING,
         AutonomousState.VERIFYING,

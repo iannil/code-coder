@@ -625,8 +625,7 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
       agent: {
         build: { disable: true },
         plan: { disable: true },
-        "code-reverse": { disable: true },
-        "jar-code-reverse": { disable: true },
+        writer: { disable: true },
         autonomous: { disable: true },
       },
     },
@@ -634,7 +633,7 @@ test("defaultAgent throws when all primary agents are disabled", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // build, plan, code-reverse, jar-code-reverse, and autonomous are disabled, no primary-capable agents remain
+      // build, plan, writer, and autonomous are disabled, no primary-capable agents remain
       await expect(Agent.defaultAgent()).rejects.toThrow("no primary visible agent found")
     },
   })
