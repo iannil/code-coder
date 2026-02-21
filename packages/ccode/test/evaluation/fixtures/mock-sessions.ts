@@ -304,13 +304,13 @@ export function createSessionWithToolCount(count: number): MockSession {
  * Create session from skill candidate (reverse operation for testing)
  */
 export function createSessionFromCandidate(
-  candidate: import("./mock-candidates").MOCK_CANDIDATES["verified"],
+  candidate: BootstrapTypes.SkillCandidate,
 ): MockSession {
   return createMockSession({
     sessionId: candidate.source.sessionId,
     problem: candidate.source.problem,
     solution: candidate.source.solution,
-    toolCalls: candidate.source.toolCalls.map((id, i) =>
+    toolCalls: candidate.source.toolCalls.map((id: string, i: number) =>
       createMockToolCall({
         id,
         tool: candidate.content.steps?.[i]?.split(":")[0].replace(/\d+\.\s*/, "") ?? "bash",

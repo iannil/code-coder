@@ -28,13 +28,7 @@ import {
   aggregateMetrics,
 } from "./utils/metrics"
 import { formatMetricResult } from "./utils/reporters"
-import { Log } from "@/util/log"
 import { tmpdir } from "../fixture/fixture"
-import path from "path"
-import os from "os"
-
-// Suppress logging during tests
-Log.init({ print: false })
 
 describe("Confidence Evolution Evaluation", () => {
   describe("E1: Success Enhancement", () => {
@@ -257,12 +251,14 @@ describe("Confidence Evolution Evaluation", () => {
     test("getLevel returns 'experimental' for low confidence", () => {
       expect(ConfidenceSystem.getLevel(0.1)).toBe("experimental")
       expect(ConfidenceSystem.getLevel(0.25)).toBe("experimental")
+      expect(ConfidenceSystem.getLevel(0.29)).toBe("experimental")
     })
 
     test("getLevel returns 'stable' for medium confidence", () => {
-      expect(ConfidenceSystem.getLevel(0.3)).toBe("stable")
-      expect(ConfidenceSystem.getLevel(0.5)).toBe("stable")
-      expect(ConfidenceSystem.getLevel(0.7)).toBe("stable")
+      // STABLE threshold is 0.6 (>= 0.6 but < 0.8)
+      expect(ConfidenceSystem.getLevel(0.6)).toBe("stable")
+      expect(ConfidenceSystem.getLevel(0.65)).toBe("stable")
+      expect(ConfidenceSystem.getLevel(0.79)).toBe("stable")
     })
 
     test("getLevel returns 'mature' for high confidence", () => {

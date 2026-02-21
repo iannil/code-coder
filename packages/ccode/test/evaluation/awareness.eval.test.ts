@@ -23,10 +23,6 @@ import {
   createMetricResult,
   aggregateMetrics,
 } from "./utils/metrics"
-import { Log } from "@/util/log"
-
-// Suppress logging during tests
-Log.init({ print: false })
 
 describe("Awareness Evaluation", () => {
   describe("A1: Tool Identification", () => {

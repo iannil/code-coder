@@ -8,7 +8,7 @@
  * - V4: Terminates loop appropriately
  */
 
-import { describe, test, expect, beforeEach, mock } from "bun:test"
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test"
 import { ExecutionLoop } from "@/bootstrap/verification"
 import { CandidateStore } from "@/bootstrap/candidate-store"
 import { ConfidenceSystem } from "@/bootstrap/confidence"
@@ -25,13 +25,7 @@ import {
   createMetricResult,
   aggregateMetrics,
 } from "./utils/metrics"
-import { Log } from "@/util/log"
 import { tmpdir } from "../fixture/fixture"
-import path from "path"
-import os from "os"
-
-// Suppress logging during tests
-Log.init({ print: false })
 
 /**
  * Note: Many verification tests require LLM calls and will be skipped
@@ -104,11 +98,18 @@ describe("Verification Loop Evaluation", () => {
   })
 
   describe("V2: Verification Execution", () => {
-    let tempDir: Awaited<ReturnType<typeof tmpdir>>
+    let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
 
     beforeEach(async () => {
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
+    })
+
+    afterEach(async () => {
+      if (tempDir) {
+        await tempDir[Symbol.asyncDispose]()
+      }
+      delete process.env.CCODE_TEST_HOME
     })
 
     test("verify returns structured result", async () => {
@@ -190,11 +191,18 @@ describe("Verification Loop Evaluation", () => {
   })
 
   describe("V3: Self-Correction", () => {
-    let tempDir: Awaited<ReturnType<typeof tmpdir>>
+    let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
 
     beforeEach(async () => {
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
+    })
+
+    afterEach(async () => {
+      if (tempDir) {
+        await tempDir[Symbol.asyncDispose]()
+      }
+      delete process.env.CCODE_TEST_HOME
     })
 
     test("selfCorrect returns null when max attempts reached", async () => {
@@ -302,11 +310,18 @@ describe("Verification Loop Evaluation", () => {
   })
 
   describe("V4: Loop Termination", () => {
-    let tempDir: Awaited<ReturnType<typeof tmpdir>>
+    let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
 
     beforeEach(async () => {
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
+    })
+
+    afterEach(async () => {
+      if (tempDir) {
+        await tempDir[Symbol.asyncDispose]()
+      }
+      delete process.env.CCODE_TEST_HOME
     })
 
     test("runVerificationLoop returns result", async () => {
@@ -461,11 +476,18 @@ describe("Verification Metrics", () => {
 })
 
 describe("Verification Integration with Confidence", () => {
-  let tempDir: Awaited<ReturnType<typeof tmpdir>>
+  let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
 
   beforeEach(async () => {
     tempDir = await tmpdir()
     process.env.CCODE_TEST_HOME = tempDir.path
+  })
+
+  afterEach(async () => {
+    if (tempDir) {
+      await tempDir[Symbol.asyncDispose]()
+    }
+    delete process.env.CCODE_TEST_HOME
   })
 
   test("successful verification increases candidate confidence", async () => {

@@ -216,7 +216,7 @@ export const ACQUISITION_EXPECTATIONS = {
   /**
    * Known MCP servers that should be suggested
    */
-  knownMcpServers: ["github", "filesystem", "slack", "browser", "memory"],
+  knownMcpServers: ["github", "filesystem", "slack", "browser", "memory"] as string[],
 
   /**
    * Resource discovery confidence thresholds
