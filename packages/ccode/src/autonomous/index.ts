@@ -93,6 +93,43 @@ export { GitOps } from "./execution/git-ops"
 export type { GitCheckpoint, GitStatus, GitCommitResult } from "./execution/git-ops"
 export { TestRunner } from "./execution/test-runner"
 
+// Sandbox Execution (Phase 3)
+export { SandboxExecutor, createSandboxExecutor } from "./execution/sandbox"
+export type {
+  SandboxLanguage,
+  SandboxRequest,
+  ResourceLimits,
+  SandboxResult,
+  ReflectionResult,
+} from "./execution/sandbox"
+
+// Enhanced Web Search (Phase 3)
+export { EnhancedWebSearch, createEnhancedWebSearch } from "./execution/enhanced-web-search"
+export type { WebFetchResult, ExtractedDoc } from "./execution/enhanced-web-search"
+
+// Knowledge Sedimentation (Phase 3)
+export {
+  KnowledgeSedimentation,
+  getKnowledgeSedimentation,
+  createKnowledgeSedimentation,
+} from "./execution/knowledge-sedimentation"
+export type {
+  KnowledgeCategory,
+  KnowledgeEntry,
+  KnowledgeSource,
+  ExtractionContext,
+  KnowledgeSearchResult,
+} from "./execution/knowledge-sedimentation"
+
+// Evolution Loop (Phase 3)
+export { EvolutionLoop, createEvolutionLoop, evolveProblem } from "./execution/evolution-loop"
+export type {
+  AutonomousProblem,
+  SolutionAttempt,
+  EvolutionResult,
+  EvolutionConfig,
+} from "./execution/evolution-loop"
+
 // Safety
 export { SafetyGuard, parseResourceBudget } from "./safety/constraints"
 export type { ResourceBudget, ResourceUsage, SafetyCheckResult, SafetyConfig } from "./safety/constraints"

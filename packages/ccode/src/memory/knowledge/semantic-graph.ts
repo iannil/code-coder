@@ -2,6 +2,7 @@ import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import { CodeIndex } from "./code-index"
+import { CallGraph } from "./call-graph"
 import z from "zod"
 
 const log = Log.create({ service: "memory.knowledge.semantic-graph" })
@@ -410,6 +411,88 @@ export namespace SemanticGraph {
     }
 
     return cycles
+  }
+
+  export async function populateCallEdges(): Promise<{ added: number }> {
+    const graph = await load()
+    const callGraph = await CallGraph.load()
+    let added = 0
+
+    log.info("populating call edges from CallGraph", {
+      callNodes: callGraph.nodes.length,
+      callEdges: callGraph.edges.length,
+    })
+
+    for (const callEdge of callGraph.edges) {
+      const callerCallNode = callGraph.nodes.find((n) => n.id === callEdge.caller)
+      const calleeCallNode = callGraph.nodes.find((n) => n.id === callEdge.callee)
+
+      if (!callerCallNode || !calleeCallNode) continue
+
+      const callerId = nodeId("function", callerCallNode.name, callerCallNode.file)
+      const calleeId = nodeId("function", calleeCallNode.name, calleeCallNode.file)
+
+      const callerNode = graph.nodes.find((n) => n.id === callerId)
+      const calleeNode = graph.nodes.find((n) => n.id === calleeId)
+
+      if (!callerNode) {
+        const newNode: Node = {
+          id: callerId,
+          type: "function",
+          name: callerCallNode.name,
+          file: callerCallNode.file,
+          metadata: {
+            kind: callerCallNode.kind,
+            line: callerCallNode.line,
+          },
+        }
+        graph.nodes.push(newNode)
+      }
+
+      if (!calleeNode) {
+        const newNode: Node = {
+          id: calleeId,
+          type: "function",
+          name: calleeCallNode.name,
+          file: calleeCallNode.file,
+          metadata: {
+            kind: calleeCallNode.kind,
+            line: calleeCallNode.line,
+          },
+        }
+        graph.nodes.push(newNode)
+      }
+
+      const edgeId = `${callerId}:calls:${calleeId}`
+      const existingEdge = graph.edges.find((e) => e.id === edgeId)
+
+      if (!existingEdge) {
+        addEdge(graph.edges, graph.adjacency, graph.reverseAdjacency, {
+          id: edgeId,
+          source: callerId,
+          target: calleeId,
+          type: "calls",
+          weight: 0.85,
+          metadata: {
+            locations: callEdge.locations,
+          },
+        })
+        added++
+      }
+    }
+
+    if (added > 0) {
+      await save(graph)
+      log.info("call edges populated", { added })
+    }
+
+    return { added }
+  }
+
+  export async function buildWithCalls(): Promise<Graph> {
+    const graph = await build()
+    await populateCallEdges()
+    return load()
   }
 
   export async function invalidate(): Promise<void> {

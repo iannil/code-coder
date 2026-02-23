@@ -1,0 +1,36 @@
+sequenceDiagram
+    participant User as 用户 (Telegram/Discord/Slack/TUI)
+    participant GW as ZeroBot 网关
+    participant DLP as DLP 脱敏器
+    participant Route as LLM 路由器
+    participant Bus as 事件总线
+    participant Agent as CodeCoder Agents
+    participant Fallback as Fallback Engine
+    participant Memory as 全局记忆
+
+    User->>GW: 发送复杂任务
+    GW->>DLP: 敏感数据检测
+    DLP->>Route: 路由决策
+    Route-->>Route: 任务分类 (coding/analysis/chat/sensitive)
+    Route->>Bus: 发布 agent.request 事件
+
+    Bus->>Agent: 触发多智能体编排
+    Agent->>Agent: @general 解析文档
+    Agent->>Fallback: 触发编程保底
+
+    Fallback->>Fallback: 主动 Web 搜索
+    Fallback->>Fallback: 生成脚本 (Python/Node)
+    Fallback->>Fallback: Docker/WASM 沙箱执行
+
+    alt 执行失败
+        Fallback->>Fallback: 捕获 Stderr
+        Fallback->>Fallback: 反思修改
+        Fallback->>Fallback: 重试执行
+    end
+
+    Fallback->>Memory: 沉淀成功脚本为工具
+    Agent->>Memory: 记录因果链
+
+    Agent->>Bus: 发布 agent.response
+    Bus->>GW: 结果聚合
+    GW->>User: 返回最终结果

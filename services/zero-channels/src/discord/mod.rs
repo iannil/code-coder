@@ -2,6 +2,8 @@
 //!
 //! Connects via Discord Gateway WebSocket for real-time messages.
 
+pub mod format;
+
 use crate::message::{ChannelMessage, ChannelType, MessageContent, OutgoingContent, OutgoingMessage};
 use crate::traits::{Channel, ChannelError, ChannelResult};
 use async_trait::async_trait;
@@ -115,51 +117,62 @@ impl Channel for DiscordChannel {
     async fn send(&self, message: OutgoingMessage) -> ChannelResult<String> {
         let text = match &message.content {
             OutgoingContent::Text { text } => text.clone(),
-            OutgoingContent::Markdown { text } => text.clone(),
+            OutgoingContent::Markdown { text } => {
+                // Convert markdown to Discord format
+                format::convert_to_discord_markdown(text)
+            }
             _ => return Err(ChannelError::InvalidMessage("Discord only supports text messages".into())),
         };
 
-        let url = format!(
-            "https://discord.com/api/v10/channels/{}/messages",
-            message.channel_id
-        );
+        // Split message if too long
+        let chunks = format::split_message(&text);
+        let mut last_message_id = String::new();
 
-        let mut body = json!({ "content": text });
+        for chunk in chunks {
+            let url = format!(
+                "https://discord.com/api/v10/channels/{}/messages",
+                message.channel_id
+            );
 
-        // Add reply reference if specified
-        if let Some(ref reply_to) = message.reply_to {
-            body["message_reference"] = json!({ "message_id": reply_to });
+            let mut body = json!({ "content": chunk });
+
+            // Add reply reference if specified (only for first chunk)
+            if last_message_id.is_empty() {
+                if let Some(ref reply_to) = message.reply_to {
+                    body["message_reference"] = json!({ "message_id": reply_to });
+                }
+            }
+
+            let resp = self
+                .client
+                .post(&url)
+                .header("Authorization", format!("Bot {}", self.bot_token))
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed(format!("Discord send error: {e}")))?;
+
+            if !resp.status().is_success() {
+                let status = resp.status();
+                let error = resp.text().await.unwrap_or_default();
+                return Err(ChannelError::SendFailed(format!(
+                    "Discord API error ({status}): {error}"
+                )));
+            }
+
+            let msg_data: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| ChannelError::Internal(format!("Failed to parse response: {e}")))?;
+
+            last_message_id = msg_data
+                .get("id")
+                .and_then(|id| id.as_str())
+                .unwrap_or("unknown")
+                .to_string();
         }
 
-        let resp = self
-            .client
-            .post(&url)
-            .header("Authorization", format!("Bot {}", self.bot_token))
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed(format!("Discord send error: {e}")))?;
-
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let error = resp.text().await.unwrap_or_default();
-            return Err(ChannelError::SendFailed(format!(
-                "Discord API error ({status}): {error}"
-            )));
-        }
-
-        let msg_data: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| ChannelError::Internal(format!("Failed to parse response: {e}")))?;
-
-        let message_id = msg_data
-            .get("id")
-            .and_then(|id| id.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        Ok(message_id)
+        Ok(last_message_id)
     }
 
     async fn listen<F>(&self, callback: F) -> ChannelResult<()>

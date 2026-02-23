@@ -927,3 +927,264 @@ async fn test_user_can_check_own_quota() {
     let response = app.oneshot(request).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit API Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_audit_list_as_admin() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Login as admin
+    let (_, login_response): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "admin",
+            "password": "admin123"
+        })),
+        None,
+    )
+    .await;
+
+    // Get audit log
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit")
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", login_response.token),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // Check response structure
+    assert!(json.get("entries").is_some());
+    assert!(json.get("total").is_some());
+    assert!(json.get("has_more").is_some());
+
+    // Should have at least the login entry
+    let entries = json["entries"].as_array().unwrap();
+    assert!(!entries.is_empty());
+}
+
+#[tokio::test]
+async fn test_audit_list_unauthenticated() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Try to get audit log without auth
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_audit_list_forbidden_for_regular_user() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Login as admin to create regular user
+    let (_, admin_login): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "admin",
+            "password": "admin123"
+        })),
+        None,
+    )
+    .await;
+
+    // Create a regular user
+    let (_status, _): (_, UserResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/users",
+        Some(json!({
+            "username": "audit_test_user",
+            "password": "password123",
+            "roles": ["user"]
+        })),
+        Some(&admin_login.token),
+    )
+    .await;
+
+    // Login as regular user
+    let (_, user_login): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "audit_test_user",
+            "password": "password123"
+        })),
+        None,
+    )
+    .await;
+
+    // Try to get audit log as regular user (should fail)
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit")
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", user_login.token),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_audit_summary_as_admin() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Login as admin
+    let (_, login_response): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "admin",
+            "password": "admin123"
+        })),
+        None,
+    )
+    .await;
+
+    // Get audit summary
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit/summary")
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", login_response.token),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // Check response structure
+    assert!(json.get("total_entries").is_some());
+    assert!(json.get("by_action_type").is_some());
+    assert!(json.get("by_day").is_some());
+    assert!(json.get("recent_blocked").is_some());
+
+    // Should have some entries from our login
+    assert!(json["total_entries"].as_u64().unwrap() >= 1);
+}
+
+#[tokio::test]
+async fn test_audit_pagination() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Login as admin
+    let (_, login_response): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "admin",
+            "password": "admin123"
+        })),
+        None,
+    )
+    .await;
+
+    // Get audit log with limit
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit?limit=5&offset=0")
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", login_response.token),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // Check that entries don't exceed limit
+    let entries = json["entries"].as_array().unwrap();
+    assert!(entries.len() <= 5);
+}
+
+#[tokio::test]
+async fn test_audit_filter_by_action_type() {
+    let temp_dir = TempDir::new().unwrap();
+    let app = create_test_app(&temp_dir);
+
+    // Login as admin
+    let (_, login_response): (_, LoginResponse) = request_json(
+        &app,
+        Method::POST,
+        "/api/v1/auth/login",
+        Some(json!({
+            "username": "admin",
+            "password": "admin123"
+        })),
+        None,
+    )
+    .await;
+
+    // Get audit log filtered by action type
+    let request = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit?action_type=login")
+        .header(
+            header::AUTHORIZATION,
+            format!("Bearer {}", login_response.token),
+        )
+        .body(Body::empty())
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = axum::body::to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .unwrap();
+    let json: Value = serde_json::from_slice(&body).unwrap();
+
+    // All entries should be login type
+    let entries = json["entries"].as_array().unwrap();
+    for entry in entries {
+        let action = entry.get("action").unwrap();
+        assert!(action.get("login").is_some());
+    }
+}

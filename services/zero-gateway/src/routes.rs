@@ -8,7 +8,7 @@ use crate::parallel::{ParallelState, parallel_routes};
 use crate::provider::create_registry;
 use crate::proxy::{proxy_request, ProxyState};
 use crate::quota::QuotaLimits;
-use crate::sandbox::{AuditAction, Sandbox, SandboxConfig};
+use crate::sandbox::{AuditAction, AuditEntry, DayCount, Sandbox, SandboxConfig};
 use crate::user::{CreateUserRequest, UpdateUserRequest, User, UserStore};
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -234,6 +234,35 @@ pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Ro
                     auth_state.clone(),
                     auth_middleware,
                 )),
+        )
+        // Audit routes (authenticated, requires AuditRead permission)
+        .route(
+            "/api/v1/audit",
+            get(list_audit_handler).layer(middleware::from_fn_with_state(
+                auth_state.clone(),
+                auth_middleware,
+            )),
+        )
+        .route(
+            "/api/v1/audit/summary",
+            get(get_audit_summary_handler).layer(middleware::from_fn_with_state(
+                auth_state.clone(),
+                auth_middleware,
+            )),
+        )
+        .route(
+            "/api/v1/audit/:id",
+            get(get_audit_entry_handler).layer(middleware::from_fn_with_state(
+                auth_state.clone(),
+                auth_middleware,
+            )),
+        )
+        .route(
+            "/api/v1/audit/user/:user_id",
+            get(get_user_audit_handler).layer(middleware::from_fn_with_state(
+                auth_state.clone(),
+                auth_middleware,
+            )),
         )
         .with_state(app_state);
 
@@ -994,6 +1023,192 @@ async fn set_user_quota_handler(
     );
 
     Ok(Json(new_limits.into()))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Audit Handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Audit query parameters.
+#[derive(Debug, Deserialize)]
+pub struct AuditQuery {
+    #[serde(default = "default_audit_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+    #[serde(default)]
+    pub action_type: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    #[serde(default)]
+    pub start_time: Option<String>,
+    #[serde(default)]
+    pub end_time: Option<String>,
+}
+
+fn default_audit_limit() -> u32 {
+    50
+}
+
+/// Audit list response.
+#[derive(Debug, Serialize)]
+pub struct AuditListResponse {
+    pub entries: Vec<AuditEntry>,
+    pub total: u64,
+    pub has_more: bool,
+}
+
+/// Audit summary response.
+#[derive(Debug, Serialize)]
+pub struct AuditSummaryResponse {
+    pub total_entries: u64,
+    pub by_action_type: std::collections::HashMap<String, u64>,
+    pub by_day: Vec<DayCount>,
+    pub recent_blocked: Vec<AuditEntry>,
+}
+
+/// List audit entries with pagination and filters.
+async fn list_audit_handler(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Query(query): Query<AuditQuery>,
+) -> Result<Json<AuditListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Check permission
+    if !check_permission(&auth_user.roles, Permission::AuditRead) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Insufficient permissions".into(),
+                code: "FORBIDDEN".into(),
+            }),
+        ));
+    }
+
+    // Parse time filters
+    let start_time = query.start_time.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+    let end_time = query.end_time.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    });
+
+    let (entries, total) = state.sandbox.get_audit_paginated(
+        query.limit as usize,
+        query.offset as usize,
+        query.action_type.as_deref(),
+        query.user_id.as_deref(),
+        start_time,
+        end_time,
+    );
+
+    let has_more = (query.offset as u64 + entries.len() as u64) < total;
+
+    Ok(Json(AuditListResponse {
+        entries,
+        total,
+        has_more,
+    }))
+}
+
+/// Get a single audit entry by ID.
+async fn get_audit_entry_handler(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(id): Path<String>,
+) -> Result<Json<AuditEntry>, (StatusCode, Json<ErrorResponse>)> {
+    // Check permission
+    if !check_permission(&auth_user.roles, Permission::AuditRead) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Insufficient permissions".into(),
+                code: "FORBIDDEN".into(),
+            }),
+        ));
+    }
+
+    state
+        .sandbox
+        .get_audit_by_id(&id)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "Audit entry not found".into(),
+                    code: "AUDIT_NOT_FOUND".into(),
+                }),
+            )
+        })
+        .map(Json)
+}
+
+/// Get audit entries for a specific user.
+async fn get_user_audit_handler(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+    Path(user_id): Path<String>,
+    Query(pagination): Query<PaginationQuery>,
+) -> Result<Json<AuditListResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Check permission
+    if !check_permission(&auth_user.roles, Permission::AuditRead) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Insufficient permissions".into(),
+                code: "FORBIDDEN".into(),
+            }),
+        ));
+    }
+
+    let limit = pagination.limit.unwrap_or(50) as usize;
+    let offset = pagination.offset.unwrap_or(0) as usize;
+
+    let (entries, total) = state.sandbox.get_audit_paginated(
+        limit,
+        offset,
+        None,
+        Some(&user_id),
+        None,
+        None,
+    );
+
+    let has_more = (offset as u64 + entries.len() as u64) < total;
+
+    Ok(Json(AuditListResponse {
+        entries,
+        total,
+        has_more,
+    }))
+}
+
+/// Get audit summary statistics.
+async fn get_audit_summary_handler(
+    State(state): State<AppState>,
+    Extension(auth_user): Extension<AuthUser>,
+) -> Result<Json<AuditSummaryResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Check permission
+    if !check_permission(&auth_user.roles, Permission::AuditRead) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "Insufficient permissions".into(),
+                code: "FORBIDDEN".into(),
+            }),
+        ));
+    }
+
+    let summary = state.sandbox.get_audit_summary();
+
+    Ok(Json(AuditSummaryResponse {
+        total_entries: summary.total_entries,
+        by_action_type: summary.by_action_type,
+        by_day: summary.by_day,
+        recent_blocked: summary.recent_blocked,
+    }))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

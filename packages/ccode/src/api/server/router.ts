@@ -544,6 +544,230 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/v1/compliance/reports/:id", handleGetReport)
   router.get("/api/v1/compliance/status", handleGetComplianceStatus)
   router.post("/api/v1/compliance/export", handleExport)
+
+  // Budget Management routes (for Admin dashboard cost control)
+  const {
+    getBudgetSummary,
+    listBudgets,
+    getBudget,
+    createBudget,
+    updateBudget,
+    deleteBudget,
+    listBudgetAlerts,
+    acknowledgeBudgetAlert,
+    recordBudgetSpend,
+  } = await import("./handlers/budget")
+  router.get("/api/v1/budgets/summary", getBudgetSummary)
+  router.get("/api/v1/budgets", listBudgets)
+  router.get("/api/v1/budgets/alerts", listBudgetAlerts)
+  router.post("/api/v1/budgets/alerts/:id/acknowledge", acknowledgeBudgetAlert)
+  router.get("/api/v1/budgets/:id", getBudget)
+  router.post("/api/v1/budgets", createBudget)
+  router.put("/api/v1/budgets/:id", updateBudget)
+  router.delete("/api/v1/budgets/:id", deleteBudget)
+  router.post("/api/v1/budgets/:id/record", recordBudgetSpend)
+
+  // DLP (Data Leakage Prevention) routes (for Admin dashboard security)
+  const {
+    getDlpSummary,
+    getDlpConfig,
+    updateDlpConfig,
+    listDlpRules,
+    createDlpRule,
+    updateDlpRule,
+    deleteDlpRule,
+    listDlpWhitelist,
+    addDlpWhitelist,
+    deleteDlpWhitelist,
+    listDlpIncidents,
+    scanContent,
+  } = await import("./handlers/dlp")
+  router.get("/api/v1/dlp/summary", getDlpSummary)
+  router.get("/api/v1/dlp/config", getDlpConfig)
+  router.put("/api/v1/dlp/config", updateDlpConfig)
+  router.get("/api/v1/dlp/rules", listDlpRules)
+  router.post("/api/v1/dlp/rules", createDlpRule)
+  router.put("/api/v1/dlp/rules/:id", updateDlpRule)
+  router.delete("/api/v1/dlp/rules/:id", deleteDlpRule)
+  router.get("/api/v1/dlp/whitelist", listDlpWhitelist)
+  router.post("/api/v1/dlp/whitelist", addDlpWhitelist)
+  router.delete("/api/v1/dlp/whitelist/:id", deleteDlpWhitelist)
+  router.get("/api/v1/dlp/incidents", listDlpIncidents)
+  router.post("/api/v1/dlp/scan", scanContent)
+
+  // Context Hub routes (Global Context Hub for cross-user/cross-department knowledge sharing)
+  const {
+    getHubStats,
+    listHubEntries,
+    getHubEntry,
+    createHubEntry,
+    updateHubEntry,
+    deleteHubEntry,
+    searchHub,
+    markHelpful,
+    listHubTags,
+    listHubCategories,
+    getAgentContext,
+  } = await import("./handlers/context-hub")
+  router.get("/api/v1/hub/stats", getHubStats)
+  router.get("/api/v1/hub/entries", listHubEntries)
+  router.get("/api/v1/hub/entries/:id", getHubEntry)
+  router.post("/api/v1/hub/entries", createHubEntry)
+  router.put("/api/v1/hub/entries/:id", updateHubEntry)
+  router.delete("/api/v1/hub/entries/:id", deleteHubEntry)
+  router.post("/api/v1/hub/search", searchHub)
+  router.post("/api/v1/hub/entries/:id/helpful", markHelpful)
+  router.get("/api/v1/hub/tags", listHubTags)
+  router.get("/api/v1/hub/categories", listHubCategories)
+  router.post("/api/v1/hub/agent-context", getAgentContext)
+
+  // Unified Token Gateway routes (Department-level AI quota management)
+  const {
+    getGatewayStats,
+    getGatewayConfig,
+    updateGatewayConfig,
+    listPools,
+    getPool,
+    createPool,
+    updatePool,
+    deletePool,
+    listAllocations,
+    getAllocation,
+    upsertAllocation,
+    deleteAllocation,
+    recordUsage: recordGatewayUsage,
+    checkQuota,
+    listAlerts: listGatewayAlerts,
+    acknowledgeAlert: acknowledgeGatewayAlert,
+    resetDailyUsage,
+    resetMonthlyUsage,
+    getUsageHistory,
+    gatewayHealth,
+  } = await import("./handlers/token-gateway")
+  router.get("/api/v1/gateway/stats", getGatewayStats)
+  router.get("/api/v1/gateway/config", getGatewayConfig)
+  router.put("/api/v1/gateway/config", updateGatewayConfig)
+  router.get("/api/v1/gateway/pools", listPools)
+  router.get("/api/v1/gateway/pools/:id", getPool)
+  router.post("/api/v1/gateway/pools", createPool)
+  router.put("/api/v1/gateway/pools/:id", updatePool)
+  router.delete("/api/v1/gateway/pools/:id", deletePool)
+  router.get("/api/v1/gateway/allocations", listAllocations)
+  router.get("/api/v1/gateway/allocations/:userId", getAllocation)
+  router.post("/api/v1/gateway/allocations", upsertAllocation)
+  router.delete("/api/v1/gateway/allocations/:userId", deleteAllocation)
+  router.post("/api/v1/gateway/record", recordGatewayUsage)
+  router.get("/api/v1/gateway/check/:userId", checkQuota)
+  router.get("/api/v1/gateway/alerts", listGatewayAlerts)
+  router.post("/api/v1/gateway/alerts/:id/acknowledge", acknowledgeGatewayAlert)
+  router.post("/api/v1/gateway/reset-daily", resetDailyUsage)
+  router.post("/api/v1/gateway/reset-monthly", resetMonthlyUsage)
+  router.get("/api/v1/gateway/usage", getUsageHistory)
+  router.get("/api/v1/gateway/health", gatewayHealth)
+
+  // Intelligent LLM Router routes (Phase 14: Task-based model routing with RBAC)
+  const {
+    routeRequest,
+    getRouterConfig,
+    updateRouterConfig,
+    listRolePermissions,
+    getRolePermission,
+    updateRolePermission,
+    listRouterModels,
+    updateRouterModel,
+    listClassificationRules,
+    addClassificationRule,
+    deleteClassificationRule,
+    getRouterStats,
+    getRouterHistory,
+    classifyContent,
+    routerHealth,
+  } = await import("./handlers/llm-router")
+  router.post("/api/v1/router/route", routeRequest)
+  router.get("/api/v1/router/config", getRouterConfig)
+  router.put("/api/v1/router/config", updateRouterConfig)
+  router.get("/api/v1/router/roles", listRolePermissions)
+  router.get("/api/v1/router/roles/:role", getRolePermission)
+  router.put("/api/v1/router/roles/:role", updateRolePermission)
+  router.get("/api/v1/router/models", listRouterModels)
+  router.put("/api/v1/router/models/:modelId", updateRouterModel)
+  router.get("/api/v1/router/rules", listClassificationRules)
+  router.post("/api/v1/router/rules", addClassificationRule)
+  router.delete("/api/v1/router/rules/:ruleId", deleteClassificationRule)
+  router.get("/api/v1/router/stats", getRouterStats)
+  router.get("/api/v1/router/history", getRouterHistory)
+  router.post("/api/v1/router/classify", classifyContent)
+  router.get("/api/v1/router/health", routerHealth)
+
+  // Scheduler routes (Phase 15: Scheduled Task API Integration)
+  const {
+    listSchedulerTasks,
+    createSchedulerTask,
+    getSchedulerTask,
+    updateSchedulerTask,
+    deleteSchedulerTask,
+    runSchedulerTask,
+    getSchedulerHistory,
+    getSchedulerExecution,
+    getSchedulerConfig,
+    updateSchedulerConfig,
+    schedulerHealth,
+  } = await import("./handlers/scheduler")
+  router.get("/api/v1/scheduler/tasks", listSchedulerTasks)
+  router.post("/api/v1/scheduler/tasks", createSchedulerTask)
+  router.get("/api/v1/scheduler/tasks/:id", getSchedulerTask)
+  router.put("/api/v1/scheduler/tasks/:id", updateSchedulerTask)
+  router.delete("/api/v1/scheduler/tasks/:id", deleteSchedulerTask)
+  router.post("/api/v1/scheduler/tasks/:id/run", runSchedulerTask)
+  router.get("/api/v1/scheduler/history", getSchedulerHistory)
+  router.get("/api/v1/scheduler/history/:id", getSchedulerExecution)
+  router.get("/api/v1/scheduler/config", getSchedulerConfig)
+  router.put("/api/v1/scheduler/config", updateSchedulerConfig)
+  router.get("/api/v1/scheduler/health", schedulerHealth)
+
+  // Causal Graph routes (Phase 16: 因果链图数据库)
+  const {
+    recordDecision,
+    getDecision,
+    recordAction,
+    getAction,
+    recordOutcome,
+    getOutcome,
+    getCausalChain,
+    getCausalChains,
+    queryCausalGraph,
+    getCausalPatterns,
+    getSuccessPatterns,
+    getFailurePatterns,
+    getCausalStats,
+    getCausalSuggestions,
+    getCausalTrends,
+    getAgentInsights,
+    getLessons,
+    getCausalGraphData,
+    getCausalMermaid,
+    causalHealth,
+  } = await import("./handlers/causal")
+  router.post("/api/v1/causal/decisions", recordDecision)
+  router.get("/api/v1/causal/decisions/:id", getDecision)
+  router.post("/api/v1/causal/actions", recordAction)
+  router.get("/api/v1/causal/actions/:id", getAction)
+  router.post("/api/v1/causal/outcomes", recordOutcome)
+  router.get("/api/v1/causal/outcomes/:id", getOutcome)
+  router.get("/api/v1/causal/chain/:id", getCausalChain)
+  router.get("/api/v1/causal/chains", getCausalChains)
+  router.post("/api/v1/causal/query", queryCausalGraph)
+  router.get("/api/v1/causal/patterns", getCausalPatterns)
+  router.get("/api/v1/causal/patterns/success", getSuccessPatterns)
+  router.get("/api/v1/causal/patterns/failure", getFailurePatterns)
+  router.get("/api/v1/causal/stats", getCausalStats)
+  router.post("/api/v1/causal/suggest", getCausalSuggestions)
+  router.get("/api/v1/causal/trends", getCausalTrends)
+  router.get("/api/v1/causal/insights/:agentId", getAgentInsights)
+  router.get("/api/v1/causal/lessons/:outcomeId", getLessons)
+  router.get("/api/v1/causal/graph", getCausalGraphData)
+  router.get("/api/v1/causal/mermaid", getCausalMermaid)
+  router.get("/api/v1/causal/health", causalHealth)
 }
 
 // ============================================================================

@@ -1,0 +1,96 @@
+graph TD
+    %% ═══════════════════════════════════════════════════════════
+    %% 第一层：触点层 Touchpoints
+    %% ═══════════════════════════════════════════════════════════
+    subgraph "1. 触点层 Touchpoints"
+        TG["✅ Telegram Bot"]
+        DC["✅ Discord 适配器"]
+        SL["✅ Slack 适配器"]
+        WEB["📋 ZeroBot Web 门户"]
+        TUI["✅ CodeCoder 终端 TUI"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 第二层：中枢调度层 ZeroBot Core
+    %% ═══════════════════════════════════════════════════════════
+    subgraph "2. 中枢调度层 ZeroBot Core"
+        GW["✅ 统一 API 网关"]
+        AUTH["✅ JWT 认证 + RBAC"]
+        DLP["✅ 数据脱敏 DLP"]
+        ROUTE["✅ LLM 智能路由"]
+        QUOTA["✅ 配额管理"]
+        BUS["✅ 事件总线"]
+        CRON["✅ 定时任务引擎"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 第三层：深度执行层 CodeCoder Core
+    %% ═══════════════════════════════════════════════════════════
+    subgraph "3. 深度执行层 CodeCoder Core"
+        LSP["✅ LSP 语法树解析"]
+        AGENTS["✅ 多智能体编排"]
+        CTX["✅ 本地上下文汇聚器"]
+        HOOK["✅ Hook 系统"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 第四层：自主保底层 Fallback Engine
+    %% ═══════════════════════════════════════════════════════════
+    subgraph "4. 自主保底层 Fallback Engine"
+        SEARCH["✅ 主动全网检索"]
+        DOCKER["✅ Docker 沙箱"]
+        WASM["✅ WASM 轻量沙箱"]
+        REPL["✅ REPL 自纠错执行"]
+        TEST["✅ 测试运行器"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 第五层：全局记忆层 Global Memory
+    %% ═══════════════════════════════════════════════════════════
+    subgraph "5. 全局记忆层 Global Memory"
+        VEC_RS["✅ 向量运算"]
+        VEC_TS["✅ 向量存储"]
+        CAUSAL["✅ 因果链图"]
+        CALL["✅ 调用图谱"]
+        MD_MEM["✅ Markdown 记忆"]
+        TOOL_REG["✅ 动态工具注册"]
+    end
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 连接关系
+    %% ═══════════════════════════════════════════════════════════
+    TG & DC & SL --> GW
+    WEB --> GW
+    TUI --> CTX
+
+    GW --> AUTH
+    AUTH --> DLP
+    DLP --> ROUTE
+    ROUTE --> QUOTA
+    QUOTA --> BUS
+    CRON --> BUS
+
+    BUS --> AGENTS
+    AGENTS --> LSP
+    AGENTS --> REPL
+
+    REPL --> SEARCH
+    REPL --> DOCKER
+    REPL --> WASM
+    DOCKER --> TEST
+
+    GW --> VEC_RS
+    CTX --> VEC_TS
+    LSP --> CAUSAL
+    LSP --> CALL
+    REPL --> TOOL_REG
+    AGENTS --> MD_MEM
+
+    %% ═══════════════════════════════════════════════════════════
+    %% 样式
+    %% ═══════════════════════════════════════════════════════════
+    classDef done fill:#c8e6c9,stroke:#388e3c,stroke-width:2px
+    classDef planned fill:#e1f5fe,stroke:#0288d1,stroke-width:2px
+
+    class TG,TUI,GW,AUTH,DLP,ROUTE,QUOTA,BUS,LSP,AGENTS,CTX,HOOK,SEARCH,DOCKER,WASM,REPL,TEST,VEC_RS,VEC_TS,CAUSAL,CALL,MD_MEM,DC,SL,CRON,TOOL_REG done
+    class WEB planned

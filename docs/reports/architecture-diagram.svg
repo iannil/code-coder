@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1373.7 1752" width="1373.7" height="1752" style="--bg:#0d1117;--fg:#e6edf3;--line:#3d444d;--accent:#4493f8;--muted:#9198a1;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="361.67500000000007" y="40" width="893.45" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="361.67500000000007" y="40" width="893.45" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="373.67500000000007" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;1. 触点层 Touchpoints&quot;</text>
+<rect x="416.8750000000001" y="196" width="598.7375" height="892" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="416.8750000000001" y="196" width="598.7375" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="428.8750000000001" y="210" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;2. 中枢调度层 ZeroBot Core&quot;</text>
+<rect x="627.8750000000002" y="1132" width="533.5749999999999" height="268" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="627.8750000000002" y="1132" width="533.5749999999999" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="639.8750000000002" y="1146" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;3. 深度执行层 CodeCoder Core&quot;</text>
+<rect x="40.000000000000114" y="1288" width="452.54999999999995" height="424" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40.000000000000114" y="1288" width="452.54999999999995" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52.000000000000114" y="1302" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;4. 自主保底层 Fallback Engine&quot;</text>
+<rect x="512.55" y="1444" width="821.1500000000001" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="512.55" y="1444" width="821.1500000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="524.55" y="1458" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;5. 全局记忆层 Global Memory&quot;</text>
+<polyline points="456.8750000000001,132 456.8750000000001,270 516.6750000000001,270" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="623.7,132 623.7,270 641.6250000000001,270" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="779.8000000000001,132 779.8000000000001,270 641.6250000000001,270" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="950.2,132 950.2,270 641.6250000000001,270" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1145.625,132 1145.625,1108 708.7750000000001,1108 708.7750000000001,1188" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="579.1500000000001,288 579.1500000000001,308 777.95,308 777.95,408" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="777.95,444 777.95,564" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="777.95,600 777.95,720" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="777.95,756 777.95,876" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="777.95,912 777.95,1050 776.9125,1050" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="941.8625000000002,912 941.8625000000002,1050 866.1125000000001,1050" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="821.5125,1068 821.5125,1108 1004.2875000000001,1108 1004.2875000000001,1188" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1004.2875000000001,1224 1004.2875000000001,1244 935.1750000000001,1244 935.1750000000001,1344" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1004.2875000000001,1224 1004.2875000000001,1244 656.5375000000001,1244 656.5375000000001,1362 302.66249999999997,1362" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="236.61249999999995,1380 236.61249999999995,1400 113.75,1400 113.75,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="236.61249999999995,1380 236.61249999999995,1400 251.9749999999999,1400 251.9749999999999,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="236.61249999999995,1380 236.61249999999995,1400 400.92499999999995,1400 400.92499999999995,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="251.9749999999999,1536 251.9749999999999,1656" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="579.1500000000001,288 579.1500000000001,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="708.7750000000001,1224 708.7750000000001,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="935.1750000000001,1380 935.1750000000001,1400 863.1500000000001,1400 863.1500000000001,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="935.1750000000001,1380 935.1750000000001,1400 976.3500000000001,1400 976.3500000000001,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="236.61249999999995,1380 236.61249999999995,1400 443.1624999999999,1400 443.1624999999999,1518 1208.2,1518" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1004.2875000000001,1224 1004.2875000000001,1244 1114.575,1244 1114.575,1500" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="383.6750000000001" y="96" width="146.4" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="554.075" y="96" width="139.25" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="717.325" y="96" width="124.95" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="866.2750000000001" y="96" width="167.85000000000002" height="36" rx="0" ry="0" fill="#e1f5fe" stroke="#0288d1" stroke-width="2px" />
+<rect x="1058.125" y="96" width="175" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="516.6750000000001" y="252" width="124.95" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="701.1750000000001" y="408" width="153.55" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="719.0500000000001" y="564" width="117.80000000000001" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="719.0500000000001" y="720" width="117.80000000000001" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="733.35" y="876" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="776.9125" y="1032" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="890.1125000000002" y="876" width="103.5" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="872.7" y="1344" width="124.95" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="952.5375000000001" y="1188" width="103.5" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="649.8750000000001" y="1188" width="117.80000000000001" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="730.7750000000001" y="1344" width="110.65" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="62" y="1500" width="103.5" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="189.49999999999991" y="1500" width="124.95" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="338.44999999999993" y="1500" width="124.95" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="170.56249999999994" y="1344" width="132.10000000000002" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="203.7999999999999" y="1656" width="96.35000000000001" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="534.5500000000001" y="1500" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="664.1750000000001" y="1500" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="818.5500000000001" y="1500" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="931.7500000000001" y="1500" width="89.2" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="1044.95" y="1500" width="139.25" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<rect x="1208.2" y="1500" width="103.5" height="36" rx="0" ry="0" fill="#c8e6c9" stroke="#388e3c" stroke-width="2px" />
+<text x="456.8750000000001" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Telegram Bot&quot;</text>
+<text x="623.7" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Discord 适配器&quot;</text>
+<text x="779.8000000000001" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Slack 适配器&quot;</text>
+<text x="950.2" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;📋 ZeroBot Web 门户&quot;</text>
+<text x="1145.625" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ CodeCoder 终端 TUI&quot;</text>
+<text x="579.1500000000001" y="270" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 统一 API 网关&quot;</text>
+<text x="777.95" y="426" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ JWT 认证 + RBAC&quot;</text>
+<text x="777.95" y="582" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 数据脱敏 DLP&quot;</text>
+<text x="777.95" y="738" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ LLM 智能路由&quot;</text>
+<text x="777.95" y="894" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 配额管理&quot;</text>
+<text x="821.5125" y="1050" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 事件总线&quot;</text>
+<text x="941.8625000000002" y="894" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 定时任务引擎&quot;</text>
+<text x="935.1750000000001" y="1362" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ LSP 语法树解析&quot;</text>
+<text x="1004.2875000000001" y="1206" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 多智能体编排&quot;</text>
+<text x="708.7750000000001" y="1206" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 本地上下文汇聚器&quot;</text>
+<text x="786.1000000000001" y="1362" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Hook 系统&quot;</text>
+<text x="113.75" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 主动全网检索&quot;</text>
+<text x="251.9749999999999" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Docker 沙箱&quot;</text>
+<text x="400.92499999999995" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ WASM 轻量沙箱&quot;</text>
+<text x="236.61249999999995" y="1362" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ REPL 自纠错执行&quot;</text>
+<text x="251.9749999999999" y="1674" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 测试运行器&quot;</text>
+<text x="579.1500000000001" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 向量运算&quot;</text>
+<text x="708.7750000000001" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 向量存储&quot;</text>
+<text x="863.1500000000001" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 因果链图&quot;</text>
+<text x="976.3500000000001" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 调用图谱&quot;</text>
+<text x="1114.575" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ Markdown 记忆&quot;</text>
+<text x="1259.95" y="1518" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;✅ 动态工具注册&quot;</text>
+</svg>

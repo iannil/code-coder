@@ -109,6 +109,7 @@
     "opentui-spinner": "0.0.6",
     "partial-json": "0.1.7",
     "proper-lockfile": "4.1.2",
+    "quickjs-emscripten": "0.32.0",
     "remeda": "catalog:",
     "solid-js": "catalog:",
     "strip-ansi": "7.1.2",

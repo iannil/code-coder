@@ -5,6 +5,7 @@ import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { Global } from "../global"
 import { BusEvent } from "../bus/bus-event"
+import { CausalRecorder } from "../agent/hooks/causal-recorder"
 
 export namespace Hook {
   const log = Log.create({ service: "hook" })
@@ -348,6 +349,19 @@ export namespace Hook {
           }
         }
       }
+    }
+
+    // Record tool action to CausalGraph for PostToolUse (Phase 18: Agent 因果链集成)
+    // This is non-blocking to avoid slowing down tool execution
+    if (lifecycle === "PostToolUse" && ctx.tool && ctx.sessionID) {
+      CausalRecorder.recordToolAction({
+        sessionId: ctx.sessionID,
+        toolName: ctx.tool,
+        toolInput: ctx.input ?? {},
+        toolOutput: ctx.output,
+      }).catch((err) => {
+        log.debug("Failed to record tool action to CausalGraph", { error: err })
+      })
     }
 
     return { blocked: false }

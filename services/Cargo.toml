@@ -68,6 +68,9 @@ rand = "0.8"
 # Async traits
 async-trait = "0.1"
 
+# Redis (optional, for event bus backend)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
 # Time
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 cron = "0.12"

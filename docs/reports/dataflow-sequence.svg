@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1351.05 1148" width="1351.05" height="1148" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.4, 0 4.8" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<rect x="1051.8" y="668" width="159.25" height="200" rx="0" ry="0" fill="none" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="1051.8" y="668" width="79.8" height="18" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1057.8" y="677" dy="0.35em" font-size="11" font-weight="600" fill="var(--_text-sec)">alt [执行失败]</text>
+<line x1="156.825" y1="70" x2="156.825" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="375.4" y1="70" x2="375.4" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="515.4" y1="70" x2="515.4" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="655.4" y1="70" x2="655.4" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="795.4" y1="70" x2="795.4" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="948.5999999999999" y1="70" x2="948.5999999999999" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1131.425" y1="70" x2="1131.425" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1281.05" y1="70" x2="1281.05" y2="1118" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="156.825" y1="90" x2="375.4" y2="90" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="266.11249999999995" y="84" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">发送复杂任务</text>
+<line x1="375.4" y1="130" x2="515.4" y2="130" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="445.4" y="124" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">敏感数据检测</text>
+<line x1="515.4" y1="170" x2="655.4" y2="170" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="585.4" y="164" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">路由决策</text>
+<polyline points="655.4,210 685.4,210 685.4,230 655.4,230" fill="none" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="691.4" y="220" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">任务分类 (coding/analysis/chat/sensitive)</text>
+<line x1="655.4" y1="280" x2="795.4" y2="280" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="725.4" y="274" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">发布 agent.request 事件</text>
+<line x1="795.4" y1="320" x2="948.5999999999999" y2="320" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="872" y="314" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">触发多智能体编排</text>
+<polyline points="948.5999999999999,360 978.5999999999999,360 978.5999999999999,380 948.5999999999999,380" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="984.5999999999999" y="370" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">@general 解析文档</text>
+<line x1="948.5999999999999" y1="430" x2="1131.425" y2="430" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1040.0124999999998" y="424" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">触发编程保底</text>
+<polyline points="1131.425,470 1161.425,470 1161.425,490 1131.425,490" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="480" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">主动 Web 搜索</text>
+<polyline points="1131.425,540 1161.425,540 1161.425,560 1131.425,560" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="550" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">生成脚本 (Python/Node)</text>
+<polyline points="1131.425,610 1161.425,610 1161.425,630 1131.425,630" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="620" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">Docker/WASM 沙箱执行</text>
+<polyline points="1131.425,708 1161.425,708 1161.425,728 1131.425,728" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="718" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">捕获 Stderr</text>
+<polyline points="1131.425,778 1161.425,778 1161.425,798 1131.425,798" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="788" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">反思修改</text>
+<polyline points="1131.425,848 1161.425,848 1161.425,868 1131.425,868" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1167.425" y="858" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">重试执行</text>
+<line x1="1131.425" y1="918" x2="1281.05" y2="918" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1206.2375" y="912" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">沉淀成功脚本为工具</text>
+<line x1="948.5999999999999" y1="958" x2="1281.05" y2="958" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1114.8249999999998" y="952" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">记录因果链</text>
+<line x1="948.5999999999999" y1="998" x2="795.4" y2="998" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="872" y="992" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">发布 agent.response</text>
+<line x1="795.4" y1="1038" x2="375.4" y2="1038" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="585.4" y="1032" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">结果聚合</text>
+<line x1="375.4" y1="1078" x2="156.825" y2="1078" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="266.11249999999995" y="1072" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">返回最终结果</text>
+<rect x="29.999999999999986" y="30" width="253.65" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="156.825" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">用户 (Telegram/Discord/Slack/TUI)</text>
+<rect x="323.65" y="30" width="103.5" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="375.4" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">ZeroBot 网关</text>
+<rect x="474.375" y="30" width="82.05000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="515.4" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">DLP 脱敏器</text>
+<rect x="614.375" y="30" width="82.05000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="655.4" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">LLM 路由器</text>
+<rect x="755.4" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="795.4" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">事件总线</text>
+<rect x="875.3999999999999" y="30" width="146.4" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="948.5999999999999" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CodeCoder Agents</text>
+<rect x="1061.8" y="30" width="139.25" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1131.425" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Fallback Engine</text>
+<rect x="1241.05" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1281.05" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">全局记忆</text>
+</svg>

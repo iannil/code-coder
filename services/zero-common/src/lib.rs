@@ -8,11 +8,13 @@
 //! - Utility functions used across Zero services
 //! - Security primitives (secrets, encryption)
 //! - Audit logging for compliance
+//! - Event bus for inter-service communication
 
 #![warn(clippy::all)]
 #![allow(clippy::pedantic)]
 
 pub mod audit;
+pub mod bus;
 pub mod config;
 pub mod error;
 pub mod logging;
@@ -22,6 +24,11 @@ pub mod validation;
 
 pub use audit::{
     AuditConfig, AuditEntry, AuditEventBuilder, AuditEventType, AuditLogger, ComplianceReport,
+};
+pub use bus::{
+    create_bus, create_bus_async, topics, AgentRequestPayload, AgentResponsePayload, BusBackend,
+    BusError, BusResult, ChannelMessagePayload, Event, EventBus, EventReceiver, InMemoryBus,
+    RedisBus, RedisBusConfig, SessionPayload,
 };
 pub use config::{
     AgentConfig, ApiKeysConfig, ChannelsConfig, CodeCoderConfig, Config, GatewayConfig,
@@ -34,6 +41,7 @@ pub use validation::{Validate, ValidationError, ValidationResult};
 /// Re-export commonly used types for convenience
 pub mod prelude {
     pub use crate::audit::{AuditConfig, AuditEventBuilder, AuditEventType, AuditLogger};
+    pub use crate::bus::{create_bus, topics, BusBackend, Event, EventBus};
     pub use crate::config::{
         AgentConfig, ApiKeysConfig, Config, ProvidersConfig, ReliabilityConfig, ToolsConfig,
     };

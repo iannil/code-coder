@@ -441,7 +441,7 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat(&message, &text).await?;
+                    self.process_chat_with_agent(&message, &text, None).await?;
                 }
             }
 
@@ -485,7 +485,7 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat(&message, &text).await?;
+                    self.process_chat_with_agent(&message, &text, None).await?;
                 }
             }
 
@@ -529,24 +529,184 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat(&message, &text).await?;
+                    self.process_chat_with_agent(&message, &text, None).await?;
                 }
             }
 
             return Ok(());
         }
 
+        // Check if this is a help request for available agents
+        if Self::is_agent_help_request(&text) {
+            tracing::info!(
+                message_id = %message.id,
+                "Detected agent help request, returning agent list"
+            );
+
+            let help_text = Self::format_agent_help();
+            let content = OutgoingContent::Markdown { text: help_text };
+            let result = self.router.respond(&message.id, content).await;
+
+            if !result.success {
+                tracing::error!(
+                    message_id = %message.id,
+                    error = ?result.error,
+                    "Failed to send agent help response"
+                );
+            }
+
+            return Ok(());
+        }
+
+        // Check if this is an agent command (@agent_name)
+        if let Some((agent, prompt)) = Self::parse_agent_command(&text) {
+            tracing::info!(
+                message_id = %message.id,
+                agent = %agent,
+                "Detected agent command, routing to specific agent"
+            );
+
+            return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+        }
+
         // Regular chat processing
-        self.process_chat(&message, &text).await
+        self.process_chat_with_agent(&message, &text, None).await
     }
 
-    /// Process a regular chat message.
-    async fn process_chat(&self, message: &ChannelMessage, text: &str) -> Result<()> {
-        // Build the request
+    /// Check if this is a request for agent help.
+    fn is_agent_help_request(content: &str) -> bool {
+        let content = content.trim().to_lowercase();
+        matches!(
+            content.as_str(),
+            "@help" | "@?" | "@帮助" | "@agents" | "help agents" | "list agents"
+        )
+    }
+
+    /// Format the agent help message for IM channels.
+    fn format_agent_help() -> String {
+        let lines = vec![
+            "🤖 **可用的 Agent 列表**",
+            "",
+            "**祝融说系列 (ZRS)**",
+            "• `@macro` - 宏观经济分析（PMI、GDP等数据解读）",
+            "• `@decision` - CLOSE决策框架（五维评估分析）",
+            "• `@trader` - 超短线交易指南（情绪周期、模式识别）",
+            "• `@observer` - 观察者理论（可能性基底分析）",
+            "• `@picker` - 选品专家（爆品方法论）",
+            "• `@miniproduct` - 极小产品教练（MVP开发）",
+            "• `@ai-engineer` - AI工程师导师",
+            "",
+            "**工程质量**",
+            "• `@code-reviewer` - 代码审查",
+            "• `@security-reviewer` - 安全审计",
+            "• `@tdd-guide` - TDD开发指南",
+            "• `@architect` - 系统架构设计",
+            "",
+            "**内容创作**",
+            "• `@writer` - 长文写作（20k+字）",
+            "• `@proofreader` - 文本校对",
+            "",
+            "**逆向工程**",
+            "• `@code-reverse` - 网站逆向",
+            "• `@jar-code-reverse` - JAR逆向",
+            "",
+            "**使用方式**: `@agent名称 你的问题`",
+            "**示例**: `@macro 解读本月PMI数据`",
+        ];
+
+        lines.join("\n")
+    }
+
+    /// Parse agent command from message.
+    ///
+    /// Detects patterns like:
+    /// - `@macro 解读PMI数据` → ("macro", "解读PMI数据")
+    /// - `@decision 用CLOSE框架分析` → ("decision", "用CLOSE框架分析")
+    /// - `@trader 分析今日情绪周期` → ("trader", "分析今日情绪周期")
+    ///
+    /// Returns Some((agent_name, prompt)) if detected, None otherwise.
+    fn parse_agent_command(content: &str) -> Option<(String, String)> {
+        // List of known agents that can be invoked via @mention
+        // This matches the agents defined in CodeCoder's agent.ts
+        const AGENTS: &[&str] = &[
+            // Primary modes
+            "build",
+            "plan",
+            "autonomous",
+            "writer",
+            // Engineering agents
+            "code-reviewer",
+            "security-reviewer",
+            "tdd-guide",
+            "architect",
+            "explore",
+            "general",
+            // Content agents
+            "proofreader",
+            "expander",
+            "expander-fiction",
+            "expander-nonfiction",
+            // Reverse engineering
+            "code-reverse",
+            "jar-code-reverse",
+            // Zhurong series (祝融说)
+            "observer",
+            "decision",
+            "macro",
+            "trader",
+            "picker",
+            "miniproduct",
+            "ai-engineer",
+            // Tools
+            "synton-assistant",
+            "verifier",
+        ];
+
+        // Pattern: @agent_name <prompt>
+        // Support both English and Chinese punctuation
+        let content = content.trim();
+        if !content.starts_with('@') {
+            return None;
+        }
+
+        // Extract agent name (everything after @ until whitespace or punctuation)
+        let rest = &content[1..];
+        let agent_end = rest
+            .find(|c: char| c.is_whitespace() || c == '：' || c == ':' || c == ',' || c == '，')
+            .unwrap_or(rest.len());
+
+        let agent_name = &rest[..agent_end];
+
+        // Check if it's a known agent (case-insensitive)
+        let agent_lower = agent_name.to_lowercase();
+        let matched_agent = AGENTS.iter().find(|&&a| a == agent_lower)?;
+
+        // Extract the prompt (everything after the agent name)
+        let prompt_start = agent_end;
+        let prompt = rest[prompt_start..]
+            .trim_start_matches(|c: char| c.is_whitespace() || c == '：' || c == ':')
+            .to_string();
+
+        // Don't match if there's no actual prompt
+        if prompt.is_empty() {
+            return None;
+        }
+
+        Some((matched_agent.to_string(), prompt))
+    }
+
+    /// Process a chat message with optional explicit agent.
+    async fn process_chat_with_agent(
+        &self,
+        message: &ChannelMessage,
+        text: &str,
+        agent: Option<String>,
+    ) -> Result<()> {
+        // Build the request with agent if specified
         let request = ChatRequest {
             message: text.to_string(),
             conversation_id: message.metadata.get("conversation_id").cloned(),
-            agent: message.metadata.get("agent").cloned(),
+            agent: agent.or_else(|| message.metadata.get("agent").cloned()),
             user_id: message.user_id.clone(),
             channel: message.channel_type.as_str().to_string(),
         };
@@ -1771,5 +1931,160 @@ mod tests {
 
         // Should NOT match regular chat
         assert!(CodeCoderBridge::is_feature_request("Hello world").is_none());
+    }
+
+    #[test]
+    fn test_agent_command_parsing_zhurong_agents() {
+        // Should match @macro pattern
+        let result = CodeCoderBridge::parse_agent_command("@macro 解读本月PMI数据");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "macro");
+        assert_eq!(prompt, "解读本月PMI数据");
+
+        // Should match @decision pattern
+        let result = CodeCoderBridge::parse_agent_command("@decision 用CLOSE框架分析这个职业选择");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "decision");
+        assert!(prompt.contains("CLOSE框架"));
+
+        // Should match @trader pattern
+        let result = CodeCoderBridge::parse_agent_command("@trader 分析今日情绪周期");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "trader");
+        assert!(prompt.contains("情绪周期"));
+
+        // Should match @observer pattern
+        let result = CodeCoderBridge::parse_agent_command("@observer 用可能性基底解释这个现象");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "observer");
+
+        // Should match @picker pattern
+        let result = CodeCoderBridge::parse_agent_command("@picker 分析这个选品机会");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "picker");
+
+        // Should match @miniproduct pattern
+        let result = CodeCoderBridge::parse_agent_command("@miniproduct 帮我验证这个产品想法");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "miniproduct");
+    }
+
+    #[test]
+    fn test_agent_command_parsing_engineering_agents() {
+        // Should match @code-reviewer pattern
+        let result = CodeCoderBridge::parse_agent_command("@code-reviewer review the auth module");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "code-reviewer");
+
+        // Should match @security-reviewer pattern
+        let result = CodeCoderBridge::parse_agent_command("@security-reviewer check for vulnerabilities");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "security-reviewer");
+
+        // Should match @architect pattern
+        let result = CodeCoderBridge::parse_agent_command("@architect design the payment system");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "architect");
+
+        // Should match @tdd-guide pattern
+        let result = CodeCoderBridge::parse_agent_command("@tdd-guide write tests for the user service");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "tdd-guide");
+    }
+
+    #[test]
+    fn test_agent_command_parsing_with_chinese_colon() {
+        // Should handle Chinese colon separator
+        let result = CodeCoderBridge::parse_agent_command("@macro：解读本月PMI数据");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "macro");
+        assert_eq!(prompt, "解读本月PMI数据");
+
+        // Should handle English colon separator
+        let result = CodeCoderBridge::parse_agent_command("@decision: analyze this choice");
+        assert!(result.is_some());
+        let (agent, prompt) = result.unwrap();
+        assert_eq!(agent, "decision");
+        assert_eq!(prompt, "analyze this choice");
+    }
+
+    #[test]
+    fn test_agent_command_parsing_case_insensitive() {
+        // Should be case insensitive
+        let result = CodeCoderBridge::parse_agent_command("@MACRO 解读数据");
+        assert!(result.is_some());
+        let (agent, _) = result.unwrap();
+        assert_eq!(agent, "macro");
+
+        let result = CodeCoderBridge::parse_agent_command("@Trader analyze");
+        assert!(result.is_some());
+        let (agent, _) = result.unwrap();
+        assert_eq!(agent, "trader");
+    }
+
+    #[test]
+    fn test_agent_command_parsing_negative_cases() {
+        // Should NOT match unknown agents
+        assert!(CodeCoderBridge::parse_agent_command("@unknown_agent do something").is_none());
+
+        // Should NOT match without prompt
+        assert!(CodeCoderBridge::parse_agent_command("@macro").is_none());
+        assert!(CodeCoderBridge::parse_agent_command("@macro ").is_none());
+
+        // Should NOT match regular messages
+        assert!(CodeCoderBridge::parse_agent_command("Hello world").is_none());
+        assert!(CodeCoderBridge::parse_agent_command("帮我分析数据").is_none());
+
+        // Should NOT match email addresses
+        assert!(CodeCoderBridge::parse_agent_command("email@example.com").is_none());
+
+        // Should NOT match Twitter handles (unknown agents)
+        assert!(CodeCoderBridge::parse_agent_command("@username hello").is_none());
+    }
+
+    #[test]
+    fn test_agent_help_request_detection() {
+        // Should match various help patterns
+        assert!(CodeCoderBridge::is_agent_help_request("@help"));
+        assert!(CodeCoderBridge::is_agent_help_request("@?"));
+        assert!(CodeCoderBridge::is_agent_help_request("@帮助"));
+        assert!(CodeCoderBridge::is_agent_help_request("@agents"));
+        assert!(CodeCoderBridge::is_agent_help_request("help agents"));
+        assert!(CodeCoderBridge::is_agent_help_request("list agents"));
+
+        // Should be case insensitive
+        assert!(CodeCoderBridge::is_agent_help_request("@HELP"));
+        assert!(CodeCoderBridge::is_agent_help_request("@Agents"));
+
+        // Should NOT match regular messages
+        assert!(!CodeCoderBridge::is_agent_help_request("hello"));
+        assert!(!CodeCoderBridge::is_agent_help_request("@macro 解读数据"));
+        assert!(!CodeCoderBridge::is_agent_help_request("help me"));
+    }
+
+    #[test]
+    fn test_agent_help_format() {
+        let help = CodeCoderBridge::format_agent_help();
+
+        // Should contain key sections
+        assert!(help.contains("🤖 **可用的 Agent 列表**"));
+        assert!(help.contains("祝融说系列"));
+        assert!(help.contains("@macro"));
+        assert!(help.contains("@decision"));
+        assert!(help.contains("@trader"));
+        assert!(help.contains("工程质量"));
+        assert!(help.contains("@code-reviewer"));
+        assert!(help.contains("使用方式"));
     }
 }

@@ -2,6 +2,8 @@
 //!
 //! Uses Slack Web API for messaging with polling-based message retrieval.
 
+pub mod format;
+
 use crate::message::{ChannelMessage, ChannelType, MessageContent, OutgoingContent, OutgoingMessage};
 use crate::traits::{Channel, ChannelError, ChannelResult};
 use async_trait::async_trait;
@@ -90,7 +92,10 @@ impl Channel for SlackChannel {
     async fn send(&self, message: OutgoingMessage) -> ChannelResult<String> {
         let text = match &message.content {
             OutgoingContent::Text { text } => text.clone(),
-            OutgoingContent::Markdown { text } => text.clone(),
+            OutgoingContent::Markdown { text } => {
+                // Convert markdown to Slack mrkdwn format
+                format::convert_to_slack_mrkdwn(text)
+            }
             _ => {
                 return Err(ChannelError::InvalidMessage(
                     "Slack only supports text messages".into(),
@@ -98,42 +103,48 @@ impl Channel for SlackChannel {
             }
         };
 
-        let body = serde_json::json!({
-            "channel": message.channel_id,
-            "text": text
-        });
+        // Split message if too long
+        let chunks = format::split_message(&text);
+        let mut last_ts = String::new();
 
-        let resp = self
-            .client
-            .post("https://slack.com/api/chat.postMessage")
-            .bearer_auth(&self.bot_token)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed(format!("Slack send error: {e}")))?;
+        for chunk in chunks {
+            let body = serde_json::json!({
+                "channel": message.channel_id,
+                "text": chunk
+            });
 
-        let data: serde_json::Value = resp
-            .json()
-            .await
-            .map_err(|e| ChannelError::Internal(format!("Failed to parse response: {e}")))?;
+            let resp = self
+                .client
+                .post("https://slack.com/api/chat.postMessage")
+                .bearer_auth(&self.bot_token)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed(format!("Slack send error: {e}")))?;
 
-        if !data.get("ok").and_then(|o| o.as_bool()).unwrap_or(false) {
-            let error = data
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("unknown");
-            return Err(ChannelError::SendFailed(format!(
-                "Slack send failed: {error}"
-            )));
+            let data: serde_json::Value = resp
+                .json()
+                .await
+                .map_err(|e| ChannelError::Internal(format!("Failed to parse response: {e}")))?;
+
+            if !data.get("ok").and_then(|o| o.as_bool()).unwrap_or(false) {
+                let error = data
+                    .get("error")
+                    .and_then(|e| e.as_str())
+                    .unwrap_or("unknown");
+                return Err(ChannelError::SendFailed(format!(
+                    "Slack send failed: {error}"
+                )));
+            }
+
+            last_ts = data
+                .get("ts")
+                .and_then(|t| t.as_str())
+                .unwrap_or("unknown")
+                .to_string();
         }
 
-        let ts = data
-            .get("ts")
-            .and_then(|t| t.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-
-        Ok(ts)
+        Ok(last_ts)
     }
 
     async fn listen<F>(&self, callback: F) -> ChannelResult<()>
