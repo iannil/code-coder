@@ -1,7 +1,7 @@
 //! Review bridge for Zero Workflow.
 //!
 //! Connects Git platform webhooks to CodeCoder's code-reviewer agent,
-//! and posts results back to the platform.
+//! posts results back to the platform, and sends IM notifications.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,48 @@ use std::time::Duration;
 
 use crate::github::{self, GitHubClient};
 use crate::gitlab::{self, GitLabClient};
+
+// ============================================================================
+// IM Notification Configuration
+// ============================================================================
+
+/// Configuration for IM notifications after code review.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IMNotificationConfig {
+    /// Enable IM notifications
+    #[serde(default)]
+    pub enabled: bool,
+    /// Zero Channels endpoint (e.g., "http://localhost:4411")
+    pub channels_endpoint: Option<String>,
+    /// Default channel type for notifications (feishu, wecom, dingtalk)
+    #[serde(default = "default_channel_type")]
+    pub channel_type: String,
+    /// Channel ID to send notifications to (group chat ID)
+    pub channel_id: Option<String>,
+    /// Only notify on certain verdicts
+    #[serde(default = "default_notify_on")]
+    pub notify_on: Vec<String>,
+}
+
+fn default_channel_type() -> String {
+    "feishu".to_string()
+}
+
+fn default_notify_on() -> Vec<String> {
+    vec!["request_changes".to_string(), "critical".to_string()]
+}
+
+impl Default for IMNotificationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            channels_endpoint: None,
+            channel_type: default_channel_type(),
+            channel_id: None,
+            notify_on: default_notify_on(),
+        }
+    }
+}
 
 // ============================================================================
 // Review Bridge
@@ -25,6 +67,8 @@ pub struct ReviewBridge {
     github: Option<Arc<GitHubClient>>,
     /// GitLab client (if configured)
     gitlab: Option<Arc<GitLabClient>>,
+    /// IM notification configuration
+    im_config: IMNotificationConfig,
 }
 
 impl ReviewBridge {
@@ -40,6 +84,7 @@ impl ReviewBridge {
             client,
             github: None,
             gitlab: None,
+            im_config: IMNotificationConfig::default(),
         }
     }
 
@@ -52,6 +97,12 @@ impl ReviewBridge {
     /// Set GitLab client.
     pub fn with_gitlab(mut self, client: Arc<GitLabClient>) -> Self {
         self.gitlab = Some(client);
+        self
+    }
+
+    /// Set IM notification configuration.
+    pub fn with_im_config(mut self, config: IMNotificationConfig) -> Self {
+        self.im_config = config;
         self
     }
 
@@ -104,6 +155,14 @@ impl ReviewBridge {
         let comment_url = self
             .post_github_review(github, owner, repo, pr_number, &review)
             .await?;
+
+        // Send IM notification
+        if self.should_notify(&review) {
+            let _ = self
+                .send_im_notification(&context, &review, &comment_url)
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "Failed to send IM notification"));
+        }
 
         Ok(ReviewResult::Success {
             comment_url,
@@ -163,6 +222,14 @@ impl ReviewBridge {
         let comment_url = self
             .post_gitlab_review(gitlab, project_id, mr_iid, &review)
             .await?;
+
+        // Send IM notification
+        if self.should_notify(&review) {
+            let _ = self
+                .send_im_notification(&context, &review, &comment_url)
+                .await
+                .map_err(|e| tracing::warn!(error = %e, "Failed to send IM notification"));
+        }
 
         Ok(ReviewResult::Success {
             comment_url,
@@ -277,6 +344,155 @@ Format your response as:
             "Note #{} created on MR !{}",
             note.id, mr_iid
         ))
+    }
+
+    /// Check if we should send IM notification for this review.
+    fn should_notify(&self, review: &CodeReview) -> bool {
+        if !self.im_config.enabled {
+            return false;
+        }
+
+        if self.im_config.channel_id.is_none() {
+            return false;
+        }
+
+        // Check if verdict matches notification criteria
+        let verdict_str = match review.verdict {
+            ReviewVerdict::Approve => "approve",
+            ReviewVerdict::RequestChanges => "request_changes",
+            ReviewVerdict::Comment => "comment",
+        };
+
+        // Check if any findings are critical
+        let has_critical = review
+            .findings
+            .iter()
+            .any(|f| matches!(f.severity, FindingSeverity::Critical));
+
+        self.im_config.notify_on.iter().any(|c| {
+            c == verdict_str || (c == "critical" && has_critical)
+        })
+    }
+
+    /// Send IM notification for a code review.
+    async fn send_im_notification(
+        &self,
+        context: &ReviewContext,
+        review: &CodeReview,
+        comment_url: &str,
+    ) -> Result<()> {
+        let endpoint = self
+            .im_config
+            .channels_endpoint
+            .as_ref()
+            .context("Channels endpoint not configured")?;
+
+        let channel_id = self
+            .im_config
+            .channel_id
+            .as_ref()
+            .context("Channel ID not configured")?;
+
+        // Format notification message
+        let message = self.format_im_notification(context, review, comment_url);
+
+        // Build the request to Zero Channels
+        let url = format!("{}/api/v1/send", endpoint);
+        let body = serde_json::json!({
+            "channel_type": self.im_config.channel_type,
+            "channel_id": channel_id,
+            "content": {
+                "type": "markdown",
+                "text": message
+            }
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .context("Failed to send IM notification")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("IM notification failed {}: {}", status, body);
+        }
+
+        tracing::info!(
+            channel_type = %self.im_config.channel_type,
+            channel_id = %channel_id,
+            platform = %context.platform,
+            pr_number = context.pr_number,
+            "Sent IM notification for code review"
+        );
+
+        Ok(())
+    }
+
+    /// Format the IM notification message.
+    fn format_im_notification(
+        &self,
+        context: &ReviewContext,
+        review: &CodeReview,
+        comment_url: &str,
+    ) -> String {
+        let verdict_emoji = match review.verdict {
+            ReviewVerdict::Approve => "✅",
+            ReviewVerdict::RequestChanges => "🔴",
+            ReviewVerdict::Comment => "💬",
+        };
+
+        let verdict_text = match review.verdict {
+            ReviewVerdict::Approve => "Approved",
+            ReviewVerdict::RequestChanges => "Changes Requested",
+            ReviewVerdict::Comment => "Reviewed",
+        };
+
+        let critical_count = review
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, FindingSeverity::Critical))
+            .count();
+
+        let high_count = review
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, FindingSeverity::High))
+            .count();
+
+        let mut message = format!(
+            "**{} Code Review: {}**\n\n",
+            verdict_emoji, verdict_text
+        );
+
+        message.push_str(&format!(
+            "📂 **{}** - {}\n",
+            context.repo_full_name, context.title
+        ));
+
+        message.push_str(&format!(
+            "🔗 [View Review]({})\n\n",
+            comment_url
+        ));
+
+        message.push_str(&format!("**Summary:** {}\n", review.summary));
+
+        if critical_count > 0 || high_count > 0 {
+            message.push_str("\n**Issues Found:**\n");
+            if critical_count > 0 {
+                message.push_str(&format!("- 🔴 {} critical issue(s)\n", critical_count));
+            }
+            if high_count > 0 {
+                message.push_str(&format!("- 🟠 {} high priority issue(s)\n", high_count));
+            }
+        }
+
+        message.push_str("\n---\n*Automated review by CodeCoder*");
+
+        message
     }
 }
 

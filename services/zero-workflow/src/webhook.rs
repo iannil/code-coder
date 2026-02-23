@@ -1,6 +1,7 @@
 //! Webhook handling for Zero Workflow.
 //!
-//! Handles incoming webhooks from Git platforms and triggers automated code reviews.
+//! Handles incoming webhooks from Git platforms and triggers automated code reviews
+//! and ticket automation.
 
 use anyhow::Result;
 use axum::{
@@ -19,6 +20,7 @@ use std::sync::Arc;
 use crate::github::PullRequestEvent;
 use crate::gitlab::MergeRequestEvent;
 use crate::review_bridge::ReviewBridge;
+use crate::ticket_bridge::TicketBridge;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -33,6 +35,8 @@ pub struct WebhookState {
     pub gitlab_token: Option<Arc<String>>,
     /// Review bridge (optional, for code review)
     pub review_bridge: Option<Arc<ReviewBridge>>,
+    /// Ticket bridge (optional, for ticket automation)
+    pub ticket_bridge: Option<Arc<TicketBridge>>,
 }
 
 impl WebhookState {
@@ -47,12 +51,19 @@ impl WebhookState {
             github_secret,
             gitlab_token,
             review_bridge: None,
+            ticket_bridge: None,
         }
     }
 
     /// Set the review bridge.
     pub fn with_review_bridge(mut self, bridge: Arc<ReviewBridge>) -> Self {
         self.review_bridge = Some(bridge);
+        self
+    }
+
+    /// Set the ticket bridge.
+    pub fn with_ticket_bridge(mut self, bridge: Arc<TicketBridge>) -> Self {
+        self.ticket_bridge = Some(bridge);
         self
     }
 }
@@ -343,5 +354,6 @@ mod tests {
         assert!(state.github_secret.is_some());
         assert!(state.gitlab_token.is_none());
         assert!(state.review_bridge.is_none());
+        assert!(state.ticket_bridge.is_none());
     }
 }

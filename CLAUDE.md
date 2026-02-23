@@ -134,9 +134,9 @@ bun dev
 # 在指定目录运行
 bun dev <path>
 
-# 启动无头 API 服务器（默认端口 4096）
+# 启动无头 API 服务器（默认端口 4400）
 bun dev serve
-bun dev serve --port 8080
+bun dev serve --port 4400
 
 # 运行所有包的类型检查
 bun turbo typecheck
@@ -153,10 +153,33 @@ bun run --cwd packages/ccode build
 
 ### 端口配置
 
-- CodeCoder API Server Port: 4400
-- Web Frontend (Vite) Port: 4401
-- ZeroBot Daemon Port: 4402
-- Faster Whisper Server Port: 4403
+**核心服务:**
+
+- CodeCoder API Server: 4400 (Bun/TypeScript)
+- Web Frontend (Vite): 4401 (React)
+- Zero CLI Daemon: 4402 (Rust, 组合服务: gateway + channels + scheduler)
+- Faster Whisper Server: 4403 (Docker)
+
+**独立 Rust 服务 (可选，用于模块化部署):**
+
+- Zero Gateway: 4410 (认证/路由/配额)
+- Zero Channels: 4411 (Telegram/Discord/Slack)
+- Zero Workflow: 4412 (Webhook/Cron/Git)
+
+**协议/工具服务:**
+
+- MCP Server (HTTP): 4420 (Model Context Protocol)
+
+### 运维脚本
+
+```bash
+./ops.sh start          # 启动核心服务
+./ops.sh start all      # 启动所有服务
+./ops.sh stop           # 停止所有服务
+./ops.sh status         # 查看服务状态
+./ops.sh build rust     # 构建 Rust 服务
+./ops.sh logs zero-daemon  # 查看日志
+```
 
 ### 统一配置
 
@@ -167,17 +190,31 @@ bun run --cwd packages/ccode build
 
 ### Monorepo 结构
 
+**TypeScript Packages (packages/):**
+
 - `packages/ccode/` - 核心 CLI 工具和业务逻辑。入口点是 `src/index.ts`。包含主要的 agent 实现、LSP 集成和服务器。
 - `packages/ccode/src/cli/cmd/tui/` - 终端 UI 代码，使用 SolidJS 和 [opentui](https://github.com/sst/opentui) 编写
+- `packages/web/` - Web 前端 (React + Vite)
 - `packages/util/` - 共享工具
 - `script/` - 项目级构建和生成脚本
 
+**Rust Services (services/):**
+
+- `services/zero-cli/` - Zero CLI 主程序，包含 daemon 命令（组合 gateway + channels + scheduler）
+- `services/zero-gateway/` - 独立网关服务（认证、路由、配额、安全沙箱）
+- `services/zero-channels/` - 独立频道服务（Telegram、Discord、Slack、Email）
+- `services/zero-workflow/` - 独立工作流服务（Webhook、Cron、Git 集成）
+- `services/zero-agent/` - Agent 执行逻辑（库）
+- `services/zero-memory/` - 内存/持久化（库）
+- `services/zero-tools/` - 工具定义（库）
+- `services/zero-common/` - 共享配置和工具（库）
+
 ### 核心技术
 
-- 运行时： Bun 1.3+
-- 构建： Turborepo
-- 前端： Solid.js、OpenTUI（终端）、TailwindCSS
-- 后端： Hono（HTTP）、Cloudflare Workers
+- 运行时： Bun 1.3+ (TypeScript), Rust 1.75+ (Services)
+- 构建： Turborepo (TS), Cargo Workspace (Rust)
+- 前端： React (Web)、Solid.js + OpenTUI（终端）、TailwindCSS
+- 后端： Hono (TS HTTP)、Axum (Rust HTTP)、Cloudflare Workers
 - AI： 多个提供商 SDK（Anthropic、OpenAI、Google 等）、MCP 协议
 
 ### SDK 生成

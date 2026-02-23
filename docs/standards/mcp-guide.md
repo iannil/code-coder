@@ -65,6 +65,7 @@ The Playwright MCP server enables browser automation for the `code-reverse` agen
 ```
 
 **Features:**
+
 - Screenshot capture
 - Page navigation
 - Network monitoring
@@ -72,6 +73,7 @@ The Playwright MCP server enables browser automation for the `code-reverse` agen
 - Element extraction
 
 **Usage in code-reverse agent:**
+
 ```bash
 codecoder --agent code-reverse "Analyze https://example.com and generate a pixel-perfect recreation plan"
 ```
@@ -228,6 +230,7 @@ codecoder mcp auth server-name
 ### MCP Server Not Connecting
 
 1. Check the server status:
+
    ```bash
    codecoder mcp list
    ```
@@ -235,6 +238,7 @@ codecoder mcp auth server-name
 2. Verify the command or URL is correct
 
 3. Check for authentication issues:
+
    ```bash
    codecoder mcp auth server-name
    ```
@@ -248,6 +252,7 @@ codecoder mcp auth server-name
 ### Timeout Issues
 
 Increase the timeout value:
+
 ```jsonc
 {
   "mcp": {
@@ -291,10 +296,10 @@ CodeCoder includes a built-in MCP server that exposes all of its 20+ development
 ccode mcp serve
 
 # Start with HTTP transport
-ccode mcp serve --transport http --port 4405
+ccode mcp serve --transport http --port 4420
 
 # Start with API key authentication
-ccode mcp serve --transport http --port 4405 --api-key your-secret-key
+ccode mcp serve --transport http --port 4420 --api-key your-secret-key
 
 # Filter tools by agent
 ccode mcp serve --agent code-reviewer
@@ -308,7 +313,7 @@ ccode mcp serve --tools "read,write,edit,glob,grep"
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--transport` | Transport mode: `stdio` or `http` | `stdio` |
-| `--port` | Port for HTTP transport | `4405` |
+| `--port` | Port for HTTP transport | `4420` |
 | `--api-key` | API key for HTTP authentication | none |
 | `--agent` | Filter tools by agent name | all |
 | `--tools` | Comma-separated list of enabled tools | all |
@@ -322,7 +327,7 @@ You can configure the MCP server in `~/.codecoder/config.json` to set defaults:
   "mcp": {
     "server": {
       "apiKey": "your-secret-key",
-      "port": 4405,
+      "port": 4420,
       "defaultTransport": "http",
       "resources": ["src/**/*.ts", "docs/**/*.md"]
     }
@@ -381,7 +386,7 @@ The HTTP transport uses Streamable HTTP (MCP spec 2025-03-26), providing:
   "mcp": {
     "codecoder": {
       "type": "remote",
-      "url": "http://localhost:4405/mcp",
+      "url": "http://localhost:4420/mcp",
       "headers": {
         "X-API-Key": "your-secret-key"
       }

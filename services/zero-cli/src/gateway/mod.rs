@@ -7,7 +7,6 @@
 //! - Request timeouts (30s) to prevent slow-loris attacks
 //! - Header sanitization (handled by axum/hyper)
 
-use crate::channels::{Channel, FeishuChannel, WhatsAppChannel};
 use crate::config::Config;
 use crate::mcp::McpServer;
 use crate::memory::{self, Memory, MemoryCategory};
@@ -15,11 +14,9 @@ use crate::providers::{self, Provider};
 use crate::security::pairing::{constant_time_eq, is_public_bind, PairingGuard};
 use crate::security::SecurityPolicy;
 use crate::tools;
-use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use axum::{
-    body::Bytes,
-    extract::{Query, State},
+    extract::State,
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::{get, post},
@@ -46,11 +43,6 @@ pub struct AppState {
     pub auto_save: bool,
     pub webhook_secret: Option<Arc<str>>,
     pub pairing: Arc<PairingGuard>,
-    pub whatsapp: Option<Arc<WhatsAppChannel>>,
-    /// `WhatsApp` app secret for webhook signature verification (`X-Hub-Signature-256`)
-    pub whatsapp_app_secret: Option<Arc<str>>,
-    /// Feishu channel for messaging
-    pub feishu: Option<Arc<FeishuChannel>>,
     /// Channel for sending messages to the main message bus
     pub message_tx: Option<tokio::sync::mpsc::Sender<zero_channels::ChannelMessage>>,
 }
@@ -97,48 +89,6 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .and_then(|w| w.secret.as_deref())
         .map(Arc::from);
 
-    // WhatsApp channel (if configured)
-    let whatsapp_channel: Option<Arc<WhatsAppChannel>> =
-        config.channels_config.whatsapp.as_ref().map(|wa| {
-            Arc::new(WhatsAppChannel::new(
-                wa.access_token.clone(),
-                wa.phone_number_id.clone(),
-                wa.verify_token.clone(),
-                wa.allowed_numbers.clone(),
-            ))
-        });
-
-    // WhatsApp app secret for webhook signature verification
-    // Priority: environment variable > config file
-    let whatsapp_app_secret: Option<Arc<str>> = std::env::var("ZERO_BOT_WHATSAPP_APP_SECRET")
-        .ok()
-        .and_then(|secret| {
-            let secret = secret.trim();
-            (!secret.is_empty()).then(|| secret.to_owned())
-        })
-        .or_else(|| {
-            config.channels_config.whatsapp.as_ref().and_then(|wa| {
-                wa.app_secret
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|secret| !secret.is_empty())
-                    .map(ToOwned::to_owned)
-            })
-        })
-        .map(Arc::from);
-
-    // Feishu channel (if configured)
-    let feishu_channel: Option<Arc<FeishuChannel>> =
-        config.channels_config.feishu.as_ref().map(|fs| {
-            Arc::new(FeishuChannel::with_encryption(
-                fs.app_id.clone(),
-                fs.app_secret.clone(),
-                fs.encrypt_key.clone(),
-                fs.verification_token.clone(),
-                fs.allowed_users.clone(),
-            ))
-        });
-
     // ── Pairing guard ──────────────────────────────────────
     let pairing = Arc::new(PairingGuard::new(
         config.gateway.require_pairing,
@@ -169,14 +119,10 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
     }
     println!("  POST /pair      — pair a new client (X-Pairing-Code header)");
     println!("  POST /webhook   — {{\"message\": \"your prompt\"}}");
-    if whatsapp_channel.is_some() {
-        println!("  GET  /whatsapp  — Meta webhook verification");
-        println!("  POST /whatsapp  — WhatsApp message webhook");
-    }
-    if feishu_channel.is_some() {
-        println!("  POST /feishu    — Feishu event callback");
-    }
     println!("  GET  /health    — health check");
+    println!();
+    println!("  📢 IM channels (Telegram, WhatsApp, Feishu, etc.) moved to zero-channels service");
+    println!("     Run: zero-cli channel start (port 4411)");
     if let Some(code) = pairing.pairing_code() {
         println!();
         println!("  🔐 PAIRING REQUIRED — use this one-time code:");
@@ -205,9 +151,6 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         auto_save: config.memory.auto_save,
         webhook_secret,
         pairing,
-        whatsapp: whatsapp_channel,
-        whatsapp_app_secret,
-        feishu: feishu_channel,
         message_tx: None, // Gateway mode doesn't use the channel message bus
     };
 
@@ -245,9 +188,6 @@ pub async fn run_gateway(host: &str, port: u16, config: Config) -> Result<()> {
         .route("/health", get(handle_health))
         .route("/pair", post(handle_pair))
         .route("/webhook", post(handle_webhook))
-        .route("/whatsapp", get(handle_whatsapp_verify))
-        .route("/whatsapp", post(handle_whatsapp_message))
-        .route("/feishu", post(handle_feishu_event))
         .with_state(state);
 
     // Add MCP routes if enabled
@@ -400,290 +340,6 @@ async fn handle_webhook(
     }
 }
 
-/// `WhatsApp` verification query params
-#[derive(serde::Deserialize)]
-pub struct WhatsAppVerifyQuery {
-    #[serde(rename = "hub.mode")]
-    pub mode: Option<String>,
-    #[serde(rename = "hub.verify_token")]
-    pub verify_token: Option<String>,
-    #[serde(rename = "hub.challenge")]
-    pub challenge: Option<String>,
-}
-
-/// GET /whatsapp — Meta webhook verification
-async fn handle_whatsapp_verify(
-    State(state): State<AppState>,
-    Query(params): Query<WhatsAppVerifyQuery>,
-) -> impl IntoResponse {
-    let Some(ref wa) = state.whatsapp else {
-        return (StatusCode::NOT_FOUND, "WhatsApp not configured".to_string());
-    };
-
-    // Verify the token matches (constant-time comparison to prevent timing attacks)
-    let token_matches = params
-        .verify_token
-        .as_deref()
-        .is_some_and(|t| constant_time_eq(t, wa.verify_token()));
-    if params.mode.as_deref() == Some("subscribe") && token_matches {
-        if let Some(ch) = params.challenge {
-            tracing::info!("WhatsApp webhook verified successfully");
-            return (StatusCode::OK, ch);
-        }
-        return (StatusCode::BAD_REQUEST, "Missing hub.challenge".to_string());
-    }
-
-    tracing::warn!("WhatsApp webhook verification failed — token mismatch");
-    (StatusCode::FORBIDDEN, "Forbidden".to_string())
-}
-
-/// Verify `WhatsApp` webhook signature (`X-Hub-Signature-256`).
-/// Returns true if the signature is valid, false otherwise.
-/// See: <https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests>
-pub fn verify_whatsapp_signature(app_secret: &str, body: &[u8], signature_header: &str) -> bool {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-
-    // Signature format: "sha256=<hex_signature>"
-    let Some(hex_sig) = signature_header.strip_prefix("sha256=") else {
-        return false;
-    };
-
-    // Decode hex signature
-    let Ok(expected) = hex::decode(hex_sig) else {
-        return false;
-    };
-
-    // Compute HMAC-SHA256
-    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(app_secret.as_bytes()) else {
-        return false;
-    };
-    mac.update(body);
-
-    // Constant-time comparison
-    mac.verify_slice(&expected).is_ok()
-}
-
-/// POST /whatsapp — incoming message webhook
-async fn handle_whatsapp_message(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> impl IntoResponse {
-    let Some(ref wa) = state.whatsapp else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "WhatsApp not configured"})),
-        );
-    };
-
-    // ── Security: Verify X-Hub-Signature-256 if app_secret is configured ──
-    if let Some(ref app_secret) = state.whatsapp_app_secret {
-        let signature = headers
-            .get("X-Hub-Signature-256")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
-
-        if !verify_whatsapp_signature(app_secret, &body, signature) {
-            tracing::warn!(
-                "WhatsApp webhook signature verification failed (signature: {})",
-                if signature.is_empty() {
-                    "missing"
-                } else {
-                    "invalid"
-                }
-            );
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(serde_json::json!({"error": "Invalid signature"})),
-            );
-        }
-    }
-
-    // Parse JSON body
-    let Ok(payload) = serde_json::from_slice::<serde_json::Value>(&body) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "Invalid JSON payload"})),
-        );
-    };
-
-    // Parse messages from the webhook payload
-    let messages = wa.parse_webhook_payload(&payload);
-
-    if messages.is_empty() {
-        // Acknowledge the webhook even if no messages (could be status updates)
-        return (StatusCode::OK, Json(serde_json::json!({"status": "ok"})));
-    }
-
-    // Process each message
-    for msg in &messages {
-        let sender = msg.sender();
-        let content = msg.text().unwrap_or_default();
-        tracing::info!(
-            "WhatsApp message from {}: {}",
-            sender,
-            truncate_with_ellipsis(content, 50)
-        );
-
-        // Auto-save to memory
-        if state.auto_save {
-            let _ = state
-                .mem
-                .store(
-                    &format!("whatsapp_{}", sender),
-                    content,
-                    MemoryCategory::Conversation,
-                )
-                .await;
-        }
-
-        // Call the LLM
-        match state
-            .provider
-            .chat(content, &state.model, state.temperature)
-            .await
-        {
-            Ok(response) => {
-                // Send reply via WhatsApp
-                if let Err(e) = wa.send_simple(&response, sender).await {
-                    tracing::error!("Failed to send WhatsApp reply: {e}");
-                }
-            }
-            Err(e) => {
-                tracing::error!("LLM error for WhatsApp message: {e:#}");
-                let _ = wa
-                    .send_simple(
-                        "Sorry, I couldn't process your message right now.",
-                        sender,
-                    )
-                    .await;
-            }
-        }
-    }
-
-    // Acknowledge the webhook
-    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
-}
-
-/// POST /feishu — Feishu event callback
-async fn handle_feishu_event(
-    State(state): State<AppState>,
-    body: Bytes,
-) -> impl IntoResponse {
-    let Some(ref feishu) = state.feishu else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(serde_json::json!({"error": "Feishu not configured"})),
-        );
-    };
-
-    // Parse JSON body
-    let payload = match std::str::from_utf8(&body) {
-        Ok(s) => s,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": "Invalid UTF-8 in request body"})),
-            );
-        }
-    };
-
-    // Use the channel's parse_event method which handles encryption
-    let event = match feishu.parse_event_gateway(payload) {
-        Ok(e) => e,
-        Err(e) => {
-            tracing::error!("Failed to parse Feishu event: {e}");
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": format!("Failed to parse event: {e}")})),
-            );
-        }
-    };
-
-    // Handle URL verification challenge
-    if let Some(challenge) = event.get("challenge").and_then(|c| c.as_str()) {
-        tracing::info!("Feishu URL verification challenge received");
-        return (
-            StatusCode::OK,
-            Json(serde_json::json!({ "challenge": challenge })),
-        );
-    }
-
-    // Parse event header
-    let header = event.get("header");
-    let event_data = event.get("event");
-
-    if let (Some(header), Some(event_data)) = (header, event_data) {
-        let event_type = header.get("event_type").and_then(|t| t.as_str()).unwrap_or("");
-
-        // Handle message events
-        if event_type == "im.message.receive_v1" {
-            if let Some(message) = event_data.get("message") {
-                let chat_id = message.get("chat_id").and_then(|c| c.as_str()).unwrap_or("");
-                let msg_type = message.get("message_type").and_then(|t| t.as_str()).unwrap_or("");
-                let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("{}");
-
-                // Get sender info
-                let sender = event_data.get("sender").and_then(|s| s.get("sender_id"));
-                let sender_open_id = sender
-                    .and_then(|s| s.get("open_id"))
-                    .and_then(|id| id.as_str())
-                    .unwrap_or("unknown");
-
-                tracing::info!(
-                    "Feishu message from {}: type={}, chat_id={}",
-                    sender_open_id,
-                    msg_type,
-                    chat_id
-                );
-
-                // Extract text content
-                if msg_type == "text" {
-                    if let Ok(content_json) = serde_json::from_str::<serde_json::Value>(content) {
-                        if let Some(text) = content_json.get("text").and_then(|t| t.as_str()) {
-                            // Auto-save to memory
-                            if state.auto_save {
-                                let _ = state
-                                    .mem
-                                    .store(
-                                        &format!("feishu_{sender_open_id}"),
-                                        text,
-                                        MemoryCategory::Conversation,
-                                    )
-                                    .await;
-                            }
-
-                            // Call the LLM
-                            match state
-                                .provider
-                                .chat(text, &state.model, state.temperature)
-                                .await
-                            {
-                                Ok(response) => {
-                                    // Send reply via Feishu
-                                    if let Err(e) = feishu.send_simple(&response, chat_id).await {
-                                        tracing::error!("Failed to send Feishu reply: {e}");
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::error!("LLM error for Feishu message: {e:#}");
-                                    let _ = feishu
-                                        .send_simple("抱歉，我暂时无法处理您的消息。", chat_id)
-                                        .await;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Acknowledge the webhook
-    (StatusCode::OK, Json(serde_json::json!({"status": "ok"})))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -711,185 +367,8 @@ mod tests {
     }
 
     #[test]
-    fn whatsapp_query_fields_are_optional() {
-        let q = WhatsAppVerifyQuery {
-            mode: None,
-            verify_token: None,
-            challenge: None,
-        };
-        assert!(q.mode.is_none());
-    }
-
-    #[test]
     fn app_state_is_clone() {
         fn assert_clone<T: Clone>() {}
         assert_clone::<AppState>();
-    }
-
-    // ══════════════════════════════════════════════════════════
-    // WhatsApp Signature Verification Tests (CWE-345 Prevention)
-    // ══════════════════════════════════════════════════════════
-
-    fn compute_whatsapp_signature_hex(secret: &str, body: &[u8]) -> String {
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-
-        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-        mac.update(body);
-        hex::encode(mac.finalize().into_bytes())
-    }
-
-    fn compute_whatsapp_signature_header(secret: &str, body: &[u8]) -> String {
-        format!("sha256={}", compute_whatsapp_signature_hex(secret, body))
-    }
-
-    #[test]
-    fn whatsapp_signature_valid() {
-        // Test with known values
-        let app_secret = "test_secret_key";
-        let body = b"test body content";
-
-        let signature_header = compute_whatsapp_signature_header(app_secret, body);
-
-        assert!(verify_whatsapp_signature(app_secret, body, &signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_invalid_wrong_secret() {
-        let app_secret = "correct_secret";
-        let wrong_secret = "wrong_secret";
-        let body = b"test body content";
-
-        let signature_header = compute_whatsapp_signature_header(wrong_secret, body);
-
-        assert!(!verify_whatsapp_signature(app_secret, body, &signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_invalid_wrong_body() {
-        let app_secret = "test_secret";
-        let original_body = b"original body";
-        let tampered_body = b"tampered body";
-
-        let signature_header = compute_whatsapp_signature_header(app_secret, original_body);
-
-        // Verify with tampered body should fail
-        assert!(!verify_whatsapp_signature(
-            app_secret,
-            tampered_body,
-            &signature_header
-        ));
-    }
-
-    #[test]
-    fn whatsapp_signature_missing_prefix() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        // Signature without "sha256=" prefix
-        let signature_header = "abc123def456";
-
-        assert!(!verify_whatsapp_signature(app_secret, body, signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_empty_header() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        assert!(!verify_whatsapp_signature(app_secret, body, ""));
-    }
-
-    #[test]
-    fn whatsapp_signature_invalid_hex() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        // Invalid hex characters
-        let signature_header = "sha256=not_valid_hex_zzz";
-
-        assert!(!verify_whatsapp_signature(
-            app_secret,
-            body,
-            signature_header
-        ));
-    }
-
-    #[test]
-    fn whatsapp_signature_empty_body() {
-        let app_secret = "test_secret";
-        let body = b"";
-
-        let signature_header = compute_whatsapp_signature_header(app_secret, body);
-
-        assert!(verify_whatsapp_signature(app_secret, body, &signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_unicode_body() {
-        let app_secret = "test_secret";
-        let body = "Hello 🐦‍🔥 世界".as_bytes();
-
-        let signature_header = compute_whatsapp_signature_header(app_secret, body);
-
-        assert!(verify_whatsapp_signature(app_secret, body, &signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_json_payload() {
-        let app_secret = "my_app_secret_from_meta";
-        let body = br#"{"entry":[{"changes":[{"value":{"messages":[{"from":"1234567890","text":{"body":"Hello"}}]}}]}]}"#;
-
-        let signature_header = compute_whatsapp_signature_header(app_secret, body);
-
-        assert!(verify_whatsapp_signature(app_secret, body, &signature_header));
-    }
-
-    #[test]
-    fn whatsapp_signature_case_sensitive_prefix() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        let hex_sig = compute_whatsapp_signature_hex(app_secret, body);
-
-        // Wrong case prefix should fail
-        let wrong_prefix = format!("SHA256={hex_sig}");
-        assert!(!verify_whatsapp_signature(app_secret, body, &wrong_prefix));
-
-        // Correct prefix should pass
-        let correct_prefix = format!("sha256={hex_sig}");
-        assert!(verify_whatsapp_signature(app_secret, body, &correct_prefix));
-    }
-
-    #[test]
-    fn whatsapp_signature_truncated_hex() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        let hex_sig = compute_whatsapp_signature_hex(app_secret, body);
-        let truncated = &hex_sig[..32]; // Only half the signature
-        let signature_header = format!("sha256={truncated}");
-
-        assert!(!verify_whatsapp_signature(
-            app_secret,
-            body,
-            &signature_header
-        ));
-    }
-
-    #[test]
-    fn whatsapp_signature_extra_bytes() {
-        let app_secret = "test_secret";
-        let body = b"test body";
-
-        let hex_sig = compute_whatsapp_signature_hex(app_secret, body);
-        let extended = format!("{hex_sig}deadbeef");
-        let signature_header = format!("sha256={extended}");
-
-        assert!(!verify_whatsapp_signature(
-            app_secret,
-            body,
-            &signature_header
-        ));
     }
 }

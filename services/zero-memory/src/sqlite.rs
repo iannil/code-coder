@@ -493,6 +493,41 @@ impl Memory for SqliteMemory {
     }
 }
 
+impl SqliteMemory {
+    /// Prune (delete) entries in a specific category that are older than the given cutoff.
+    ///
+    /// This is used for periodic cleanup of conversation history and other
+    /// time-sensitive memory categories.
+    ///
+    /// Returns the number of entries deleted.
+    pub async fn prune_category_older_than(
+        &self,
+        category: MemoryCategory,
+        cutoff_rfc3339: &str,
+    ) -> anyhow::Result<u64> {
+        let db_path = self.db_path.clone();
+        let cat_str = category.to_string();
+        let cutoff = cutoff_rfc3339.to_string();
+
+        let affected = tokio::task::spawn_blocking(move || -> anyhow::Result<usize> {
+            let conn = Connection::open(&db_path)?;
+            let affected = conn.execute(
+                "DELETE FROM memories WHERE category = ?1 AND updated_at < ?2",
+                params![cat_str, cutoff],
+            )?;
+            Ok(affected)
+        })
+        .await??;
+
+        Ok(u64::try_from(affected).unwrap_or(0))
+    }
+
+    /// Get the path to the underlying database file.
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,5 +724,70 @@ mod tests {
         assert!(result.contains("hello"));
         assert!(result.contains("world"));
         assert!(result.contains("test"));
+    }
+
+    #[tokio::test]
+    async fn prune_category_older_than_removes_old_entries() {
+        let (_tmp, mem) = setup();
+
+        // Store some entries
+        mem.store("old_conv", "old conversation", MemoryCategory::Conversation)
+            .await
+            .unwrap();
+        mem.store("new_conv", "new conversation", MemoryCategory::Conversation)
+            .await
+            .unwrap();
+        mem.store("core_data", "important", MemoryCategory::Core)
+            .await
+            .unwrap();
+
+        // Manually set the old entry's timestamp to the past
+        let conn = Connection::open(mem.db_path()).unwrap();
+        let old_cutoff = "2020-01-01T00:00:00Z";
+        conn.execute(
+            "UPDATE memories SET created_at = ?1, updated_at = ?1 WHERE key = 'old_conv'",
+            params![old_cutoff],
+        )
+        .unwrap();
+        drop(conn);
+
+        // Prune conversations older than 2023
+        let pruned = mem
+            .prune_category_older_than(MemoryCategory::Conversation, "2023-01-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        assert_eq!(pruned, 1, "should prune one old conversation");
+
+        // Verify old_conv is gone
+        assert!(mem.get("old_conv").await.unwrap().is_none());
+        // Verify new_conv is still there
+        assert!(mem.get("new_conv").await.unwrap().is_some());
+        // Verify core data is untouched
+        assert!(mem.get("core_data").await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn prune_category_returns_zero_when_nothing_to_prune() {
+        let (_tmp, mem) = setup();
+
+        mem.store("conv", "recent", MemoryCategory::Conversation)
+            .await
+            .unwrap();
+
+        // Try to prune with a very old cutoff (nothing should be pruned)
+        let pruned = mem
+            .prune_category_older_than(MemoryCategory::Conversation, "1990-01-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        assert_eq!(pruned, 0);
+    }
+
+    #[tokio::test]
+    async fn db_path_returns_correct_path() {
+        let (tmp, mem) = setup();
+        let expected = tmp.path().join("memory").join("brain.db");
+        assert_eq!(mem.db_path(), expected);
     }
 }

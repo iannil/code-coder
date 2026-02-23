@@ -35,7 +35,7 @@ pub use parallel::{ParallelRequest, ParallelResponse, ParallelState, parallel_ro
 pub use provider::{
     AnthropicProvider, AuthStyle, ChatRequest, ChatResponse, CompatibleProvider, GeminiProvider,
     OllamaProvider, OpenAIProvider, OpenRouterProvider, Provider, ProviderError, ProviderRegistry,
-    create_full_registry, create_registry,
+    ResilienceConfig, ResilientProvider, create_full_registry, create_registry,
 };
 pub use rbac::{RbacState, require_access};
 pub use routing_policy::{RoutingDecision, RoutingPolicy, RoutingPolicyConfig, SensitivityLevel};

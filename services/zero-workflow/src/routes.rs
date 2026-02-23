@@ -4,9 +4,10 @@
 //! - Workflow CRUD operations
 //! - Cron task management
 //! - Execution monitoring
+//! - Competitive intelligence monitoring
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
@@ -16,10 +17,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::monitor_bridge::{MonitorBridge, MonitorReport, MonitorRunResult};
 use crate::scheduler::{Scheduler, TaskInfo};
 use crate::workflow::{ExecutionStatus, Workflow, WorkflowExecutor, WorkflowResult};
 use std::collections::HashMap;
-use zero_common::config::CronTask;
+use zero_common::config::{CronTask, MonitorTask};
 
 // ============================================================================
 // State
@@ -37,6 +39,10 @@ pub struct WorkflowState {
     pub executions: Arc<RwLock<Vec<WorkflowResult>>>,
     /// CodeCoder API endpoint
     pub codecoder_endpoint: String,
+    /// Monitor bridge
+    pub monitor_bridge: Arc<MonitorBridge>,
+    /// Monitor tasks configuration
+    pub monitor_tasks: Arc<RwLock<HashMap<String, MonitorTask>>>,
 }
 
 // ============================================================================
@@ -374,6 +380,208 @@ async fn get_execution(
 }
 
 // ============================================================================
+// Monitor Routes
+// ============================================================================
+
+/// Query parameters for listing reports.
+#[derive(Debug, Deserialize)]
+struct ListReportsQuery {
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+fn default_limit() -> usize {
+    10
+}
+
+/// Response for monitor status.
+#[derive(Debug, Serialize, Deserialize)]
+struct MonitorStatus {
+    enabled: bool,
+    tasks_count: usize,
+    tasks: Vec<MonitorTaskSummary>,
+}
+
+/// Summary of a monitor task.
+#[derive(Debug, Serialize, Deserialize)]
+struct MonitorTaskSummary {
+    id: String,
+    name: String,
+    schedule: String,
+    sources_count: usize,
+    channel_type: String,
+}
+
+/// Get monitor status.
+async fn get_monitor_status(
+    State(state): State<Arc<WorkflowState>>,
+) -> Json<ApiResponse<MonitorStatus>> {
+    let tasks = state.monitor_tasks.read().await;
+
+    let task_summaries: Vec<MonitorTaskSummary> = tasks
+        .values()
+        .map(|t| MonitorTaskSummary {
+            id: t.id.clone(),
+            name: t.name.clone(),
+            schedule: t.schedule.clone(),
+            sources_count: t.sources.len(),
+            channel_type: t.notification.channel_type.clone(),
+        })
+        .collect();
+
+    Json(ApiResponse::success(MonitorStatus {
+        enabled: !tasks.is_empty(),
+        tasks_count: tasks.len(),
+        tasks: task_summaries,
+    }))
+}
+
+/// List reports for a specific task.
+async fn list_task_reports(
+    State(state): State<Arc<WorkflowState>>,
+    Path(task_id): Path<String>,
+    Query(query): Query<ListReportsQuery>,
+) -> Json<ApiResponse<Vec<MonitorReport>>> {
+    let reports = state.monitor_bridge.get_reports(&task_id, query.limit).await;
+    Json(ApiResponse::success(reports))
+}
+
+/// List all recent reports.
+async fn list_all_reports(
+    State(state): State<Arc<WorkflowState>>,
+    Query(query): Query<ListReportsQuery>,
+) -> Json<ApiResponse<Vec<MonitorReport>>> {
+    let reports = state.monitor_bridge.get_all_reports(query.limit).await;
+    Json(ApiResponse::success(reports))
+}
+
+/// Response for running a monitor task.
+#[derive(Debug, Serialize)]
+struct RunMonitorResponse {
+    task_id: String,
+    status: String,
+    report_id: Option<String>,
+    message: String,
+}
+
+/// Manually trigger a monitor task.
+async fn run_monitor_task(
+    State(state): State<Arc<WorkflowState>>,
+    Path(task_id): Path<String>,
+) -> Json<ApiResponse<RunMonitorResponse>> {
+    let tasks = state.monitor_tasks.read().await;
+
+    let task = match tasks.get(&task_id) {
+        Some(t) => t.clone(),
+        None => {
+            return Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(format!("Monitor task '{}' not found", task_id)),
+            });
+        }
+    };
+    drop(tasks);
+
+    tracing::info!(task_id = %task_id, "Manually triggering monitor task");
+
+    match state.monitor_bridge.run_monitor(&task).await {
+        Ok(result) => {
+            let (status, report_id, message) = match result {
+                MonitorRunResult::Success {
+                    report,
+                    notification_sent,
+                } => (
+                    "success".to_string(),
+                    Some(report.id),
+                    format!(
+                        "Report generated successfully. Notification sent: {}",
+                        notification_sent
+                    ),
+                ),
+                MonitorRunResult::Partial {
+                    report,
+                    failed_sources,
+                    notification_sent,
+                } => (
+                    "partial".to_string(),
+                    Some(report.id),
+                    format!(
+                        "Report generated with {} failed sources: {}. Notification sent: {}",
+                        failed_sources.len(),
+                        failed_sources.join(", "),
+                        notification_sent
+                    ),
+                ),
+                MonitorRunResult::Failed { reason } => {
+                    ("failed".to_string(), None, format!("Monitor failed: {}", reason))
+                }
+            };
+
+            Json(ApiResponse::success(RunMonitorResponse {
+                task_id,
+                status,
+                report_id,
+                message,
+            }))
+        }
+        Err(e) => {
+            tracing::error!(task_id = %task_id, error = %e, "Monitor task failed");
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            })
+        }
+    }
+}
+
+/// Request to create/update a monitor task.
+#[derive(Debug, Deserialize)]
+struct CreateMonitorTaskRequest {
+    id: String,
+    name: String,
+    schedule: String,
+    sources: Vec<zero_common::config::MonitorSourceConfig>,
+    notification: zero_common::config::MonitorNotificationConfig,
+}
+
+/// Create a new monitor task.
+async fn create_monitor_task(
+    State(state): State<Arc<WorkflowState>>,
+    Json(req): Json<CreateMonitorTaskRequest>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
+    let task = MonitorTask {
+        id: req.id.clone(),
+        name: req.name,
+        schedule: req.schedule,
+        sources: req.sources,
+        notification: req.notification,
+    };
+
+    let mut tasks = state.monitor_tasks.write().await;
+    tasks.insert(req.id.clone(), task);
+
+    tracing::info!(task_id = %req.id, "Created monitor task");
+    Ok(Json(ApiResponse::success(req.id)))
+}
+
+/// Delete a monitor task.
+async fn delete_monitor_task(
+    State(state): State<Arc<WorkflowState>>,
+    Path(task_id): Path<String>,
+) -> Result<Json<ApiResponse<bool>>, StatusCode> {
+    let mut tasks = state.monitor_tasks.write().await;
+    let removed = tasks.remove(&task_id).is_some();
+
+    if removed {
+        tracing::info!(task_id = %task_id, "Deleted monitor task");
+    }
+
+    Ok(Json(ApiResponse::success(removed)))
+}
+
+// ============================================================================
 // Router Builder
 // ============================================================================
 
@@ -397,18 +605,48 @@ pub fn build_router(state: Arc<WorkflowState>) -> Router {
         .route("/api/v1/workflows/:name/execute", post(execute_workflow))
         .route("/api/v1/executions", get(list_executions))
         .route("/api/v1/executions/:id", get(get_execution))
+        // Monitor endpoints
+        .route("/api/v1/monitor/status", get(get_monitor_status))
+        .route("/api/v1/monitor/reports", get(list_all_reports))
+        .route("/api/v1/monitor/tasks", post(create_monitor_task))
+        .route("/api/v1/monitor/:task_id/run", post(run_monitor_task))
+        .route("/api/v1/monitor/:task_id/reports", get(list_task_reports))
+        .route("/api/v1/monitor/:task_id", delete(delete_monitor_task))
         // Add state
         .with_state(state)
 }
 
 /// Create the workflow state.
 pub fn create_state(codecoder_endpoint: String) -> Arc<WorkflowState> {
+    let monitor_bridge = MonitorBridge::new(&codecoder_endpoint);
+
     Arc::new(WorkflowState {
         scheduler: Arc::new(Scheduler::new()),
         executor: Arc::new(WorkflowExecutor::new()),
         workflows: Arc::new(RwLock::new(HashMap::new())),
         executions: Arc::new(RwLock::new(Vec::new())),
         codecoder_endpoint,
+        monitor_bridge: Arc::new(monitor_bridge),
+        monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+    })
+}
+
+/// Create workflow state with channels endpoint for IM notifications.
+pub fn create_state_with_channels(
+    codecoder_endpoint: String,
+    channels_endpoint: String,
+) -> Arc<WorkflowState> {
+    let monitor_bridge = MonitorBridge::new(&codecoder_endpoint)
+        .with_channels_endpoint(channels_endpoint);
+
+    Arc::new(WorkflowState {
+        scheduler: Arc::new(Scheduler::new()),
+        executor: Arc::new(WorkflowExecutor::new()),
+        workflows: Arc::new(RwLock::new(HashMap::new())),
+        executions: Arc::new(RwLock::new(Vec::new())),
+        codecoder_endpoint,
+        monitor_bridge: Arc::new(monitor_bridge),
+        monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
     })
 }
 
@@ -421,7 +659,23 @@ mod tests {
     use tower::ServiceExt;
 
     fn create_test_state() -> Arc<WorkflowState> {
-        create_state("http://localhost:4400".to_string())
+        // Use a unique temp directory for each test
+        let tmp = tempfile::TempDir::new().expect("Failed to create temp dir");
+        let scheduler = crate::scheduler::Scheduler::with_data_dir(tmp.path().to_path_buf());
+        let monitor_bridge = MonitorBridge::new("http://localhost:4400");
+
+        // Keep tmp alive by leaking it (tests are short-lived)
+        std::mem::forget(tmp);
+
+        Arc::new(WorkflowState {
+            scheduler: Arc::new(scheduler),
+            executor: Arc::new(WorkflowExecutor::new()),
+            workflows: Arc::new(RwLock::new(HashMap::new())),
+            executions: Arc::new(RwLock::new(Vec::new())),
+            codecoder_endpoint: "http://localhost:4400".to_string(),
+            monitor_bridge: Arc::new(monitor_bridge),
+            monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+        })
     }
 
     #[tokio::test]
@@ -553,5 +807,96 @@ mod tests {
         let resp: ApiResponse<String> = serde_json::from_slice(&body).unwrap();
         assert!(resp.success);
         assert_eq!(resp.data.unwrap(), "test-workflow");
+    }
+
+    #[tokio::test]
+    async fn test_monitor_status_empty() {
+        let state = create_test_state();
+        let app = build_router(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/monitor/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let resp: ApiResponse<MonitorStatus> = serde_json::from_slice(&body).unwrap();
+        assert!(resp.success);
+        let status = resp.data.unwrap();
+        assert!(!status.enabled);
+        assert_eq!(status.tasks_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_monitor_task() {
+        let state = create_test_state();
+        let app = build_router(state);
+
+        let payload = serde_json::json!({
+            "id": "test-monitor",
+            "name": "Test Monitor",
+            "schedule": "0 0 9 * * *",
+            "sources": [
+                {
+                    "id": "src-1",
+                    "name": "Test Source",
+                    "url": "https://example.com",
+                    "source_type": "website"
+                }
+            ],
+            "notification": {
+                "channel_type": "feishu",
+                "channel_id": "test-group"
+            }
+        });
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/monitor/tasks")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let resp: ApiResponse<String> = serde_json::from_slice(&body).unwrap();
+        assert!(resp.success);
+        assert_eq!(resp.data.unwrap(), "test-monitor");
+    }
+
+    #[tokio::test]
+    async fn test_list_monitor_reports_empty() {
+        let state = create_test_state();
+        let app = build_router(state);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/monitor/reports")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let resp: ApiResponse<Vec<MonitorReport>> = serde_json::from_slice(&body).unwrap();
+        assert!(resp.success);
+        assert!(resp.data.unwrap().is_empty());
     }
 }

@@ -139,18 +139,8 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
         ));
     }
 
-    {
-        let scheduler_cfg = config.clone();
-        handles.push(spawn_component_supervisor(
-            "scheduler",
-            initial_backoff,
-            max_backoff,
-            move || {
-                let cfg = scheduler_cfg.clone();
-                async move { crate::cron::scheduler::run(cfg).await }
-            },
-        ));
-    }
+    // Note: Cron scheduler is now handled by zero-workflow service
+    // The `zero-bot cron` commands interact with the workflow API
 
     println!("🧠 ZeroBot daemon started");
     println!("   Gateway:  http://{host}:{port}");
@@ -159,7 +149,7 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     } else {
         ", mcp"
     };
-    println!("   Components: gateway, channels, heartbeat, scheduler{mcp_status}");
+    println!("   Components: gateway, channels, heartbeat{mcp_status}");
     println!("   Ctrl+C to stop");
 
     tokio::signal::ctrl_c().await?;

@@ -141,10 +141,11 @@ cargo test --workspace      # ✓ All tests pass
 |---------|------|---------|
 | CodeCoder API | 4400 | AI engine |
 | Web Frontend | 4401 | Vite dev server |
-| Zero Gateway | 4402 | Authentication, proxy |
+| Zero CLI Daemon | 4402 | Combined services |
 | Faster Whisper | 4403 | Local STT |
-| Zero Channels | 4404 | Channel webhooks |
-| Zero Workflow | 4405 | Workflow automation |
+| Zero Gateway | 4404 | Authentication, proxy |
+| Zero Channels | 4405 | Channel webhooks |
+| Zero Workflow | 4406 | Workflow automation |
 
 ## Next Steps (Phase 6)
 

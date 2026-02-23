@@ -906,7 +906,7 @@ export namespace Config {
   export const ZeroBotCodeCoder = z
     .object({
       enabled: z.boolean().optional().describe("Enable CodeCoder integration"),
-      endpoint: z.string().optional().describe("CodeCoder API endpoint (default: http://localhost:4096)"),
+      endpoint: z.string().optional().describe("CodeCoder API endpoint (default: http://localhost:4400)"),
     })
     .strict()
     .meta({ ref: "ZeroBotCodeCoderConfig" })

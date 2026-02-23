@@ -9,6 +9,7 @@ mod gemini;
 mod ollama;
 mod openai;
 mod openrouter;
+mod resilient;
 
 pub use anthropic::AnthropicProvider;
 pub use compatible::{AuthStyle, CompatibleProvider};
@@ -16,6 +17,7 @@ pub use gemini::GeminiProvider;
 pub use ollama::OllamaProvider;
 pub use openai::OpenAIProvider;
 pub use openrouter::OpenRouterProvider;
+pub use resilient::{ResilienceConfig, ResilientProvider};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};

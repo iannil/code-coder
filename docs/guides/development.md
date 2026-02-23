@@ -30,9 +30,9 @@ bun dev
 # 在指定目录运行
 bun dev <path>
 
-# 启动无头 API 服务器（默认端口 4096）
+# 启动无头 API 服务器（默认端口 4400）
 bun dev serve
-bun dev serve --port 8080
+bun dev serve --port 4400
 
 # 启动服务器 + 打开 Web 界面
 bun dev web

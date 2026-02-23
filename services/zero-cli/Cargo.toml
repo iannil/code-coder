@@ -88,7 +88,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 # PDF text extraction
 pdf-extract = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-cron = "0.12"
 
 # Interactive CLI prompts
 dialoguer = { version = "0.11", features = ["fuzzy-select"] }
@@ -98,11 +97,6 @@ console = "0.15"
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hostname = "0.4.2"
-lettre = { version = "0.11.19", features = ["smtp-transport", "rustls-tls"] }
-mail-parser = "0.11.2"
-rustls-pki-types = "1.14.0"
-tokio-rustls = "0.26.4"
-webpki-roots = "1.0.6"
 
 # HTTP server (gateway) — replaces raw TCP for proper HTTP/1.1 compliance
 axum = { version = "0.7", default-features = false, features = ["http1", "json", "tokio", "query"] }

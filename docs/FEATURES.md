@@ -37,7 +37,7 @@ CLI 入口: `packages/ccode/src/index.ts`
 |------|----------|----------|
 | `codecoder [message..]` (默认) | 启动 TUI 终端界面 | `<path>` - 指定工作目录 |
 | `codecoder run [message..]` | 以命令行模式运行 | `--model`, `--agent`, `--continue`, `--session`, `--file`, `--format`, `--title`, `--variant` |
-| `codecoder serve` | 启动无头 API 服务器 | `--port` (默认 4096) |
+| `codecoder serve` | 启动无头 API 服务器 | `--port` (默认 4400) |
 
 ### 2.2 认证命令
 

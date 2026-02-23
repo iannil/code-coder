@@ -11,10 +11,12 @@
 |------|------|------|
 | CodeCoder API | 4400 | 核心 AI 引擎 API |
 | Web Frontend | 4401 | Vite 开发服务器 |
-| Zero Gateway | 4402 | 认证、代理、配额 |
+| Zero CLI Daemon | 4402 | 组合服务 (gateway + channels + scheduler) |
 | Faster Whisper | 4403 | 本地 STT 服务 |
-| Zero Channels | 4404 | IM 渠道 Webhook |
-| Zero Workflow | 4405 | 工作流自动化 |
+| Zero Gateway | 4410 | 认证、代理、配额 (独立) |
+| Zero Channels | 4411 | IM 渠道 Webhook (独立) |
+| Zero Workflow | 4412 | 工作流自动化 (独立) |
+| MCP Server | 4420 | Model Context Protocol (独立) |
 
 ## 部署程序
 
@@ -86,8 +88,9 @@ docker run --network codecoder-net \
 # 3. Rust 服务容器
 docker run --network codecoder-net \
   -p 4402:4402 \
-  -p 4404:4404 \
-  -p 4405:4405 \
+  -p 4410:4410 \
+  -p 4411:4411 \
+  -p 4412:4412 \
   codecoder-services:latest
 
 # 4. 发布文件夹
@@ -158,9 +161,10 @@ ccode config show
 ccode agent list
 
 # Rust 服务健康端点
-curl http://localhost:4402/health  # Zero Gateway
-curl http://localhost:4404/health  # Zero Channels
-curl http://localhost:4405/health  # Zero Workflow
+curl http://localhost:4402/health  # Zero CLI Daemon
+curl http://localhost:4410/health  # Zero Gateway
+curl http://localhost:4411/health  # Zero Channels
+curl http://localhost:4412/health  # Zero Workflow
 
 # 检查缓存版本
 cat ~/.cache/ccode/version
@@ -315,12 +319,13 @@ cargo check --workspace
 **诊断**:
 ```bash
 # 检查端口占用
-lsof -i :4402
-lsof -i :4404
-lsof -i :4405
+lsof -i :4402  # Zero CLI Daemon
+lsof -i :4410  # Zero Gateway
+lsof -i :4411  # Zero Channels
+lsof -i :4412  # Zero Workflow
 
 # 检查服务状态
-curl -v http://localhost:4402/health
+curl -v http://localhost:4410/health  # Zero Gateway
 ```
 
 **修复**:

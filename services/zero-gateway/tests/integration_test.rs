@@ -22,7 +22,7 @@ fn create_test_app(temp_dir: &TempDir) -> axum::Router {
 
     let config = Config {
         gateway: GatewayConfig {
-            port: 4402,
+            port: 4410,
             host: "127.0.0.1".to_string(),
             jwt_secret: Some("test-secret-key-for-integration-tests!".to_string()),
             token_expiry_secs: 3600,

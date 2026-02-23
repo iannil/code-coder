@@ -132,6 +132,26 @@ const adminRoute = createRoute({
 })
 
 // ============================================================================
+// Compare Route (Multi-model A/B Testing)
+// ============================================================================
+
+const compareRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/compare",
+  component: lazyRouteComponent(() => import("./pages/Compare"), "Compare"),
+})
+
+// ============================================================================
+// Knowledge Route
+// ============================================================================
+
+const knowledgeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/knowledge",
+  component: lazyRouteComponent(() => import("./pages/Knowledge"), "Knowledge"),
+})
+
+// ============================================================================
 // Files Route
 // ============================================================================
 
@@ -187,6 +207,8 @@ const routeTree = rootRoute.addChildren([
   memoryRoute,
   infrastructureRoute,
   chatRoute,
+  compareRoute,
+  knowledgeRoute,
   skillsRoute,
   workflowsRoute,
   adminRoute,

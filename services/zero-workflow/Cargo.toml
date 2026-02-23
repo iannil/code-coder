@@ -44,6 +44,9 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 cron = { workspace = true }
 
+# Database
+rusqlite = { workspace = true }
+
 # Cryptography (for webhook signatures)
 hmac = { workspace = true }
 sha2 = { workspace = true }
@@ -54,6 +57,15 @@ async-trait = { workspace = true }
 
 # YAML parsing for workflow definitions
 serde_yaml = "0.9"
+
+# HTML parsing for web scraping
+scraper = "0.22"
+
+# RSS feed parsing
+rss = "2.0"
+
+# Async utilities
+futures = "0.3"
 
 [dev-dependencies]
 tokio-test = "0.4"

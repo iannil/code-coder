@@ -31,7 +31,7 @@ export interface Config {
  * Gateway service configuration.
  */
 export interface GatewayConfig {
-  /** Gateway HTTP port (default: 4402) */
+  /** Gateway HTTP port (default: 4410) */
   port?: number
   /** Gateway HTTP host (default: "127.0.0.1") */
   host?: string
@@ -51,7 +51,7 @@ export interface GatewayConfig {
  * Channels service configuration.
  */
 export interface ChannelsConfig {
-  /** Channels HTTP port (default: 4404) */
+  /** Channels HTTP port (default: 4411) */
   port?: number
   /** Channels HTTP host (default: "127.0.0.1") */
   host?: string
@@ -425,7 +425,7 @@ export type OutgoingContent =
 
 export const DEFAULT_CONFIG: Config = {
   gateway: {
-    port: 4402,
+    port: 4410,
     host: "127.0.0.1",
     token_expiry_secs: 86400,
     rate_limiting: true,
@@ -433,7 +433,7 @@ export const DEFAULT_CONFIG: Config = {
     codecoder_endpoint: "http://127.0.0.1:4400",
   },
   channels: {
-    port: 4404,
+    port: 4411,
     host: "127.0.0.1",
   },
   workflow: {

@@ -74,19 +74,19 @@ mkdir -p ~/.codecoder
 cat > ~/.codecoder/config.json << 'EOF'
 {
   "gateway": {
-    "port": 4402,
+    "port": 4410,
     "jwt_secret": "your-secure-jwt-secret-here",
     "token_expiry_hours": 24
   },
   "channels": {
-    "port": 4404,
+    "port": 4411,
     "telegram": {
       "enabled": false
     }
   },
   "workflow": {
     "webhook": {
-      "port": 4405
+      "port": 4412
     },
     "cron": {
       "enabled": true,
@@ -120,12 +120,12 @@ cd packages/ccode && bun dev serve &
 
 ```bash
 # 健康检查
-curl http://localhost:4402/health  # Gateway
-curl http://localhost:4404/health  # Channels
-curl http://localhost:4405/health  # Workflow
+curl http://localhost:4410/health  # Gateway
+curl http://localhost:4411/health  # Channels
+curl http://localhost:4412/health  # Workflow
 
 # 测试登录
-curl -X POST http://localhost:4402/api/v1/auth/login \
+curl -X POST http://localhost:4410/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username": "admin", "password": "admin"}'
 ```
@@ -148,7 +148,7 @@ export CODECODER_CONFIG_PATH=/path/to/config.json
 ```json
 {
   "gateway": {
-    "port": 4402,
+    "port": 4410,
     "host": "127.0.0.1",
     "jwt_secret": "your-secure-jwt-secret-minimum-32-chars",
     "token_expiry_hours": 24,
@@ -158,7 +158,7 @@ export CODECODER_CONFIG_PATH=/path/to/config.json
     }
   },
   "channels": {
-    "port": 4404,
+    "port": 4411,
     "host": "127.0.0.1",
     "telegram": {
       "enabled": true,
@@ -182,7 +182,7 @@ export CODECODER_CONFIG_PATH=/path/to/config.json
   },
   "workflow": {
     "webhook": {
-      "port": 4405,
+      "port": 4412,
       "host": "127.0.0.1",
       "secret": "webhook-signing-secret"
     },
@@ -225,9 +225,9 @@ export CODECODER_CONFIG_PATH=/path/to/config.json
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
 | `CODECODER_CONFIG_PATH` | 配置文件路径 | `~/.codecoder/config.json` |
-| `GATEWAY_PORT` | 网关端口 | 4402 |
-| `CHANNELS_PORT` | 渠道端口 | 4404 |
-| `WORKFLOW_PORT` | 工作流端口 | 4405 |
+| `GATEWAY_PORT` | 网关端口 | 4410 |
+| `CHANNELS_PORT` | 渠道端口 | 4411 |
+| `WORKFLOW_PORT` | 工作流端口 | 4412 |
 | `JWT_SECRET` | JWT 密钥 | - |
 | `LOG_LEVEL` | 日志级别 | info |
 | `LOG_FORMAT` | 日志格式 | pretty |
@@ -315,7 +315,7 @@ COPY --from=builder /app/services/target/release/zero-gateway /usr/local/bin/
 COPY --from=builder /app/services/target/release/zero-channels /usr/local/bin/
 COPY --from=builder /app/services/target/release/zero-workflow /usr/local/bin/
 
-EXPOSE 4402 4404 4405
+EXPOSE 4410 4411 4412
 
 CMD ["zero-gateway"]
 ```
@@ -345,7 +345,7 @@ services:
     image: zero-services
     command: zero-gateway
     ports:
-      - "4402:4402"
+      - "4410:4410"
     environment:
       - CODECODER_ENDPOINT=http://codecoder:4400
       - JWT_SECRET=${JWT_SECRET}
@@ -358,7 +358,7 @@ services:
     image: zero-services
     command: zero-channels
     ports:
-      - "4404:4404"
+      - "4411:4411"
     environment:
       - CODECODER_ENDPOINT=http://codecoder:4400
     volumes:
@@ -370,7 +370,7 @@ services:
     image: zero-services
     command: zero-workflow
     ports:
-      - "4405:4405"
+      - "4412:4412"
     environment:
       - CODECODER_ENDPOINT=http://codecoder:4400
     volumes:
@@ -412,15 +412,15 @@ docker-compose down
 ```nginx
 # /etc/nginx/sites-available/zero-services
 upstream gateway {
-    server 127.0.0.1:4402;
+    server 127.0.0.1:4410;
 }
 
 upstream channels {
-    server 127.0.0.1:4404;
+    server 127.0.0.1:4411;
 }
 
 upstream workflow {
-    server 127.0.0.1:4405;
+    server 127.0.0.1:4412;
 }
 
 server {
@@ -547,7 +547,7 @@ zero_workflow_executions_total
 cat ~/.codecoder/config.json | jq .
 
 # 检查端口占用
-lsof -i :4402
+lsof -i :4410
 ```
 
 **Q: JWT 认证失败**

@@ -449,6 +449,101 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/v1/registry/search", searchAgents)
   router.get("/api/v1/registry/categories", listCategories)
   router.get("/api/v1/registry/recommended", listRecommended)
+
+  // Assess routes (Technical Feasibility Assessment API for ZeroBot integration)
+  const { assessFeasibility, assessHealth } = await import("./handlers/assess")
+  router.post("/api/v1/assess/feasibility", assessFeasibility)
+  router.get("/api/v1/assess/health", assessHealth)
+
+  // Compare routes (Multi-model A/B testing for parallel model comparison)
+  const { compare, compareHealth, listCompareModels, getCompareHistory, getCompareEntry, voteForModel, deleteCompareEntry } = await import("./handlers/compare")
+  router.post("/api/v1/compare", compare)
+  router.get("/api/v1/compare/health", compareHealth)
+  router.get("/api/v1/compare/models", listCompareModels)
+  router.get("/api/v1/compare/history", getCompareHistory)
+  router.get("/api/v1/compare/history/:id", getCompareEntry)
+  router.post("/api/v1/compare/:id/vote", voteForModel)
+  router.delete("/api/v1/compare/history/:id", deleteCompareEntry)
+
+  // Executive Dashboard routes (for executive-level analytics)
+  const { getTrends, getTeams, getActivity, getSummary, executiveHealth } = await import("./handlers/executive")
+  router.get("/api/v1/executive/trends", getTrends)
+  router.get("/api/v1/executive/teams", getTeams)
+  router.get("/api/v1/executive/activity", getActivity)
+  router.get("/api/v1/executive/summary", getSummary)
+  router.get("/api/v1/executive/health", executiveHealth)
+
+  // Knowledge Base routes (RAG for ZeroBot)
+  const {
+    uploadDocument: uploadKnowledge,
+    listDocuments: listKnowledge,
+    deleteDocument: deleteKnowledge,
+    searchKnowledge,
+    knowledgeHealth,
+  } = await import("./handlers/knowledge")
+  router.post("/api/v1/knowledge/upload", uploadKnowledge)
+  router.get("/api/v1/knowledge/documents", listKnowledge)
+  router.delete("/api/v1/knowledge/documents/:id", deleteKnowledge)
+  router.post("/api/v1/knowledge/search", searchKnowledge)
+  router.get("/api/v1/knowledge/health", knowledgeHealth)
+
+  // Trading Review routes (for @trader agent integration)
+  const {
+    handleCreateTrade,
+    handleListTrades,
+    handleGetTrade,
+    handleUpdateTrade,
+    handleSaveJournal,
+    handleGetJournal,
+    handleListJournals,
+    handleGenerateReview,
+    handleListReviews,
+    handleGetStats,
+    handleGetSummary,
+  } = await import("./handlers/trading")
+  router.post("/api/v1/trading/trades", handleCreateTrade)
+  router.get("/api/v1/trading/trades", handleListTrades)
+  router.get("/api/v1/trading/trades/:id", handleGetTrade)
+  router.put("/api/v1/trading/trades/:id", handleUpdateTrade)
+  router.post("/api/v1/trading/journal", handleSaveJournal)
+  router.get("/api/v1/trading/journal/:date", handleGetJournal)
+  router.get("/api/v1/trading/journal", handleListJournals)
+  router.post("/api/v1/trading/review", handleGenerateReview)
+  router.get("/api/v1/trading/reviews", handleListReviews)
+  router.get("/api/v1/trading/stats", handleGetStats)
+  router.get("/api/v1/trading/summary", handleGetSummary)
+
+  // PRD Generator routes (meeting minutes to PRD conversion)
+  const {
+    handleGeneratePRD,
+    handleFromMeeting,
+    handleListTemplates,
+    handleListHistory: handleListPRDHistory,
+    handleGetPRD,
+  } = await import("./handlers/prd")
+  router.post("/api/v1/prd/generate", handleGeneratePRD)
+  router.post("/api/v1/prd/from-meeting", handleFromMeeting)
+  router.get("/api/v1/prd/templates", handleListTemplates)
+  router.get("/api/v1/prd/history", handleListPRDHistory)
+  router.get("/api/v1/prd/:id", handleGetPRD)
+
+  // Compliance and Audit routes (for regulatory requirements)
+  const {
+    handleListLogs,
+    handleGetLog,
+    handleGenerateReport: handleGenerateComplianceReport,
+    handleListReports: handleListComplianceReports,
+    handleGetReport,
+    handleGetStatus: handleGetComplianceStatus,
+    handleExport,
+  } = await import("./handlers/compliance")
+  router.get("/api/v1/compliance/logs", handleListLogs)
+  router.get("/api/v1/compliance/logs/:id", handleGetLog)
+  router.post("/api/v1/compliance/report", handleGenerateComplianceReport)
+  router.get("/api/v1/compliance/reports", handleListComplianceReports)
+  router.get("/api/v1/compliance/reports/:id", handleGetReport)
+  router.get("/api/v1/compliance/status", handleGetComplianceStatus)
+  router.post("/api/v1/compliance/export", handleExport)
 }
 
 // ============================================================================

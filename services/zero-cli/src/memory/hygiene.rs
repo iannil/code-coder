@@ -1,11 +1,11 @@
 use crate::config::MemoryConfig;
 use anyhow::Result;
 use chrono::{DateTime, Duration, Local, NaiveDate, Utc};
-use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration as StdDuration, SystemTime};
+use serde::{Deserialize, Serialize};
+use zero_memory::{MemoryCategory, SqliteMemory};
 
 const HYGIENE_INTERVAL_HOURS: i64 = 12;
 const STATE_FILE: &str = "memory_hygiene_state.json";
@@ -305,15 +305,23 @@ fn prune_conversation_rows(workspace_dir: &Path, retention_days: u32) -> Result<
         return Ok(0);
     }
 
-    let conn = Connection::open(db_path)?;
+    // Use zero-memory's SqliteMemory for pruning
+    let mem = SqliteMemory::new(workspace_dir)?;
     let cutoff = (Local::now() - Duration::days(i64::from(retention_days))).to_rfc3339();
 
-    let affected = conn.execute(
-        "DELETE FROM memories WHERE category = 'conversation' AND updated_at < ?1",
-        params![cutoff],
-    )?;
-
-    Ok(u64::try_from(affected).unwrap_or(0))
+    // Create a new runtime for the async operation
+    // This is safe because we're not inside an async context when called from run_if_due()
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build runtime");
+            rt.block_on(mem.prune_category_older_than(MemoryCategory::Conversation, &cutoff))
+        })
+        .join()
+        .expect("thread panicked")
+    })
 }
 
 fn memory_date_from_filename(filename: &str) -> Option<NaiveDate> {
@@ -378,6 +386,7 @@ fn split_name(filename: &str) -> (&str, &str) {
 mod tests {
     use super::*;
     use crate::memory::{Memory, MemoryCategory, SqliteMemory};
+    use rusqlite::{params, Connection};
     use tempfile::TempDir;
 
     fn default_cfg() -> MemoryConfig {

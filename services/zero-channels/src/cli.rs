@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn cli_channel_default() {
-        let ch = CliChannel::default();
+        let ch = CliChannel;
         assert_eq!(ch.name(), "cli");
     }
 }

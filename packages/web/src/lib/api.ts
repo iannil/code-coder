@@ -74,6 +74,38 @@ import type {
   // Chat Types
   ChatInput,
   ChatResponse,
+  // Executive Types
+  ExecutiveTrendsResponse,
+  ExecutiveTeamsResponse,
+  ExecutiveActivityResponse,
+  ExecutiveSummary,
+  // Compare Types
+  CompareResponse,
+  CompareHistoryListResponse,
+  CompareHistoryEntry,
+  CompareVoteRequest,
+  CompareVoteResponse,
+  CompareInput,
+  CompareModelInfo,
+  // Budget Types
+  BudgetConfig,
+  BudgetAlert,
+  BudgetSummary,
+  BudgetCreateInput,
+  BudgetUpdateInput,
+  // DLP Types
+  DlpRule,
+  DlpWhitelistEntry,
+  DlpIncident,
+  DlpConfig,
+  DlpSummary,
+  // Knowledge Types
+  KnowledgeDocument,
+  KnowledgeUploadRequest,
+  KnowledgeUploadResponse,
+  KnowledgeSearchRequest,
+  KnowledgeSearchResponse,
+  KnowledgeHealthResponse,
 } from "./types"
 
 // ============================================================================
@@ -1140,6 +1172,284 @@ export class ApiClient {
   async chat(input: ChatInput): Promise<ChatResponse> {
     return this.post<ChatResponse>("/v1/chat", input)
   }
+
+  // ========================================================================
+  // Compare (Multi-model A/B Testing)
+  // ========================================================================
+
+  /**
+   * Compare responses from multiple models
+   */
+  async compare(input: CompareInput): Promise<CompareResponse> {
+    return this.post<CompareResponse>("/v1/compare", input)
+  }
+
+  /**
+   * List available models for comparison
+   */
+  async listCompareModels(): Promise<{ models: CompareModelInfo[]; total: number }> {
+    return this.get<{ models: CompareModelInfo[]; total: number }>("/v1/compare/models")
+  }
+
+  /**
+   * Get comparison history
+   */
+  async getCompareHistory(limit?: number, offset?: number): Promise<CompareHistoryListResponse> {
+    const params = new URLSearchParams()
+    if (limit) params.append("limit", String(limit))
+    if (offset) params.append("offset", String(offset))
+    const queryString = params.toString()
+    const path = queryString ? `/v1/compare/history?${queryString}` : "/v1/compare/history"
+    return this.get<CompareHistoryListResponse>(path)
+  }
+
+  /**
+   * Get a specific comparison entry
+   */
+  async getCompareEntry(id: string): Promise<CompareHistoryEntry> {
+    return this.get<CompareHistoryEntry>(`/v1/compare/history/${id}`)
+  }
+
+  /**
+   * Vote for a model response in a comparison
+   */
+  async voteForModel(id: string, vote: CompareVoteRequest): Promise<CompareVoteResponse> {
+    return this.post<CompareVoteResponse>(`/v1/compare/${id}/vote`, vote)
+  }
+
+  /**
+   * Delete a comparison entry
+   */
+  async deleteCompareEntry(id: string): Promise<void> {
+    return this.delete<void>(`/v1/compare/history/${id}`)
+  }
+
+  // ========================================================================
+  // Executive Dashboard (Phase 3)
+  // ========================================================================
+
+  /**
+   * Get cost and usage trends over time
+   */
+  async getExecutiveTrends(period?: "daily" | "weekly" | "monthly", days?: number): Promise<ExecutiveTrendsResponse> {
+    const params = new URLSearchParams()
+    if (period) params.append("period", period)
+    if (days) params.append("days", String(days))
+    const queryString = params.toString()
+    const path = queryString ? `/v1/executive/trends?${queryString}` : "/v1/executive/trends"
+    return this.get<ExecutiveTrendsResponse>(path)
+  }
+
+  /**
+   * Get team/department usage breakdown
+   */
+  async getExecutiveTeams(): Promise<ExecutiveTeamsResponse> {
+    return this.get<ExecutiveTeamsResponse>("/v1/executive/teams")
+  }
+
+  /**
+   * Get project activity summary
+   */
+  async getExecutiveActivity(): Promise<ExecutiveActivityResponse> {
+    return this.get<ExecutiveActivityResponse>("/v1/executive/activity")
+  }
+
+  /**
+   * Get executive summary with key metrics
+   */
+  async getExecutiveSummary(period?: "daily" | "weekly" | "monthly"): Promise<ExecutiveSummary> {
+    const params = period ? `?period=${period}` : ""
+    return this.get<ExecutiveSummary>(`/v1/executive/summary${params}`)
+  }
+
+  // ========================================================================
+  // Budget Management
+  // ========================================================================
+
+  /**
+   * Get budget summary
+   */
+  async getBudgetSummary(): Promise<BudgetSummary> {
+    return this.get<BudgetSummary>("/v1/budgets/summary")
+  }
+
+  /**
+   * List all budget configurations
+   */
+  async listBudgets(): Promise<BudgetConfig[]> {
+    return this.get<BudgetConfig[]>("/v1/budgets")
+  }
+
+  /**
+   * Get a specific budget
+   */
+  async getBudget(id: string): Promise<BudgetConfig> {
+    return this.get<BudgetConfig>(`/v1/budgets/${id}`)
+  }
+
+  /**
+   * Create a new budget
+   */
+  async createBudget(input: BudgetCreateInput): Promise<BudgetConfig> {
+    return this.post<BudgetConfig>("/v1/budgets", input)
+  }
+
+  /**
+   * Update a budget
+   */
+  async updateBudget(id: string, input: BudgetUpdateInput): Promise<BudgetConfig> {
+    return this.patch<BudgetConfig>(`/v1/budgets/${id}`, input)
+  }
+
+  /**
+   * Delete a budget
+   */
+  async deleteBudget(id: string): Promise<void> {
+    return this.delete<void>(`/v1/budgets/${id}`)
+  }
+
+  /**
+   * List budget alerts
+   */
+  async listBudgetAlerts(acknowledged?: boolean): Promise<BudgetAlert[]> {
+    const params = acknowledged !== undefined ? `?acknowledged=${acknowledged}` : ""
+    return this.get<BudgetAlert[]>(`/v1/budgets/alerts${params}`)
+  }
+
+  /**
+   * Acknowledge a budget alert
+   */
+  async acknowledgeBudgetAlert(id: string): Promise<BudgetAlert> {
+    return this.post<BudgetAlert>(`/v1/budgets/alerts/${id}/acknowledge`)
+  }
+
+  // ========================================================================
+  // DLP (Data Leakage Prevention)
+  // ========================================================================
+
+  /**
+   * Get DLP summary
+   */
+  async getDlpSummary(): Promise<DlpSummary> {
+    return this.get<DlpSummary>("/v1/dlp/summary")
+  }
+
+  /**
+   * Get DLP configuration
+   */
+  async getDlpConfig(): Promise<DlpConfig> {
+    return this.get<DlpConfig>("/v1/dlp/config")
+  }
+
+  /**
+   * Update DLP configuration
+   */
+  async updateDlpConfig(config: Partial<DlpConfig>): Promise<DlpConfig> {
+    return this.patch<DlpConfig>("/v1/dlp/config", config)
+  }
+
+  /**
+   * List DLP rules
+   */
+  async listDlpRules(): Promise<DlpRule[]> {
+    return this.get<DlpRule[]>("/v1/dlp/rules")
+  }
+
+  /**
+   * Create a DLP rule
+   */
+  async createDlpRule(input: Omit<DlpRule, "id" | "match_count" | "created_at" | "updated_at">): Promise<DlpRule> {
+    return this.post<DlpRule>("/v1/dlp/rules", input)
+  }
+
+  /**
+   * Update a DLP rule
+   */
+  async updateDlpRule(id: string, input: Partial<DlpRule>): Promise<DlpRule> {
+    return this.patch<DlpRule>(`/v1/dlp/rules/${id}`, input)
+  }
+
+  /**
+   * Delete a DLP rule
+   */
+  async deleteDlpRule(id: string): Promise<void> {
+    return this.delete<void>(`/v1/dlp/rules/${id}`)
+  }
+
+  /**
+   * List DLP whitelist entries
+   */
+  async listDlpWhitelist(): Promise<DlpWhitelistEntry[]> {
+    return this.get<DlpWhitelistEntry[]>("/v1/dlp/whitelist")
+  }
+
+  /**
+   * Add a DLP whitelist entry
+   */
+  async addDlpWhitelist(input: { pattern: string; description?: string }): Promise<DlpWhitelistEntry> {
+    return this.post<DlpWhitelistEntry>("/v1/dlp/whitelist", input)
+  }
+
+  /**
+   * Delete a DLP whitelist entry
+   */
+  async deleteDlpWhitelist(id: string): Promise<void> {
+    return this.delete<void>(`/v1/dlp/whitelist/${id}`)
+  }
+
+  /**
+   * List DLP incidents
+   */
+  async listDlpIncidents(limit?: number): Promise<DlpIncident[]> {
+    const params = limit ? `?limit=${limit}` : ""
+    return this.get<DlpIncident[]>(`/v1/dlp/incidents${params}`)
+  }
+
+  // ========================================================================
+  // Knowledge Base (RAG)
+  // ========================================================================
+
+  /**
+   * Get knowledge base health status
+   */
+  async getKnowledgeHealth(): Promise<KnowledgeHealthResponse> {
+    return this.get<KnowledgeHealthResponse>("/v1/knowledge/health")
+  }
+
+  /**
+   * List all knowledge documents
+   */
+  async listKnowledgeDocs(): Promise<KnowledgeDocument[]> {
+    return this.get<KnowledgeDocument[]>("/v1/knowledge/documents")
+  }
+
+  /**
+   * Get a specific knowledge document
+   */
+  async getKnowledgeDoc(id: string): Promise<KnowledgeDocument> {
+    return this.get<KnowledgeDocument>(`/v1/knowledge/documents/${id}`)
+  }
+
+  /**
+   * Upload a document to the knowledge base
+   */
+  async uploadKnowledge(input: KnowledgeUploadRequest): Promise<KnowledgeUploadResponse> {
+    return this.post<KnowledgeUploadResponse>("/v1/knowledge/upload", input)
+  }
+
+  /**
+   * Delete a knowledge document
+   */
+  async deleteKnowledgeDoc(id: string): Promise<void> {
+    return this.delete<void>(`/v1/knowledge/documents/${id}`)
+  }
+
+  /**
+   * Search the knowledge base
+   */
+  async searchKnowledge(input: KnowledgeSearchRequest): Promise<KnowledgeSearchResponse> {
+    return this.post<KnowledgeSearchResponse>("/v1/knowledge/search", input)
+  }
 }
 
 // ============================================================================
@@ -1306,4 +1616,46 @@ export const api = {
   getRecommendedAgents: () => getClient().getRecommendedAgents(),
   // Chat API
   chat: (input: ChatInput) => getClient().chat(input),
+  // Compare API
+  compare: (input: CompareInput) => getClient().compare(input),
+  listCompareModels: () => getClient().listCompareModels(),
+  getCompareHistory: (limit?: number, offset?: number) => getClient().getCompareHistory(limit, offset),
+  getCompareEntry: (id: string) => getClient().getCompareEntry(id),
+  voteForModel: (id: string, vote: CompareVoteRequest) => getClient().voteForModel(id, vote),
+  deleteCompareEntry: (id: string) => getClient().deleteCompareEntry(id),
+  // Executive Dashboard APIs
+  getExecutiveTrends: (period?: "daily" | "weekly" | "monthly", days?: number) =>
+    getClient().getExecutiveTrends(period, days),
+  getExecutiveTeams: () => getClient().getExecutiveTeams(),
+  getExecutiveActivity: () => getClient().getExecutiveActivity(),
+  getExecutiveSummary: (period?: "daily" | "weekly" | "monthly") => getClient().getExecutiveSummary(period),
+  // Budget APIs
+  getBudgetSummary: () => getClient().getBudgetSummary(),
+  listBudgets: () => getClient().listBudgets(),
+  getBudget: (id: string) => getClient().getBudget(id),
+  createBudget: (input: BudgetCreateInput) => getClient().createBudget(input),
+  updateBudget: (id: string, input: BudgetUpdateInput) => getClient().updateBudget(id, input),
+  deleteBudget: (id: string) => getClient().deleteBudget(id),
+  listBudgetAlerts: (acknowledged?: boolean) => getClient().listBudgetAlerts(acknowledged),
+  acknowledgeBudgetAlert: (id: string) => getClient().acknowledgeBudgetAlert(id),
+  // DLP APIs
+  getDlpSummary: () => getClient().getDlpSummary(),
+  getDlpConfig: () => getClient().getDlpConfig(),
+  updateDlpConfig: (config: Partial<DlpConfig>) => getClient().updateDlpConfig(config),
+  listDlpRules: () => getClient().listDlpRules(),
+  createDlpRule: (input: Omit<DlpRule, "id" | "match_count" | "created_at" | "updated_at">) =>
+    getClient().createDlpRule(input),
+  updateDlpRule: (id: string, input: Partial<DlpRule>) => getClient().updateDlpRule(id, input),
+  deleteDlpRule: (id: string) => getClient().deleteDlpRule(id),
+  listDlpWhitelist: () => getClient().listDlpWhitelist(),
+  addDlpWhitelist: (input: { pattern: string; description?: string }) => getClient().addDlpWhitelist(input),
+  deleteDlpWhitelist: (id: string) => getClient().deleteDlpWhitelist(id),
+  listDlpIncidents: (limit?: number) => getClient().listDlpIncidents(limit),
+  // Knowledge APIs
+  getKnowledgeHealth: () => getClient().getKnowledgeHealth(),
+  listKnowledgeDocs: () => getClient().listKnowledgeDocs(),
+  getKnowledgeDoc: (id: string) => getClient().getKnowledgeDoc(id),
+  uploadKnowledge: (input: KnowledgeUploadRequest) => getClient().uploadKnowledge(input),
+  deleteKnowledgeDoc: (id: string) => getClient().deleteKnowledgeDoc(id),
+  searchKnowledge: (input: KnowledgeSearchRequest) => getClient().searchKnowledge(input),
 }

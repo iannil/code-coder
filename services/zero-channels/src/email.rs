@@ -1,3 +1,7 @@
+//! Email channel adapter for Zero Channels.
+//!
+//! Provides IMAP polling for inbound messages and SMTP for outbound messages.
+
 #![allow(clippy::uninlined_format_args)]
 #![allow(clippy::map_unwrap_or)]
 #![allow(clippy::redundant_closure_for_method_calls)]
@@ -8,98 +12,32 @@
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::unnecessary_map_or)]
 
-use anyhow::{anyhow, Result};
+use anyhow::anyhow;
 use async_trait::async_trait;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{Message, SmtpTransport, Transport};
 use mail_parser::{MessageParser, MimeHeaders};
-use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::Write as IoWrite;
 use std::net::TcpStream;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+use zero_common::config::EmailConfig;
 
-use super::{Channel, ChannelMessage, MessageSource};
+use crate::message::{ChannelMessage, ChannelType, MessageContent, OutgoingContent, OutgoingMessage};
+use crate::traits::{Channel, ChannelError, ChannelResult};
 
-/// Email channel configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmailConfig {
-    /// IMAP server hostname
-    pub imap_host: String,
-    /// IMAP server port (default: 993 for TLS)
-    #[serde(default = "default_imap_port")]
-    pub imap_port: u16,
-    /// IMAP folder to poll (default: INBOX)
-    #[serde(default = "default_imap_folder")]
-    pub imap_folder: String,
-    /// SMTP server hostname
-    pub smtp_host: String,
-    /// SMTP server port (default: 587 for STARTTLS)
-    #[serde(default = "default_smtp_port")]
-    pub smtp_port: u16,
-    /// Use TLS for SMTP (default: true)
-    #[serde(default = "default_true")]
-    pub smtp_tls: bool,
-    /// Email username for authentication
-    pub username: String,
-    /// Email password for authentication
-    pub password: String,
-    /// From address for outgoing emails
-    pub from_address: String,
-    /// Poll interval in seconds (default: 60)
-    #[serde(default = "default_poll_interval")]
-    pub poll_interval_secs: u64,
-    /// Allowed sender addresses/domains (empty = deny all, ["*"] = allow all)
-    #[serde(default)]
-    pub allowed_senders: Vec<String>,
-}
-
-fn default_imap_port() -> u16 {
-    993
-}
-fn default_smtp_port() -> u16 {
-    587
-}
-fn default_imap_folder() -> String {
-    "INBOX".into()
-}
-fn default_poll_interval() -> u64 {
-    60
-}
-fn default_true() -> bool {
-    true
-}
-
-impl Default for EmailConfig {
-    fn default() -> Self {
-        Self {
-            imap_host: String::new(),
-            imap_port: default_imap_port(),
-            imap_folder: default_imap_folder(),
-            smtp_host: String::new(),
-            smtp_port: default_smtp_port(),
-            smtp_tls: true,
-            username: String::new(),
-            password: String::new(),
-            from_address: String::new(),
-            poll_interval_secs: default_poll_interval(),
-            allowed_senders: Vec::new(),
-        }
-    }
-}
-
-/// Email channel — IMAP polling for inbound, SMTP for outbound
+/// Email channel — IMAP polling for inbound, SMTP for outbound.
 pub struct EmailChannel {
-    pub config: EmailConfig,
+    config: EmailConfig,
     seen_messages: Mutex<HashSet<String>>,
 }
 
 impl EmailChannel {
+    /// Create a new Email channel with the given configuration.
     pub fn new(config: EmailConfig) -> Self {
         Self {
             config,
@@ -107,8 +45,13 @@ impl EmailChannel {
         }
     }
 
-    /// Check if a sender email is in the allowlist
-    pub fn is_sender_allowed(&self, email: &str) -> bool {
+    /// Get the current config.
+    pub fn config(&self) -> &EmailConfig {
+        &self.config
+    }
+
+    /// Check if a sender email is in the allowlist.
+    fn is_sender_allowed(&self, email: &str) -> bool {
         if self.config.allowed_senders.is_empty() {
             return false; // Empty = deny all
         }
@@ -130,8 +73,8 @@ impl EmailChannel {
         })
     }
 
-    /// Strip HTML tags from content (basic)
-    pub fn strip_html(html: &str) -> String {
+    /// Strip HTML tags from content (basic).
+    fn strip_html(html: &str) -> String {
         let mut result = String::new();
         let mut in_tag = false;
         for ch in html.chars() {
@@ -145,7 +88,7 @@ impl EmailChannel {
         result.split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
-    /// Extract the sender address from a parsed email
+    /// Extract the sender address from a parsed email.
     fn extract_sender(parsed: &mail_parser::Message) -> String {
         parsed
             .from()
@@ -155,7 +98,7 @@ impl EmailChannel {
             .unwrap_or_else(|| "unknown".into())
     }
 
-    /// Extract readable text from a parsed email
+    /// Extract readable text from a parsed email.
     fn extract_text(parsed: &mail_parser::Message) -> String {
         if let Some(text) = parsed.body_text(0) {
             return text.to_string();
@@ -177,8 +120,10 @@ impl EmailChannel {
         "(no readable content)".to_string()
     }
 
-    /// Fetch unseen emails via IMAP (blocking, run in spawn_blocking)
-    fn fetch_unseen_imap(config: &EmailConfig) -> Result<Vec<(String, String, String, u64)>> {
+    /// Fetch unseen emails via IMAP (blocking, run in spawn_blocking).
+    fn fetch_unseen_imap(
+        config: &EmailConfig,
+    ) -> anyhow::Result<Vec<(String, String, String, i64)>> {
         use rustls::ClientConfig as TlsConfig;
         use rustls_pki_types::ServerName;
         use std::sync::Arc;
@@ -200,28 +145,27 @@ impl EmailChannel {
         let conn = rustls::ClientConnection::new(tls_config, server_name)?;
         let mut tls = rustls::StreamOwned::new(conn, tcp);
 
-        let read_line =
-            |tls: &mut rustls::StreamOwned<rustls::ClientConnection, TcpStream>| -> Result<String> {
-                let mut buf = Vec::new();
-                loop {
-                    let mut byte = [0u8; 1];
-                    match std::io::Read::read(tls, &mut byte) {
-                        Ok(0) => return Err(anyhow!("IMAP connection closed")),
-                        Ok(_) => {
-                            buf.push(byte[0]);
-                            if buf.ends_with(b"\r\n") {
-                                return Ok(String::from_utf8_lossy(&buf).to_string());
-                            }
+        let read_line = |tls: &mut rustls::StreamOwned<rustls::ClientConnection, TcpStream>| -> anyhow::Result<String> {
+            let mut buf = Vec::new();
+            loop {
+                let mut byte = [0u8; 1];
+                match std::io::Read::read(tls, &mut byte) {
+                    Ok(0) => return Err(anyhow!("IMAP connection closed")),
+                    Ok(_) => {
+                        buf.push(byte[0]);
+                        if buf.ends_with(b"\r\n") {
+                            return Ok(String::from_utf8_lossy(&buf).to_string());
                         }
-                        Err(e) => return Err(e.into()),
                     }
+                    Err(e) => return Err(e.into()),
                 }
-            };
+            }
+        };
 
         let send_cmd = |tls: &mut rustls::StreamOwned<rustls::ClientConnection, TcpStream>,
                         tag: &str,
                         cmd: &str|
-         -> Result<Vec<String>> {
+         -> anyhow::Result<Vec<String>> {
             let full = format!("{} {}\r\n", tag, cmd);
             IoWrite::write_all(tls, full.as_bytes())?;
             IoWrite::flush(tls)?;
@@ -295,6 +239,7 @@ impl EmailChannel {
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("gen-{}", Uuid::new_v4()));
                 #[allow(clippy::cast_sign_loss)]
+                #[allow(clippy::cast_possible_wrap)]
                 let ts = parsed
                     .date()
                     .map(|d| {
@@ -310,12 +255,12 @@ impl EmailChannel {
                                 u32::from(d.second),
                             )
                         });
-                        naive.map_or(0, |n| n.and_utc().timestamp() as u64)
+                        naive.map_or(0, |n| n.and_utc().timestamp_millis())
                     })
                     .unwrap_or_else(|| {
                         SystemTime::now()
                             .duration_since(UNIX_EPOCH)
-                            .map(|d| d.as_secs())
+                            .map(|d| d.as_millis() as i64)
                             .unwrap_or(0)
                     });
 
@@ -339,7 +284,7 @@ impl EmailChannel {
         Ok(results)
     }
 
-    fn create_smtp_transport(&self) -> Result<SmtpTransport> {
+    fn create_smtp_transport(&self) -> anyhow::Result<SmtpTransport> {
         let creds = Credentials::new(self.config.username.clone(), self.config.password.clone());
         let transport = if self.config.smtp_tls {
             SmtpTransport::relay(&self.config.smtp_host)?
@@ -354,38 +299,14 @@ impl EmailChannel {
         };
         Ok(transport)
     }
-}
 
-#[async_trait]
-impl Channel for EmailChannel {
-    fn name(&self) -> &str {
-        "email"
-    }
-
-    async fn send(&self, message: &str, recipient: &str) -> Result<()> {
-        let (subject, body) = if message.starts_with("Subject: ") {
-            if let Some(pos) = message.find('\n') {
-                (&message[9..pos], message[pos + 1..].trim())
-            } else {
-                ("ZeroBot Message", message)
-            }
-        } else {
-            ("ZeroBot Message", message)
-        };
-
-        let email = Message::builder()
-            .from(self.config.from_address.parse()?)
-            .to(recipient.parse()?)
-            .subject(subject)
-            .body(body.to_string())?;
-
-        let transport = self.create_smtp_transport()?;
-        transport.send(&email)?;
-        info!("Email sent to {}", recipient);
-        Ok(())
-    }
-
-    async fn listen(&self, tx: mpsc::Sender<ChannelMessage>) -> Result<()> {
+    /// Start polling for emails and send them to the provided sender.
+    ///
+    /// This method runs indefinitely, polling IMAP at the configured interval.
+    pub async fn start_polling(
+        &self,
+        tx: tokio::sync::mpsc::Sender<ChannelMessage>,
+    ) -> anyhow::Result<()> {
         info!(
             "Email polling every {}s on {}",
             self.config.poll_interval_secs, self.config.imap_folder
@@ -401,8 +322,9 @@ impl Channel for EmailChannel {
                     for (id, sender, content, ts) in messages {
                         {
                             let Ok(mut seen) = self.seen_messages.lock() else {
-                                // Mutex poisoned - skip deduplication but continue
-                                tracing::warn!("Email seen_messages mutex poisoned, skipping dedup");
+                                tracing::warn!(
+                                    "Email seen_messages mutex poisoned, skipping dedup"
+                                );
                                 continue;
                             };
                             if seen.contains(&id) {
@@ -413,14 +335,16 @@ impl Channel for EmailChannel {
                                 continue;
                             }
                             seen.insert(id.clone());
-                        } // MutexGuard dropped before await
+                        }
                         let msg = ChannelMessage {
-                            channel_type: "email".to_string(),
-                            sender_id: sender,
-                            content,
-                            message_id: Some(id),
-                            reply_to: None,
-                            source: MessageSource::default(),
+                            id,
+                            channel_type: ChannelType::Email,
+                            channel_id: sender.clone(),
+                            user_id: sender,
+                            content: MessageContent::Text { text: content },
+                            attachments: vec![],
+                            metadata: std::collections::HashMap::new(),
+                            timestamp: ts,
                         };
                         if tx.send(msg).await.is_err() {
                             return Ok(());
@@ -438,14 +362,212 @@ impl Channel for EmailChannel {
             }
         }
     }
+}
 
-    async fn health_check(&self) -> bool {
+#[async_trait]
+impl Channel for EmailChannel {
+    fn name(&self) -> &'static str {
+        "email"
+    }
+
+    async fn init(&mut self) -> ChannelResult<()> {
+        // Test SMTP connection on init
+        let _ = self
+            .create_smtp_transport()
+            .map_err(|e| ChannelError::Connection(format!("SMTP setup failed: {}", e)))?;
+        info!("Email channel initialized");
+        Ok(())
+    }
+
+    async fn send(&self, message: OutgoingMessage) -> ChannelResult<String> {
+        let recipient = &message.channel_id;
+        let message_text = match &message.content {
+            OutgoingContent::Text { text } => text.clone(),
+            OutgoingContent::Markdown { text } => text.clone(),
+            _ => return Err(ChannelError::InvalidMessage("Email only supports text content".into())),
+        };
+
+        let (subject, body) = if message_text.starts_with("Subject: ") {
+            if let Some(pos) = message_text.find('\n') {
+                (
+                    message_text[9..pos].to_string(),
+                    message_text[pos + 1..].trim().to_string(),
+                )
+            } else {
+                ("ZeroBot Message".to_string(), message_text)
+            }
+        } else {
+            ("ZeroBot Message".to_string(), message_text)
+        };
+
+        let email = Message::builder()
+            .from(
+                self.config
+                    .from_address
+                    .parse()
+                    .map_err(|e| ChannelError::SendFailed(format!("Invalid from address: {}", e)))?,
+            )
+            .to(recipient
+                .parse()
+                .map_err(|e| ChannelError::SendFailed(format!("Invalid recipient: {}", e)))?)
+            .subject(subject)
+            .body(body)
+            .map_err(|e| ChannelError::SendFailed(format!("Failed to build email: {}", e)))?;
+
+        let transport = self
+            .create_smtp_transport()
+            .map_err(|e| ChannelError::SendFailed(format!("SMTP setup failed: {}", e)))?;
+        transport
+            .send(&email)
+            .map_err(|e| ChannelError::SendFailed(format!("SMTP send failed: {}", e)))?;
+
+        let msg_id = format!("email-{}", Uuid::new_v4());
+        info!("Email sent to {} ({})", recipient, msg_id);
+        Ok(msg_id)
+    }
+
+    async fn listen<F>(&self, callback: F) -> ChannelResult<()>
+    where
+        F: Fn(ChannelMessage) + Send + Sync + 'static,
+    {
+        info!(
+            "Email polling every {}s on {}",
+            self.config.poll_interval_secs, self.config.imap_folder
+        );
+        let mut tick = interval(Duration::from_secs(self.config.poll_interval_secs));
+        let config = self.config.clone();
+
+        loop {
+            tick.tick().await;
+            let cfg = config.clone();
+            match tokio::task::spawn_blocking(move || Self::fetch_unseen_imap(&cfg)).await {
+                Ok(Ok(messages)) => {
+                    for (id, sender, content, ts) in messages {
+                        {
+                            let Ok(mut seen) = self.seen_messages.lock() else {
+                                tracing::warn!(
+                                    "Email seen_messages mutex poisoned, skipping dedup"
+                                );
+                                continue;
+                            };
+                            if seen.contains(&id) {
+                                continue;
+                            }
+                            if !self.is_sender_allowed(&sender) {
+                                warn!("Blocked email from {}", sender);
+                                continue;
+                            }
+                            seen.insert(id.clone());
+                        }
+                        let msg = ChannelMessage {
+                            id,
+                            channel_type: ChannelType::Email,
+                            channel_id: sender.clone(), // Use sender as channel_id for replies
+                            user_id: sender,
+                            content: MessageContent::Text { text: content },
+                            attachments: vec![],
+                            metadata: std::collections::HashMap::new(),
+                            timestamp: ts,
+                        };
+                        callback(msg);
+                    }
+                }
+                Ok(Err(e)) => {
+                    error!("Email poll failed: {}", e);
+                    sleep(Duration::from_secs(10)).await;
+                }
+                Err(e) => {
+                    error!("Email poll task panicked: {}", e);
+                    sleep(Duration::from_secs(10)).await;
+                }
+            }
+        }
+    }
+
+    async fn health_check(&self) -> ChannelResult<()> {
         let cfg = self.config.clone();
-        tokio::task::spawn_blocking(move || {
-            let tcp = TcpStream::connect((&*cfg.imap_host, cfg.imap_port));
-            tcp.is_ok()
+        let result = tokio::task::spawn_blocking(move || {
+            TcpStream::connect((&*cfg.imap_host, cfg.imap_port))
+                .map(|_| ())
+                .map_err(|e| ChannelError::Connection(format!("IMAP connection failed: {}", e)))
         })
         .await
-        .unwrap_or_default()
+        .map_err(|e| ChannelError::Internal(format!("Health check task failed: {}", e)))?;
+        result
+    }
+
+    async fn shutdown(&self) -> ChannelResult<()> {
+        info!("Email channel shutting down");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> EmailConfig {
+        EmailConfig {
+            enabled: true,
+            imap_host: "imap.example.com".into(),
+            imap_port: 993,
+            imap_folder: "INBOX".into(),
+            smtp_host: "smtp.example.com".into(),
+            smtp_port: 587,
+            smtp_tls: true,
+            username: "test@example.com".into(),
+            password: "password".into(),
+            from_address: "test@example.com".into(),
+            poll_interval_secs: 60,
+            allowed_senders: vec!["*".into()],
+        }
+    }
+
+    #[test]
+    fn test_sender_allowed_wildcard() {
+        let channel = EmailChannel::new(test_config());
+        assert!(channel.is_sender_allowed("anyone@anywhere.com"));
+    }
+
+    #[test]
+    fn test_sender_allowed_empty_denies_all() {
+        let mut config = test_config();
+        config.allowed_senders = vec![];
+        let channel = EmailChannel::new(config);
+        assert!(!channel.is_sender_allowed("anyone@anywhere.com"));
+    }
+
+    #[test]
+    fn test_sender_allowed_domain() {
+        let mut config = test_config();
+        config.allowed_senders = vec!["example.com".into()];
+        let channel = EmailChannel::new(config);
+        assert!(channel.is_sender_allowed("user@example.com"));
+        assert!(!channel.is_sender_allowed("user@other.com"));
+    }
+
+    #[test]
+    fn test_sender_allowed_domain_with_at() {
+        let mut config = test_config();
+        config.allowed_senders = vec!["@example.com".into()];
+        let channel = EmailChannel::new(config);
+        assert!(channel.is_sender_allowed("user@example.com"));
+        assert!(!channel.is_sender_allowed("user@other.com"));
+    }
+
+    #[test]
+    fn test_sender_allowed_specific_email() {
+        let mut config = test_config();
+        config.allowed_senders = vec!["specific@example.com".into()];
+        let channel = EmailChannel::new(config);
+        assert!(channel.is_sender_allowed("specific@example.com"));
+        assert!(!channel.is_sender_allowed("other@example.com"));
+    }
+
+    #[test]
+    fn test_strip_html() {
+        let html = "<p>Hello <b>World</b>!</p>";
+        let text = EmailChannel::strip_html(html);
+        assert_eq!(text, "Hello World!");
     }
 }

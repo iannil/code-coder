@@ -13,6 +13,7 @@
 | `lazy.ts`  | 存在           | Re-export            | ✓ 已统一           |
 
 **解决方案 (已实施)**:
+
 1. `packages/ccode/src/util/fn.ts` - 改为从 `@codecoder-ai/util/fn` re-export
 2. `packages/ccode/src/util/iife.ts` - 改为从 `@codecoder-ai/util/iife` re-export
 3. `packages/ccode/src/util/lazy.ts` - 改为从 `@codecoder-ai/util/lazy` re-export
@@ -52,6 +53,7 @@
 ### 2.2 测试中的跳过标记
 
 需要检查以下标记并处理:
+
 ```bash
 grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 ```
@@ -61,6 +63,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 ### 3.1 问题
 
 项目中混用三种导入路径方式:
+
 1. `@codecoder-ai/util/` - workspace 包 (推荐)
 2. `@/util/` - 别名 (内部使用)
 3. `../util/` - 相对路径 (不推荐)
@@ -92,6 +95,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 ### 5.2 未使用的 devDependencies (✓ 已完成)
 
 **发现以下未使用的依赖**:
+
 - `@octokit/webhooks-types` - 仅在 package.json 中，代码中未使用
 - `@octokit/graphql` - 仅在 package.json 中，代码中未使用
 
@@ -113,6 +117,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 ### 7.1 TypeScript 严格模式
 
 检查是否可以启用更严格的 TypeScript 配置:
+
 - `strictNullChecks`
 - `noImplicitAny`
 - `strictFunctionTypes`
@@ -120,6 +125,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 ### 7.2 测试覆盖率
 
 当前测试覆盖情况:
+
 - E2E: 21 个文件
 - Unit: 33 个文件
 - Integration: 18 个文件
@@ -133,6 +139,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 **状态**: 部分完成 (2026-02-04)
 
 **已修复**:
+
 - `test/helpers/visual-helper.ts` - tolerance undefined 问题
 - `test/helpers/e2e-helper.ts` - getOutput() this 类型问题
 - `test/helpers/fixtures/messages.ts` - 添加 Message 接口定义

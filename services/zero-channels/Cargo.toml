@@ -42,11 +42,13 @@ uuid = { workspace = true }
 
 # Cryptography (for Feishu decryption, webhook signatures)
 hmac = { workspace = true }
+sha1 = "0.10"
 sha2 = { workspace = true }
 hex = { workspace = true }
 base64 = { workspace = true }
 aes = "0.8"
 cbc = "0.1"
+rand = "0.8"
 
 # Async traits
 async-trait = { workspace = true }
@@ -60,6 +62,16 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 
 # Time
 chrono = { workspace = true }
+
+# Email (IMAP/SMTP)
+lettre = { version = "0.11", features = ["smtp-transport", "rustls-tls"] }
+mail-parser = "0.11"
+rustls-pki-types = "1.14"
+tokio-rustls = "0.26"
+webpki-roots = "1.0"
+
+# HTML processing
+html-escape = "0.2"
 
 # Directory lookup (for iMessage database)
 directories = { workspace = true }

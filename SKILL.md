@@ -178,7 +178,7 @@ bun install
 # Run TUI
 bun dev
 
-# Run API server (port 4096)
+# Run API server (port 4400)
 bun dev serve
 
 # Typecheck all packages

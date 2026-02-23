@@ -60,13 +60,13 @@ export namespace McpServer {
   const log = Log.create({ service: "mcp.server" })
 
   /** Default HTTP port for MCP server */
-  export const DEFAULT_PORT = 4405
+  export const DEFAULT_PORT = 4420
 
   /** Options for starting the MCP server */
   export interface ServeOptions {
     /** Transport mode: stdio (default) or http */
     transport: "stdio" | "http"
-    /** Port for HTTP transport (default: 4405) */
+    /** Port for HTTP transport (default: 4420) */
     port?: number
     /** API key for authentication (HTTP only) */
     apiKey?: string

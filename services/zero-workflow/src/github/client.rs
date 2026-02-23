@@ -1,4 +1,4 @@
-//! GitHub API client for code review operations.
+//! GitHub API client for code review and issue operations.
 
 use anyhow::{Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, USER_AGENT};
@@ -204,6 +204,107 @@ impl GitHubClient {
     pub fn token(&self) -> &str {
         &self.token
     }
+
+    // ========================================================================
+    // Issue Operations
+    // ========================================================================
+
+    /// Create a new issue in a repository.
+    pub async fn create_issue(
+        &self,
+        owner: &str,
+        repo: &str,
+        title: &str,
+        body: &str,
+        labels: &[&str],
+    ) -> Result<IssueResponse> {
+        let url = format!("{}/repos/{}/{}/issues", self.base_url, owner, repo);
+
+        let request = CreateIssueRequest {
+            title: title.to_string(),
+            body: body.to_string(),
+            labels: labels.iter().map(|s| s.to_string()).collect(),
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to create issue")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub API error {}: {}", status, body);
+        }
+
+        response
+            .json()
+            .await
+            .context("Failed to parse issue response")
+    }
+
+    /// Get an issue by number.
+    pub async fn get_issue(&self, owner: &str, repo: &str, number: i64) -> Result<IssueResponse> {
+        let url = format!("{}/repos/{}/{}/issues/{}", self.base_url, owner, repo, number);
+
+        let response = self
+            .client
+            .get(&url)
+            .send()
+            .await
+            .context("Failed to fetch issue")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub API error {}: {}", status, body);
+        }
+
+        response
+            .json()
+            .await
+            .context("Failed to parse issue response")
+    }
+
+    /// Add labels to an issue.
+    pub async fn add_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        number: i64,
+        labels: &[&str],
+    ) -> Result<Vec<Label>> {
+        let url = format!(
+            "{}/repos/{}/{}/issues/{}/labels",
+            self.base_url, owner, repo, number
+        );
+
+        let request = AddLabelsRequest {
+            labels: labels.iter().map(|s| s.to_string()).collect(),
+        };
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to add labels")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("GitHub API error {}: {}", status, body);
+        }
+
+        response
+            .json()
+            .await
+            .context("Failed to parse labels response")
+    }
 }
 
 // ============================================================================
@@ -301,6 +402,79 @@ pub struct CommentResponse {
     pub html_url: String,
 }
 
+// ============================================================================
+// Issue Types
+// ============================================================================
+
+/// Request to create an issue.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreateIssueRequest {
+    /// Issue title
+    pub title: String,
+    /// Issue body
+    pub body: String,
+    /// Labels to add
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
+}
+
+/// Issue response from API.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IssueResponse {
+    /// Issue ID
+    pub id: i64,
+    /// Issue number
+    pub number: i64,
+    /// Issue title
+    pub title: String,
+    /// Issue body
+    pub body: Option<String>,
+    /// HTML URL to view the issue
+    pub html_url: String,
+    /// Issue state (open, closed)
+    pub state: String,
+    /// Labels on the issue
+    #[serde(default)]
+    pub labels: Vec<Label>,
+    /// User who created the issue
+    pub user: Option<IssueUser>,
+    /// Creation timestamp
+    pub created_at: Option<String>,
+    /// Last update timestamp
+    pub updated_at: Option<String>,
+}
+
+/// Label on an issue.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Label {
+    /// Label ID
+    pub id: i64,
+    /// Label name
+    pub name: String,
+    /// Label color (hex without #)
+    pub color: String,
+    /// Label description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// User info for issues.
+#[derive(Debug, Clone, Deserialize)]
+pub struct IssueUser {
+    /// User ID
+    pub id: i64,
+    /// Username
+    pub login: String,
+    /// Avatar URL
+    pub avatar_url: Option<String>,
+}
+
+/// Request to add labels to an issue.
+#[derive(Debug, Clone, Serialize)]
+struct AddLabelsRequest {
+    labels: Vec<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,5 +525,90 @@ mod tests {
         assert_eq!(file.filename, "src/lib.rs");
         assert_eq!(file.additions, 10);
         assert!(file.patch.is_some());
+    }
+
+    #[test]
+    fn test_create_issue_request_serialization() {
+        let request = CreateIssueRequest {
+            title: "Bug: App crashes on startup".into(),
+            body: "Steps to reproduce...".into(),
+            labels: vec!["bug".into(), "P1".into()],
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"title\":\"Bug: App crashes on startup\""));
+        assert!(json.contains("\"labels\":[\"bug\",\"P1\"]"));
+    }
+
+    #[test]
+    fn test_create_issue_request_empty_labels() {
+        let request = CreateIssueRequest {
+            title: "Feature request".into(),
+            body: "Add dark mode".into(),
+            labels: vec![],
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"title\":\"Feature request\""));
+        assert!(!json.contains("\"labels\"")); // Empty vec should be skipped
+    }
+
+    #[test]
+    fn test_issue_response_deserialize() {
+        let json = r#"{
+            "id": 12345,
+            "number": 42,
+            "title": "Bug report",
+            "body": "Description here",
+            "html_url": "https://github.com/owner/repo/issues/42",
+            "state": "open",
+            "labels": [
+                {"id": 1, "name": "bug", "color": "d73a4a", "description": "Something is broken"}
+            ],
+            "user": {"id": 789, "login": "reporter", "avatar_url": "https://example.com/avatar.png"},
+            "created_at": "2024-01-15T10:00:00Z",
+            "updated_at": "2024-01-15T10:00:00Z"
+        }"#;
+
+        let issue: IssueResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(issue.id, 12345);
+        assert_eq!(issue.number, 42);
+        assert_eq!(issue.title, "Bug report");
+        assert_eq!(issue.state, "open");
+        assert_eq!(issue.labels.len(), 1);
+        assert_eq!(issue.labels[0].name, "bug");
+        assert!(issue.user.is_some());
+        assert_eq!(issue.user.unwrap().login, "reporter");
+    }
+
+    #[test]
+    fn test_issue_response_minimal() {
+        let json = r#"{
+            "id": 12345,
+            "number": 42,
+            "title": "Bug report",
+            "html_url": "https://github.com/owner/repo/issues/42",
+            "state": "open"
+        }"#;
+
+        let issue: IssueResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(issue.number, 42);
+        assert!(issue.body.is_none());
+        assert!(issue.labels.is_empty());
+        assert!(issue.user.is_none());
+    }
+
+    #[test]
+    fn test_label_serialization() {
+        let label = Label {
+            id: 1,
+            name: "bug".into(),
+            color: "d73a4a".into(),
+            description: Some("Something is broken".into()),
+        };
+
+        let json = serde_json::to_string(&label).unwrap();
+        assert!(json.contains("\"name\":\"bug\""));
+        assert!(json.contains("\"color\":\"d73a4a\""));
     }
 }

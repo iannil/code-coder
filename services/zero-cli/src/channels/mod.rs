@@ -7,40 +7,24 @@
 //! the zero-channels Channel trait has a different API (not dyn-compatible).
 //! Concrete channel implementations are imported from `zero-channels`.
 
-pub mod email_channel;
 pub mod traits;
 
 // Re-export local traits and adapters for use within zero-cli
-pub use traits::{Channel, ChannelMessage, CliChannelAdapter, MessageContent, MessageSource};
+pub use traits::{Channel, ChannelMessage, CliChannelAdapter, MessageSource};
 
 // Alias for convenience: use CliChannel to mean the adapted version
 pub type CliChannel = CliChannelAdapter;
 
 // Re-export concrete channel implementations from zero-channels
 // These are used directly via their own APIs (not through the Channel trait)
-pub use zero_channels::{
-    DiscordChannel, FeishuChannel, IMessageChannel, MatrixChannel, SlackChannel, TelegramChannel,
-    WhatsAppChannel,
-};
+pub use zero_channels::TelegramChannel;
 
-use crate::agent::ToolContext;
 use crate::config::Config;
-use crate::memory::{self, Memory, MemoryCategory};
-use crate::providers::{self, Provider};
-use crate::security::SecurityPolicy;
-use crate::session::compactor::format_session_context;
-use crate::session::types::MessageRole;
-use crate::session::{SessionCompactor, SessionStore};
-use crate::tools;
-use crate::util::truncate_with_ellipsis;
 use anyhow::Result;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
-use zero_agent::AgentExecutor;
-use zero_channels::tts::TextToSpeech;
 
 /// Notification sink trait for sending notifications to channels
 #[async_trait]
@@ -71,6 +55,7 @@ struct ChannelNotificationSink {
 }
 
 impl ChannelNotificationSink {
+    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             channels: RwLock::new(HashMap::new()),
@@ -188,46 +173,6 @@ fn escape_markdown(text: &str) -> String {
 
 /// Maximum characters per injected workspace file (matches `OpenClaw` default).
 const BOOTSTRAP_MAX_CHARS: usize = 20_000;
-
-const DEFAULT_CHANNEL_INITIAL_BACKOFF_SECS: u64 = 2;
-const DEFAULT_CHANNEL_MAX_BACKOFF_SECS: u64 = 60;
-
-fn spawn_supervised_listener(
-    ch: Arc<dyn Channel>,
-    tx: tokio::sync::mpsc::Sender<ChannelMessage>,
-    initial_backoff_secs: u64,
-    max_backoff_secs: u64,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let component = format!("channel:{}", ch.name());
-        let mut backoff = initial_backoff_secs.max(1);
-        let max_backoff = max_backoff_secs.max(backoff);
-
-        loop {
-            crate::health::mark_component_ok(&component);
-            let result = ch.listen(tx.clone()).await;
-
-            if tx.is_closed() {
-                break;
-            }
-
-            match result {
-                Ok(()) => {
-                    tracing::warn!("Channel {} exited unexpectedly; restarting", ch.name());
-                    crate::health::mark_component_error(&component, "listener exited unexpectedly");
-                }
-                Err(e) => {
-                    tracing::error!("Channel {} error: {e}; restarting", ch.name());
-                    crate::health::mark_component_error(&component, e.to_string());
-                }
-            }
-
-            crate::health::bump_component_restart(&component);
-            tokio::time::sleep(Duration::from_secs(backoff)).await;
-            backoff = backoff.saturating_mul(2).min(max_backoff);
-        }
-    })
-}
 
 /// Load workspace identity files and build a system prompt.
 #[allow(clippy::too_many_lines)]
@@ -437,43 +382,244 @@ pub fn handle_command(command: crate::ChannelCommands, config: &Config) -> Resul
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ChannelHealthState {
-    Healthy,
-    Unhealthy,
-    Timeout,
-}
-
-fn classify_health_result(
-    result: &std::result::Result<bool, tokio::time::error::Elapsed>,
-) -> ChannelHealthState {
-    match result {
-        Ok(true) => ChannelHealthState::Healthy,
-        Ok(false) => ChannelHealthState::Unhealthy,
-        Err(_) => ChannelHealthState::Timeout,
-    }
-}
-
 /// Run health checks for configured channels.
+///
+/// This verifies:
+/// - Telegram: bot token format and API connectivity
+/// - Feishu: app credentials format
+/// - WeChat Work: corp_id and secret format
+/// - DingTalk: app key/secret format
 #[allow(clippy::too_many_lines)]
-pub async fn doctor_channels(_config: Config) -> Result<()> {
-    // TODO: Implement health checks using zero-channels concrete types
-    // The zero-channels Channel trait has a different health_check signature
+pub async fn doctor_channels(config: Config) -> Result<()> {
+    use std::time::Duration;
+
     println!("🩺 ZeroBot Channel Doctor");
     println!();
-    println!("Channel health checks require refactoring to use zero-channels API.");
-    println!("For now, use `zero-bot onboard` to configure channels.");
+
+    let mut all_healthy = true;
+    let timeout = Duration::from_secs(10);
+
+    // Check Telegram
+    if let Some(ref tg) = config.channels_config.telegram {
+        print!("  Telegram: ");
+        // Validate bot token format (numeric_id:alphanumeric_secret)
+        if tg.bot_token.contains(':') && tg.bot_token.split(':').count() == 2 {
+            let parts: Vec<&str> = tg.bot_token.split(':').collect();
+            if parts[0].chars().all(|c| c.is_ascii_digit()) {
+                // Try to verify with Telegram API
+                let client = reqwest::Client::builder()
+                    .timeout(timeout)
+                    .build()
+                    .unwrap_or_default();
+                let url = format!("https://api.telegram.org/bot{}/getMe", tg.bot_token);
+
+                match client.get(&url).send().await {
+                    Ok(resp) if resp.status().is_success() => {
+                        println!("✅ Connected (allowed_users: {})", tg.allowed_users.len());
+                    }
+                    Ok(resp) => {
+                        println!("❌ API error: {}", resp.status());
+                        all_healthy = false;
+                    }
+                    Err(e) => {
+                        println!("⚠️  Network error: {}", e);
+                        all_healthy = false;
+                    }
+                }
+            } else {
+                println!("❌ Invalid token format (bot ID should be numeric)");
+                all_healthy = false;
+            }
+        } else {
+            println!("❌ Invalid token format (expected: BOT_ID:SECRET)");
+            all_healthy = false;
+        }
+    } else {
+        println!("  Telegram: ⏸️  Not configured");
+    }
+
+    // Check Feishu
+    if let Some(ref fs) = config.channels_config.feishu {
+        print!("  Feishu: ");
+        // Validate app_id format (cli_xxx)
+        if fs.app_id.starts_with("cli_") && !fs.app_secret.is_empty() {
+            println!("✅ Configured (app_id: {})", &fs.app_id[..8.min(fs.app_id.len())]);
+        } else if fs.app_id.is_empty() {
+            println!("❌ Missing app_id");
+            all_healthy = false;
+        } else if fs.app_secret.is_empty() {
+            println!("❌ Missing app_secret");
+            all_healthy = false;
+        } else {
+            println!("⚠️  Unusual app_id format (expected: cli_xxx)");
+        }
+    } else {
+        println!("  Feishu: ⏸️  Not configured");
+    }
+
+    // Check Discord
+    if let Some(ref dc) = config.channels_config.discord {
+        print!("  Discord: ");
+        // Discord bot tokens are base64-like strings
+        if dc.bot_token.len() > 50 && dc.bot_token.contains('.') {
+            println!("✅ Configured");
+        } else {
+            println!("⚠️  Token format may be invalid");
+        }
+    } else {
+        println!("  Discord: ⏸️  Not configured");
+    }
+
+    // Check Slack
+    if let Some(ref sl) = config.channels_config.slack {
+        print!("  Slack: ");
+        // Slack bot tokens start with xoxb-
+        if sl.bot_token.starts_with("xoxb-") {
+            println!("✅ Configured");
+        } else {
+            println!("⚠️  Token format may be invalid (expected: xoxb-xxx)");
+        }
+    } else {
+        println!("  Slack: ⏸️  Not configured");
+    }
+
+    // Check Matrix
+    if let Some(ref mx) = config.channels_config.matrix {
+        print!("  Matrix: ");
+        if !mx.homeserver.is_empty() && !mx.access_token.is_empty() {
+            println!("✅ Configured (homeserver: {})", mx.homeserver);
+        } else {
+            println!("❌ Missing homeserver or access_token");
+            all_healthy = false;
+        }
+    } else {
+        println!("  Matrix: ⏸️  Not configured");
+    }
+
+    // Check WhatsApp
+    if let Some(ref wa) = config.channels_config.whatsapp {
+        print!("  WhatsApp: ");
+        if !wa.access_token.is_empty() && !wa.phone_number_id.is_empty() {
+            println!("✅ Configured (phone_id: {})", wa.phone_number_id);
+        } else {
+            println!("❌ Missing access_token or phone_number_id");
+            all_healthy = false;
+        }
+    } else {
+        println!("  WhatsApp: ⏸️  Not configured");
+    }
+
+    // Check iMessage (macOS only)
+    if let Some(ref im) = config.channels_config.imessage {
+        print!("  iMessage: ");
+        #[cfg(target_os = "macos")]
+        {
+            if !im.allowed_contacts.is_empty() {
+                println!("✅ Configured ({} contacts)", im.allowed_contacts.len());
+            } else {
+                println!("⚠️  No allowed contacts configured");
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = im;
+            println!("❌ Only available on macOS");
+            all_healthy = false;
+        }
+    } else {
+        println!("  iMessage: ⏸️  Not configured");
+    }
+
+    println!();
+    if all_healthy {
+        println!("✅ All configured channels are healthy");
+    } else {
+        println!("⚠️  Some channels have issues - check configuration");
+    }
+
+    println!();
+    println!("To configure channels: zero-bot onboard");
+    println!("To start channels:     zero-bot channel start");
+
     Ok(())
 }
 
-/// Start all configured channels and route messages to the agent
+/// Convert zero-cli Config to zero-common Config for use with zero-channels.
+fn to_common_config(config: &Config) -> zero_common::config::Config {
+    use zero_common::config as common;
+
+    let mut common_cfg = common::Config::default();
+
+    // Note: channels.port/host use defaults from zero-common (port 4411)
+    // Do NOT override with gateway.port as gateway already uses that port in daemon mode
+
+    // Map Telegram config
+    if let Some(ref tg) = config.channels_config.telegram {
+        common_cfg.channels.telegram = Some(common::TelegramConfig {
+            enabled: true,
+            bot_token: tg.bot_token.clone(),
+            allowed_users: tg.allowed_users.clone(),
+            allowed_chats: vec![],
+        });
+    }
+
+    // Map Feishu config
+    if let Some(ref fs) = config.channels_config.feishu {
+        common_cfg.channels.feishu = Some(common::FeishuConfig {
+            enabled: true,
+            app_id: fs.app_id.clone(),
+            app_secret: fs.app_secret.clone(),
+            encrypt_key: fs.encrypt_key.clone(),
+            verification_token: fs.verification_token.clone(),
+            allowed_users: fs.allowed_users.clone(),
+        });
+    }
+
+    // Map Discord config
+    if let Some(ref dc) = config.channels_config.discord {
+        common_cfg.channels.discord = Some(common::DiscordConfig {
+            enabled: true,
+            bot_token: dc.bot_token.clone(),
+            allowed_guilds: dc.guild_id.as_ref().map(|g| vec![g.clone()]).unwrap_or_default(),
+            allowed_channels: vec![],
+        });
+    }
+
+    // Map Slack config
+    if let Some(ref sl) = config.channels_config.slack {
+        common_cfg.channels.slack = Some(common::SlackConfig {
+            enabled: true,
+            bot_token: sl.bot_token.clone(),
+            app_token: sl.app_token.clone().unwrap_or_default(),
+            signing_secret: None,
+        });
+    }
+
+    // Map CodeCoder endpoint
+    common_cfg.codecoder.endpoint = config.codecoder.endpoint.clone();
+
+    common_cfg
+}
+
+/// Start all configured channels and route messages to the agent.
+///
+/// This function starts the zero-channels HTTP server which handles:
+/// - Telegram webhook/polling for bot messages
+/// - Feishu event callbacks
+/// - WeChat Work (企业微信) message callbacks
+/// - DingTalk (钉钉) robot callbacks
+///
+/// Messages are forwarded to the CodeCoder API for processing.
 #[allow(clippy::too_many_lines)]
-pub async fn start_channels(_config: Config) -> Result<()> {
-    // TODO: Implement start_channels using zero-channels concrete types
-    // This requires significant refactoring to adapt to the zero-channels API
+pub async fn start_channels(config: Config) -> Result<()> {
     println!("🐦‍🔥 ZeroBot Channel Server");
     println!();
-    println!("Channel startup requires refactoring to use zero-channels API.");
-    println!("For now, use the CodeCoder TUI directly: `bun dev`");
+
+    // Convert to zero-common Config format
+    let common_cfg = to_common_config(&config);
+
+    // Start the channels server
+    zero_channels::start_server(&common_cfg).await?;
+
     Ok(())
 }

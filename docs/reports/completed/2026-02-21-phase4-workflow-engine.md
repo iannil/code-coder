@@ -105,7 +105,7 @@ http-body-util = { workspace = true }
 
 ## Port Assignment
 
-- Zero Workflow HTTP: 4405 (default)
+- Zero Workflow HTTP: 4406 (default)
 
 ## Next Steps (Phase 5)
 

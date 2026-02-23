@@ -401,6 +401,10 @@ pub struct Config {
 
     #[serde(default)]
     pub mcp: McpConfig,
+
+    /// Workflow service configuration
+    pub workflow_host: Option<String>,
+    pub workflow_port: Option<u16>,
 }
 
 // ── Identity (AIEOS / OpenClaw format) ──────────────────────────
@@ -1248,6 +1252,8 @@ impl Default for Config {
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
             mcp: McpConfig::default(),
+            workflow_host: None,
+            workflow_port: None,
         }
     }
 }
@@ -1639,6 +1645,8 @@ impl Config {
             tts,
             voice_wake: defaults.voice_wake,
             mcp,
+            workflow_host: defaults.workflow_host,
+            workflow_port: defaults.workflow_port,
         }
     }
 
@@ -1870,6 +1878,8 @@ mod tests {
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
             mcp: McpConfig::default(),
+            workflow_host: None,
+            workflow_port: None,
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1945,6 +1955,8 @@ default_temperature = 0.7
             tts: TtsConfig::default(),
             voice_wake: VoiceWakeConfig::default(),
             mcp: McpConfig::default(),
+            workflow_host: None,
+            workflow_port: None,
         };
 
         config.save().unwrap();

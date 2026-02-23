@@ -110,6 +110,8 @@ pub fn run_wizard() -> Result<Config> {
         tts: crate::config::TtsConfig::default(),
         voice_wake: crate::config::VoiceWakeConfig::default(),
         mcp: crate::config::McpConfig::default(),
+        workflow_host: None,
+        workflow_port: None,
     };
 
     println!(
@@ -303,6 +305,8 @@ pub fn run_quick_setup(
         tts: crate::config::TtsConfig::default(),
         voice_wake: crate::config::VoiceWakeConfig::default(),
         mcp: crate::config::McpConfig::default(),
+        workflow_host: None,
+        workflow_port: None,
     };
 
     config.save()?;

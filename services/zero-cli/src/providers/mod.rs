@@ -2,10 +2,13 @@
 //!
 //! This module provides LLM provider abstractions with retry and fallback support.
 //! Provider implementations are imported from `zero-gateway` and adapted to the local trait.
-
-pub mod reliable;
-
-pub use reliable::ReliableProvider;
+//!
+//! ## Architecture
+//!
+//! - `zero_gateway::Provider`: Full-featured trait with `ChatRequest`/`ChatResponse`
+//! - `Provider` (this module): Simplified trait with `chat_with_system()` for CLI use
+//! - `GatewayProviderAdapter`: Bridges gateway providers to CLI trait
+//! - `ResilientProvider` (from zero-gateway): Provides retry + fallback behavior
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -13,7 +16,7 @@ use std::sync::Arc;
 // Re-export gateway provider types for direct access
 pub use zero_gateway::{
     AnthropicProvider, AuthStyle, CompatibleProvider, GeminiProvider, OllamaProvider,
-    OpenAIProvider, OpenRouterProvider,
+    OpenAIProvider, OpenRouterProvider, ResilienceConfig, ResilientProvider,
 };
 
 // ============================================================================
@@ -22,10 +25,19 @@ pub use zero_gateway::{
 
 /// LLM provider trait for zero-cli.
 ///
-/// This is a simplified interface that works with the ReliableProvider wrapper.
+/// This is a simplified interface that works with the CLI's chat-based workflow.
 /// For the full-featured API with ChatRequest/ChatResponse, use zero-gateway directly.
+///
+/// This trait is a superset of `zero_agent::Provider`, allowing CLI providers
+/// to be used with `AgentExecutor` for tool-calling workflows.
 #[async_trait]
 pub trait Provider: Send + Sync {
+    /// Provider name (e.g., "anthropic", "openai").
+    fn name(&self) -> &str;
+
+    /// Check if the provider supports a specific model.
+    fn supports_model(&self, model: &str) -> bool;
+
     /// Chat with the LLM using an optional system prompt.
     async fn chat_with_system(
         &self,
@@ -52,6 +64,9 @@ pub trait Provider: Send + Sync {
 // ============================================================================
 
 /// Adapter that wraps a zero-gateway provider to implement the zero-cli Provider trait.
+///
+/// This adapter also implements `zero_agent::Provider`, allowing it to be used
+/// with `AgentExecutor` for tool-calling workflows.
 pub struct GatewayProviderAdapter<P: zero_gateway::Provider> {
     inner: P,
 }
@@ -60,10 +75,23 @@ impl<P: zero_gateway::Provider> GatewayProviderAdapter<P> {
     pub fn new(provider: P) -> Self {
         Self { inner: provider }
     }
+
+    /// Get the inner provider name.
+    pub fn provider_name(&self) -> &str {
+        self.inner.name()
+    }
 }
 
 #[async_trait]
 impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P> {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        self.inner.supports_model(model)
+    }
+
     async fn chat_with_system(
         &self,
         system: Option<&str>,
@@ -90,6 +118,34 @@ impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P>
 
     async fn warmup(&self) -> anyhow::Result<()> {
         // Gateway providers don't have a warmup method, just return Ok
+        Ok(())
+    }
+}
+
+/// Implement zero_agent::Provider for GatewayProviderAdapter.
+/// This allows CLI providers to be used with AgentExecutor.
+#[async_trait]
+impl<P: zero_gateway::Provider + 'static> zero_agent::Provider for GatewayProviderAdapter<P> {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+
+    fn supports_model(&self, model: &str) -> bool {
+        self.inner.supports_model(model)
+    }
+
+    async fn chat_with_system(
+        &self,
+        system: Option<&str>,
+        message: &str,
+        model: &str,
+        temperature: f64,
+    ) -> anyhow::Result<String> {
+        // Delegate to the Provider trait implementation
+        <Self as Provider>::chat_with_system(self, system, message, model, temperature).await
+    }
+
+    async fn warmup(&self) -> anyhow::Result<()> {
         Ok(())
     }
 }
@@ -173,7 +229,133 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
     anyhow::anyhow!("{provider} API error ({status}): {sanitized}")
 }
 
-/// Factory: create the right provider from config
+/// Create a gateway provider (returns Arc for use with ResilientProvider).
+fn create_gateway_provider(
+    name: &str,
+    api_key: Option<&str>,
+) -> anyhow::Result<Arc<dyn zero_gateway::Provider>> {
+    match name {
+        // ── Primary providers ───────────────────────────────────
+        "openrouter" => Ok(Arc::new(OpenRouterProvider::new(api_key))),
+        "anthropic" => Ok(Arc::new(AnthropicProvider::new(api_key.unwrap_or("")))),
+        "openai" => Ok(Arc::new(OpenAIProvider::new(api_key.unwrap_or("")))),
+        "ollama" => Ok(Arc::new(OllamaProvider::new(api_key.filter(|k| !k.is_empty())))),
+        "gemini" | "google" | "google-gemini" => Ok(Arc::new(GeminiProvider::new(api_key))),
+
+        // ── OpenAI-compatible providers ─────────────────────────
+        "venice" => Ok(Arc::new(CompatibleProvider::new(
+            "Venice",
+            "https://api.venice.ai",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "vercel" | "vercel-ai" => Ok(Arc::new(CompatibleProvider::new(
+            "Vercel AI Gateway",
+            "https://api.vercel.ai",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "cloudflare" | "cloudflare-ai" => Ok(Arc::new(CompatibleProvider::new(
+            "Cloudflare AI Gateway",
+            "https://gateway.ai.cloudflare.com/v1",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "moonshot" | "kimi" => Ok(Arc::new(CompatibleProvider::new(
+            "Moonshot",
+            "https://api.moonshot.cn",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "synthetic" => Ok(Arc::new(CompatibleProvider::new(
+            "Synthetic",
+            "https://api.synthetic.com",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "opencode" | "opencode-zen" => Ok(Arc::new(CompatibleProvider::new(
+            "OpenCode Zen",
+            "https://api.opencode.ai",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "zai" | "z.ai" => Ok(Arc::new(CompatibleProvider::new(
+            "Z.AI",
+            "https://api.z.ai",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "glm" | "zhipu" => Ok(Arc::new(CompatibleProvider::new(
+            "GLM",
+            "https://open.bigmodel.cn/api/paas",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "minimax" => Ok(Arc::new(CompatibleProvider::new(
+            "MiniMax",
+            "https://api.minimax.chat",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "bedrock" | "aws-bedrock" => Ok(Arc::new(CompatibleProvider::new(
+            "Amazon Bedrock",
+            "https://bedrock-runtime.us-east-1.amazonaws.com",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+        "qianfan" | "baidu" => Ok(Arc::new(CompatibleProvider::new(
+            "Qianfan",
+            "https://aip.baidubce.com",
+            api_key,
+            AuthStyle::Bearer,
+            vec![],
+        ))),
+
+        // ── Extended ecosystem ──────────────────────────────────
+        "groq" => Ok(Arc::new(CompatibleProvider::groq(api_key))),
+        "mistral" => Ok(Arc::new(CompatibleProvider::mistral(api_key))),
+        "xai" | "grok" => Ok(Arc::new(CompatibleProvider::xai(api_key))),
+        "deepseek" => Ok(Arc::new(CompatibleProvider::deepseek(api_key))),
+        "together" | "together-ai" => Ok(Arc::new(CompatibleProvider::together(api_key))),
+        "fireworks" | "fireworks-ai" => Ok(Arc::new(CompatibleProvider::fireworks(api_key))),
+        "perplexity" => Ok(Arc::new(CompatibleProvider::perplexity(api_key))),
+        "cohere" => Ok(Arc::new(CompatibleProvider::cohere(api_key))),
+
+        // ── Custom provider ─────────────────────────────────────
+        name if name.starts_with("custom:") => {
+            let base_url = name.strip_prefix("custom:").unwrap_or("");
+            if base_url.is_empty() {
+                anyhow::bail!(
+                    "Custom provider requires a URL. Format: custom:https://your-api.com"
+                );
+            }
+            Ok(Arc::new(CompatibleProvider::new(
+                "Custom",
+                base_url,
+                api_key,
+                AuthStyle::Bearer,
+                vec![],
+            )))
+        }
+
+        _ => anyhow::bail!(
+            "Unknown provider: {name}. Check README for supported providers or run `zero-bot onboard --interactive` to reconfigure.\n\
+             Tip: Use \"custom:https://your-api.com\" for any OpenAI-compatible endpoint."
+        ),
+    }
+}
+
+/// Factory: create the right provider from config (wrapped in CLI adapter)
 #[allow(clippy::too_many_lines)]
 pub fn create_provider(name: &str, api_key: Option<&str>) -> anyhow::Result<Box<dyn Provider>> {
     match name {
@@ -330,20 +512,25 @@ pub fn create_provider(name: &str, api_key: Option<&str>) -> anyhow::Result<Box<
 }
 
 /// Create provider chain with retry and fallback behavior.
+///
+/// Uses zero-gateway's `ResilientProvider` for retry/fallback logic.
 pub fn create_resilient_provider(
     primary_name: &str,
     api_key: Option<&str>,
     reliability: &crate::config::ReliabilityConfig,
 ) -> anyhow::Result<Box<dyn Provider>> {
-    let mut providers: Vec<(String, Box<dyn Provider>)> = Vec::new();
+    let mut gateway_providers: Vec<Arc<dyn zero_gateway::Provider>> = Vec::new();
 
-    providers.push((
-        primary_name.to_string(),
-        create_provider(primary_name, api_key)?,
-    ));
+    // Add primary provider
+    gateway_providers.push(create_gateway_provider(primary_name, api_key)?);
 
+    // Add fallback providers
     for fallback in &reliability.fallback_providers {
-        if fallback == primary_name || providers.iter().any(|(name, _)| name == fallback) {
+        if fallback == primary_name
+            || gateway_providers
+                .iter()
+                .any(|p| p.name() == fallback.as_str())
+        {
             continue;
         }
 
@@ -356,8 +543,8 @@ pub fn create_resilient_provider(
             );
         }
 
-        match create_provider(fallback, api_key) {
-            Ok(provider) => providers.push((fallback.clone(), provider)),
+        match create_gateway_provider(fallback, api_key) {
+            Ok(provider) => gateway_providers.push(provider),
             Err(e) => {
                 tracing::warn!(
                     fallback_provider = fallback,
@@ -367,11 +554,18 @@ pub fn create_resilient_provider(
         }
     }
 
-    Ok(Box::new(ReliableProvider::new(
-        providers,
-        reliability.provider_retries,
-        reliability.provider_backoff_ms,
-    )))
+    // Create resilience configuration
+    let resilience_config = ResilienceConfig {
+        max_retries: reliability.provider_retries,
+        base_backoff_ms: reliability.provider_backoff_ms.max(50),
+        max_backoff_ms: 10_000,
+    };
+
+    // Wrap in ResilientProvider from zero-gateway
+    let resilient = ResilientProvider::new(gateway_providers, resilience_config);
+
+    // Adapt to CLI Provider trait
+    Ok(Box::new(GatewayProviderAdapter::new(resilient)))
 }
 
 #[cfg(test)]

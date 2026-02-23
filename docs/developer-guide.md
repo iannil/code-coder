@@ -45,9 +45,9 @@ bun dev
 # 在指定目录运行
 bun dev <path>
 
-# 启动无头 API 服务器（默认端口 4096）
+# 启动无头 API 服务器（默认端口 4400）
 bun dev serve
-bun dev serve --port 8080
+bun dev serve --port 4400
 ```
 
 ### 2.3 常用开发命令
@@ -138,12 +138,14 @@ packages/ccode/src/
 会话是 CodeCoder 的核心组织单位，包含完整的对话上下文。
 
 **关键文件**:
+
 - `packages/ccode/src/session/index.ts` - 会话管理
 - `packages/ccode/src/session/processor.ts` - 消息处理
 - `packages/ccode/src/session/llm.ts` - LLM 集成
 - `packages/ccode/src/session/message-v2.ts` - 消息结构
 
 **会话生命周期**:
+
 ```
 创建会话 → 接收用户消息 → 调用 LLM → 解析工具调用 →
 权限检查 → 执行工具 → 处理结果 → 返回给 LLM →
@@ -155,6 +157,7 @@ packages/ccode/src/
 Agent 定义了 AI 的"人格"和能力限制。
 
 **内置 Agent**:
+
 | Agent | 模式 | 用途 |
 |-------|------|------|
 | `build` | primary | 主要编程 Agent，完整访问权限 |
@@ -169,6 +172,7 @@ Agent 定义了 AI 的"人格"和能力限制。
 工具让 AI 能够与外部世界交互。
 
 **内置工具** (46+):
+
 - 文件操作: `read`, `write`, `edit`, `glob`
 - 搜索: `grep`, `codesearch`, `websearch`, `webfetch`
 - 执行: `bash`, `task`
@@ -190,6 +194,7 @@ Agent 定义了 AI 的"人格"和能力限制。
 统一的 AI 提供商接口，支持 20+ 提供商。
 
 **支持的提供商**:
+
 - Anthropic (Claude)
 - OpenAI (GPT-4, o1, o3)
 - Google (Gemini, Vertex AI)
@@ -266,6 +271,7 @@ Model Context Protocol 支持，可扩展的工具生态系统。
 发布-订阅模式进行组件间通信。
 
 **主要事件类型**:
+
 - `session.*` - 会话相关事件
 - `permission.*` - 权限请求/响应事件
 - `mcp.*` - MCP 工具变更事件

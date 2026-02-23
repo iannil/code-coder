@@ -1,10 +1,14 @@
 //! GitHub integration for Zero Workflow.
 //!
-//! Provides webhook event parsing and API client for automated code review.
+//! Provides webhook event parsing and API client for automated code review
+//! and issue management.
 
 mod client;
 
-pub use client::{GitHubClient, PullRequest, PullRequestFile, ReviewComment};
+pub use client::{
+    CreateIssueRequest, GitHubClient, IssueResponse, IssueUser, Label, PullRequest,
+    PullRequestFile, ReviewComment,
+};
 
 use serde::{Deserialize, Serialize};
 

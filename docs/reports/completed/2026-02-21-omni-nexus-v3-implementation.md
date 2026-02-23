@@ -125,9 +125,11 @@ Permission { resource: "workflow:*", action: Admin }
 |------|------|
 | CodeCoder API | 4400 |
 | Web Frontend | 4401 |
-| Zero Gateway | 4402 |
+| Zero CLI Daemon | 4402 |
 | Faster Whisper | 4403 |
-| Zero Workflow | 4405 |
+| Zero Gateway | 4404 |
+| Zero Channels | 4405 |
+| Zero Workflow | 4406 |
 
 ---
 

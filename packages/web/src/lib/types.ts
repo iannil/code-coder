@@ -1292,3 +1292,396 @@ export interface ChatResponse {
     total_tokens: number
   }
 }
+
+// ============================================================================
+// Compare Types (A/B Testing)
+// ============================================================================
+
+export interface CompareModelResult {
+  model: string
+  provider: string
+  model_id: string
+  content: string
+  tokens: {
+    input: number
+    output: number
+    total: number
+  }
+  latency_ms: number
+  error?: string
+}
+
+export interface CompareResponse {
+  id: string
+  results: CompareModelResult[]
+  total_tokens: number
+  total_latency_ms: number
+}
+
+export interface CompareHistoryItem {
+  id: string
+  timestamp: number
+  prompt: string
+  models: string[]
+  total_tokens: number
+  total_latency_ms: number
+  votes: Record<string, number>
+  vote_count: number
+  avg_rating: Record<string, number>
+}
+
+export interface CompareHistoryEntry extends CompareHistoryItem {
+  system?: string
+  results: CompareModelResult[]
+  ratings: Record<string, number[]>
+}
+
+export interface CompareHistoryListResponse {
+  items: CompareHistoryItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CompareVoteRequest {
+  model: string
+  rating?: number
+  user_id?: string
+}
+
+export interface CompareVoteResponse {
+  id: string
+  votes: Record<string, number>
+  avg_rating: Record<string, number>
+  message: string
+}
+
+export interface CompareInput {
+  models: string[]
+  prompt: string
+  system?: string
+  max_tokens?: number
+  temperature?: number
+}
+
+export interface CompareModelInfo {
+  id: string
+  provider: string
+  name: string
+  capabilities: {
+    reasoning: boolean
+    toolcall: boolean
+  }
+}
+
+// ============================================================================
+// Executive Dashboard Types
+// ============================================================================
+
+export interface ExecutiveTrendDataPoint {
+  date: string
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  requests: number
+  cost_usd: number
+}
+
+export interface ExecutiveTrendsResponse {
+  period: string
+  days: number
+  trends: ExecutiveTrendDataPoint[]
+  totals: {
+    input_tokens: number
+    output_tokens: number
+    total_tokens: number
+    requests: number
+    cost_usd: number
+  }
+}
+
+export interface ExecutiveTeamUsage {
+  team_id: string
+  team_name: string
+  member_count: number
+  tokens_used: number
+  requests: number
+  percentage: number
+  top_users: Array<{
+    user_id: string
+    name: string
+    tokens: number
+  }>
+}
+
+export interface ExecutiveTeamsResponse {
+  teams: ExecutiveTeamUsage[]
+  totals: {
+    tokens: number
+    requests: number
+    members: number
+  }
+  team_count: number
+}
+
+export interface ExecutiveProjectActivity {
+  project_id: string
+  project_name: string
+  commits_today: number
+  commits_week: number
+  active_contributors: number
+  last_commit?: string
+  ai_sessions: number
+}
+
+export interface ExecutiveActivityResponse {
+  projects: ExecutiveProjectActivity[]
+  totals: {
+    commits_today: number
+    commits_week: number
+    ai_sessions: number
+  }
+  project_count: number
+}
+
+export interface ExecutiveSummary {
+  period: string
+  total_cost_usd: number
+  cost_change_percent: number
+  total_tokens: number
+  total_requests: number
+  active_users: number
+  active_projects: number
+  top_models: Array<{
+    model: string
+    usage_percent: number
+    cost_usd: number
+  }>
+  alerts: Array<{
+    type: "warning" | "critical" | "info"
+    message: string
+    metric?: string
+    value?: number
+    threshold?: number
+  }>
+}
+
+// ============================================================================
+// Knowledge Base Types (RAG)
+// ============================================================================
+
+export interface KnowledgeDocument {
+  id: string
+  filename: string
+  chunk_count: number
+  created_at: string
+  size_bytes: number
+  metadata?: Record<string, string>
+}
+
+export interface KnowledgeSearchResult {
+  content: string
+  score: number
+  document_id: string
+  chunk_index: number
+  filename: string
+  heading?: string
+}
+
+export interface KnowledgeUploadRequest {
+  content: string
+  filename: string
+  mime_type?: string
+  metadata?: Record<string, string>
+}
+
+export interface KnowledgeUploadResponse {
+  id: string
+  filename: string
+  chunk_count: number
+  size_bytes: number
+  has_embeddings: boolean
+  duplicate?: boolean
+  message?: string
+}
+
+export interface KnowledgeSearchRequest {
+  query: string
+  limit?: number
+  min_score?: number
+  document_id?: string
+}
+
+export interface KnowledgeSearchResponse {
+  results: KnowledgeSearchResult[]
+  total: number
+  query: string
+  search_mode: "hybrid" | "keyword"
+}
+
+export interface KnowledgeHealthResponse {
+  status: "healthy" | "degraded"
+  document_count: number
+  chunk_count: number
+  embedding_count: number
+  embedding_enabled: boolean
+  search_mode: "hybrid" | "keyword"
+  db_path: string
+  error?: string
+}
+
+// ============================================================================
+// Budget & Cost Control Types
+// ============================================================================
+
+export type BudgetPeriod = "daily" | "weekly" | "monthly"
+export type BudgetAlertSeverity = "info" | "warning" | "critical"
+
+export interface BudgetThreshold {
+  /** Percentage of budget at which to trigger alert (0-100) */
+  percentage: number
+  /** Severity level for this threshold */
+  severity: BudgetAlertSeverity
+  /** Whether to send notification */
+  notify: boolean
+  /** Notification channels (email, slack, etc.) */
+  channels?: string[]
+}
+
+export interface BudgetConfig {
+  id: string
+  name: string
+  /** Budget period */
+  period: BudgetPeriod
+  /** Budget amount in USD */
+  budget_usd: number
+  /** Current spend in USD */
+  current_spend_usd: number
+  /** Alert thresholds */
+  thresholds: BudgetThreshold[]
+  /** Team/department ID (optional, for department-level budgets) */
+  team_id?: string
+  /** Whether this budget is active */
+  enabled: boolean
+  /** Reset day for monthly budgets (1-28) */
+  reset_day?: number
+  /** Created timestamp */
+  created_at: string
+  /** Updated timestamp */
+  updated_at: string
+}
+
+export interface BudgetAlert {
+  id: string
+  budget_id: string
+  budget_name: string
+  severity: BudgetAlertSeverity
+  message: string
+  threshold_percentage: number
+  current_percentage: number
+  current_spend_usd: number
+  budget_usd: number
+  triggered_at: string
+  acknowledged: boolean
+  acknowledged_by?: string
+  acknowledged_at?: string
+}
+
+export interface BudgetSummary {
+  total_budget_usd: number
+  total_spend_usd: number
+  percentage_used: number
+  period: BudgetPeriod
+  active_alerts: number
+  budgets: Array<{
+    id: string
+    name: string
+    budget_usd: number
+    spend_usd: number
+    percentage: number
+    status: "ok" | "warning" | "critical"
+  }>
+}
+
+export interface BudgetCreateInput {
+  name: string
+  period: BudgetPeriod
+  budget_usd: number
+  thresholds: BudgetThreshold[]
+  team_id?: string
+  enabled?: boolean
+  reset_day?: number
+}
+
+export interface BudgetUpdateInput {
+  name?: string
+  budget_usd?: number
+  thresholds?: BudgetThreshold[]
+  enabled?: boolean
+  reset_day?: number
+}
+
+// ============================================================================
+// DLP (Data Leakage Prevention) Types
+// ============================================================================
+
+export type DlpRuleType = "regex" | "keyword" | "pattern"
+export type DlpAction = "block" | "redact" | "warn" | "log"
+
+export interface DlpRule {
+  id: string
+  name: string
+  description?: string
+  type: DlpRuleType
+  pattern: string
+  action: DlpAction
+  enabled: boolean
+  /** Categories this rule belongs to */
+  categories: string[]
+  /** Replacement text for redaction */
+  replacement?: string
+  /** Priority (lower = higher priority) */
+  priority: number
+  /** Match count */
+  match_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface DlpWhitelistEntry {
+  id: string
+  pattern: string
+  description?: string
+  created_at: string
+}
+
+export interface DlpIncident {
+  id: string
+  rule_id: string
+  rule_name: string
+  action_taken: DlpAction
+  content_preview: string
+  user_id?: string
+  request_id?: string
+  triggered_at: string
+}
+
+export interface DlpConfig {
+  enabled: boolean
+  default_action: DlpAction
+  log_incidents: boolean
+  notify_on_block: boolean
+  notification_channels: string[]
+}
+
+export interface DlpSummary {
+  total_rules: number
+  active_rules: number
+  incidents_24h: number
+  incidents_7d: number
+  top_triggered_rules: Array<{
+    rule_id: string
+    rule_name: string
+    count: number
+  }>
+}

@@ -13,7 +13,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import type { Subprocess } from "bun"
 
-const TEST_PORT = 14405
+const TEST_PORT = 14420
 const BASE_URL = `http://localhost:${TEST_PORT}/mcp`
 const TEST_API_KEY = "test-integration-key"
 

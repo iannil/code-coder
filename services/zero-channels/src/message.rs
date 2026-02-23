@@ -11,6 +11,10 @@ pub enum ChannelType {
     Discord,
     Slack,
     Feishu,
+    /// WeChat Work (企业微信)
+    WeCom,
+    /// DingTalk (钉钉)
+    DingTalk,
     WhatsApp,
     Matrix,
     IMessage,
@@ -26,6 +30,8 @@ impl ChannelType {
             Self::Discord => "discord",
             Self::Slack => "slack",
             Self::Feishu => "feishu",
+            Self::WeCom => "wecom",
+            Self::DingTalk => "dingtalk",
             Self::WhatsApp => "whatsapp",
             Self::Matrix => "matrix",
             Self::IMessage => "imessage",

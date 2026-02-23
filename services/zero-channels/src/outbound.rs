@@ -1,12 +1,16 @@
 //! Outbound message routing for zero-channels.
 //!
 //! Provides a unified interface for routing responses from CodeCoder back to
-//! the originating IM channel (Telegram, Feishu, etc.).
+//! the originating IM channel (Telegram, Feishu, WeChat Work, DingTalk, WhatsApp, Email, etc.).
 
+use crate::dingtalk::DingTalkChannel;
+use crate::email::EmailChannel;
 use crate::feishu::FeishuChannel;
 use crate::message::{ChannelMessage, ChannelType, OutgoingContent, OutgoingMessage};
 use crate::telegram::TelegramChannel;
 use crate::traits::Channel;
+use crate::wecom::WeComChannel;
+use crate::whatsapp::WhatsAppChannel;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -24,6 +28,14 @@ pub struct OutboundRouter {
     telegram: Option<Arc<TelegramChannel>>,
     /// Feishu channel instance
     feishu: Option<Arc<FeishuChannel>>,
+    /// WeChat Work channel instance
+    wecom: Option<Arc<WeComChannel>>,
+    /// DingTalk channel instance
+    dingtalk: Option<Arc<DingTalkChannel>>,
+    /// WhatsApp channel instance
+    whatsapp: Option<Arc<WhatsAppChannel>>,
+    /// Email channel instance
+    email: Option<Arc<EmailChannel>>,
     /// Pending responses keyed by request message ID
     pending: Arc<RwLock<HashMap<String, PendingResponse>>>,
 }
@@ -54,6 +66,10 @@ impl OutboundRouter {
         Self {
             telegram: None,
             feishu: None,
+            wecom: None,
+            dingtalk: None,
+            whatsapp: None,
+            email: None,
             pending: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -67,6 +83,30 @@ impl OutboundRouter {
     /// Set the Feishu channel instance.
     pub fn with_feishu(mut self, channel: Arc<FeishuChannel>) -> Self {
         self.feishu = Some(channel);
+        self
+    }
+
+    /// Set the WeChat Work channel instance.
+    pub fn with_wecom(mut self, channel: Arc<WeComChannel>) -> Self {
+        self.wecom = Some(channel);
+        self
+    }
+
+    /// Set the DingTalk channel instance.
+    pub fn with_dingtalk(mut self, channel: Arc<DingTalkChannel>) -> Self {
+        self.dingtalk = Some(channel);
+        self
+    }
+
+    /// Set the WhatsApp channel instance.
+    pub fn with_whatsapp(mut self, channel: Arc<WhatsAppChannel>) -> Self {
+        self.whatsapp = Some(channel);
+        self
+    }
+
+    /// Set the Email channel instance.
+    pub fn with_email(mut self, channel: Arc<EmailChannel>) -> Self {
+        self.email = Some(channel);
         self
     }
 
@@ -104,6 +144,10 @@ impl OutboundRouter {
         match message.channel_type {
             ChannelType::Telegram => self.send_telegram(message).await,
             ChannelType::Feishu => self.send_feishu(message).await,
+            ChannelType::WeCom => self.send_wecom(message).await,
+            ChannelType::DingTalk => self.send_dingtalk(message).await,
+            ChannelType::WhatsApp => self.send_whatsapp(message).await,
+            ChannelType::Email => self.send_email(message).await,
             _ => SendResult {
                 success: false,
                 message_id: None,
@@ -209,6 +253,110 @@ impl OutboundRouter {
             },
             Err(e) => {
                 tracing::error!(error = %e, "Failed to send Feishu message");
+                SendResult {
+                    success: false,
+                    message_id: None,
+                    error: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    async fn send_wecom(&self, message: OutgoingMessage) -> SendResult {
+        let Some(ref wecom) = self.wecom else {
+            return SendResult {
+                success: false,
+                message_id: None,
+                error: Some("WeChat Work channel not configured".to_string()),
+            };
+        };
+
+        match wecom.send(message).await {
+            Ok(msg_id) => SendResult {
+                success: true,
+                message_id: Some(msg_id),
+                error: None,
+            },
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to send WeChat Work message");
+                SendResult {
+                    success: false,
+                    message_id: None,
+                    error: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    async fn send_dingtalk(&self, message: OutgoingMessage) -> SendResult {
+        let Some(ref dingtalk) = self.dingtalk else {
+            return SendResult {
+                success: false,
+                message_id: None,
+                error: Some("DingTalk channel not configured".to_string()),
+            };
+        };
+
+        match dingtalk.send(message).await {
+            Ok(msg_id) => SendResult {
+                success: true,
+                message_id: Some(msg_id),
+                error: None,
+            },
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to send DingTalk message");
+                SendResult {
+                    success: false,
+                    message_id: None,
+                    error: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    async fn send_whatsapp(&self, message: OutgoingMessage) -> SendResult {
+        let Some(ref whatsapp) = self.whatsapp else {
+            return SendResult {
+                success: false,
+                message_id: None,
+                error: Some("WhatsApp channel not configured".to_string()),
+            };
+        };
+
+        match whatsapp.send(message).await {
+            Ok(msg_id) => SendResult {
+                success: true,
+                message_id: Some(msg_id),
+                error: None,
+            },
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to send WhatsApp message");
+                SendResult {
+                    success: false,
+                    message_id: None,
+                    error: Some(e.to_string()),
+                }
+            }
+        }
+    }
+
+    async fn send_email(&self, message: OutgoingMessage) -> SendResult {
+        let Some(ref email) = self.email else {
+            return SendResult {
+                success: false,
+                message_id: None,
+                error: Some("Email channel not configured".to_string()),
+            };
+        };
+
+        match email.send(message).await {
+            Ok(msg_id) => SendResult {
+                success: true,
+                message_id: Some(msg_id),
+                error: None,
+            },
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to send Email message");
                 SendResult {
                     success: false,
                     message_id: None,

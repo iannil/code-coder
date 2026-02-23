@@ -36,9 +36,9 @@ Created `zero-bot/src/client.rs` with HTTP client for Zero Services:
 **Endpoints:**
 | Service | Default Port | Purpose |
 |---------|--------------|---------|
-| Gateway | 4402 | LLM routing, auth, quota |
-| Channels | 4404 | Message channel management |
-| Workflow | 4405 | Cron, git webhooks |
+| Gateway | 4404 | LLM routing, auth, quota |
+| Channels | 4405 | Message channel management |
+| Workflow | 4406 | Cron, git webhooks |
 
 ### 3. Updated lib.rs
 

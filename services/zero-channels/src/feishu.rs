@@ -495,6 +495,387 @@ pub fn process_event_callback(
     Ok((None, None))
 }
 
+// ============================================================================
+// Meeting Minutes API Types
+// ============================================================================
+
+/// Meeting summary from Feishu calendar.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MeetingSummary {
+    /// Meeting ID
+    pub meeting_id: String,
+    /// Meeting title
+    pub title: String,
+    /// Meeting start time (RFC3339)
+    pub start_time: String,
+    /// Meeting end time (RFC3339)
+    pub end_time: String,
+    /// Meeting organizer
+    pub organizer: String,
+    /// List of attendees
+    pub attendees: Vec<String>,
+    /// Meeting notes/minutes content
+    pub notes: String,
+    /// Action items extracted
+    pub action_items: Vec<ActionItem>,
+    /// Key decisions made
+    pub decisions: Vec<String>,
+    /// Meeting location or link
+    pub location: Option<String>,
+}
+
+/// Action item from meeting.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ActionItem {
+    /// Task description
+    pub task: String,
+    /// Assignee
+    pub assignee: Option<String>,
+    /// Due date
+    pub due_date: Option<String>,
+    /// Priority (high/medium/low)
+    pub priority: Option<String>,
+}
+
+/// Meeting minutes retrieval response.
+#[derive(Debug, serde::Deserialize)]
+struct MeetingListResponse {
+    code: i32,
+    msg: String,
+    data: Option<MeetingListData>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MeetingListData {
+    items: Option<Vec<MeetingItem>>,
+    page_token: Option<String>,
+    has_more: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct MeetingItem {
+    event_id: String,
+    summary: Option<String>,
+    start_time: Option<TimeInfo>,
+    end_time: Option<TimeInfo>,
+    organizer: Option<Organizer>,
+    attendees: Option<Vec<Attendee>>,
+    location: Option<Location>,
+    description: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct TimeInfo {
+    timestamp: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Organizer {
+    user_id: Option<String>,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Attendee {
+    user_id: Option<String>,
+    display_name: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct Location {
+    name: Option<String>,
+}
+
+impl FeishuChannel {
+    /// Get recent meetings from user's calendar.
+    ///
+    /// Requires `calendar:calendar` scope.
+    pub async fn get_recent_meetings(
+        &self,
+        calendar_id: &str,
+        days_back: u32,
+    ) -> anyhow::Result<Vec<MeetingSummary>> {
+        let token = self.get_access_token().await?;
+
+        let now = chrono::Utc::now();
+        let start = now - chrono::Duration::days(days_back as i64);
+
+        let url = format!(
+            "{}/calendar/v4/calendars/{}/events?start_time={}&end_time={}&page_size=50",
+            self.api_url(""),
+            calendar_id,
+            start.timestamp(),
+            now.timestamp()
+        );
+
+        let response: MeetingListResponse = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if response.code != 0 {
+            anyhow::bail!("Failed to fetch meetings: {} - {}", response.code, response.msg);
+        }
+
+        let items = response
+            .data
+            .and_then(|d| d.items)
+            .unwrap_or_default();
+
+        let summaries = items
+            .into_iter()
+            .map(|item| {
+                let notes = item.description.clone().unwrap_or_default();
+                let action_items = Self::extract_action_items(&notes);
+                let decisions = Self::extract_decisions(&notes);
+
+                MeetingSummary {
+                    meeting_id: item.event_id,
+                    title: item.summary.unwrap_or_else(|| "Untitled Meeting".to_string()),
+                    start_time: item
+                        .start_time
+                        .and_then(|t| t.timestamp)
+                        .unwrap_or_default(),
+                    end_time: item
+                        .end_time
+                        .and_then(|t| t.timestamp)
+                        .unwrap_or_default(),
+                    organizer: item
+                        .organizer
+                        .and_then(|o| o.display_name)
+                        .unwrap_or_else(|| "Unknown".to_string()),
+                    attendees: item
+                        .attendees
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|a| a.display_name)
+                        .collect(),
+                    notes,
+                    action_items,
+                    decisions,
+                    location: item.location.and_then(|l| l.name),
+                }
+            })
+            .collect();
+
+        Ok(summaries)
+    }
+
+    /// Extract action items from meeting notes.
+    fn extract_action_items(notes: &str) -> Vec<ActionItem> {
+        let mut items = Vec::new();
+
+        // Look for common action item patterns
+        // - [ ] Task @assignee due:2024-01-01
+        // - TODO: Task
+        // - Action: Task
+        for line in notes.lines() {
+            let line = line.trim();
+
+            // Markdown checkbox pattern
+            if line.starts_with("- [ ]") || line.starts_with("- [x]") {
+                let task = line[5..].trim();
+                items.push(Self::parse_action_item(task));
+            }
+            // TODO pattern
+            else if line.to_uppercase().starts_with("TODO:") {
+                let task = line[5..].trim();
+                items.push(Self::parse_action_item(task));
+            }
+            // Action pattern
+            else if line.to_uppercase().starts_with("ACTION:") {
+                let task = line[7..].trim();
+                items.push(Self::parse_action_item(task));
+            }
+            // Chinese patterns
+            else if line.starts_with("待办:") || line.starts_with("待办：") {
+                let task = line.chars().skip(3).collect::<String>();
+                items.push(Self::parse_action_item(task.trim()));
+            }
+        }
+
+        items
+    }
+
+    /// Parse action item with optional assignee and due date.
+    fn parse_action_item(text: &str) -> ActionItem {
+        let mut task = text.to_string();
+        let mut assignee = None;
+        let mut due_date = None;
+        let mut priority = None;
+
+        // Extract @assignee
+        if let Some(at_pos) = text.find('@') {
+            let end = text[at_pos + 1..]
+                .find(|c: char| c.is_whitespace())
+                .map(|i| at_pos + 1 + i)
+                .unwrap_or(text.len());
+            assignee = Some(text[at_pos + 1..end].to_string());
+            task = text[..at_pos].to_string() + &text[end..];
+        }
+
+        // Extract due:YYYY-MM-DD
+        if let Some(due_pos) = text.find("due:") {
+            let date_start = due_pos + 4;
+            let date_end = text[date_start..]
+                .find(|c: char| c.is_whitespace())
+                .map(|i| date_start + i)
+                .unwrap_or(text.len());
+            due_date = Some(text[date_start..date_end].to_string());
+        }
+
+        // Extract priority indicators
+        if text.contains("!!") || text.to_lowercase().contains("urgent") {
+            priority = Some("high".to_string());
+        } else if text.contains("!") || text.to_lowercase().contains("important") {
+            priority = Some("medium".to_string());
+        }
+
+        ActionItem {
+            task: task.trim().to_string(),
+            assignee,
+            due_date,
+            priority,
+        }
+    }
+
+    /// Extract key decisions from meeting notes.
+    fn extract_decisions(notes: &str) -> Vec<String> {
+        let mut decisions = Vec::new();
+
+        for line in notes.lines() {
+            let line = line.trim();
+
+            // Decision patterns
+            if line.to_uppercase().starts_with("DECISION:") {
+                decisions.push(line[9..].trim().to_string());
+            } else if line.starts_with("决定:") || line.starts_with("决定：") {
+                decisions.push(line.chars().skip(3).collect::<String>().trim().to_string());
+            } else if line.to_uppercase().starts_with("AGREED:") {
+                decisions.push(line[7..].trim().to_string());
+            }
+        }
+
+        decisions
+    }
+
+    /// Create a document in Feishu Docs.
+    ///
+    /// Requires `docs:doc` scope.
+    pub async fn create_document(
+        &self,
+        folder_token: &str,
+        title: &str,
+        content: &str,
+    ) -> anyhow::Result<String> {
+        let token = self.get_access_token().await?;
+
+        let url = format!("{}/docx/v1/documents", self.api_url(""));
+
+        let body = serde_json::json!({
+            "folder_token": folder_token,
+            "title": title
+        });
+
+        let response: serde_json::Value = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&body)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        let code = response["code"].as_i64().unwrap_or(-1);
+        if code != 0 {
+            let msg = response["msg"].as_str().unwrap_or("Unknown error");
+            anyhow::bail!("Failed to create document: {} - {}", code, msg);
+        }
+
+        let doc_token = response["data"]["document"]["document_id"]
+            .as_str()
+            .ok_or_else(|| anyhow::anyhow!("No document_id in response"))?
+            .to_string();
+
+        // Update document content
+        self.update_document_content(&doc_token, content).await?;
+
+        Ok(doc_token)
+    }
+
+    /// Update document content.
+    async fn update_document_content(&self, doc_token: &str, content: &str) -> anyhow::Result<()> {
+        let token = self.get_access_token().await?;
+
+        // Get document blocks first
+        let url = format!(
+            "{}/docx/v1/documents/{}/blocks",
+            self.api_url(""),
+            doc_token
+        );
+
+        let blocks_response: serde_json::Value = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        // Find the document root block
+        let root_block_id = blocks_response["data"]["items"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(|item| item["block_id"].as_str())
+            .unwrap_or(doc_token);
+
+        // Create text block with content
+        let create_url = format!(
+            "{}/docx/v1/documents/{}/blocks/{}/children",
+            self.api_url(""),
+            doc_token,
+            root_block_id
+        );
+
+        let block_body = serde_json::json!({
+            "children": [{
+                "block_type": 2, // Text block
+                "text": {
+                    "elements": [{
+                        "text_run": {
+                            "content": content
+                        }
+                    }]
+                }
+            }]
+        });
+
+        let response: serde_json::Value = self
+            .client
+            .post(&create_url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&block_body)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        let code = response["code"].as_i64().unwrap_or(-1);
+        if code != 0 {
+            let msg = response["msg"].as_str().unwrap_or("Unknown error");
+            tracing::warn!("Failed to update document content: {} - {}", code, msg);
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -13,6 +13,7 @@ import { buildCriteria, type AutonomousDecisionCriteria } from "../decision/crit
 import { createSafetyIntegration, type SafetyIntegration } from "../safety/integration"
 import { RequirementTracker, createRequirementTracker } from "../planning/requirement-tracker"
 import { NextStepPlanner, createNextStepPlanner, type CompletionCriteria, type NextStepPlan } from "../planning/next-step-planner"
+import { WebSearcher, createWebSearcher, type WebSolution } from "../execution/web-search"
 
 const log = Log.create({ service: "autonomous.orchestrator" })
 
@@ -49,6 +50,7 @@ export class Orchestrator {
   private executor: Executor | null = null
   private safetyGuard: SafetyGuard
   private safetyIntegration: SafetyIntegration
+  private webSearcher: WebSearcher
   private config: OrchestratorConfig
   private context: SessionContext
   private requirementTracker: RequirementTracker
@@ -56,6 +58,7 @@ export class Orchestrator {
   private currentIteration: number = 0
   private recentFailures: number = 0
   private recentErrors: string[] = []
+  private webSearchSolutions: WebSolution[] = []
 
   constructor(context: SessionContext, config: OrchestratorConfig) {
     this.context = context
@@ -77,6 +80,11 @@ export class Orchestrator {
     })
 
     this.safetyGuard = new SafetyGuard(this.context.sessionId, config.resourceBudget)
+
+    // Initialize web searcher for retrieval-augmented problem solving
+    this.webSearcher = createWebSearcher(this.context.sessionId, {
+      confidenceThreshold: config.autonomyLevel === "lunatic" ? 0.2 : 0.4,
+    })
 
     // Initialize requirement tracker
     this.requirementTracker = createRequirementTracker(this.context.sessionId)
@@ -363,9 +371,26 @@ export class Orchestrator {
       // Update recent errors
       if (!testResult.success) {
         this.recentErrors.push(...testResult.errors)
+
+        // Try web search for solutions when tests fail
+        const searchSolution = await this.searchForSolutions(testResult.errors)
+        if (searchSolution && searchSolution.confidence > 0.5) {
+          this.webSearchSolutions.push(searchSolution)
+          log.info("Web search found potential solution", {
+            sessionId: this.context.sessionId,
+            confidence: searchSolution.confidence,
+            sourceCount: searchSolution.sources.length,
+          })
+        }
       }
       if (!verifyResult.success) {
         this.recentErrors.push(...verifyResult.errors)
+
+        // Try web search for verification errors too
+        const searchSolution = await this.searchForSolutions(verifyResult.errors)
+        if (searchSolution && searchSolution.confidence > 0.5) {
+          this.webSearchSolutions.push(searchSolution)
+        }
       }
 
       // Keep only recent errors
@@ -374,8 +399,54 @@ export class Orchestrator {
       return { success: testResult.success && verifyResult.success }
     } catch (error) {
       this.recentErrors.push(error instanceof Error ? error.message : String(error))
+
+      // Search for solutions on unexpected errors
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      const searchSolution = await this.searchForSolutions([errorMsg])
+      if (searchSolution && searchSolution.confidence > 0.3) {
+        this.webSearchSolutions.push(searchSolution)
+        log.info("Web search found potential solution for exception", {
+          sessionId: this.context.sessionId,
+          confidence: searchSolution.confidence,
+        })
+      }
+
       return { success: false }
     }
+  }
+
+  /**
+   * Search for solutions using web search when encountering errors
+   */
+  private async searchForSolutions(errors: string[]): Promise<WebSolution | null> {
+    if (errors.length === 0) return null
+
+    try {
+      // Combine errors into a single problem description
+      const problem = errors.slice(0, 3).join("\n")
+
+      const solution = await this.webSearcher.search({
+        sessionId: this.context.sessionId,
+        problem,
+        errorMessage: errors[0],
+        previousAttempts: this.recentErrors.slice(-5),
+      })
+
+      return solution
+    } catch (error) {
+      log.warn("Web search failed", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
+  }
+
+  /**
+   * Get web search solutions from current session
+   */
+  getWebSearchSolutions(): WebSolution[] {
+    return this.webSearchSolutions
   }
 
   /**

@@ -80,6 +80,10 @@ pub struct Config {
     /// Tools configuration
     #[serde(default)]
     pub tools: ToolsConfig,
+
+    /// Audit logging configuration
+    #[serde(default)]
+    pub audit: crate::audit::AuditConfig,
 }
 
 impl Config {
@@ -239,6 +243,14 @@ pub struct ChannelsConfig {
     #[serde(default)]
     pub feishu: Option<FeishuConfig>,
 
+    /// WeChat Work (企业微信) bot configuration
+    #[serde(default)]
+    pub wecom: Option<WeComConfig>,
+
+    /// DingTalk (钉钉) bot configuration
+    #[serde(default)]
+    pub dingtalk: Option<DingTalkConfig>,
+
     /// Matrix bot configuration
     #[serde(default)]
     pub matrix: Option<MatrixConfig>,
@@ -255,6 +267,10 @@ pub struct ChannelsConfig {
     #[serde(default)]
     pub cli: Option<CliChannelConfig>,
 
+    /// Email channel configuration (IMAP/SMTP)
+    #[serde(default)]
+    pub email: Option<EmailConfig>,
+
     /// TTS configuration
     #[serde(default)]
     pub tts: Option<TtsConfig>,
@@ -262,6 +278,10 @@ pub struct ChannelsConfig {
     /// STT configuration
     #[serde(default)]
     pub stt: Option<SttConfig>,
+
+    /// Asset capture configuration (for capturing and saving content to Feishu Docs/Notion)
+    #[serde(default)]
+    pub capture: Option<CaptureConfig>,
 }
 
 impl Default for ChannelsConfig {
@@ -273,12 +293,16 @@ impl Default for ChannelsConfig {
             discord: None,
             slack: None,
             feishu: None,
+            wecom: None,
+            dingtalk: None,
             matrix: None,
             whatsapp: None,
             imessage: None,
             cli: None,
+            email: None,
             tts: None,
             stt: None,
+            capture: None,
         }
     }
 }
@@ -327,6 +351,49 @@ pub struct FeishuConfig {
     pub verification_token: Option<String>,
     #[serde(default)]
     pub allowed_users: Vec<String>,
+}
+
+/// WeChat Work (企业微信) channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeComConfig {
+    pub enabled: bool,
+    /// Enterprise ID (corpid)
+    pub corp_id: String,
+    /// Agent ID (agentid)
+    pub agent_id: i64,
+    /// Secret for the agent
+    pub secret: String,
+    /// Token for callback verification
+    #[serde(default)]
+    pub token: Option<String>,
+    /// AES encoding key for message encryption/decryption
+    #[serde(default)]
+    pub encoding_aes_key: Option<String>,
+    /// Allowed user IDs. Use "*" to allow everyone.
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+}
+
+/// DingTalk (钉钉) channel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DingTalkConfig {
+    pub enabled: bool,
+    /// App Key for the robot
+    pub app_key: String,
+    /// App Secret for the robot
+    pub app_secret: String,
+    /// Robot code (for internal enterprise bot)
+    #[serde(default)]
+    pub robot_code: Option<String>,
+    /// Outgoing webhook token for signature verification
+    #[serde(default)]
+    pub outgoing_token: Option<String>,
+    /// Allowed user IDs. Use "*" to allow everyone.
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+    /// Use Stream mode instead of webhook mode
+    #[serde(default)]
+    pub stream_mode: bool,
 }
 
 /// TTS (Text-to-Speech) configuration.
@@ -408,6 +475,106 @@ pub struct CliChannelConfig {
     pub prompt: String,
 }
 
+/// Email channel configuration (IMAP for inbound, SMTP for outbound).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailConfig {
+    /// Enable email channel
+    #[serde(default)]
+    pub enabled: bool,
+    /// IMAP server hostname
+    pub imap_host: String,
+    /// IMAP server port (default: 993 for TLS)
+    #[serde(default = "default_imap_port")]
+    pub imap_port: u16,
+    /// IMAP folder to poll (default: INBOX)
+    #[serde(default = "default_imap_folder")]
+    pub imap_folder: String,
+    /// SMTP server hostname
+    pub smtp_host: String,
+    /// SMTP server port (default: 587 for STARTTLS)
+    #[serde(default = "default_smtp_port")]
+    pub smtp_port: u16,
+    /// Use TLS for SMTP (default: true)
+    #[serde(default = "default_true")]
+    pub smtp_tls: bool,
+    /// Email username for authentication
+    pub username: String,
+    /// Email password for authentication
+    pub password: String,
+    /// From address for outgoing emails
+    pub from_address: String,
+    /// Poll interval in seconds (default: 60)
+    #[serde(default = "default_email_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Allowed sender addresses/domains (empty = deny all, ["*"] = allow all)
+    #[serde(default)]
+    pub allowed_senders: Vec<String>,
+}
+
+// ============================================================================
+// Capture Configuration
+// ============================================================================
+
+/// Asset capture configuration for cross-platform content capture.
+///
+/// Enables users to forward content from IM channels (Telegram, WeChat, etc.)
+/// and automatically extract, summarize, tag, and save to knowledge bases.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CaptureConfig {
+    /// Enable asset capture functionality
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Feishu Docs configuration for saving captured assets
+    #[serde(default)]
+    pub feishu_docs: Option<FeishuDocsConfig>,
+
+    /// Notion configuration for saving captured assets
+    #[serde(default)]
+    pub notion: Option<NotionConfig>,
+
+    /// Auto-capture configuration
+    #[serde(default)]
+    pub auto_capture: AutoCaptureConfig,
+}
+
+/// Feishu Docs configuration for asset storage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeishuDocsConfig {
+    /// Feishu application ID (can reuse FeishuChannel's app_id)
+    pub app_id: String,
+    /// Feishu application secret (can reuse FeishuChannel's app_secret)
+    pub app_secret: String,
+    /// Default folder token to save documents
+    pub folder_token: String,
+    /// Document template ID (optional)
+    #[serde(default)]
+    pub template_id: Option<String>,
+}
+
+/// Notion configuration for asset storage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotionConfig {
+    /// Notion Integration Token
+    pub token: String,
+    /// Default database ID for storing captured assets
+    pub database_id: String,
+}
+
+/// Auto-capture configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AutoCaptureConfig {
+    /// Automatically capture forwarded messages
+    #[serde(default)]
+    pub capture_forwarded: bool,
+    /// Automatically capture messages containing links
+    #[serde(default)]
+    pub capture_links: bool,
+    /// Trigger prefixes that activate capture (e.g., "#收藏", "#save", "@save")
+    #[serde(default)]
+    pub trigger_prefixes: Vec<String>,
+}
+
 /// Workflow service configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorkflowConfig {
@@ -422,6 +589,93 @@ pub struct WorkflowConfig {
     /// Git integration configuration
     #[serde(default)]
     pub git: GitIntegrationConfig,
+
+    /// Ticket/Issue automation configuration
+    #[serde(default)]
+    pub ticket: TicketConfig,
+
+    /// Competitive intelligence monitoring configuration
+    #[serde(default)]
+    pub monitor: MonitorConfig,
+}
+
+// ============================================================================
+// Monitor Configuration
+// ============================================================================
+
+/// Configuration for competitive intelligence monitoring.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MonitorConfig {
+    /// Enable monitoring
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Monitor tasks
+    #[serde(default)]
+    pub tasks: Vec<MonitorTask>,
+}
+
+/// A monitor task configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitorTask {
+    /// Task ID
+    pub id: String,
+
+    /// Task name (e.g., "每日竞品早报")
+    pub name: String,
+
+    /// Cron expression (e.g., "0 0 9 * * *" for 9 AM daily)
+    pub schedule: String,
+
+    /// Sources to monitor
+    #[serde(default)]
+    pub sources: Vec<MonitorSourceConfig>,
+
+    /// Notification configuration
+    pub notification: MonitorNotificationConfig,
+}
+
+/// A monitor source configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitorSourceConfig {
+    /// Source ID
+    pub id: String,
+
+    /// Source name (e.g., "竞品A官网")
+    pub name: String,
+
+    /// URL to monitor
+    pub url: String,
+
+    /// Source type: website, rss, twitter
+    #[serde(default = "default_source_type")]
+    pub source_type: String,
+
+    /// CSS selector for content extraction (optional)
+    #[serde(default)]
+    pub selector: Option<String>,
+}
+
+/// Notification configuration for monitor reports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitorNotificationConfig {
+    /// Channel type (feishu, wecom, dingtalk)
+    pub channel_type: String,
+
+    /// Channel ID (group chat ID)
+    pub channel_id: String,
+
+    /// Report template: daily_brief, detailed, comparison
+    #[serde(default = "default_monitor_template")]
+    pub template: String,
+}
+
+fn default_source_type() -> String {
+    "website".to_string()
+}
+
+fn default_monitor_template() -> String {
+    "daily_brief".to_string()
 }
 
 /// Cron scheduler configuration.
@@ -480,6 +734,59 @@ pub struct GitIntegrationConfig {
     /// GitLab webhook token
     #[serde(default)]
     pub gitlab_token: Option<String>,
+
+    /// GitHub personal access token for API calls
+    #[serde(default)]
+    pub github_token: Option<String>,
+}
+
+/// Ticket/Issue automation configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TicketConfig {
+    /// Enable ticket automation
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// GitHub configuration for creating issues
+    #[serde(default)]
+    pub github: Option<GitHubTicketConfig>,
+
+    /// IM notification configuration
+    #[serde(default)]
+    pub notification: Option<TicketNotificationConfig>,
+}
+
+/// GitHub configuration for ticket automation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubTicketConfig {
+    /// GitHub Token (or use git.github_token)
+    #[serde(default)]
+    pub token: Option<String>,
+
+    /// Default repository (owner/repo format)
+    pub default_repo: String,
+
+    /// Labels to add for bug reports
+    #[serde(default = "default_bug_labels")]
+    pub bug_labels: Vec<String>,
+
+    /// Labels to add for feature requests
+    #[serde(default = "default_feature_labels")]
+    pub feature_labels: Vec<String>,
+}
+
+/// IM notification configuration for ticket automation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TicketNotificationConfig {
+    /// Enable notifications
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Channel type (feishu, wecom, dingtalk)
+    pub channel_type: String,
+
+    /// Channel ID (group chat ID)
+    pub channel_id: String,
 }
 
 /// `CodeCoder` integration configuration.
@@ -945,13 +1252,13 @@ impl Default for ToolsConfig {
 
 // Default value functions
 fn default_gateway_port() -> u16 {
-    4402
+    4410
 }
 fn default_gateway_host() -> String {
     "127.0.0.1".into()
 }
 fn default_channels_port() -> u16 {
-    4404
+    4411
 }
 fn default_channels_host() -> String {
     "127.0.0.1".into()
@@ -989,6 +1296,22 @@ fn default_imessage_poll_interval() -> u64 {
 
 fn default_cli_prompt() -> String {
     "> ".into()
+}
+
+fn default_imap_port() -> u16 {
+    993
+}
+
+fn default_smtp_port() -> u16 {
+    587
+}
+
+fn default_imap_folder() -> String {
+    "INBOX".into()
+}
+
+fn default_email_poll_interval() -> u64 {
+    60
 }
 
 fn default_provider() -> String {
@@ -1061,6 +1384,14 @@ fn default_file_size_limit() -> u64 {
     10 * 1024 * 1024 // 10 MB
 }
 
+fn default_bug_labels() -> Vec<String> {
+    vec!["bug".into(), "triage".into()]
+}
+
+fn default_feature_labels() -> Vec<String> {
+    vec!["enhancement".into()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1068,8 +1399,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.gateway.port, 4402);
-        assert_eq!(config.channels.port, 4404);
+        assert_eq!(config.gateway.port, 4410);
+        assert_eq!(config.channels.port, 4411);
         assert!(config.codecoder.enabled);
         assert_eq!(config.providers.default, "anthropic");
         assert!(config.agent.enabled);
@@ -1158,7 +1489,7 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.gateway.port, 8080);
         assert_eq!(config.gateway.host, "127.0.0.1"); // default
-        assert_eq!(config.channels.port, 4404); // default
+        assert_eq!(config.channels.port, 4411); // default
     }
 
     #[test]
@@ -1229,5 +1560,215 @@ mod tests {
         assert!(!config.tools.shell_enabled);
         assert!(config.tools.browser_enabled);
         assert_eq!(config.tools.shell_timeout_secs, 60);
+    }
+
+    #[test]
+    fn test_ticket_config() {
+        let json = r#"{
+            "workflow": {
+                "ticket": {
+                    "enabled": true,
+                    "github": {
+                        "default_repo": "company/product",
+                        "bug_labels": ["bug", "P1"],
+                        "feature_labels": ["enhancement", "nice-to-have"]
+                    },
+                    "notification": {
+                        "enabled": true,
+                        "channel_type": "feishu",
+                        "channel_id": "dev-group-123"
+                    }
+                }
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.workflow.ticket.enabled);
+
+        let github = config.workflow.ticket.github.unwrap();
+        assert_eq!(github.default_repo, "company/product");
+        assert_eq!(github.bug_labels, vec!["bug", "P1"]);
+        assert_eq!(github.feature_labels, vec!["enhancement", "nice-to-have"]);
+
+        let notification = config.workflow.ticket.notification.unwrap();
+        assert!(notification.enabled);
+        assert_eq!(notification.channel_type, "feishu");
+        assert_eq!(notification.channel_id, "dev-group-123");
+    }
+
+    #[test]
+    fn test_ticket_config_defaults() {
+        let json = r#"{
+            "workflow": {
+                "ticket": {
+                    "enabled": true,
+                    "github": {
+                        "default_repo": "company/product"
+                    }
+                }
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        let github = config.workflow.ticket.github.unwrap();
+
+        // Should use default labels
+        assert_eq!(github.bug_labels, vec!["bug", "triage"]);
+        assert_eq!(github.feature_labels, vec!["enhancement"]);
+    }
+
+    #[test]
+    fn test_monitor_config() {
+        let json = r#"{
+            "workflow": {
+                "monitor": {
+                    "enabled": true,
+                    "tasks": [
+                        {
+                            "id": "daily-competitive",
+                            "name": "每日竞品早报",
+                            "schedule": "0 0 9 * * *",
+                            "sources": [
+                                {
+                                    "id": "competitor-a",
+                                    "name": "竞品A官网",
+                                    "url": "https://competitor-a.com/news",
+                                    "source_type": "website",
+                                    "selector": ".news-list"
+                                },
+                                {
+                                    "id": "competitor-b-blog",
+                                    "name": "竞品B博客",
+                                    "url": "https://competitor-b.com/blog/feed",
+                                    "source_type": "rss"
+                                }
+                            ],
+                            "notification": {
+                                "channel_type": "feishu",
+                                "channel_id": "ops-group-123",
+                                "template": "daily_brief"
+                            }
+                        }
+                    ]
+                }
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert!(config.workflow.monitor.enabled);
+        assert_eq!(config.workflow.monitor.tasks.len(), 1);
+
+        let task = &config.workflow.monitor.tasks[0];
+        assert_eq!(task.id, "daily-competitive");
+        assert_eq!(task.name, "每日竞品早报");
+        assert_eq!(task.schedule, "0 0 9 * * *");
+        assert_eq!(task.sources.len(), 2);
+
+        let source1 = &task.sources[0];
+        assert_eq!(source1.id, "competitor-a");
+        assert_eq!(source1.source_type, "website");
+        assert_eq!(source1.selector, Some(".news-list".to_string()));
+
+        let source2 = &task.sources[1];
+        assert_eq!(source2.source_type, "rss");
+        assert!(source2.selector.is_none());
+
+        assert_eq!(task.notification.channel_type, "feishu");
+        assert_eq!(task.notification.channel_id, "ops-group-123");
+        assert_eq!(task.notification.template, "daily_brief");
+    }
+
+    #[test]
+    fn test_monitor_config_defaults() {
+        let json = r#"{
+            "workflow": {
+                "monitor": {
+                    "enabled": true,
+                    "tasks": [
+                        {
+                            "id": "test",
+                            "name": "Test",
+                            "schedule": "0 0 9 * * *",
+                            "sources": [
+                                {
+                                    "id": "src1",
+                                    "name": "Source 1",
+                                    "url": "https://example.com"
+                                }
+                            ],
+                            "notification": {
+                                "channel_type": "feishu",
+                                "channel_id": "test-123"
+                            }
+                        }
+                    ]
+                }
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        let task = &config.workflow.monitor.tasks[0];
+
+        // Should use default source_type and template
+        assert_eq!(task.sources[0].source_type, "website");
+        assert_eq!(task.notification.template, "daily_brief");
+    }
+
+    #[test]
+    fn test_capture_config() {
+        let json = r##"{
+            "channels": {
+                "capture": {
+                    "enabled": true,
+                    "feishu_docs": {
+                        "app_id": "cli_xxx",
+                        "app_secret": "secret_xxx",
+                        "folder_token": "fldcnXXX"
+                    },
+                    "notion": {
+                        "token": "secret_notion",
+                        "database_id": "db_123"
+                    },
+                    "auto_capture": {
+                        "capture_forwarded": true,
+                        "capture_links": false,
+                        "trigger_prefixes": ["#收藏", "#save", "@save"]
+                    }
+                }
+            }
+        }"##;
+        let config: Config = serde_json::from_str(json).unwrap();
+        let capture = config.channels.capture.unwrap();
+
+        assert!(capture.enabled);
+        assert!(capture.feishu_docs.is_some());
+        assert!(capture.notion.is_some());
+
+        let feishu_docs = capture.feishu_docs.unwrap();
+        assert_eq!(feishu_docs.app_id, "cli_xxx");
+        assert_eq!(feishu_docs.folder_token, "fldcnXXX");
+
+        let notion = capture.notion.unwrap();
+        assert_eq!(notion.database_id, "db_123");
+
+        assert!(capture.auto_capture.capture_forwarded);
+        assert!(!capture.auto_capture.capture_links);
+        assert_eq!(capture.auto_capture.trigger_prefixes.len(), 3);
+    }
+
+    #[test]
+    fn test_capture_config_defaults() {
+        let json = r#"{
+            "channels": {
+                "capture": {
+                    "enabled": true
+                }
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        let capture = config.channels.capture.unwrap();
+
+        assert!(capture.enabled);
+        assert!(capture.feishu_docs.is_none());
+        assert!(capture.notion.is_none());
+        assert!(!capture.auto_capture.capture_forwarded);
+        assert!(!capture.auto_capture.capture_links);
+        assert!(capture.auto_capture.trigger_prefixes.is_empty());
     }
 }

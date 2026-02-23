@@ -1,13 +1,27 @@
 /**
  * HTTP API Server Entry Point
  * Uses Bun.serve for high-performance HTTP server with graceful shutdown
+ * Includes WebSocket support for real-time updates
  */
 
+import type { ServerWebSocket } from "bun"
 import type { ServerConfig, HttpRequest, HttpResponse } from "./types"
 import { router, registerRoutes } from "./router"
 import { setMiddlewareConfig, corsMiddleware, authMiddleware, loggingMiddleware } from "./middleware"
 import { VERSION } from "../../version.js"
 import { Instance } from "../../project/instance"
+import {
+  handleOpen as wsOpen,
+  handleMessage as wsMessage,
+  handleClose as wsClose,
+  generateSubscriptionId,
+} from "./handlers/executive-ws"
+
+// WebSocket data type
+interface WebSocketData {
+  subscriptionId: string
+  userId?: string
+}
 
 // ============================================================================
 // Server State
@@ -112,16 +126,32 @@ async function notFound(): Promise<HttpResponse> {
 // ============================================================================
 
 function createRequestHandler() {
-  return async (req: Request): Promise<Response> => {
+  return async (req: Request, server: ReturnType<typeof Bun.serve>): Promise<Response> => {
     // Wrap request handling in Instance context to ensure proper project context
     if (!serverDirectory) {
       throw new Error("Server not properly initialized")
     }
 
+    // Handle WebSocket upgrade for executive dashboard
+    const url = new URL(req.url)
+    if (url.pathname === "/api/v1/executive/ws" && req.headers.get("upgrade") === "websocket") {
+      const subscriptionId = generateSubscriptionId()
+      const userId = url.searchParams.get("userId") ?? undefined
+
+      const upgraded = server.upgrade(req, {
+        data: { subscriptionId, userId } as WebSocketData,
+      })
+
+      if (upgraded) {
+        return undefined as unknown as Response // Bun handles the upgrade
+      }
+
+      return new Response("WebSocket upgrade failed", { status: 400 })
+    }
+
     return Instance.provide({
       directory: serverDirectory,
       fn: async () => {
-        const url = new URL(req.url)
         const method = req.method
         const headers = req.headers
 
@@ -201,11 +231,16 @@ export async function start(options: StartOptions = {}): Promise<void> {
     throw new Error(`Port ${port} is already in use`)
   }
 
-  // Start server
+  // Start server with WebSocket support
   server = Bun.serve({
     port,
     hostname,
     fetch: createRequestHandler(),
+    websocket: {
+      open: wsOpen,
+      message: wsMessage,
+      close: wsClose,
+    },
   })
 
   // Setup shutdown handlers

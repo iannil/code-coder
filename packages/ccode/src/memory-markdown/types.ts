@@ -9,7 +9,7 @@
 /**
  * Daily note entry types for categorization
  */
-export type DailyEntryType = "decision" | "action" | "output" | "error"
+export type DailyEntryType = "decision" | "action" | "output" | "error" | "solution"
 
 /**
  * Single entry in daily notes (flow layer)
@@ -24,7 +24,7 @@ export interface DailyEntry {
 /**
  * Long-term memory categories (sediment layer)
  */
-export type MemoryCategory = "用户偏好" | "项目上下文" | "关键决策" | "经验教训"
+export type MemoryCategory = "用户偏好" | "项目上下文" | "关键决策" | "经验教训" | "成功方案"
 
 /**
  * Long-term memory section structure
@@ -33,6 +33,37 @@ export interface MemorySection {
   category: MemoryCategory
   content: string
   lastUpdated: string
+}
+
+/**
+ * Autonomous mode solution entry for knowledge extraction
+ */
+export interface AutonomousSolution {
+  /** Unique solution identifier */
+  id: string
+  /** Session ID where solution was discovered */
+  sessionId: string
+  /** Problem description */
+  problem: string
+  /** Solution description */
+  solution: string
+  /** Confidence score (0-1) */
+  confidence: number
+  /** Source of the solution */
+  source: "autonomous" | "web_search" | "user"
+  /** Tags for categorization */
+  tags: string[]
+  /** Technology/domain */
+  technology?: string
+  /** Code snippets if any */
+  codeSnippets?: Array<{
+    language: string
+    code: string
+  }>
+  /** Timestamp when discovered */
+  discoveredAt: string
+  /** Number of times solution was reused */
+  reuseCount: number
 }
 
 /**

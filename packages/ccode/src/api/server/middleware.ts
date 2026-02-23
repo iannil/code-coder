@@ -10,7 +10,7 @@ import type { ServerConfig, HttpRequest, HttpResponse } from "./types"
 // ============================================================================
 
 let serverConfig: ServerConfig = {
-  port: 4096,
+  port: 4400,
   hostname: "127.0.0.1",
   cors: [],
 }

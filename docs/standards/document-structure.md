@@ -11,6 +11,7 @@
 **命名规范**: `{YYYY-MM-DD}-{topic}.md`
 
 **必需字段**:
+
 ```markdown
 # 标题
 
@@ -33,6 +34,7 @@
 **命名规范**: `{YYYY-MM-DD}-{feature-name}.md`
 
 **必需字段**:
+
 ```markdown
 # {Feature Name} 完成报告
 
@@ -53,6 +55,7 @@
 **命名规范**: `{YYYY-MM-DD}-review-{subject}.md`
 
 **必需字段**:
+
 ```markdown
 # {Subject} 审查报告
 
@@ -71,6 +74,7 @@
 ## 文档模板
 
 参见 `docs/templates/` 目录:
+
 - `progress-report.md` - 进度报告模板
 - `completion-report.md` - 完成报告模板
 - `review-report.md` - 审查报告模板
@@ -138,6 +142,7 @@ docs/archive/ (deprecated)
 ### 归档条件
 
 文档符合以下条件之一应归档:
+
 - 功能已被替代或重构
 - 文档内容已过时
 - 相关代码已删除

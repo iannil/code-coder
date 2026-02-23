@@ -278,6 +278,29 @@ export namespace AutonomousEvent {
     }),
   )
 
+  export const WebSearchCompleted = BusEvent.define(
+    "autonomous.web_search.completed",
+    z.object({
+      sessionId: z.string(),
+      queriesRun: z.number(),
+      resultsFound: z.number(),
+      contentFetched: z.number(),
+      solutionConfidence: z.number(),
+      duration: z.number(),
+    }),
+  )
+
+  export const KnowledgeConsolidated = BusEvent.define(
+    "autonomous.knowledge.consolidated",
+    z.object({
+      sessionId: z.string(),
+      solutionId: z.string(),
+      category: z.string(),
+      tags: z.array(z.string()),
+      confidence: z.number(),
+    }),
+  )
+
   export const IterationStarted = BusEvent.define(
     "autonomous.iteration.started",
     z.object({

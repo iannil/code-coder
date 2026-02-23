@@ -87,7 +87,7 @@ export const McpServeCommand = cmd({
       .option("port", {
         describe: "port for HTTP transport",
         type: "number",
-        default: 4405,
+        default: 4420,
       })
       .option("api-key", {
         describe: "API key for HTTP authentication",

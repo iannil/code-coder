@@ -125,18 +125,22 @@ import { Agent } from "../../agent" // 不推荐
 ## 技术栈详情
 
 ### 运行时
+
 - **Bun 1.3+**: 比 Node.js 更快的 JavaScript 运行时
 
 ### 前端
+
 - **SolidJS 1.9+**: 响应式 UI 框架，性能优异
 - **OpenTUI 0.1+**: 基于 Solid 的终端渲染库
 - **TailwindCSS 4.1+**: 样式系统
 
 ### 后端
+
 - **Hono 4.10+**: HTTP 服务器
 - **Cloudflare Workers**: 部署平台
 
 ### AI/ML
+
 - **@ai-sdk/*: 多提供商统一接口
 - **@modelcontextprotocol/sdk**: MCP 协议支持
 
@@ -165,13 +169,17 @@ bun run --cwd packages/ccode build
 ## 常见问题
 
 ### Q: 默认分支是 dev 还是 master?
+
 A: 当前是 `master`
 
 ### Q: 测试在哪里运行?
+
 A: 必须在 `packages/ccode/` 目录下运行 `bun test`，不能从根目录运行
 
 ### Q: 如何添加新的 AI 提供商?
+
 A: 在 `packages/ccode/src/provider/` 下创建新的适配器，实现统一接口
 
 ### Q: UI 组件如何测试?
+
 A: 使用 Bun 内置测试 + SolidJS 测试工具，参考 `test/unit/tui/ui/` 下的示例

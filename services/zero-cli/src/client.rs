@@ -15,19 +15,19 @@ use serde::{Deserialize, Serialize};
 
 /// Default endpoints for Zero Services.
 pub mod endpoints {
-    pub const GATEWAY: &str = "http://localhost:4402";
-    pub const CHANNELS: &str = "http://localhost:4404";
-    pub const WORKFLOW: &str = "http://localhost:4405";
+    pub const GATEWAY: &str = "http://localhost:4410";
+    pub const CHANNELS: &str = "http://localhost:4411";
+    pub const WORKFLOW: &str = "http://localhost:4412";
 }
 
 /// Client configuration.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    /// Gateway service endpoint (default: localhost:4402)
+    /// Gateway service endpoint (default: localhost:4410)
     pub gateway_endpoint: String,
-    /// Channels service endpoint (default: localhost:4404)
+    /// Channels service endpoint (default: localhost:4411)
     pub channels_endpoint: String,
-    /// Workflow service endpoint (default: localhost:4405)
+    /// Workflow service endpoint (default: localhost:4412)
     pub workflow_endpoint: String,
     /// API key for authentication
     pub api_key: Option<String>,
@@ -351,9 +351,9 @@ mod tests {
     #[test]
     fn client_config_defaults() {
         let config = ClientConfig::default();
-        assert_eq!(config.gateway_endpoint, "http://localhost:4402");
-        assert_eq!(config.channels_endpoint, "http://localhost:4404");
-        assert_eq!(config.workflow_endpoint, "http://localhost:4405");
+        assert_eq!(config.gateway_endpoint, "http://localhost:4410");
+        assert_eq!(config.channels_endpoint, "http://localhost:4411");
+        assert_eq!(config.workflow_endpoint, "http://localhost:4412");
         assert_eq!(config.timeout_secs, 30);
         assert!(config.api_key.is_none());
     }

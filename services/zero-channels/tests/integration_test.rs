@@ -482,7 +482,7 @@ async fn test_bridge_creation() {
 
     // Bridge should be created successfully
     // We can't test actual API calls without a running server
-    assert!(true);
+    // Verify bridge is a valid instance by checking type compilation succeeds
 }
 
 #[test]

@@ -1,268 +1,414 @@
 # CodeCoder
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Runtime-Bun-black.svg)](https://bun.sh/)
-[![Rust](https://img.shields.io/badge/Gateway-Rust-orange.svg)](https://www.rust-lang.org/)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.3+-pink.svg)](https://bun.sh/)
 
-[中文文档](./README_CN.md)
+<!-- Logo placeholder: Add your logo here -->
 
-**AI-powered personal workstation that combines engineering capabilities with decision-making wisdom.**
+---
 
-CodeCoder is not just another coding assistant. It's a comprehensive AI platform designed for everyone whose work is being transformed by AI—developers, analysts, writers, decision-makers, and independent creators. Built on the [祝融说](https://zhurongshuo.com) philosophical framework, it integrates structured thinking with practical tooling.
+## Beyond Code Completion
 
-## Why CodeCoder
+CodeCoder isn't just another AI coding assistant. It's a **work station** that combines engineering prowess with decision wisdom.
 
-In an age of AI abundance, the challenge isn't accessing AI—it's knowing **how to think with AI**.
+At its core is **Observer Theory** from the 祝融说 (Zhurongsuo) philosophy: every observation collapses infinite possibilities into concrete reality. When you ask CodeCoder to review code, design architecture, or analyze a market trend, you're not just getting answers—you're participating in a creative act that shapes outcomes from a field of potential.
 
-Most AI tools focus on answering questions. CodeCoder focuses on helping you ask better questions and make better decisions:
+This philosophical foundation manifests in the **CLOSE Framework** for decision-making:
 
-- **Multi-dimensional assistance** — Not just code, but decisions, analysis, and content creation
-- **Philosophical grounding** — The CLOSE framework for sustainable decision-making
-- **Provider flexibility** — 30+ AI providers through a unified interface
-- **Specialized expertise** — 25+ purpose-built agents for different domains
+- **C**lear reversibility assessment
+- **L**everage option preservation
+- **O**ption space expansion
+- **S**ustainability over optimality
+- **E**xit strategy planning
 
-## Key Features
+The key insight: **sustainable decisions outperform optimal ones**. CodeCoder helps you maintain "possibility margin" (可用余量)—the unfixed potential that enables adaptation, creativity, and the ability to "play again" when circumstances change.
 
-| Feature | Description |
-|---------|-------------|
-| **25+ Specialized Agents** | Engineering, domain analysis, decision-making, and content creation |
-| **30+ AI Providers** | Anthropic, OpenAI, Google, AWS Bedrock, Azure, local models via MCP |
-| **20+ Built-in Tools** | File operations, code search, web fetch, task management |
-| **LSP Support** | 30+ language servers with auto-installation |
-| **MCP Protocol** | Local/remote servers, OAuth 2.0, dynamic tool discovery |
-| **ZeroBot Gateway** | Lightweight Rust gateway (~3.4MB) for multi-channel access |
-| **Memory System** | Transparent, Git-friendly Markdown-based memory |
+---
 
-## Philosophy
+## What is CodeCoder?
 
-### 祝融说 (Zhurongshuo)
+A three-layer wisdom architecture that goes beyond code:
 
-CodeCoder is built on **祝融说**, a unique philosophical framework that reframes how we approach uncertainty and decision-making.
+| Layer | Focus | Capabilities |
+|-------|-------|--------------|
+| **Engineering** | Code & Systems | Code review, security analysis, TDD, architecture design, reverse engineering |
+| **Domain** | Expert Knowledge | Macro economics, trading analysis, product selection, miniproduct development, AI engineering |
+| **Thinking** | Decision Frameworks | 祝融说 philosophy, CLOSE framework, observer theory |
 
-| Concept | Description |
-|---------|-------------|
-| **Possibility Substrate** | Reality emerges from an infinite field of potential. Every observation converges possibilities into actuality. |
-| **Observer Convergence** | "Observation" is a creative act, not passive reception. Macro-world stability comes from multi-level observer "voting". |
-| **Available Surplus** | The unfixed potential space in any situation. Source of flexibility, creativity, and system resilience. |
+**Core Features:**
 
-### The CLOSE Decision Framework
+- **20+ AI Providers** — Claude, OpenAI, Google, Amazon Bedrock, Azure, xAI, and more
+- **24 Specialized Agents** — Each with distinct expertise and personality
+- **MCP Protocol** — Local, remote, and OAuth-authenticated Model Context Protocol servers
+- **30+ LSP Integrations** — TypeScript, Rust, Go, Python, Java, and more
+- **Multiple Modes** — CLI, TUI (terminal UI), and headless API server
+- **Markdown Memory** — Human-readable, Git-friendly knowledge persistence
 
-A five-dimensional evaluation system for making sustainable choices:
-
-| Dimension | Question | Focus |
-|-----------|----------|-------|
-| **C**onvergence | How much does this narrow possibilities? | Preserving future options |
-| **L**everage | Is there asymmetric upside? | Risk-reward asymmetry |
-| **O**ptionality | Can this be reversed? At what cost? | Reversibility |
-| **S**urplus | How much buffer does this consume? | Resource preservation |
-| **E**volution | Does this create growth opportunities? | Learning potential |
-
-> "Sustainable decisions > optimal decisions. The ability to play again matters more than winning once."
-
-## Architecture
-
-### Three-Layer Wisdom Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Thinking Layer                          │
-│   observer · decision                                        │
-├─────────────────────────────────────────────────────────────┤
-│                      Domain Layer                            │
-│   macro · trader · picker · miniproduct · ai-engineer        │
-├─────────────────────────────────────────────────────────────┤
-│                     Engineering Layer                        │
-│   code-reviewer · security-reviewer · tdd-guide · architect  │
-│   code-reverse · jar-code-reverse · explore · general        │
-├─────────────────────────────────────────────────────────────┤
-│                      Content Layer                           │
-│   writer · proofreader · expander                            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Tech Stack
-
-- **Runtime**: Bun 1.3+ with TypeScript ESM
-- **TUI Framework**: OpenTUI + SolidJS
-- **AI SDK**: Vercel AI SDK with multi-provider support
-- **Gateway**: ZeroBot (Rust, ~3.4MB binary)
-- **Validation**: Zod schemas
-
-## Agents Overview
-
-### Primary Modes
-
-| Agent | Description |
-|-------|-------------|
-| `build` | Main development mode with full capabilities |
-| `plan` | Read-only exploration and planning mode |
-| `autonomous` | Self-directed task completion with safety guardrails |
-
-### Engineering Agents
-
-| Agent | Purpose |
-|-------|---------|
-| `general` | Multi-step tasks, parallel work execution |
-| `code-reviewer` | Code quality, naming, maintainability |
-| `security-reviewer` | OWASP Top 10, injection risks, auth issues |
-| `tdd-guide` | Red-green-refactor cycles, coverage |
-| `architect` | System design, interfaces, patterns |
-| `verifier` | Build, type, lint checks, test suites |
-| `explore` | Fast codebase exploration |
-
-### Reverse Engineering
-
-| Agent | Purpose |
-|-------|---------|
-| `code-reverse` | Website pixel-perfect reconstruction planning |
-| `jar-code-reverse` | Java JAR analysis and source reconstruction |
-
-### Domain Agents (祝融说 Series)
-
-| Agent | Purpose |
-|-------|---------|
-| `macro` | Macroeconomic analysis—GDP, inflation, monetary policy |
-| `trader` | Short-term trading guidance (educational only) |
-| `picker` | Product selection—seven deadly sins method |
-| `miniproduct` | Indie product coaching—MVP, monetization |
-| `ai-engineer` | AI engineering—Python, LLM apps, RAG, MLOps |
-
-### Thinking Agents (祝融说 Series)
-
-| Agent | Purpose |
-|-------|---------|
-| `observer` | Possibility space analysis, cognitive framework |
-| `decision` | CLOSE framework evaluation, sustainable choices |
-
-### Content Agents
-
-| Agent | Purpose |
-|-------|---------|
-| `writer` | Long-form writing (20k+ words), chapter planning |
-| `proofreader` | Grammar, style, PROOF framework validation |
-| `expander` | Transform ideas into comprehensive books |
+---
 
 ## Quick Start
 
-### Requirements
+### Prerequisites
 
-- [Bun](https://bun.sh/) 1.3 or higher
-- macOS, Linux, or Windows (WSL recommended)
+- **Bun** 1.3+ ([install](https://bun.sh/docs/installation))
+- **Node.js** 22+ (for some dependencies)
+- **Rust** 1.75+ (optional, for Rust services)
 
 ### Installation
 
 ```bash
+# Clone the repository
 git clone https://github.com/iannil/code-coder.git
 cd code-coder
+
+# Install dependencies
 bun install
-```
 
-### Run
-
-```bash
-# Start interactive TUI
+# Run CodeCoder TUI
 bun dev
 
-# Or specify a working directory
-bun dev /path/to/project
-
-# Start headless API server
-bun dev serve --port 4096
+# Or run in a specific directory
+bun dev /path/to/your/project
 ```
 
-### Build Standalone Executable
+### Basic Usage
 
 ```bash
-bun run --cwd packages/ccode build
+# Start TUI interface (default)
+bun dev
+
+# Run in CLI mode with a message
+bun dev run "Review the authentication code in src/auth"
+
+# Start headless API server
+bun dev serve --port 4400
+
+# Use a specific agent
+bun dev run --agent code-reviewer "Analyze src/api/server.ts"
+
+# Use @ syntax for agents
+bun dev run "@decision Analyze this career choice using CLOSE framework"
 ```
+
+---
+
+## Architecture
+
+```
+codecoder/
+├── packages/                    # TypeScript packages
+│   ├── ccode/                   # Core CLI & business logic
+│   │   ├── src/
+│   │   │   ├── agent/           # Agent definitions & prompts
+│   │   │   ├── api/             # HTTP API server (Hono)
+│   │   │   ├── cli/             # CLI commands & TUI
+│   │   │   ├── config/          # Configuration management
+│   │   │   ├── mcp/             # MCP protocol support
+│   │   │   ├── provider/        # AI provider adapters
+│   │   │   ├── session/         # Session management
+│   │   │   └── tool/            # Tool definitions
+│   │   └── test/                # Tests
+│   ├── util/                    # Shared utilities
+│   └── web/                     # Web UI (React + Vite)
+├── services/                    # Rust services
+│   ├── zero-cli/                # CLI daemon (combined service)
+│   ├── zero-gateway/            # Auth, routing, quota
+│   ├── zero-channels/           # Telegram, Discord, Slack
+│   ├── zero-workflow/           # Webhooks, Cron, Git
+│   ├── zero-common/             # Shared config
+│   ├── zero-agent/              # Agent execution (lib)
+│   ├── zero-memory/             # Memory persistence (lib)
+│   └── zero-tools/              # Tool definitions (lib)
+├── memory/                      # Markdown memory system
+│   ├── MEMORY.md                # Long-term knowledge
+│   └── daily/                   # Daily notes
+├── docs/                        # Documentation
+└── script/                      # Build scripts
+```
+
+### Port Configuration
+
+| Service | Port | Technology |
+|---------|------|------------|
+| CodeCoder API Server | 4400 | Bun/TypeScript |
+| Web Frontend | 4401 | Vite/React |
+| Zero CLI Daemon | 4402 | Rust (combined: gateway + channels + scheduler) |
+| Whisper STT Server | 4403 | Docker |
+| Zero Gateway | 4410 | Rust (standalone) |
+| Zero Channels | 4411 | Rust (standalone) |
+| Zero Workflow | 4412 | Rust (standalone) |
+| MCP Server (HTTP) | 4420 | Protocol (Model Context Protocol) |
+
+---
+
+## Agent System
+
+CodeCoder includes 24 specialized agents organized into 6 categories:
+
+### Main Modes (3)
+
+| Agent | Description |
+|-------|-------------|
+| `build` | Default development mode with full capabilities |
+| `plan` | Planning mode for structured implementation design |
+| `autonomous` | Self-directed execution with CLOSE decision framework |
+
+### Reverse Engineering (2)
+
+| Agent | Description |
+|-------|-------------|
+| `code-reverse` | Pixel-perfect website recreation planning |
+| `jar-code-reverse` | Java JAR file decompilation and reconstruction |
+
+### Engineering (7)
+
+| Agent | Description |
+|-------|-------------|
+| `general` | Multi-step task execution and research |
+| `explore` | Fast codebase exploration and pattern search |
+| `code-reviewer` | Comprehensive code quality review |
+| `security-reviewer` | Security vulnerability analysis |
+| `tdd-guide` | Test-driven development enforcement |
+| `architect` | System architecture design |
+| `verifier` | Formal verification and property testing |
+
+### Content Creation (5)
+
+| Agent | Description |
+|-------|-------------|
+| `writer` | Long-form content writing (20k+ words) |
+| `proofreader` | Grammar, style, and consistency checking |
+| `expander` | Systematic content expansion framework |
+| `expander-fiction` | Fiction-specific worldbuilding and narrative |
+| `expander-nonfiction` | Non-fiction argumentation and evidence |
+
+### 祝融说 (Zhurongsuo) Series (8)
+
+| Agent | Description |
+|-------|-------------|
+| `observer` | Observer theory analysis—revealing possibility spaces |
+| `decision` | CLOSE framework decision advisor |
+| `macro` | Macroeconomic data interpretation (GDP, policy, etc.) |
+| `trader` | Ultra-short-term trading pattern recognition |
+| `picker` | Product selection using "Seven Sins" methodology |
+| `miniproduct` | Solo developer 0-to-1 product coaching |
+| `ai-engineer` | AI/ML engineering mentor |
+| `synton-assistant` | SYNTON-DB memory database assistant |
+
+### System (3, hidden)
+
+| Agent | Description |
+|-------|-------------|
+| `compaction` | Context compression for long sessions |
+| `title` | Automatic session title generation |
+| `summary` | Session summary generation |
+
+### Usage Examples
+
+```bash
+# Code review
+bun dev run --agent code-reviewer "Review src/api/server.ts"
+
+# Security analysis
+bun dev run --agent security-reviewer "Audit the authentication system"
+
+# Decision consulting
+bun dev run "@decision Use CLOSE framework to analyze this job offer"
+
+# Macro analysis
+bun dev run "@macro Interpret this month's PMI data"
+
+# Architecture design
+bun dev run --agent architect "Design a microservices migration plan"
+```
+
+---
+
+## AI Providers
+
+CodeCoder supports 20+ AI providers out of the box:
+
+| Provider | Auth Methods |
+|----------|--------------|
+| Anthropic Claude | API Key, Claude Max (OAuth) |
+| OpenAI | API Key, ChatGPT Plus/Pro (OAuth) |
+| Google Gemini | API Key |
+| Google Vertex AI | Service Account |
+| Amazon Bedrock | IAM, Profile, Web Identity |
+| Azure OpenAI | API Key |
+| GitHub Copilot | OAuth |
+| xAI | API Key |
+| Mistral AI | API Key |
+| Groq | API Key |
+| DeepInfra | API Key |
+| Cerebras | API Key |
+| Cohere | API Key |
+| Together AI | API Key |
+| Perplexity | API Key |
+| OpenRouter | API Key |
+| Vercel AI | API Key |
+| GitLab Duo | OAuth |
+
+### Configuration
+
+```json
+{
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "sk-ant-..."
+      }
+    },
+    "openai": {
+      "options": {
+        "apiKey": "sk-proj-..."
+      }
+    }
+  },
+  "model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+---
+
+## Rust Services
+
+For production deployments, CodeCoder includes high-performance Rust services:
+
+### Zero Daemon (Combined Service)
+
+The `zero-daemon` runs all services in a single process—ideal for development and single-machine deployments:
+
+```bash
+# Build Rust services
+./ops.sh build rust
+
+# Start the daemon
+./ops.sh start zero-daemon
+```
+
+### Standalone Services (Modular Deployment)
+
+For distributed deployments, run services independently:
+
+| Service | Purpose |
+|---------|---------|
+| `zero-gateway` | Authentication, routing, rate limiting, sandboxing |
+| `zero-channels` | Telegram, Discord, Slack, Email integrations |
+| `zero-workflow` | Webhook handlers, cron jobs, Git operations |
+
+```bash
+# Start individual services
+./ops.sh start zero-gateway
+./ops.sh start zero-channels
+./ops.sh start zero-workflow
+
+# View all service status
+./ops.sh status
+
+# View logs
+./ops.sh logs zero-workflow
+```
+
+---
 
 ## Configuration
 
-### Configuration Locations (Priority Order)
+Configuration files are loaded in priority order (later overrides earlier):
 
-1. Global: `~/.config/codecoder/codecoder.json`
-2. Project: `./codecoder.json` or `./.codecoder/codecoder.json`
-3. Environment: `CCODE_CONFIG` or `CCODE_CONFIG_CONTENT`
+1. Well-Known remote configuration
+2. Global: `~/.config/codecoder/codecoder.json`
+3. `CCODE_CONFIG` environment variable
+4. Project: `./codecoder.json`
+5. `.codecoder/` directory
+6. `CCODE_CONFIG_CONTENT` environment variable
 
 ### Example Configuration
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/iannil/code-coder/main/packages/ccode/schema.json",
-  "model": "anthropic/claude-sonnet-4-20250514",
+  "$schema": "https://codecoder.ai/schema/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
   "default_agent": "build",
+
   "provider": {
     "anthropic": {
       "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
     }
   },
+
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "@anthropic/mcp-server-filesystem", "/home/user"]
+    },
+    "remote-server": {
+      "type": "remote",
+      "url": "https://mcp.example.com/sse",
+      "oauth": {
+        "clientId": "...",
+        "scope": "read write"
+      }
+    }
+  },
+
   "permission": {
+    "*": "allow",
     "bash": {
-      "*": "ask",
-      "git *": "allow",
-      "npm *": "allow"
+      "rm -rf *": "deny",
+      "git *": "allow"
     }
   }
 }
 ```
 
-## Usage Examples
+---
 
-### Code Review
+## Memory System
 
-```bash
-ccode run --agent code-reviewer "Review the authentication module"
-```
+CodeCoder uses a transparent, Git-friendly two-layer memory architecture:
 
-### Decision Analysis (CLOSE Framework)
+### Layer 1: Daily Notes (Flow)
 
-```bash
-ccode run --agent decision "Should I accept this job offer?"
-```
+- **Path:** `./memory/daily/{YYYY-MM-DD}.md`
+- **Type:** Append-only log
+- **Purpose:** Captures daily interactions, decisions, and tasks
 
-### Economic Data Analysis
+### Layer 2: Long-term Memory (Sediment)
 
-```bash
-ccode run --agent macro "Interpret the latest PMI data"
-```
+- **Path:** `./memory/MEMORY.md`
+- **Type:** Curated, structured knowledge
+- **Categories:** User preferences, project context, key decisions, lessons learned
 
-### Product Selection
+### Operation Rules
 
-```bash
-ccode run --agent picker "Analyze market opportunities for AI writing tools"
-```
+| Operation | When | Behavior |
+|-----------|------|----------|
+| **Read** | Session init | Load MEMORY.md + current/previous daily notes |
+| **Immediate write** | After important interactions | Append to daily note (immutable) |
+| **Consolidation** | Detecting significant info | Update MEMORY.md (merge/replace outdated) |
 
-## Project Structure
+All memory files are standard Markdown—edit them directly when needed.
 
-```
-codecoder/
-├── packages/
-│   ├── ccode/           # Core CLI and business logic
-│   │   ├── src/
-│   │   │   ├── agent/   # Agent definitions and prompts
-│   │   │   ├── cli/     # CLI commands and TUI
-│   │   │   ├── provider/# AI provider integrations
-│   │   │   ├── mcp/     # MCP protocol support
-│   │   │   ├── lsp/     # LSP integrations
-│   │   │   └── tool/    # Built-in tools
-│   │   └── test/        # Test suites
-│   └── util/            # Shared utilities
-├── services/
-│   └── zero-bot/        # Rust message gateway
-├── script/              # Build and generation scripts
-├── docs/                # Documentation
-└── memory/              # Memory storage
-```
+---
 
-## Development
+## Development Commands
 
 ```bash
 # Install dependencies
 bun install
 
-# Run in development mode
+# Run TUI interface
 bun dev
+
+# Run in specific directory
+bun dev /path/to/project
+
+# Start API server
+bun dev serve --port 4400
 
 # Type checking
 bun turbo typecheck
@@ -270,38 +416,40 @@ bun turbo typecheck
 # Run tests (from package directory)
 cd packages/ccode && bun test
 
-# Build executable
+# Build standalone executable
 bun run --cwd packages/ccode build
 
-# Regenerate SDK from OpenAPI
+# Regenerate SDK after API changes
 ./script/generate.ts
+
+# Service operations
+./ops.sh start          # Start core services
+./ops.sh start all      # Start all services
+./ops.sh stop           # Stop all services
+./ops.sh status         # View service status
+./ops.sh build rust     # Build Rust services
+./ops.sh logs api       # View API logs
 ```
 
-### Port Configuration
-
-| Service | Port |
-|---------|------|
-| CodeCoder API Server | 4400 |
-| Web Frontend (Vite) | 4401 |
-| ZeroBot Daemon | 4402 |
-| Faster Whisper Server | 4403 |
+---
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](./docs/CONTRIB.md) for details.
+We welcome contributions! Please see our contributing guidelines:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes following [conventional commits](https://www.conventionalcommits.org/)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- PRs must reference an existing issue
+- PR titles follow conventional commits (`feat:`, `fix:`, `docs:`, etc.)
+- UI changes require screenshots/videos
+- Keep PRs small and focused
+
+---
 
 ## License
 
-This project is licensed under the MIT License—see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.
 
-## Acknowledgments
+---
 
-- Built with [Bun](https://bun.sh)—Fast all-in-one JavaScript runtime
-- Powered by [Vercel AI SDK](https://sdk.vercel.ai)—Multi-provider AI integration
-- UI powered by [OpenTUI](https://github.com/sst/opentui)—Terminal UI framework
+<p align="center">
+  <i>Built with Observer Theory in mind: every interaction collapses possibilities into reality.</i>
+</p>

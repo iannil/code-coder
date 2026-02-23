@@ -1,307 +1,455 @@
 # CodeCoder
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Runtime-Bun-black.svg)](https://bun.sh/)
-[![Rust](https://img.shields.io/badge/Gateway-Rust-orange.svg)](https://www.rust-lang.org/)
+[![MIT License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
+[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
+[![Bun](https://img.shields.io/badge/Bun-1.3+-pink.svg)](https://bun.sh/)
 
-[English](./README.md)
+<!-- Logo 占位符：在此添加您的 Logo -->
 
-**融合工程能力与决策智慧的 AI 个人工作台。**
+---
 
-CodeCoder 不只是一个编程助手。它是为所有正在被 AI 改变工作方式的人设计的综合平台——开发者、分析师、写作者、决策者、独立创作者。基于[祝融说](https://zhurongshuo.com)哲学框架构建，将结构化思维与实用工具融为一体。
+## 超越代码补全
 
-## 为什么选择 CodeCoder
+CodeCoder 不仅仅是另一个 AI 编程助手。它是一个融合工程能力与决策智慧的**工作台系统**。
 
-在 AI 普及的时代，挑战不在于如何访问 AI，而在于**如何与 AI 一起思考**。
+其核心是**祝融说**哲学中的**观察者理论**：每一次观察都将无限可能性收敛为确定性现实。当你请求 CodeCoder 审查代码、设计架构或分析市场趋势时，你不只是在获取答案——你正在参与一个从可能性场域中塑造结果的创造性行为。
 
-大多数 AI 工具专注于回答问题。CodeCoder 专注于帮助你提出更好的问题、做出更好的决策：
+这一哲学基础体现在 **CLOSE 决策框架**中：
 
-- **多维度辅助** — 不止于代码，还有决策、分析和内容创作
-- **哲学根基** — CLOSE 框架支撑可持续决策
-- **提供商灵活性** — 通过统一接口连接 30+ AI 提供商
-- **专业化能力** — 25+ 面向不同领域的专业 Agent
+- **C** (Clear) — 清晰评估可逆性
+- **L** (Leverage) — 保持选择权杠杆
+- **O** (Option) — 扩展选项空间
+- **S** (Sustainability) — 可持续性优于最优性
+- **E** (Exit) — 规划退出策略
 
-## 核心功能
+核心洞见：**可持续的决策胜过最优的决策**。CodeCoder 帮助你保持"可用余量"——尚未被固化的潜能空间，它是适应力、创造力以及"再来一次"能力的源泉。
 
-| 功能 | 描述 |
-|------|------|
-| **25+ 专业 Agent** | 工程、领域分析、决策支持、内容创作 |
-| **30+ AI 提供商** | Anthropic、OpenAI、Google、AWS Bedrock、Azure、本地模型（通过 MCP） |
-| **20+ 内置工具** | 文件操作、代码搜索、网络获取、任务管理 |
-| **LSP 支持** | 30+ 语言服务器，自动安装 |
-| **MCP 协议** | 本地/远程服务器、OAuth 2.0、动态工具发现 |
-| **ZeroBot 网关** | 轻量级 Rust 网关（~3.4MB），多通道访问 |
-| **记忆系统** | 透明、Git 友好的 Markdown 记忆架构 |
+---
 
-## 哲学框架
+## CodeCoder 是什么？
 
-### 祝融说
+超越代码的三层智慧架构：
 
-CodeCoder 构建在**祝融说**之上，这是一套独特的哲学框架，它重新定义了我们应对不确定性和做出决策的方式。
+| 层级 | 聚焦 | 能力 |
+|------|------|------|
+| **工程层** | 代码与系统 | 代码审查、安全分析、TDD、架构设计、逆向工程 |
+| **领域层** | 专业知识 | 宏观经济、交易分析、选品策略、极小产品、AI 工程 |
+| **思维层** | 决策框架 | 祝融说哲学、CLOSE 框架、观察者理论 |
 
-| 核心概念 | 描述 |
-|----------|------|
-| **可能性基底** | 终极实在不是静态的「实体」，而是包含一切潜能的无限场域。一切确定的现实都是从这个「可能性海洋」中涌现的。 |
-| **观察即收敛** | 「观察」是一种创造性行为，而非被动接收。观察导致可能性「坍缩」为确定性。宏观世界的稳定性源于多层级观察者的「共同投票」。 |
-| **可用余量** | 尚未被固化的潜能空间。自由意志、创造力和系统韧性的来源。可持续决策保留余量；最优决策往往消耗余量。 |
+**核心特性：**
 
-### CLOSE 五维评估框架
+- **20+ AI 提供商** — Claude、OpenAI、Google、Amazon Bedrock、Azure、xAI 等
+- **24 个专业 Agent** — 各具独特专长和个性
+- **MCP 协议** — 本地、远程及 OAuth 认证的模型上下文协议服务器
+- **30+ LSP 集成** — TypeScript、Rust、Go、Python、Java 等
+- **多种模式** — CLI、TUI（终端界面）和无头 API 服务器
+- **Markdown 记忆系统** — 人类可读、Git 友好的知识持久化
 
-一套用于做出可持续选择的五维评估系统：
-
-| 维度 | 核心问题 | 关注点 |
-|------|----------|--------|
-| **C**onvergence 收敛 | 这个选择会收敛多少可能性？ | 保留未来选项 |
-| **L**everage 杠杆 | 是否存在非对称收益？ | 风险收益不对称性 |
-| **O**ptionality 选择权 | 这个决定可以反悔吗？成本多大？ | 可逆性 |
-| **S**urplus 余量 | 消耗多少缓冲资源？ | 资源保护 |
-| **E**volution 演化 | 能带来成长和学习机会吗？ | 学习潜力 |
-
-> 「可持续决策 > 最优决策。能够继续玩下去，比赢一次更重要。」
-
-## 架构
-
-### 三层智慧架构
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        思维智囊层                             │
-│   observer · decision                                        │
-├─────────────────────────────────────────────────────────────┤
-│                        领域智囊层                             │
-│   macro · trader · picker · miniproduct · ai-engineer        │
-├─────────────────────────────────────────────────────────────┤
-│                        工程智囊层                             │
-│   code-reviewer · security-reviewer · tdd-guide · architect  │
-│   code-reverse · jar-code-reverse · explore · general        │
-├─────────────────────────────────────────────────────────────┤
-│                        内容智囊层                             │
-│   writer · proofreader · expander                            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 技术栈
-
-- **运行时**：Bun 1.3+ + TypeScript ESM
-- **TUI 框架**：OpenTUI + SolidJS
-- **AI SDK**：Vercel AI SDK 多提供商支持
-- **网关**：ZeroBot（Rust，~3.4MB 二进制文件）
-- **验证**：Zod schemas
-
-## Agent 概览
-
-### 主模式
-
-| Agent | 描述 |
-|-------|------|
-| `build` | 主开发模式，具备完整能力 |
-| `plan` | 只读探索和规划模式 |
-| `autonomous` | 自主任务完成，配备安全护栏 |
-
-### 工程类 Agent
-
-| Agent | 用途 |
-|-------|------|
-| `general` | 多步骤任务、并行工作执行 |
-| `code-reviewer` | 代码质量、命名、可维护性 |
-| `security-reviewer` | OWASP Top 10、注入风险、认证问题 |
-| `tdd-guide` | 红-绿-重构循环、覆盖率 |
-| `architect` | 系统设计、接口定义、设计模式 |
-| `verifier` | 构建、类型、lint 检查、测试套件 |
-| `explore` | 快速代码库探索 |
-
-### 逆向工程
-
-| Agent | 用途 |
-|-------|------|
-| `code-reverse` | 网站像素级复刻规划 |
-| `jar-code-reverse` | Java JAR 分析与源码重建 |
-
-### 领域类 Agent（祝融说系列）
-
-| Agent | 用途 |
-|-------|------|
-| `macro` | 宏观经济分析——GDP、通胀、货币政策 |
-| `trader` | 超短线交易指导（仅供教育参考） |
-| `picker` | 选品策略——七宗罪选品法 |
-| `miniproduct` | 极小产品教练——MVP、变现策略 |
-| `ai-engineer` | AI 工程师导师——Python、LLM 应用、RAG、MLOps |
-
-### 思维类 Agent（祝融说系列）
-
-| Agent | 用途 |
-|-------|------|
-| `observer` | 可能性空间分析、认知框架 |
-| `decision` | CLOSE 框架评估、可持续选择 |
-
-### 内容类 Agent
-
-| Agent | 用途 |
-|-------|------|
-| `writer` | 长文写作（2 万字以上）、章节规划 |
-| `proofreader` | 语法、风格、PROOF 框架验证 |
-| `expander` | 将想法转化为完整书籍 |
+---
 
 ## 快速开始
 
 ### 环境要求
 
-- [Bun](https://bun.sh/) 1.3 或更高版本
-- macOS、Linux 或 Windows（推荐 WSL）
+- **Bun** 1.3+ ([安装](https://bun.sh/docs/installation))
+- **Node.js** 22+ (部分依赖需要)
+- **Rust** 1.75+ (可选，用于 Rust 服务)
 
 ### 安装
 
 ```bash
+# 克隆仓库
 git clone https://github.com/iannil/code-coder.git
 cd code-coder
+
+# 安装依赖
 bun install
-```
 
-### 运行
-
-```bash
-# 启动交互式 TUI
+# 运行 CodeCoder TUI
 bun dev
 
-# 或指定工作目录
-bun dev /path/to/project
-
-# 启动无头 API 服务器
-bun dev serve --port 4096
+# 或在指定目录运行
+bun dev /path/to/your/project
 ```
 
-### 构建独立可执行文件
+### 基本用法
 
 ```bash
-bun run --cwd packages/ccode build
+# 启动 TUI 界面（默认）
+bun dev
+
+# 以 CLI 模式运行并发送消息
+bun dev run "Review the authentication code in src/auth"
+
+# 启动无头 API 服务器
+bun dev serve --port 4400
+
+# 使用指定 Agent
+bun dev run --agent code-reviewer "Analyze src/api/server.ts"
+
+# 使用 @ 语法调用 Agent
+bun dev run "@decision 用CLOSE框架分析这个职业选择"
 ```
 
-## 配置
+---
 
-### 配置文件位置（优先级顺序）
+## 架构
 
-1. 全局：`~/.config/codecoder/codecoder.json`
-2. 项目：`./codecoder.json` 或 `./.codecoder/codecoder.json`
-3. 环境变量：`CCODE_CONFIG` 或 `CCODE_CONFIG_CONTENT`
+```
+codecoder/
+├── packages/                    # TypeScript 包
+│   ├── ccode/                   # 核心 CLI 与业务逻辑
+│   │   ├── src/
+│   │   │   ├── agent/           # Agent 定义与 Prompt
+│   │   │   ├── api/             # HTTP API 服务器 (Hono)
+│   │   │   ├── cli/             # CLI 命令与 TUI
+│   │   │   ├── config/          # 配置管理
+│   │   │   ├── mcp/             # MCP 协议支持
+│   │   │   ├── provider/        # AI 提供商适配器
+│   │   │   ├── session/         # 会话管理
+│   │   │   └── tool/            # 工具定义
+│   │   └── test/                # 测试
+│   ├── util/                    # 共享工具库
+│   └── web/                     # Web UI (React + Vite)
+├── services/                    # Rust 服务
+│   ├── zero-cli/                # CLI 守护进程（组合服务）
+│   ├── zero-gateway/            # 认证、路由、配额
+│   ├── zero-channels/           # Telegram、Discord、Slack
+│   ├── zero-workflow/           # Webhook、Cron、Git
+│   ├── zero-common/             # 共享配置
+│   ├── zero-agent/              # Agent 执行（库）
+│   ├── zero-memory/             # 内存持久化（库）
+│   └── zero-tools/              # 工具定义（库）
+├── memory/                      # Markdown 记忆系统
+│   ├── MEMORY.md                # 长期记忆
+│   └── daily/                   # 每日笔记
+├── docs/                        # 文档
+└── script/                      # 构建脚本
+```
+
+### 端口配置
+
+| 服务 | 端口 | 技术栈 |
+|------|------|--------|
+| CodeCoder API Server | 4400 | Bun/TypeScript |
+| Web Frontend | 4401 | Vite/React |
+| Zero CLI Daemon | 4402 | Rust (组合：gateway + channels + scheduler) |
+| Whisper STT Server | 4403 | Docker |
+| Zero Gateway | 4410 | Rust (独立) |
+| Zero Channels | 4411 | Rust (独立) |
+| Zero Workflow | 4412 | Rust (独立) |
+| MCP Server (HTTP) | 4420 | 协议 (Model Context Protocol) |
+
+---
+
+## Agent 系统
+
+CodeCoder 包含 24 个专业 Agent，分为 6 个类别：
+
+### 主模式 (3)
+
+| Agent | 描述 |
+|-------|------|
+| `build` | 默认开发模式，具备完整功能 |
+| `plan` | 计划模式，用于结构化实现设计 |
+| `autonomous` | 自主执行模式，采用 CLOSE 决策框架 |
+
+### 逆向工程 (2)
+
+| Agent | 描述 |
+|-------|------|
+| `code-reverse` | 像素级网站复刻规划 |
+| `jar-code-reverse` | Java JAR 文件反编译与重建 |
+
+### 工程类 (7)
+
+| Agent | 描述 |
+|-------|------|
+| `general` | 多步骤任务执行和研究 |
+| `explore` | 快速代码库探索和模式搜索 |
+| `code-reviewer` | 全面的代码质量审查 |
+| `security-reviewer` | 安全漏洞分析 |
+| `tdd-guide` | 测试驱动开发执行 |
+| `architect` | 系统架构设计 |
+| `verifier` | 形式化验证和属性测试 |
+
+### 内容创作 (5)
+
+| Agent | 描述 |
+|-------|------|
+| `writer` | 长文写作（20k+ 字） |
+| `proofreader` | 语法、风格和一致性检查 |
+| `expander` | 系统化内容扩展框架 |
+| `expander-fiction` | 小说专用：世界观构建与叙事 |
+| `expander-nonfiction` | 非虚构专用：论证与证据 |
+
+### 祝融说系列 (8)
+
+| Agent | 描述 |
+|-------|------|
+| `observer` | 观察者理论分析——揭示可能性空间 |
+| `decision` | CLOSE 框架决策顾问 |
+| `macro` | 宏观经济数据解读（GDP、政策等） |
+| `trader` | 超短线交易模式识别 |
+| `picker` | "七宗罪"选品法产品选择 |
+| `miniproduct` | 独立开发者 0-1 产品教练 |
+| `ai-engineer` | AI/ML 工程导师 |
+| `synton-assistant` | SYNTON-DB 记忆数据库助手 |
+
+### 系统级 (3, 隐藏)
+
+| Agent | 描述 |
+|-------|------|
+| `compaction` | 长会话上下文压缩 |
+| `title` | 自动会话标题生成 |
+| `summary` | 会话摘要生成 |
+
+### 使用示例
+
+```bash
+# 代码审查
+bun dev run --agent code-reviewer "Review src/api/server.ts"
+
+# 安全分析
+bun dev run --agent security-reviewer "Audit the authentication system"
+
+# 决策咨询
+bun dev run "@decision 用CLOSE框架分析这个职业选择"
+
+# 宏观分析
+bun dev run "@macro 解读本月的PMI数据"
+
+# 架构设计
+bun dev run --agent architect "Design a microservices migration plan"
+```
+
+---
+
+## AI 提供商
+
+CodeCoder 开箱即用支持 20+ AI 提供商：
+
+| 提供商 | 认证方式 |
+|--------|----------|
+| Anthropic Claude | API Key, Claude Max (OAuth) |
+| OpenAI | API Key, ChatGPT Plus/Pro (OAuth) |
+| Google Gemini | API Key |
+| Google Vertex AI | 服务账户 |
+| Amazon Bedrock | IAM, Profile, Web Identity |
+| Azure OpenAI | API Key |
+| GitHub Copilot | OAuth |
+| xAI | API Key |
+| Mistral AI | API Key |
+| Groq | API Key |
+| DeepInfra | API Key |
+| Cerebras | API Key |
+| Cohere | API Key |
+| Together AI | API Key |
+| Perplexity | API Key |
+| OpenRouter | API Key |
+| Vercel AI | API Key |
+| GitLab Duo | OAuth |
 
 ### 配置示例
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/iannil/code-coder/main/packages/ccode/schema.json",
-  "model": "anthropic/claude-sonnet-4-20250514",
+  "provider": {
+    "anthropic": {
+      "options": {
+        "apiKey": "sk-ant-..."
+      }
+    },
+    "openai": {
+      "options": {
+        "apiKey": "sk-proj-..."
+      }
+    }
+  },
+  "model": "anthropic/claude-sonnet-4-5"
+}
+```
+
+---
+
+## Rust 服务
+
+对于生产部署，CodeCoder 提供高性能 Rust 服务：
+
+### Zero Daemon（组合服务）
+
+`zero-daemon` 在单进程中运行所有服务——适合开发和单机部署：
+
+```bash
+# 构建 Rust 服务
+./ops.sh build rust
+
+# 启动守护进程
+./ops.sh start zero-daemon
+```
+
+### 独立服务（模块化部署）
+
+对于分布式部署，可独立运行各服务：
+
+| 服务 | 用途 |
+|------|------|
+| `zero-gateway` | 认证、路由、限流、沙箱 |
+| `zero-channels` | Telegram、Discord、Slack、Email 集成 |
+| `zero-workflow` | Webhook 处理、定时任务、Git 操作 |
+
+```bash
+# 启动独立服务
+./ops.sh start zero-gateway
+./ops.sh start zero-channels
+./ops.sh start zero-workflow
+
+# 查看所有服务状态
+./ops.sh status
+
+# 查看日志
+./ops.sh logs zero-workflow
+```
+
+---
+
+## 配置
+
+配置文件按优先级加载（后者覆盖前者）：
+
+1. Well-Known 远程配置
+2. 全局配置：`~/.config/codecoder/codecoder.json`
+3. `CCODE_CONFIG` 环境变量
+4. 项目配置：`./codecoder.json`
+5. `.codecoder/` 目录
+6. `CCODE_CONFIG_CONTENT` 环境变量
+
+### 配置示例
+
+```json
+{
+  "$schema": "https://codecoder.ai/schema/config.json",
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
   "default_agent": "build",
+
   "provider": {
     "anthropic": {
       "options": { "apiKey": "{env:ANTHROPIC_API_KEY}" }
     }
   },
+
+  "mcp": {
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "@anthropic/mcp-server-filesystem", "/home/user"]
+    },
+    "remote-server": {
+      "type": "remote",
+      "url": "https://mcp.example.com/sse",
+      "oauth": {
+        "clientId": "...",
+        "scope": "read write"
+      }
+    }
+  },
+
   "permission": {
+    "*": "allow",
     "bash": {
-      "*": "ask",
-      "git *": "allow",
-      "npm *": "allow"
+      "rm -rf *": "deny",
+      "git *": "allow"
     }
   }
 }
 ```
 
-## 使用示例
+---
 
-### 代码审查
+## 记忆系统
 
-```bash
-ccode run --agent code-reviewer "审查认证模块的代码"
-```
+CodeCoder 采用透明、Git 友好的双层记忆架构：
 
-### 决策分析（CLOSE 框架）
+### 第一层：每日笔记（流）
 
-```bash
-ccode run --agent decision "我应该接受这份工作邀请吗？"
-```
+- **路径：** `./memory/daily/{YYYY-MM-DD}.md`
+- **类型：** 仅追加日志
+- **用途：** 记录每日交互、决策和任务
 
-### 经济数据分析
+### 第二层：长期记忆（沉积）
 
-```bash
-ccode run --agent macro "解读最新的 PMI 数据"
-```
+- **路径：** `./memory/MEMORY.md`
+- **类型：** 经过整理的结构化知识
+- **分类：** 用户偏好、项目上下文、关键决策、经验教训
 
-### 产品选品
+### 操作规则
 
-```bash
-ccode run --agent picker "分析 AI 写作工具的市场机会"
-```
+| 操作 | 时机 | 行为 |
+|------|------|------|
+| **读取** | 会话初始化 | 加载 MEMORY.md + 当日/前日笔记 |
+| **即时写入** | 重要交互后 | 追加到每日笔记（不可变） |
+| **整合写入** | 检测到重要信息 | 更新 MEMORY.md（合并/替换过时内容） |
 
-## 项目结构
+所有记忆文件都是标准 Markdown——需要时可直接编辑。
 
-```
-codecoder/
-├── packages/
-│   ├── ccode/           # 核心 CLI 和业务逻辑
-│   │   ├── src/
-│   │   │   ├── agent/   # Agent 定义和提示词
-│   │   │   ├── cli/     # CLI 命令和 TUI
-│   │   │   ├── provider/# AI 提供商集成
-│   │   │   ├── mcp/     # MCP 协议支持
-│   │   │   ├── lsp/     # LSP 集成
-│   │   │   └── tool/    # 内置工具
-│   │   └── test/        # 测试套件
-│   └── util/            # 共享工具库
-├── services/
-│   └── zero-bot/        # Rust 消息网关
-├── script/              # 构建和生成脚本
-├── docs/                # 文档
-└── memory/              # 记忆存储
-```
+---
 
-## 开发
+## 开发命令
 
 ```bash
 # 安装依赖
 bun install
 
-# 开发模式运行
+# 运行 TUI 界面
 bun dev
+
+# 在指定目录运行
+bun dev /path/to/project
+
+# 启动 API 服务器
+bun dev serve --port 4400
 
 # 类型检查
 bun turbo typecheck
 
-# 运行测试（从包目录）
+# 运行测试（需在包目录内执行）
 cd packages/ccode && bun test
 
-# 构建可执行文件
+# 构建独立可执行文件
 bun run --cwd packages/ccode build
 
-# 重新生成 SDK
+# API 更改后重新生成 SDK
 ./script/generate.ts
+
+# 服务运维
+./ops.sh start          # 启动核心服务
+./ops.sh start all      # 启动所有服务
+./ops.sh stop           # 停止所有服务
+./ops.sh status         # 查看服务状态
+./ops.sh build rust     # 构建 Rust 服务
+./ops.sh logs api       # 查看 API 日志
 ```
 
-### 端口配置
+---
 
-| 服务 | 端口 |
-|------|------|
-| CodeCoder API Server | 4400 |
-| Web Frontend (Vite) | 4401 |
-| ZeroBot Daemon | 4402 |
-| Faster Whisper Server | 4403 |
+## 贡献指南
 
-## 贡献
+欢迎贡献！请遵循以下规范：
 
-欢迎贡献！详情请参阅[贡献指南](./docs/CONTRIB.md)。
+- PR 必须引用现有 issue
+- PR 标题遵循约定式提交规范（`feat:`、`fix:`、`docs:` 等）
+- UI 更改需提供截图/视频
+- PR 应保持小而专注
 
-1. Fork 本仓库
-2. 创建功能分支（`git checkout -b feature/amazing-feature`）
-3. 按照[约定式提交](https://www.conventionalcommits.org/zh-hans/)规范提交更改
-4. 推送到分支（`git push origin feature/amazing-feature`）
-5. 创建 Pull Request
+---
 
 ## 许可证
 
-本项目基于 MIT 许可证开源——详情请参阅 [LICENSE](LICENSE) 文件。
+MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
 
-## 致谢
+---
 
-- 使用 [Bun](https://bun.sh) 构建——快速的一体化 JavaScript 运行时
-- 由 [Vercel AI SDK](https://sdk.vercel.ai) 驱动——多提供商 AI 集成
-- UI 由 [OpenTUI](https://github.com/sst/opentui) 提供支持——终端 UI 框架
+<p align="center">
+  <i>以观察者理论为指导构建：每一次交互都将可能性收敛为现实。</i>
+</p>
