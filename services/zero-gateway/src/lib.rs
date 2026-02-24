@@ -29,6 +29,7 @@
 #![allow(clippy::pedantic)]
 
 pub mod auth;
+pub mod context;
 pub mod metering;
 pub mod pairing;
 pub mod parallel;
@@ -44,6 +45,7 @@ pub mod webhook;
 
 pub use parallel::{ParallelRequest, ParallelResponse, ParallelState, parallel_routes};
 pub use pairing::{PairingState, pairing_routes};
+pub use context::{ContextState, context_routes, SearchQuery, SearchResponse, ContextEntry, IngestRequest, IngestResponse};
 pub use provider::{
     AnthropicProvider, AuthStyle, ChatRequest, ChatResponse, CompatibleProvider, GeminiProvider,
     OllamaProvider, OpenAIProvider, OpenRouterProvider, Provider, ProviderError, ProviderRegistry,
