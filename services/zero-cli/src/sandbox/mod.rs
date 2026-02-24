@@ -7,7 +7,8 @@
 //! - No host filesystem access
 //! - Automatic container cleanup
 
+pub mod docker;
 pub mod types;
-// pub mod docker;  // Will be added in Task 3
 
+pub use docker::DockerSandbox;
 pub use types::{ExecutionAttempt, ExecutionResult, Language, SandboxConfig};
