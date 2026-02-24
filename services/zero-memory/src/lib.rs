@@ -21,6 +21,7 @@
 
 pub mod chunker;
 pub mod embeddings;
+pub mod hybrid_search;
 pub mod markdown;
 pub mod qdrant;
 pub mod sqlite;
@@ -30,6 +31,7 @@ pub mod vector;
 // Re-export commonly used types
 pub use chunker::{chunk_markdown, Chunk};
 pub use embeddings::{create_embedding_provider, EmbeddingProvider, NoopEmbedding, OpenAiEmbedding};
+pub use hybrid_search::{HybridSearchEngine, DEFAULT_KEYWORD_WEIGHT, DEFAULT_VECTOR_WEIGHT};
 pub use markdown::MarkdownMemory;
 pub use qdrant::{QdrantMemory, QdrantMetadata};
 pub use sqlite::SqliteMemory;
