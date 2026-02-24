@@ -22,6 +22,7 @@
 pub mod chunker;
 pub mod embeddings;
 pub mod markdown;
+pub mod qdrant;
 pub mod sqlite;
 pub mod traits;
 pub mod vector;
@@ -30,6 +31,7 @@ pub mod vector;
 pub use chunker::{chunk_markdown, Chunk};
 pub use embeddings::{create_embedding_provider, EmbeddingProvider, NoopEmbedding, OpenAiEmbedding};
 pub use markdown::MarkdownMemory;
+pub use qdrant::{QdrantMemory, QdrantMetadata};
 pub use sqlite::SqliteMemory;
 pub use traits::{Memory, MemoryCategory, MemoryEntry};
 pub use vector::{bytes_to_vec, cosine_similarity, hybrid_merge, vec_to_bytes, ScoredResult};
