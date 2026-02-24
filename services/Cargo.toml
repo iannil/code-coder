@@ -78,6 +78,9 @@ cron = "0.12"
 # Regex
 regex = "1.11"
 
+# URL parsing
+url = "2.5"
+
 # Password hashing
 argon2 = "0.5"
 

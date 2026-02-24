@@ -50,6 +50,9 @@ chrono = { workspace = true }
 # Regex
 regex = { workspace = true }
 
+# URL parsing
+url = { workspace = true }
+
 # Directory lookup (for Gemini CLI auth)
 directories = { workspace = true }
 
