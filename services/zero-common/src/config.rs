@@ -84,6 +84,14 @@ pub struct Config {
     /// Audit logging configuration
     #[serde(default)]
     pub audit: crate::audit::AuditConfig,
+
+    /// Sandbox (Docker) configuration for secure code execution
+    #[serde(default)]
+    pub sandbox: SandboxConfig,
+
+    /// Qdrant vector database configuration for semantic memory
+    #[serde(default)]
+    pub qdrant: QdrantConfig,
 }
 
 impl Config {
@@ -1447,6 +1455,111 @@ fn default_auth_mode() -> String {
 }
 
 // ============================================================================
+// Sandbox Configuration
+// ============================================================================
+
+/// Docker sandbox configuration for secure code execution.
+///
+/// Allows running untrusted code in isolated Docker containers with
+/// configurable resource limits and network access.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxConfig {
+    /// Enable Docker sandbox for code execution
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Docker socket path
+    #[serde(default = "default_docker_socket")]
+    pub docker_socket: String,
+
+    /// Default execution timeout in seconds
+    #[serde(default = "default_sandbox_timeout_secs")]
+    pub default_timeout_secs: u64,
+
+    /// Maximum memory limit in MB
+    #[serde(default = "default_max_memory_mb")]
+    pub max_memory_mb: u64,
+
+    /// Enable network access for sandboxed containers
+    #[serde(default)]
+    pub network_enabled: bool,
+}
+
+impl Default for SandboxConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            docker_socket: default_docker_socket(),
+            default_timeout_secs: default_sandbox_timeout_secs(),
+            max_memory_mb: default_max_memory_mb(),
+            network_enabled: false,
+        }
+    }
+}
+
+fn default_docker_socket() -> String {
+    "/var/run/docker.sock".into()
+}
+
+fn default_sandbox_timeout_secs() -> u64 {
+    60
+}
+
+fn default_max_memory_mb() -> u64 {
+    256
+}
+
+// ============================================================================
+// Qdrant Configuration
+// ============================================================================
+
+/// Qdrant vector database configuration for semantic memory.
+///
+/// Enables semantic search and retrieval of conversation history,
+/// documents, and other knowledge artifacts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QdrantConfig {
+    /// Enable Qdrant integration
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Qdrant server URL
+    #[serde(default = "default_qdrant_url")]
+    pub url: String,
+
+    /// Collection name for storing embeddings
+    #[serde(default = "default_qdrant_collection")]
+    pub collection: String,
+
+    /// Embedding model provider (openai, cohere, local)
+    #[serde(default = "default_embedding_model")]
+    pub embedding_model: String,
+}
+
+impl Default for QdrantConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            url: default_qdrant_url(),
+            collection: default_qdrant_collection(),
+            embedding_model: default_embedding_model(),
+        }
+    }
+}
+
+fn default_qdrant_url() -> String {
+    "http://localhost:6333".into()
+}
+
+fn default_qdrant_collection() -> String {
+    "codecoder_memory".into()
+}
+
+fn default_embedding_model() -> String {
+    "openai".into()
+}
+
+// ============================================================================
 // Tunnel Configuration
 // ============================================================================
 
@@ -1910,5 +2023,75 @@ mod tests {
         assert!(!capture.auto_capture.capture_forwarded);
         assert!(!capture.auto_capture.capture_links);
         assert!(capture.auto_capture.trigger_prefixes.is_empty());
+    }
+
+    #[test]
+    fn test_sandbox_config_defaults() {
+        let sandbox = SandboxConfig::default();
+        assert!(sandbox.enabled);
+        assert_eq!(sandbox.docker_socket, "/var/run/docker.sock");
+        assert_eq!(sandbox.default_timeout_secs, 60);
+        assert_eq!(sandbox.max_memory_mb, 256);
+        assert!(!sandbox.network_enabled);
+    }
+
+    #[test]
+    fn test_sandbox_config() {
+        let json = r#"{
+            "sandbox": {
+                "enabled": true,
+                "docker_socket": "/custom/docker.sock",
+                "default_timeout_secs": 120,
+                "max_memory_mb": 512,
+                "network_enabled": true
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(config.sandbox.enabled);
+        assert_eq!(config.sandbox.docker_socket, "/custom/docker.sock");
+        assert_eq!(config.sandbox.default_timeout_secs, 120);
+        assert_eq!(config.sandbox.max_memory_mb, 512);
+        assert!(config.sandbox.network_enabled);
+    }
+
+    #[test]
+    fn test_qdrant_config_defaults() {
+        let qdrant = QdrantConfig::default();
+        assert!(!qdrant.enabled);
+        assert_eq!(qdrant.url, "http://localhost:6333");
+        assert_eq!(qdrant.collection, "codecoder_memory");
+        assert_eq!(qdrant.embedding_model, "openai");
+    }
+
+    #[test]
+    fn test_qdrant_config() {
+        let json = r#"{
+            "qdrant": {
+                "enabled": true,
+                "url": "http://qdrant.local:6333",
+                "collection": "custom_collection",
+                "embedding_model": "cohere"
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(config.qdrant.enabled);
+        assert_eq!(config.qdrant.url, "http://qdrant.local:6333");
+        assert_eq!(config.qdrant.collection, "custom_collection");
+        assert_eq!(config.qdrant.embedding_model, "cohere");
+    }
+
+    #[test]
+    fn test_config_with_sandbox_and_qdrant() {
+        let config = Config::default();
+
+        // Sandbox defaults
+        assert!(config.sandbox.enabled);
+        assert!(!config.sandbox.network_enabled);
+
+        // Qdrant defaults
+        assert!(!config.qdrant.enabled);
+        assert_eq!(config.qdrant.url, "http://localhost:6333");
     }
 }
