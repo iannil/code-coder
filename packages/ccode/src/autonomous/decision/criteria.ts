@@ -200,7 +200,8 @@ export function calculateCLOSEFromContext(input: {
   const evolution = input.learningValue
 
   const weights = { convergence: 1.0, leverage: 1.2, optionality: 1.5, surplus: 1.3, evolution: 0.8 }
-  const maxScore = weights.convergence + weights.leverage + weights.optionality + weights.surplus + weights.evolution
+  // maxScore is the maximum possible weighted sum (when all criteria are 10)
+  const maxScore = 10 * (weights.convergence + weights.leverage + weights.optionality + weights.surplus + weights.evolution)
   const total =
     ((convergence * weights.convergence +
       leverage * weights.leverage +

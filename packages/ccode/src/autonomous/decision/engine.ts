@@ -120,12 +120,15 @@ export class DecisionEngine {
     const surplus = criteria.surplus * closeWeights.surplus
     const evolution = criteria.evolution * closeWeights.evolution
 
+    // maxScore is the maximum possible weighted sum (when all criteria are 10)
     const maxScore =
-      closeWeights.convergence +
-      closeWeights.leverage +
-      closeWeights.optionality +
-      closeWeights.surplus +
-      closeWeights.evolution
+      10 *
+      (closeWeights.convergence +
+        closeWeights.leverage +
+        closeWeights.optionality +
+        closeWeights.surplus +
+        closeWeights.evolution)
+    // Normalize to 0-10 range
     const total = ((convergence + leverage + optionality + surplus + evolution) / maxScore) * 10
 
     return {
