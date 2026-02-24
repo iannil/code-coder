@@ -92,6 +92,10 @@ pub struct Config {
     /// Qdrant vector database configuration for semantic memory
     #[serde(default)]
     pub qdrant: QdrantConfig,
+
+    /// Human-in-the-Loop (HitL) configuration
+    #[serde(default)]
+    pub hitl: HitLConfig,
 }
 
 impl Config {
@@ -1560,6 +1564,62 @@ fn default_embedding_model() -> String {
 }
 
 // ============================================================================
+// HitL (Human-in-the-Loop) Configuration
+// ============================================================================
+
+/// Human-in-the-Loop (HitL) configuration.
+///
+/// Enables approval workflows where certain agent actions require
+/// human approval before execution. Approvals are sent via configured
+/// channels (Telegram, Slack, etc.) and callbacks are received via HTTP.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HitLConfig {
+    /// Whether HitL is enabled
+    #[serde(default = "default_hitl_enabled")]
+    pub enabled: bool,
+
+    /// Default approvers (user IDs)
+    #[serde(default)]
+    pub default_approvers: Vec<String>,
+
+    /// Channels service endpoint
+    #[serde(default = "default_channels_endpoint")]
+    pub channels_endpoint: String,
+
+    /// Base URL for callbacks
+    #[serde(default)]
+    pub callback_base_url: String,
+
+    /// Database path for HitL store
+    #[serde(default = "default_hitl_db_path")]
+    pub db_path: String,
+}
+
+impl Default for HitLConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_hitl_enabled(),
+            default_approvers: vec![],
+            channels_endpoint: default_channels_endpoint(),
+            callback_base_url: String::new(),
+            db_path: default_hitl_db_path(),
+        }
+    }
+}
+
+fn default_hitl_enabled() -> bool {
+    true
+}
+
+fn default_channels_endpoint() -> String {
+    "http://localhost:4431".into()
+}
+
+fn default_hitl_db_path() -> String {
+    "~/.codecoder/hitl.db".into()
+}
+
+// ============================================================================
 // Tunnel Configuration
 // ============================================================================
 
@@ -2093,5 +2153,93 @@ mod tests {
         // Qdrant defaults
         assert!(!config.qdrant.enabled);
         assert_eq!(config.qdrant.url, "http://localhost:6333");
+    }
+
+    #[test]
+    fn test_hitl_config_defaults() {
+        let hitl = HitLConfig::default();
+        assert!(hitl.enabled);
+        assert!(hitl.default_approvers.is_empty());
+        assert_eq!(hitl.channels_endpoint, "http://localhost:4431");
+        assert!(hitl.callback_base_url.is_empty());
+        assert_eq!(hitl.db_path, "~/.codecoder/hitl.db");
+    }
+
+    #[test]
+    fn test_hitl_config_from_json() {
+        let json = r#"{
+            "hitl": {
+                "enabled": true,
+                "default_approvers": ["user1", "user2"],
+                "channels_endpoint": "http://channels.local:4431",
+                "callback_base_url": "https://api.example.com",
+                "db_path": "/var/lib/hitl/store.db"
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(config.hitl.enabled);
+        assert_eq!(config.hitl.default_approvers, vec!["user1", "user2"]);
+        assert_eq!(config.hitl.channels_endpoint, "http://channels.local:4431");
+        assert_eq!(config.hitl.callback_base_url, "https://api.example.com");
+        assert_eq!(config.hitl.db_path, "/var/lib/hitl/store.db");
+    }
+
+    #[test]
+    fn test_hitl_config_partial_json() {
+        // Test that partial JSON uses defaults for missing fields
+        let json = r#"{
+            "hitl": {
+                "enabled": false,
+                "default_approvers": ["admin"]
+            }
+        }"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(!config.hitl.enabled);
+        assert_eq!(config.hitl.default_approvers, vec!["admin"]);
+        // These should use defaults
+        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
+        assert!(config.hitl.callback_base_url.is_empty());
+        assert_eq!(config.hitl.db_path, "~/.codecoder/hitl.db");
+    }
+
+    #[test]
+    fn test_hitl_config_empty_json() {
+        // Test that empty hitl section uses all defaults
+        let json = r#"{"hitl": {}}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        assert!(config.hitl.enabled);
+        assert!(config.hitl.default_approvers.is_empty());
+        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
+    }
+
+    #[test]
+    fn test_config_without_hitl_section() {
+        // Test that config without hitl section uses defaults
+        let json = r#"{"gateway": {"port": 8080}}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+
+        // HitL should use all defaults
+        assert!(config.hitl.enabled);
+        assert!(config.hitl.default_approvers.is_empty());
+        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
+        assert_eq!(config.hitl.db_path, "~/.codecoder/hitl.db");
+    }
+
+    #[test]
+    fn test_config_with_hitl_serialization() {
+        let mut config = Config::default();
+        config.hitl.enabled = false;
+        config.hitl.default_approvers = vec!["approver1".to_string()];
+        config.hitl.callback_base_url = "https://callback.example.com".to_string();
+
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+
+        assert!(!parsed.hitl.enabled);
+        assert_eq!(parsed.hitl.default_approvers, vec!["approver1"]);
+        assert_eq!(parsed.hitl.callback_base_url, "https://callback.example.com");
     }
 }
