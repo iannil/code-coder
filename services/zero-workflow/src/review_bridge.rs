@@ -2,14 +2,25 @@
 //!
 //! Connects Git platform webhooks to CodeCoder's code-reviewer agent,
 //! posts results back to the platform, and sends IM notifications.
+//!
+//! ## Human-in-the-Loop (HitL) Integration
+//!
+//! The review bridge supports HitL for merge approvals. When enabled, after a code
+//! review is approved, the bridge can request human approval before proceeding with
+//! the merge. This is useful for:
+//! - Critical repositories requiring human oversight
+//! - Compliance requirements for production deployments
+//! - Additional review gates for security-sensitive changes
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::github::{self, GitHubClient};
 use crate::gitlab::{self, GitLabClient};
+use zero_common::hitl_client::{ApprovalType, CreateApprovalRequest, HitLClient};
 
 // ============================================================================
 // IM Notification Configuration
@@ -54,6 +65,54 @@ impl Default for IMNotificationConfig {
 }
 
 // ============================================================================
+// HitL Configuration
+// ============================================================================
+
+/// Configuration for Human-in-the-Loop merge approvals.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HitLIntegrationConfig {
+    /// Enable HitL for merge approvals
+    #[serde(default)]
+    pub enabled: bool,
+    /// Require human approval before merge
+    #[serde(default)]
+    pub require_approval_for_merge: bool,
+    /// Default IM channel type for approval requests
+    #[serde(default = "default_hitl_channel")]
+    pub default_channel: String,
+    /// List of users who can approve merge requests
+    #[serde(default)]
+    pub approvers: Vec<String>,
+    /// Mapping of user IDs to their IM channel IDs
+    #[serde(default)]
+    pub user_channel_map: HashMap<String, String>,
+    /// TTL for approval requests in seconds (default: 1 hour)
+    #[serde(default = "default_approval_ttl")]
+    pub approval_ttl_seconds: u64,
+}
+
+fn default_hitl_channel() -> String {
+    "telegram".to_string()
+}
+
+fn default_approval_ttl() -> u64 {
+    3600 // 1 hour
+}
+
+impl Default for HitLIntegrationConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            require_approval_for_merge: false,
+            default_channel: default_hitl_channel(),
+            approvers: Vec::new(),
+            user_channel_map: HashMap::new(),
+            approval_ttl_seconds: default_approval_ttl(),
+        }
+    }
+}
+
+// ============================================================================
 // Review Bridge
 // ============================================================================
 
@@ -69,6 +128,12 @@ pub struct ReviewBridge {
     gitlab: Option<Arc<GitLabClient>>,
     /// IM notification configuration
     im_config: IMNotificationConfig,
+    /// HitL client for approval requests
+    hitl_client: Option<HitLClient>,
+    /// HitL integration configuration
+    hitl_config: HitLIntegrationConfig,
+    /// Pending approval requests (MR key -> approval ID)
+    pending_approvals: std::sync::Mutex<HashMap<String, String>>,
 }
 
 impl ReviewBridge {
@@ -85,6 +150,9 @@ impl ReviewBridge {
             github: None,
             gitlab: None,
             im_config: IMNotificationConfig::default(),
+            hitl_client: None,
+            hitl_config: HitLIntegrationConfig::default(),
+            pending_approvals: std::sync::Mutex::new(HashMap::new()),
         }
     }
 
@@ -103,6 +171,18 @@ impl ReviewBridge {
     /// Set IM notification configuration.
     pub fn with_im_config(mut self, config: IMNotificationConfig) -> Self {
         self.im_config = config;
+        self
+    }
+
+    /// Set HitL client for approval requests.
+    pub fn with_hitl_client(mut self, client: HitLClient) -> Self {
+        self.hitl_client = Some(client);
+        self
+    }
+
+    /// Set HitL integration configuration.
+    pub fn with_hitl_config(mut self, config: HitLIntegrationConfig) -> Self {
+        self.hitl_config = config;
         self
     }
 
@@ -494,6 +574,164 @@ Format your response as:
 
         message
     }
+
+    // ========================================================================
+    // HitL Methods
+    // ========================================================================
+
+    /// Request merge approval through HitL system.
+    ///
+    /// Creates an approval request in the HitL system and returns the request ID.
+    /// The caller should track this ID to check approval status later.
+    pub async fn request_merge_approval(&self, mr: &MergeRequestInfo) -> Result<String> {
+        let client = self
+            .hitl_client
+            .as_ref()
+            .ok_or_else(|| anyhow!("HitL client not configured"))?;
+
+        if !self.hitl_config.enabled {
+            return Err(anyhow!("HitL is not enabled"));
+        }
+
+        let channel_id = self.get_channel_id(&mr.author)?;
+
+        let request = CreateApprovalRequest {
+            approval_type: ApprovalType::MergeRequest {
+                platform: mr.platform.clone(),
+                repo: mr.repo.clone(),
+                mr_id: mr.id,
+            },
+            requester: mr.author.clone(),
+            approvers: self.hitl_config.approvers.clone(),
+            title: format!("Merge Approval: {}", mr.title),
+            description: Some(format!(
+                "Review approved for MR !{} in {}\n\nURL: {}\nAuthor: {}",
+                mr.id, mr.repo, mr.url, mr.author
+            )),
+            channel: format!("{}:{}", self.hitl_config.default_channel, channel_id),
+            metadata: serde_json::json!({
+                "title": mr.title,
+                "url": mr.url,
+                "review_status": "approved",
+                "platform": mr.platform,
+                "repo": mr.repo,
+                "mr_id": mr.id,
+            }),
+            ttl_seconds: Some(self.hitl_config.approval_ttl_seconds),
+        };
+
+        let response = client
+            .create_request(request)
+            .await
+            .map_err(|e| anyhow!("Failed to create HitL approval request: {}", e))?;
+
+        let approval_id = response
+            .approval
+            .ok_or_else(|| anyhow!("HitL response missing approval data"))?
+            .id;
+
+        // Store the pending approval
+        let mr_key = format!("{}:{}:{}", mr.platform, mr.repo, mr.id);
+        if let Ok(mut pending) = self.pending_approvals.lock() {
+            pending.insert(mr_key, approval_id.clone());
+        }
+
+        tracing::info!(
+            approval_id = %approval_id,
+            platform = %mr.platform,
+            repo = %mr.repo,
+            mr_id = mr.id,
+            "Created HitL merge approval request"
+        );
+
+        Ok(approval_id)
+    }
+
+    /// Handle a review that was approved, potentially triggering HitL approval.
+    ///
+    /// If HitL is enabled and `require_approval_for_merge` is true, this creates
+    /// an approval request instead of immediately merging.
+    pub async fn handle_review_approved(&self, mr: &MergeRequestInfo) -> Result<ApprovalAction> {
+        if self.hitl_config.enabled && self.hitl_config.require_approval_for_merge {
+            let approval_id = self.request_merge_approval(mr).await?;
+            tracing::info!(
+                approval_id = %approval_id,
+                mr_id = mr.id,
+                "Merge approval requested, waiting for human decision"
+            );
+            Ok(ApprovalAction::PendingApproval { approval_id })
+        } else {
+            // No HitL required, proceed with merge
+            Ok(ApprovalAction::ReadyToMerge)
+        }
+    }
+
+    /// Get the channel ID for a given user.
+    ///
+    /// Looks up the user in the channel map, falling back to the IM config channel.
+    fn get_channel_id(&self, user: &str) -> Result<String> {
+        // Try user-specific channel first
+        if let Some(channel_id) = self.hitl_config.user_channel_map.get(user) {
+            return Ok(channel_id.clone());
+        }
+
+        // Fall back to IM config channel
+        if let Some(ref channel_id) = self.im_config.channel_id {
+            return Ok(channel_id.clone());
+        }
+
+        Err(anyhow!(
+            "No channel ID configured for user '{}' and no default channel set",
+            user
+        ))
+    }
+
+    /// Check if a merge request has a pending HitL approval.
+    pub fn get_pending_approval(&self, platform: &str, repo: &str, mr_id: i64) -> Option<String> {
+        let mr_key = format!("{}:{}:{}", platform, repo, mr_id);
+        self.pending_approvals
+            .lock()
+            .ok()
+            .and_then(|pending| pending.get(&mr_key).cloned())
+    }
+
+    /// Clear a pending approval (e.g., after it's been processed).
+    pub fn clear_pending_approval(&self, platform: &str, repo: &str, mr_id: i64) {
+        let mr_key = format!("{}:{}:{}", platform, repo, mr_id);
+        if let Ok(mut pending) = self.pending_approvals.lock() {
+            pending.remove(&mr_key);
+        }
+    }
+}
+
+// ============================================================================
+// HitL Types
+// ============================================================================
+
+/// Information about a merge request for HitL approval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeRequestInfo {
+    /// Git platform (e.g., "github", "gitlab")
+    pub platform: String,
+    /// Repository full name (e.g., "owner/repo")
+    pub repo: String,
+    /// Merge request ID or PR number
+    pub id: i64,
+    /// MR/PR title
+    pub title: String,
+    /// MR/PR URL
+    pub url: String,
+    /// Author username
+    pub author: String,
+}
+
+/// Result of the approval check.
+#[derive(Debug, Clone)]
+pub enum ApprovalAction {
+    /// Ready to merge (HitL not required or already approved)
+    ReadyToMerge,
+    /// Waiting for HitL approval
+    PendingApproval { approval_id: String },
 }
 
 // ============================================================================
@@ -726,5 +964,238 @@ mod tests {
         assert!(md.contains("💬 Code Review"));
         assert!(md.contains("src/main.rs:42"));
         assert!(md.contains("MEDIUM"));
+    }
+
+    // ========================================================================
+    // HitL Integration Tests
+    // ========================================================================
+
+    fn create_test_mr_info() -> MergeRequestInfo {
+        MergeRequestInfo {
+            platform: "github".to_string(),
+            repo: "test-org/test-repo".to_string(),
+            id: 123,
+            title: "Add new feature".to_string(),
+            url: "https://github.com/test-org/test-repo/pull/123".to_string(),
+            author: "test-user".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_hitl_config_defaults() {
+        let config = HitLIntegrationConfig::default();
+        assert!(!config.enabled);
+        assert!(!config.require_approval_for_merge);
+        assert_eq!(config.default_channel, "telegram");
+        assert!(config.approvers.is_empty());
+        assert!(config.user_channel_map.is_empty());
+        assert_eq!(config.approval_ttl_seconds, 3600);
+    }
+
+    #[test]
+    fn test_hitl_config_serialization() {
+        let mut user_map = HashMap::new();
+        user_map.insert("alice".to_string(), "channel-alice".to_string());
+        user_map.insert("bob".to_string(), "channel-bob".to_string());
+
+        let config = HitLIntegrationConfig {
+            enabled: true,
+            require_approval_for_merge: true,
+            default_channel: "slack".to_string(),
+            approvers: vec!["admin@example.com".to_string()],
+            user_channel_map: user_map,
+            approval_ttl_seconds: 7200,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"enabled\":true"));
+        assert!(json.contains("\"require_approval_for_merge\":true"));
+        assert!(json.contains("\"default_channel\":\"slack\""));
+
+        let deserialized: HitLIntegrationConfig = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.enabled);
+        assert!(deserialized.require_approval_for_merge);
+        assert_eq!(deserialized.approvers, vec!["admin@example.com"]);
+    }
+
+    #[test]
+    fn test_merge_request_info_serialization() {
+        let mr = create_test_mr_info();
+
+        let json = serde_json::to_string(&mr).unwrap();
+        assert!(json.contains("\"platform\":\"github\""));
+        assert!(json.contains("\"repo\":\"test-org/test-repo\""));
+        assert!(json.contains("\"id\":123"));
+
+        let deserialized: MergeRequestInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.platform, "github");
+        assert_eq!(deserialized.id, 123);
+    }
+
+    #[test]
+    fn test_review_bridge_with_hitl_config() {
+        let config = HitLIntegrationConfig {
+            enabled: true,
+            require_approval_for_merge: true,
+            default_channel: "telegram".to_string(),
+            approvers: vec!["admin".to_string()],
+            user_channel_map: HashMap::new(),
+            approval_ttl_seconds: 3600,
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_config(config);
+
+        assert!(bridge.hitl_config.enabled);
+        assert!(bridge.hitl_config.require_approval_for_merge);
+    }
+
+    #[test]
+    fn test_get_channel_id_from_user_map() {
+        let mut user_map = HashMap::new();
+        user_map.insert("alice".to_string(), "alice-channel-123".to_string());
+
+        let config = HitLIntegrationConfig {
+            enabled: true,
+            require_approval_for_merge: true,
+            default_channel: "telegram".to_string(),
+            approvers: vec![],
+            user_channel_map: user_map,
+            approval_ttl_seconds: 3600,
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_config(config);
+
+        let channel = bridge.get_channel_id("alice").unwrap();
+        assert_eq!(channel, "alice-channel-123");
+    }
+
+    #[test]
+    fn test_get_channel_id_fallback_to_im_config() {
+        let config = HitLIntegrationConfig::default();
+        let im_config = IMNotificationConfig {
+            enabled: true,
+            channels_endpoint: Some("http://localhost:4431".to_string()),
+            channel_type: "telegram".to_string(),
+            channel_id: Some("default-channel-456".to_string()),
+            notify_on: vec![],
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_config(config)
+            .with_im_config(im_config);
+
+        let channel = bridge.get_channel_id("unknown-user").unwrap();
+        assert_eq!(channel, "default-channel-456");
+    }
+
+    #[test]
+    fn test_get_channel_id_error_when_no_channel() {
+        let bridge = ReviewBridge::new("http://localhost:4400");
+        let result = bridge.get_channel_id("unknown-user");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No channel ID configured"));
+    }
+
+    #[test]
+    fn test_pending_approval_tracking() {
+        let bridge = ReviewBridge::new("http://localhost:4400");
+
+        // Initially no pending approval
+        assert!(bridge.get_pending_approval("github", "org/repo", 42).is_none());
+
+        // Simulate adding a pending approval (internal test)
+        {
+            let mut pending = bridge.pending_approvals.lock().unwrap();
+            pending.insert("github:org/repo:42".to_string(), "approval-123".to_string());
+        }
+
+        // Now it should exist
+        let approval_id = bridge.get_pending_approval("github", "org/repo", 42);
+        assert_eq!(approval_id, Some("approval-123".to_string()));
+
+        // Clear it
+        bridge.clear_pending_approval("github", "org/repo", 42);
+        assert!(bridge.get_pending_approval("github", "org/repo", 42).is_none());
+    }
+
+    #[tokio::test]
+    async fn test_handle_review_approved_no_hitl() {
+        let bridge = ReviewBridge::new("http://localhost:4400");
+        let mr = create_test_mr_info();
+
+        let result = bridge.handle_review_approved(&mr).await.unwrap();
+        assert!(matches!(result, ApprovalAction::ReadyToMerge));
+    }
+
+    #[tokio::test]
+    async fn test_handle_review_approved_hitl_disabled() {
+        let config = HitLIntegrationConfig {
+            enabled: false,
+            require_approval_for_merge: true,
+            ..Default::default()
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_config(config);
+
+        let mr = create_test_mr_info();
+        let result = bridge.handle_review_approved(&mr).await.unwrap();
+
+        // Even with require_approval_for_merge, if HitL is disabled, skip it
+        assert!(matches!(result, ApprovalAction::ReadyToMerge));
+    }
+
+    #[tokio::test]
+    async fn test_request_merge_approval_no_client() {
+        let config = HitLIntegrationConfig {
+            enabled: true,
+            require_approval_for_merge: true,
+            ..Default::default()
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_config(config);
+
+        let mr = create_test_mr_info();
+        let result = bridge.request_merge_approval(&mr).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("HitL client not configured"));
+    }
+
+    #[tokio::test]
+    async fn test_request_merge_approval_hitl_disabled() {
+        let client = HitLClient::new("http://localhost:4430");
+        let config = HitLIntegrationConfig {
+            enabled: false,
+            ..Default::default()
+        };
+
+        let bridge = ReviewBridge::new("http://localhost:4400")
+            .with_hitl_client(client)
+            .with_hitl_config(config);
+
+        let mr = create_test_mr_info();
+        let result = bridge.request_merge_approval(&mr).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("HitL is not enabled"));
+    }
+
+    #[test]
+    fn test_approval_action_variants() {
+        let ready = ApprovalAction::ReadyToMerge;
+        assert!(matches!(ready, ApprovalAction::ReadyToMerge));
+
+        let pending = ApprovalAction::PendingApproval {
+            approval_id: "test-123".to_string(),
+        };
+        if let ApprovalAction::PendingApproval { approval_id } = pending {
+            assert_eq!(approval_id, "test-123");
+        } else {
+            panic!("Expected PendingApproval variant");
+        }
     }
 }
