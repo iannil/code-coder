@@ -16,6 +16,7 @@ import {
   handleClose as wsClose,
   generateSubscriptionId,
 } from "./handlers/executive-ws"
+import { ConversationStore } from "./store/conversation"
 
 // WebSocket data type
 interface WebSocketData {
@@ -49,6 +50,7 @@ interface StartOptions {
 function setupShutdownHandlers(): void {
   const shutdown = async (signal: string) => {
     console.log(JSON.stringify({ timestamp: new Date().toISOString(), event: "shutdown", signal }))
+    await ConversationStore.close()
     if (server) {
       server.stop()
       server = undefined
@@ -224,6 +226,27 @@ export async function start(options: StartOptions = {}): Promise<void> {
 
   // Register routes
   await registerRoutes()
+
+  // Initialize ConversationStore (Redis)
+  try {
+    await ConversationStore.init()
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "redis_init_failed",
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+    // Continue without Redis - chat will create new sessions each time
+    console.log(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        event: "redis_degraded_mode",
+        message: "Conversation persistence disabled",
+      }),
+    )
+  }
 
   // Check if port is in use
   const portInUse = await isPortInUse(port)
