@@ -134,6 +134,38 @@
 - **理由**: 实现 Web Portal 与核心服务的完整连接
 - **影响**: Chat API、Metering API、Registry API、Admin/Chat 页面 API 连接
 
+### 2026-02-23: CodeCoder + ZeroBot 深度集成 (Phase 1-10)
+- **决策**: 实现 IM 到 Agent 的完整调用链
+- **理由**: 让用户通过 Telegram/飞书/钉钉 直接调用 23 个 Agent
+- **影响**:
+  - IM Agent 命令解析（@agent_name prompt 模式）
+  - Budget API、DLP API、Token Gateway API
+  - 自主求解闭环、全局上下文枢纽
+  - Docker 沙箱、WASM 沙箱、Redis Event Bus
+  - Call Graph 代码依赖图
+
+### 2026-02-23: 端口重新分配
+- **决策**: 调整 Rust 服务端口避免冲突
+- **理由**: 统一端口规划，便于运维管理
+- **新端口分配**:
+  - Zero Gateway: 4404 → 4410
+  - Zero Channels: 4405 → 4411
+  - Zero Workflow: 4406 → 4412
+  - MCP Server: 4405 → 4420
+
+### 2026-02-24: 智能工具系统 + 因果链 (Phase 12-18)
+- **决策**: 构建自主学习和因果追溯能力
+- **理由**: 实现真正的 AI Agent 自我进化
+- **实现内容**:
+  - Phase 12: Dynamic Tool Registry - 从执行中学习工具
+  - Phase 13: Sandbox-Tool Integration - 5 步进化循环
+  - Phase 14: Intelligent LLM Router - RBAC + 任务分类
+  - Phase 15: Scheduled Task API - Agent 定时任务
+  - Phase 16: Causal Graph - 因果链图数据库
+  - Phase 17: LLM-Enhanced Abstraction - 智能代码泛化
+  - Phase 18: Agent Causal Integration - Agent 因果链集成
+- **里程碑**: 架构覆盖率达到 100%（中枢调度层、自主保底层、全局记忆层）
+
 ## 经验教训
 
 ### 代码清理
