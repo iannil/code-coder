@@ -368,6 +368,21 @@ export namespace Config {
   export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
   export type Mcp = z.infer<typeof Mcp>
 
+  export const RedisConfig = z
+    .object({
+      url: z.string().default("redis://localhost:6379").describe("Redis connection URL"),
+      password: z.string().optional().describe("Redis password"),
+      db: z.number().int().min(0).max(15).default(0).describe("Redis database number"),
+      keyPrefix: z.string().default("codecoder:").describe("Key prefix for all Redis keys"),
+      connectTimeout: z.number().int().positive().default(5000).describe("Connection timeout in ms"),
+      commandTimeout: z.number().int().positive().default(3000).describe("Command timeout in ms"),
+      maxRetriesPerRequest: z.number().int().min(0).default(3).describe("Max retries per request"),
+    })
+    .strict()
+    .optional()
+    .describe("Redis configuration for conversation store")
+  export type RedisConfig = z.infer<typeof RedisConfig>
+
   export const McpDisabled = z
     .object({
       enabled: z.boolean(),
@@ -1053,6 +1068,7 @@ export namespace Config {
       logLevel: Log.Level.optional().describe("Log level"),
       tui: TUI.optional().describe("TUI specific settings"),
       server: Server.optional().describe("Server configuration for codecoder serve and web commands"),
+      redis: RedisConfig.describe("Redis configuration for conversation store"),
       command: z
         .record(z.string(), Command)
         .optional()
