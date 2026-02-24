@@ -84,6 +84,9 @@ argon2 = "0.5"
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 
+# Vector database
+qdrant-client = "1.8"
+
 # Internal crates
 zero-common = { path = "zero-common" }
 zero-memory = { path = "zero-memory" }
