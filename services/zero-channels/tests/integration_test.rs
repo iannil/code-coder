@@ -505,20 +505,28 @@ fn test_chat_request_serialization() {
 
 #[test]
 fn test_chat_response_deserialization() {
-    use zero_channels::ChatResponse;
+    use zero_channels::ChatApiResponse;
 
+    // Test the wrapped API response format
     let json = r#"{
-        "message": "Hello! How can I help you?",
-        "conversation_id": "conv-123",
-        "agent": "general",
-        "usage": {
-            "input_tokens": 15,
-            "output_tokens": 25,
-            "total_tokens": 40
+        "success": true,
+        "data": {
+            "message": "Hello! How can I help you?",
+            "conversation_id": "conv-123",
+            "agent": "general",
+            "usage": {
+                "input_tokens": 15,
+                "output_tokens": 25,
+                "total_tokens": 40
+            }
         }
     }"#;
 
-    let response: ChatResponse = serde_json::from_str(json).unwrap();
+    let api_response: ChatApiResponse = serde_json::from_str(json).unwrap();
+    assert!(api_response.success);
+    assert!(api_response.data.is_some());
+
+    let response = api_response.data.unwrap();
     assert_eq!(response.message, "Hello! How can I help you?");
     assert_eq!(response.conversation_id, Some("conv-123".into()));
     assert_eq!(response.agent, Some("general".into()));
@@ -529,14 +537,30 @@ fn test_chat_response_deserialization() {
 }
 
 #[test]
-fn test_chat_response_without_usage() {
-    use zero_channels::ChatResponse;
+fn test_chat_response_error() {
+    use zero_channels::ChatApiResponse;
+
+    // Test error response format
+    let json = r#"{
+        "success": false,
+        "error": "message is required"
+    }"#;
+
+    let api_response: ChatApiResponse = serde_json::from_str(json).unwrap();
+    assert!(!api_response.success);
+    assert!(api_response.data.is_none());
+    assert_eq!(api_response.error, Some("message is required".into()));
+}
+
+#[test]
+fn test_chat_response_data_without_usage() {
+    use zero_channels::ChatResponseData;
 
     let json = r#"{
         "message": "Simple response"
     }"#;
 
-    let response: ChatResponse = serde_json::from_str(json).unwrap();
+    let response: ChatResponseData = serde_json::from_str(json).unwrap();
     assert_eq!(response.message, "Simple response");
     assert!(response.usage.is_none());
 }

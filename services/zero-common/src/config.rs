@@ -181,6 +181,22 @@ pub struct GatewayConfig {
     #[serde(default = "default_gateway_host")]
     pub host: String,
 
+    /// Authentication mode: "pairing" | "jwt" | "both"
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: String,
+
+    /// Require pairing before accepting requests (pairing mode)
+    #[serde(default)]
+    pub require_pairing: bool,
+
+    /// Paired tokens (managed by pairing system)
+    #[serde(default)]
+    pub paired_tokens: Vec<String>,
+
+    /// Allow public binding (0.0.0.0) without authentication warning
+    #[serde(default)]
+    pub allow_public_bind: bool,
+
     /// JWT secret for token signing (auto-generated if not set)
     #[serde(default)]
     pub jwt_secret: Option<String>,
@@ -200,6 +216,10 @@ pub struct GatewayConfig {
     /// `CodeCoder` API endpoint to proxy to
     #[serde(default = "default_codecoder_endpoint")]
     pub codecoder_endpoint: String,
+
+    /// Tunnel configuration for external access
+    #[serde(default)]
+    pub tunnel: TunnelConfig,
 }
 
 impl Default for GatewayConfig {
@@ -207,11 +227,16 @@ impl Default for GatewayConfig {
         Self {
             port: default_gateway_port(),
             host: default_gateway_host(),
+            auth_mode: default_auth_mode(),
+            require_pairing: false,
+            paired_tokens: vec![],
+            allow_public_bind: false,
             jwt_secret: None,
             token_expiry_secs: default_token_expiry(),
             rate_limiting: true,
             rate_limit_rpm: default_rate_limit(),
             codecoder_endpoint: default_codecoder_endpoint(),
+            tunnel: TunnelConfig::default(),
         }
     }
 }
@@ -576,8 +601,16 @@ pub struct AutoCaptureConfig {
 }
 
 /// Workflow service configuration.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
+    /// Workflow service HTTP port
+    #[serde(default = "default_workflow_port")]
+    pub port: u16,
+
+    /// Workflow service HTTP host
+    #[serde(default = "default_gateway_host")]
+    pub host: String,
+
     /// Cron scheduler configuration
     #[serde(default)]
     pub cron: CronConfig,
@@ -597,6 +630,20 @@ pub struct WorkflowConfig {
     /// Competitive intelligence monitoring configuration
     #[serde(default)]
     pub monitor: MonitorConfig,
+}
+
+impl Default for WorkflowConfig {
+    fn default() -> Self {
+        Self {
+            port: default_workflow_port(),
+            host: default_gateway_host(),
+            cron: CronConfig::default(),
+            webhook: WebhookConfig::default(),
+            git: GitIntegrationConfig::default(),
+            ticket: TicketConfig::default(),
+            monitor: MonitorConfig::default(),
+        }
+    }
 }
 
 // ============================================================================
@@ -1252,16 +1299,19 @@ impl Default for ToolsConfig {
 
 // Default value functions
 fn default_gateway_port() -> u16 {
-    4410
+    4430 // Was 4410 - moved to 4430-4439 range for Rust microservices
 }
 fn default_gateway_host() -> String {
     "127.0.0.1".into()
 }
 fn default_channels_port() -> u16 {
-    4411
+    4431 // Was 4411 - moved to 4430-4439 range for Rust microservices
 }
 fn default_channels_host() -> String {
     "127.0.0.1".into()
+}
+fn default_workflow_port() -> u16 {
+    4432 // New - part of 4430-4439 range for Rust microservices
 }
 fn default_token_expiry() -> u64 {
     86400 // 24 hours
@@ -1392,6 +1442,96 @@ fn default_feature_labels() -> Vec<String> {
     vec!["enhancement".into()]
 }
 
+fn default_auth_mode() -> String {
+    "pairing".into() // Default to pairing mode for security
+}
+
+// ============================================================================
+// Tunnel Configuration
+// ============================================================================
+
+/// Tunnel configuration for external access.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TunnelConfig {
+    /// Tunnel provider: "none", "cloudflare", "tailscale", "ngrok", "custom"
+    #[serde(default = "default_tunnel_provider")]
+    pub provider: String,
+
+    /// Cloudflare Tunnel configuration
+    #[serde(default)]
+    pub cloudflare: Option<CloudflareTunnelConfig>,
+
+    /// Tailscale Tunnel configuration
+    #[serde(default)]
+    pub tailscale: Option<TailscaleTunnelConfig>,
+
+    /// ngrok Tunnel configuration
+    #[serde(default)]
+    pub ngrok: Option<NgrokTunnelConfig>,
+
+    /// Custom tunnel configuration
+    #[serde(default)]
+    pub custom: Option<CustomTunnelConfig>,
+}
+
+impl Default for TunnelConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_tunnel_provider(),
+            cloudflare: None,
+            tailscale: None,
+            ngrok: None,
+            custom: None,
+        }
+    }
+}
+
+fn default_tunnel_provider() -> String {
+    "none".into()
+}
+
+/// Cloudflare Tunnel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudflareTunnelConfig {
+    /// Cloudflare Tunnel token (from Zero Trust dashboard)
+    pub token: String,
+}
+
+/// Tailscale Tunnel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TailscaleTunnelConfig {
+    /// Use Tailscale Funnel (public internet) vs Serve (tailnet only)
+    #[serde(default)]
+    pub funnel: bool,
+    /// Optional hostname override
+    #[serde(default)]
+    pub hostname: Option<String>,
+}
+
+/// ngrok Tunnel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NgrokTunnelConfig {
+    /// ngrok auth token
+    pub auth_token: String,
+    /// Optional custom domain
+    #[serde(default)]
+    pub domain: Option<String>,
+}
+
+/// Custom tunnel configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomTunnelConfig {
+    /// Command template to start the tunnel. Use {port} and {host} placeholders.
+    /// Example: "bore local {port} --to bore.pub"
+    pub start_command: String,
+    /// Optional URL to check tunnel health
+    #[serde(default)]
+    pub health_url: Option<String>,
+    /// Optional regex to extract public URL from command stdout
+    #[serde(default)]
+    pub url_pattern: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1399,8 +1539,8 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.gateway.port, 4410);
-        assert_eq!(config.channels.port, 4411);
+        assert_eq!(config.gateway.port, 4430);
+        assert_eq!(config.channels.port, 4431);
         assert!(config.codecoder.enabled);
         assert_eq!(config.providers.default, "anthropic");
         assert!(config.agent.enabled);
@@ -1489,7 +1629,7 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.gateway.port, 8080);
         assert_eq!(config.gateway.host, "127.0.0.1"); // default
-        assert_eq!(config.channels.port, 4411); // default
+        assert_eq!(config.channels.port, 4431); // default (was 4411)
     }
 
     #[test]

@@ -38,9 +38,17 @@ pub struct ChatRequest {
     pub channel: String,
 }
 
-/// Response from CodeCoder chat API.
+/// Response from CodeCoder chat API (wrapped).
 #[derive(Debug, Clone, Deserialize)]
-pub struct ChatResponse {
+pub struct ChatApiResponse {
+    pub success: bool,
+    pub data: Option<ChatResponseData>,
+    pub error: Option<String>,
+}
+
+/// Chat response data (inner payload).
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatResponseData {
     /// Response message content
     pub message: String,
     /// Conversation ID for follow-ups
@@ -743,7 +751,7 @@ impl CodeCoderBridge {
     }
 
     /// Call the CodeCoder API.
-    async fn call_codecoder(&self, request: &ChatRequest) -> Result<ChatResponse> {
+    async fn call_codecoder(&self, request: &ChatRequest) -> Result<ChatResponseData> {
         let url = format!("{}/api/v1/chat", self.endpoint);
 
         tracing::debug!(
@@ -777,7 +785,18 @@ impl CodeCoderBridge {
             ));
         }
 
-        let chat_response: ChatResponse = response.json().await?;
+        let api_response: ChatApiResponse = response.json().await?;
+
+        // Check if API returned success
+        if !api_response.success {
+            let error_msg = api_response.error.unwrap_or_else(|| "Unknown error".to_string());
+            return Err(anyhow::anyhow!("CodeCoder API error: {}", error_msg));
+        }
+
+        // Extract the data payload
+        let chat_response = api_response.data.ok_or_else(|| {
+            anyhow::anyhow!("CodeCoder API returned success but no data")
+        })?;
 
         tracing::debug!(
             conversation_id = ?chat_response.conversation_id,
@@ -1417,18 +1436,26 @@ mod tests {
 
     #[test]
     fn test_chat_response_deserialization() {
+        // Test the wrapped API response format
         let json = r#"{
-            "message": "Hello back!",
-            "conversation_id": "conv-1",
-            "agent": "general",
-            "usage": {
-                "input_tokens": 10,
-                "output_tokens": 20,
-                "total_tokens": 30
+            "success": true,
+            "data": {
+                "message": "Hello back!",
+                "conversation_id": "conv-1",
+                "agent": "general",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 20,
+                    "total_tokens": 30
+                }
             }
         }"#;
 
-        let response: ChatResponse = serde_json::from_str(json).unwrap();
+        let api_response: ChatApiResponse = serde_json::from_str(json).unwrap();
+        assert!(api_response.success);
+        assert!(api_response.data.is_some());
+
+        let response = api_response.data.unwrap();
         assert_eq!(response.message, "Hello back!");
         assert_eq!(response.conversation_id, Some("conv-1".into()));
         assert!(response.usage.is_some());
@@ -1436,6 +1463,20 @@ mod tests {
         let usage = response.usage.unwrap();
         assert_eq!(usage.input_tokens, 10);
         assert_eq!(usage.output_tokens, 20);
+    }
+
+    #[test]
+    fn test_chat_response_error_deserialization() {
+        // Test error response format
+        let json = r#"{
+            "success": false,
+            "error": "message is required"
+        }"#;
+
+        let api_response: ChatApiResponse = serde_json::from_str(json).unwrap();
+        assert!(!api_response.success);
+        assert!(api_response.data.is_none());
+        assert_eq!(api_response.error, Some("message is required".into()));
     }
 
     #[test]

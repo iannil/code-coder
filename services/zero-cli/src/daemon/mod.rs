@@ -1,15 +1,20 @@
+mod api;
+
 use crate::config::Config;
+use crate::process::{HealthChecker, ServiceConfig, ServiceManager};
 use crate::tools::ToolRegistry;
 use anyhow::Result;
 use chrono::Utc;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
 
 const STATUS_FLUSH_SECONDS: u64 = 5;
+const HEALTH_CHECK_INTERVAL_SECS: u64 = 5;
+const MANAGEMENT_API_PORT: u16 = 4402;
 
 /// Shared tool registry for the daemon, accessible to all components
 static TOOL_REGISTRY: std::sync::OnceLock<Arc<RwLock<ToolRegistry>>> = std::sync::OnceLock::new();
@@ -19,7 +24,21 @@ pub fn get_tool_registry() -> Option<&'static Arc<RwLock<ToolRegistry>>> {
     TOOL_REGISTRY.get()
 }
 
-pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
+/// Run the daemon in process orchestrator mode.
+///
+/// This mode spawns zero-gateway, zero-channels, and zero-workflow as separate
+/// child processes and monitors them via health checks. It also provides:
+/// - MCP tool registry integration
+/// - Heartbeat worker for autonomous tasks
+/// - State file persistence
+/// - Management HTTP API on port 4402
+pub async fn run_orchestrator(
+    config: Config,
+    host: String,
+    gateway_port: u16,
+    channels_port: u16,
+    workflow_port: u16,
+) -> Result<()> {
     let initial_backoff = config.reliability.channel_initial_backoff_secs.max(1);
     let max_backoff = config
         .reliability
@@ -71,12 +90,14 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
     let _ = TOOL_REGISTRY.set(Arc::new(RwLock::new(registry)));
     crate::health::mark_component_ok("mcp");
 
+    // Ensure heartbeat file exists
     if config.heartbeat.enabled {
         let _ =
             crate::heartbeat::engine::HeartbeatEngine::ensure_heartbeat_file(&config.workspace_dir)
                 .await;
     }
 
+    // ── Start background workers ──────────────────────────────
     let mut handles: Vec<JoinHandle<()>> = vec![spawn_state_writer(config.clone())];
 
     // Start MCP supervisor if there are configured servers
@@ -93,39 +114,7 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
         ));
     }
 
-    {
-        let gateway_cfg = config.clone();
-        let gateway_host = host.clone();
-        handles.push(spawn_component_supervisor(
-            "gateway",
-            initial_backoff,
-            max_backoff,
-            move || {
-                let cfg = gateway_cfg.clone();
-                let host = gateway_host.clone();
-                async move { crate::gateway::run_gateway(&host, port, cfg).await }
-            },
-        ));
-    }
-
-    {
-        if has_supervised_channels(&config) {
-            let channels_cfg = config.clone();
-            handles.push(spawn_component_supervisor(
-                "channels",
-                initial_backoff,
-                max_backoff,
-                move || {
-                    let cfg = channels_cfg.clone();
-                    async move { crate::channels::start_channels(cfg).await }
-                },
-            ));
-        } else {
-            crate::health::mark_component_ok("channels");
-            tracing::info!("No real-time channels configured; channel supervisor disabled");
-        }
-    }
-
+    // Start heartbeat worker if enabled
     if config.heartbeat.enabled {
         let heartbeat_cfg = config.clone();
         handles.push(spawn_component_supervisor(
@@ -139,20 +128,111 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
         ));
     }
 
-    // Note: Cron scheduler is now handled by zero-workflow service
-    // The `zero-bot cron` commands interact with the workflow API
+    // ── Find Rust binaries and create service manager ──────────
+    let bin_dir = find_rust_bin_dir()?;
+    tracing::info!("Using Rust binaries from: {}", bin_dir.display());
 
-    println!("🧠 ZeroBot daemon started");
-    println!("   Gateway:  http://{host}:{port}");
+    // Create service manager
+    let mut manager = ServiceManager::new(bin_dir);
+
+    // Add zero-gateway service
+    manager.add_service(ServiceConfig {
+        name: "zero-gateway".into(),
+        binary: "zero-gateway".into(),
+        port: gateway_port,
+        host: host.clone(),
+        args: vec![],
+    });
+
+    // Add zero-channels service
+    manager.add_service(ServiceConfig {
+        name: "zero-channels".into(),
+        binary: "zero-channels".into(),
+        port: channels_port,
+        host: host.clone(),
+        args: vec![],
+    });
+
+    // Add zero-workflow service
+    manager.add_service(ServiceConfig {
+        name: "zero-workflow".into(),
+        binary: "zero-workflow".into(),
+        port: workflow_port,
+        host: host.clone(),
+        args: vec![],
+    });
+
+    // Start all services
+    manager.start_all()?;
+
+    // Wrap manager for sharing between tasks
+    let manager_shared = Arc::new(Mutex::new(manager));
+
+    // ── Start management API server ─────────────────────────────
+    let api_state = api::ApiState {
+        manager: manager_shared.clone(),
+        started_at: Utc::now(),
+    };
+    let api_host = host.clone();
+    let api_handle = tokio::spawn(async move {
+        if let Err(e) = api::serve(api_state, &api_host, MANAGEMENT_API_PORT).await {
+            tracing::error!("Management API server error: {e}");
+        }
+    });
+
+    // ── Run health check loop ───────────────────────────────────
+    let health_checker = HealthChecker::new();
+    let manager_clone = manager_shared.clone();
+
+    let health_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(HEALTH_CHECK_INTERVAL_SECS));
+        loop {
+            interval.tick().await;
+
+            let mut manager = manager_clone.lock().await;
+            manager.health_check_and_restart();
+
+            // Also verify via HTTP health endpoints
+            for status in manager.status() {
+                if status.running {
+                    let healthy = health_checker.check(&status.name, status.port).await;
+                    if !healthy {
+                        tracing::warn!(
+                            "{} process running but HTTP health check failed (port {})",
+                            status.name,
+                            status.port
+                        );
+                    }
+                }
+            }
+        }
+    });
+
+    // ── Print startup banner ────────────────────────────────────
     let mcp_status = if config.mcp.servers.is_empty() {
         ""
     } else {
         ", mcp"
     };
-    println!("   Components: gateway, channels, heartbeat{mcp_status}");
-    println!("   Ctrl+C to stop");
+    let heartbeat_status = if config.heartbeat.enabled {
+        ", heartbeat"
+    } else {
+        ""
+    };
 
+    println!("🧠 ZeroBot daemon started (process orchestrator)");
+    println!("   Management API: http://{}:{}", host, MANAGEMENT_API_PORT);
+    println!("   Managed services:");
+    println!("     • zero-gateway:  http://{}:{}", host, gateway_port);
+    println!("     • zero-channels: http://{}:{}", host, channels_port);
+    println!("     • zero-workflow: http://{}:{}", host, workflow_port);
+    println!("   Components: state-writer{mcp_status}{heartbeat_status}");
+    println!("   Press Ctrl+C to stop");
+
+    // Wait for Ctrl+C
     tokio::signal::ctrl_c().await?;
+    println!("\n🛑 Shutting down...");
+
     crate::health::mark_component_error("daemon", "shutdown requested");
 
     // Close MCP connections gracefully
@@ -162,6 +242,7 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
         }
     }
 
+    // Stop all background workers
     for handle in &handles {
         handle.abort();
     }
@@ -169,7 +250,56 @@ pub async fn run(config: Config, host: String, port: u16) -> Result<()> {
         let _ = handle.await;
     }
 
+    // Stop health check and API server
+    health_handle.abort();
+    let _ = health_handle.await;
+    api_handle.abort();
+    let _ = api_handle.await;
+
+    // Stop all managed services
+    let mut manager = manager_shared.lock().await;
+    manager.stop_all();
+
+    println!("✅ All services stopped");
+
     Ok(())
+}
+
+/// Find the Rust binary directory.
+fn find_rust_bin_dir() -> Result<PathBuf> {
+    // Try common locations
+    let candidates = [
+        PathBuf::from("services/target/release"),
+        PathBuf::from("services/target/debug"),
+        PathBuf::from("target/release"),
+        PathBuf::from("target/debug"),
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            // Verify at least one expected binary exists
+            if path.join("zero-gateway").exists() || path.join("zero-gateway.exe").exists() {
+                return Ok(path.clone());
+            }
+        }
+    }
+
+    // Try from CARGO_MANIFEST_DIR
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let workspace_release = PathBuf::from(manifest_dir)
+            .parent()
+            .map(|p| p.join("target/release"));
+        if let Some(p) = workspace_release {
+            if p.exists() {
+                return Ok(p);
+            }
+        }
+    }
+
+    anyhow::bail!(
+        "Could not find Rust binary directory with zero-gateway. \
+         Run 'cargo build --release' in services/ first."
+    )
 }
 
 pub fn state_file_path(config: &Config) -> PathBuf {
@@ -300,14 +430,6 @@ async fn run_mcp_refresh_worker(_config: Config) -> Result<()> {
     }
 }
 
-fn has_supervised_channels(config: &Config) -> bool {
-    config.channels_config.telegram.is_some()
-        || config.channels_config.discord.is_some()
-        || config.channels_config.slack.is_some()
-        || config.channels_config.imessage.is_some()
-        || config.channels_config.matrix.is_some()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,22 +490,5 @@ mod tests {
             .as_str()
             .unwrap_or("")
             .contains("component exited unexpectedly"));
-    }
-
-    #[test]
-    fn detects_no_supervised_channels() {
-        let config = Config::default();
-        assert!(!has_supervised_channels(&config));
-    }
-
-    #[test]
-    fn detects_supervised_channels_present() {
-        let mut config = Config::default();
-        config.channels_config.telegram = Some(crate::config::TelegramConfig {
-            bot_token: "token".into(),
-            allowed_users: vec![],
-            voice: None,
-        });
-        assert!(has_supervised_channels(&config));
     }
 }

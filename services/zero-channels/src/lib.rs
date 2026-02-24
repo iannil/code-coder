@@ -46,7 +46,7 @@ pub mod wecom;
 pub mod whatsapp;
 
 // Re-export commonly used types
-pub use bridge::{ChatRequest, ChatResponse, CodeCoderBridge, TokenUsage};
+pub use bridge::{ChatApiResponse, ChatRequest, ChatResponseData, CodeCoderBridge, TokenUsage};
 pub use capture_bridge::{
     AssetContentType, CaptureBridge, CapturedAsset, ExtractedContent, FeishuDocsClient,
     NotionClient, SavedLocation, SummaryResult,
@@ -88,6 +88,7 @@ pub fn build_channels_router(
     tokio::sync::mpsc::Receiver<ChannelMessage>,
     Arc<OutboundRouter>,
     Option<Arc<EmailChannel>>,
+    Option<Arc<TelegramChannel>>,
     tokio::sync::mpsc::Sender<ChannelMessage>,
 ) {
     let cors = CorsLayer::new()
@@ -225,7 +226,7 @@ pub fn build_channels_router(
     });
     let router = build_router(state).layer(cors);
 
-    (router, rx, outbound, email, tx_clone)
+    (router, rx, outbound, email, telegram, tx_clone)
 }
 
 /// Start the channels HTTP server with bidirectional messaging.
@@ -235,7 +236,7 @@ pub async fn start_server(config: &Config) -> anyhow::Result<()> {
         config.channels.port,
     ));
 
-    let (router, rx, outbound, email, tx) = build_channels_router(config);
+    let (router, rx, outbound, email, telegram, tx) = build_channels_router(config);
 
     // Create the bridge
     let bridge = Arc::new(CodeCoderBridge::new(
@@ -252,6 +253,27 @@ pub async fn start_server(config: &Config) -> anyhow::Result<()> {
         Some(tokio::spawn(async move {
             if let Err(e) = email_channel.start_polling(email_tx).await {
                 tracing::error!(error = %e, "Email polling failed");
+            }
+        }))
+    } else {
+        None
+    };
+
+    // Spawn Telegram polling task if Telegram channel is configured
+    let telegram_handle = if let Some(telegram_channel) = telegram {
+        let telegram_tx = tx.clone();
+        tracing::info!("Starting Telegram long-polling...");
+        Some(tokio::spawn(async move {
+            let callback = move |msg: ChannelMessage| {
+                let tx = telegram_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = tx.send(msg).await {
+                        tracing::error!(error = %e, "Failed to forward Telegram message");
+                    }
+                });
+            };
+            if let Err(e) = telegram_channel.listen(callback).await {
+                tracing::error!(error = %e, "Telegram polling failed");
             }
         }))
     } else {
@@ -279,6 +301,9 @@ pub async fn start_server(config: &Config) -> anyhow::Result<()> {
     cleanup_handle.abort();
     processor_handle.abort();
     if let Some(handle) = email_handle {
+        handle.abort();
+    }
+    if let Some(handle) = telegram_handle {
         handle.abort();
     }
 

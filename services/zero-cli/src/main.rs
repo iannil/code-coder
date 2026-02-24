@@ -20,7 +20,6 @@ mod credential;
 mod cron;
 mod daemon;
 mod doctor;
-mod gateway;
 mod health;
 mod heartbeat;
 mod integrations;
@@ -29,6 +28,7 @@ mod memory;
 mod migration;
 mod observability;
 mod onboard;
+mod process;
 mod providers;
 mod runtime;
 mod security;
@@ -110,26 +110,23 @@ enum Commands {
         temperature: f64,
     },
 
-    /// Start the gateway server (webhooks, websockets)
-    Gateway {
-        /// Port to listen on (use 0 for random available port)
-        #[arg(short, long, default_value = "4410")]
-        port: u16,
-
-        /// Host to bind to
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-    },
-
-    /// Start long-running autonomous runtime (gateway + channels + heartbeat + scheduler)
+    /// Start daemon (process orchestrator for gateway, channels, workflow)
     Daemon {
-        /// Port to listen on (use 0 for random available port)
-        #[arg(short, long, default_value = "4402")]
-        port: u16,
-
         /// Host to bind to
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
+
+        /// Gateway port (zero-gateway service)
+        #[arg(long, default_value = "4430")]
+        gateway_port: u16,
+
+        /// Channels port (zero-channels service)
+        #[arg(long, default_value = "4431")]
+        channels_port: u16,
+
+        /// Workflow port (zero-workflow service)
+        #[arg(long, default_value = "4432")]
+        workflow_port: u16,
     },
 
     /// Manage OS service lifecycle (launchd/systemd user service)
@@ -392,22 +389,18 @@ async fn main() -> Result<()> {
             temperature,
         } => agent::run(config, message, provider, model, temperature).await,
 
-        Commands::Gateway { port, host } => {
-            if port == 0 {
-                info!("🚀 Starting Zero CLI Gateway on {host} (random port)");
-            } else {
-                info!("🚀 Starting Zero CLI Gateway on {host}:{port}");
-            }
-            gateway::run_gateway(&host, port, config).await
-        }
-
-        Commands::Daemon { port, host } => {
-            if port == 0 {
-                info!("🧠 Starting Zero CLI Daemon on {host} (random port)");
-            } else {
-                info!("🧠 Starting Zero CLI Daemon on {host}:{port}");
-            }
-            daemon::run(config, host, port).await
+        Commands::Daemon {
+            host,
+            gateway_port,
+            channels_port,
+            workflow_port,
+        } => {
+            info!("🧠 Starting Zero CLI Daemon (process orchestrator)");
+            info!("   Management API: http://{host}:4402");
+            info!("   Gateway:  http://{host}:{gateway_port}");
+            info!("   Channels: http://{host}:{channels_port}");
+            info!("   Workflow: http://{host}:{workflow_port}");
+            daemon::run_orchestrator(config, host, gateway_port, channels_port, workflow_port).await
         }
 
         Commands::Status => {

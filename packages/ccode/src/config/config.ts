@@ -1278,7 +1278,7 @@ export namespace Config {
       vault: Vault.optional().describe("Credential vault configuration"),
       zerobot: ZeroBot.optional().describe("ZeroBot daemon and channel configuration"),
     })
-    .strict()
+    .passthrough() // Allow unknown keys for Rust services (gateway, channels, workflow, codecoder)
     .meta({
       ref: "Config",
     })

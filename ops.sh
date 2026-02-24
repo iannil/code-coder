@@ -6,14 +6,14 @@
 # 架构说明:
 #   - api:          CodeCoder API Server (Bun/TypeScript)
 #   - web:          Web Frontend (Vite/React)
-#   - zero-daemon:  Zero CLI 组合守护进程 (Rust) - 包含 gateway + channels + scheduler
-#   - zero-gateway: 独立网关服务 (Rust) - 认证/路由/配额
-#   - zero-channels: 独立频道服务 (Rust) - Telegram/Discord/Slack
-#   - zero-workflow: 独立工作流服务 (Rust) - Webhook/Cron/Git
+#   - zero-daemon:  进程编排器 (Rust) - 管理以下子进程:
+#                     • zero-gateway (4430): 认证/路由/配额/MCP/Webhook
+#                     • zero-channels (4431): Telegram/Discord/Slack
+#                     • zero-workflow (4432): Webhook/Cron/Git
 #   - whisper:      Whisper STT Server (Docker)
 #
 # 用法:
-#   ./ops.sh start [service]   - 启动服务 (all|api|web|zero-daemon|...)
+#   ./ops.sh start [service]   - 启动服务 (all|api|web|zero-daemon|whisper)
 #   ./ops.sh stop [service]    - 停止服务
 #   ./ops.sh restart [service] - 重启服务
 #   ./ops.sh status            - 查看所有服务状态
@@ -45,12 +45,10 @@ WHISPER_CONTAINER="codecoder-whisper"
 WHISPER_IMAGE="${WHISPER_IMAGE:-fedirz/faster-whisper-server:latest-cpu}"
 
 # 服务列表 (按启动顺序)
-# 核心服务
+# 核心服务 (daemon 内部管理 gateway/channels/workflow)
 CORE_SERVICES="api web zero-daemon whisper"
-# 独立 Rust 服务 (可选，用于模块化部署)
-STANDALONE_RUST_SERVICES="zero-gateway zero-channels zero-workflow"
-# 所有服务
-ALL_SERVICES="${CORE_SERVICES} ${STANDALONE_RUST_SERVICES}"
+# 所有服务 (同核心服务，独立 Rust 服务由 daemon 管理)
+ALL_SERVICES="${CORE_SERVICES}"
 
 # 服务配置函数
 get_service_port() {
@@ -59,9 +57,6 @@ get_service_port() {
         web) echo "4401" ;;
         zero-daemon) echo "4402" ;;
         whisper) echo "4403" ;;
-        zero-gateway) echo "4410" ;;
-        zero-channels) echo "4411" ;;
-        zero-workflow) echo "4412" ;;
         *) echo "" ;;
     esac
 }
@@ -72,9 +67,6 @@ get_service_name() {
         web) echo "Web Frontend (Vite)" ;;
         zero-daemon) echo "Zero CLI Daemon" ;;
         whisper) echo "Whisper STT Server" ;;
-        zero-gateway) echo "Zero Gateway" ;;
-        zero-channels) echo "Zero Channels" ;;
-        zero-workflow) echo "Zero Workflow" ;;
         *) echo "" ;;
     esac
 }
@@ -82,7 +74,7 @@ get_service_name() {
 get_service_type() {
     case "$1" in
         api|web) echo "node" ;;
-        zero-daemon|zero-gateway|zero-channels|zero-workflow) echo "rust" ;;
+        zero-daemon) echo "rust" ;;
         whisper) echo "docker" ;;
         *) echo "" ;;
     esac
@@ -90,7 +82,7 @@ get_service_type() {
 
 is_valid_service() {
     case "$1" in
-        api|web|zero-daemon|whisper|zero-gateway|zero-channels|zero-workflow) return 0 ;;
+        api|web|zero-daemon|whisper) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -194,6 +186,7 @@ build_rust_services() {
     if command -v cargo &> /dev/null; then
         cargo build --release
         log_success "Rust 服务构建完成"
+        export RUST_BUILT=true
     else
         log_error "Cargo 未安装，无法构建 Rust 服务"
         return 1
@@ -306,48 +299,14 @@ start_service() {
             ;;
 
         zero-daemon)
-            # 检查是否需要构建
-            if ! is_rust_binary_built "${service}"; then
-                log_warn "Rust 二进制未构建，正在构建..."
+            # 编译 Rust 服务（如果尚未编译）
+            if [ "${RUST_BUILT:-}" != "true" ]; then
                 build_rust_services || return 1
             fi
 
             cd "${RUST_SERVICES_DIR}"
-            nohup "${RUST_TARGET_DIR}/zero-cli" daemon --port "${port}" --host 127.0.0.1 \
-                > "${log_file}" 2>&1 &
-            ;;
-
-        zero-gateway)
-            if ! is_rust_binary_built "${service}"; then
-                log_warn "Rust 二进制未构建，正在构建..."
-                build_rust_services || return 1
-            fi
-
-            cd "${RUST_SERVICES_DIR}"
-            # 设置环境变量覆盖默认端口
-            ZERO_GATEWAY_PORT="${port}" nohup "${RUST_TARGET_DIR}/zero-gateway" \
-                > "${log_file}" 2>&1 &
-            ;;
-
-        zero-channels)
-            if ! is_rust_binary_built "${service}"; then
-                log_warn "Rust 二进制未构建，正在构建..."
-                build_rust_services || return 1
-            fi
-
-            cd "${RUST_SERVICES_DIR}"
-            nohup "${RUST_TARGET_DIR}/zero-channels" --port "${port}" \
-                > "${log_file}" 2>&1 &
-            ;;
-
-        zero-workflow)
-            if ! is_rust_binary_built "${service}"; then
-                log_warn "Rust 二进制未构建，正在构建..."
-                build_rust_services || return 1
-            fi
-
-            cd "${RUST_SERVICES_DIR}"
-            nohup "${RUST_TARGET_DIR}/zero-workflow" --port "${port}" \
+            # daemon 自动管理 gateway/channels/workflow 子进程
+            nohup "${RUST_TARGET_DIR}/zero-cli" daemon --host 127.0.0.1 \
                 > "${log_file}" 2>&1 &
             ;;
 
@@ -480,6 +439,19 @@ restart_service() {
 start_core() {
     log_info "启动核心服务..."
     echo ""
+
+    # 先统一编译 Rust 服务
+    local has_rust_service=false
+    for service in ${CORE_SERVICES}; do
+        if [ "$(get_service_type "${service}")" = "rust" ]; then
+            has_rust_service=true
+            break
+        fi
+    done
+    if [ "${has_rust_service}" = true ]; then
+        build_rust_services || return 1
+    fi
+
     for service in ${CORE_SERVICES}; do
         start_service "${service}"
     done
@@ -489,6 +461,10 @@ start_core() {
 start_all() {
     log_info "启动所有服务..."
     echo ""
+
+    # 先统一编译 Rust 服务
+    build_rust_services || return 1
+
     for service in ${ALL_SERVICES}; do
         start_service "${service}"
     done
@@ -551,28 +527,10 @@ show_status() {
     done
 
     echo "╠════════════════════════════════════════════════════════════════════════╣"
-    echo -e "║ ${CYAN}独立 Rust 服务 (可选)${NC}                                                 ║"
-
-    for service in ${STANDALONE_RUST_SERVICES}; do
-        local service_name
-        service_name=$(get_service_name "${service}")
-        local port
-        port=$(get_service_port "${service}")
-        local service_type
-        service_type=$(get_service_type "${service}")
-        local status
-        local pid="-"
-
-        if is_running "${service}"; then
-            status="${GREEN}运行中${NC}"
-            pid=$(get_pid "${service}")
-        else
-            status="${YELLOW}未启动${NC}"
-        fi
-
-        printf "║ %-25s │ %b%-2s │ %-8s │ %-6s │ %-6s ║\n" "${service_name}" "${status}" "" "${pid}" "${port}" "${service_type}"
-    done
-
+    echo -e "║ ${CYAN}由 daemon 管理的微服务${NC}                                                ║"
+    echo "║   • zero-gateway:  端口 4430 (认证/路由/配额)                          ║"
+    echo "║   • zero-channels: 端口 4431 (Telegram/Discord/Slack)                 ║"
+    echo "║   • zero-workflow: 端口 4432 (Webhook/Cron/Git)                       ║"
     echo "╚════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
@@ -587,6 +545,14 @@ show_status() {
             echo -e "  ${port} (${service_name}): ${GREEN}已占用${NC}"
         else
             echo -e "  ${port} (${service_name}): ${YELLOW}空闲${NC}"
+        fi
+    done
+    # 检查 daemon 管理的微服务端口
+    for port in 4430 4431 4432; do
+        if check_port "${port}"; then
+            echo -e "  ${port} (daemon 管理): ${GREEN}已占用${NC}"
+        else
+            echo -e "  ${port} (daemon 管理): ${YELLOW}空闲${NC}"
         fi
     done
     echo ""
@@ -691,9 +657,6 @@ get_service_color() {
         web) echo "\033[0;34m" ;;           # 蓝色
         zero-daemon) echo "\033[0;35m" ;;   # 紫色
         whisper) echo "\033[0;36m" ;;       # 青色
-        zero-gateway) echo "\033[0;33m" ;;  # 黄色
-        zero-channels) echo "\033[0;31m" ;; # 红色
-        zero-workflow) echo "\033[1;34m" ;; # 亮蓝色
         *) echo "\033[0m" ;;                # 默认
     esac
 }
@@ -977,16 +940,16 @@ show_help() {
     echo "核心服务 (./ops.sh start 默认启动这些):"
     echo "  api                CodeCoder API Server (端口 4400, Bun)"
     echo "  web                Web Frontend (端口 4401, Vite)"
-    echo "  zero-daemon        Zero CLI Daemon (端口 4402, Rust)"
+    echo "  zero-daemon        Zero CLI Daemon (端口 4402, Rust) - 进程编排器"
     echo "  whisper            Whisper STT Server (端口 4403, Docker)"
     echo ""
-    echo "独立 Rust 服务 (可选，用于模块化部署):"
-    echo "  zero-gateway       独立网关服务 (端口 4410)"
-    echo "  zero-channels      独立频道服务 (端口 4411)"
-    echo "  zero-workflow      独立工作流服务 (端口 4412)"
+    echo "由 daemon 管理的微服务 (自动启动，无需手动管理):"
+    echo "  zero-gateway       网关服务 (端口 4430) - 认证/路由/配额"
+    echo "  zero-channels      频道服务 (端口 4431) - Telegram/Discord/Slack"
+    echo "  zero-workflow      工作流服务 (端口 4432) - Webhook/Cron/Git"
     echo ""
     echo "服务组:"
-    echo "  all                所有服务"
+    echo "  all                所有服务 (同 core)"
     echo "  core               仅核心服务 (默认)"
     echo "  running            仅运行中的服务 (用于 tail 命令)"
     echo ""
@@ -997,27 +960,26 @@ show_help() {
     echo ""
     echo "示例:"
     echo "  ./ops.sh start                  # 启动核心服务"
-    echo "  ./ops.sh start all              # 启动所有服务"
+    echo "  ./ops.sh start all              # 同上"
     echo "  ./ops.sh start api              # 只启动 API 服务"
     echo "  ./ops.sh stop web               # 只停止 Web 服务"
-    echo "  ./ops.sh restart zero-daemon    # 重启 Zero Daemon"
+    echo "  ./ops.sh restart zero-daemon    # 重启 Daemon (会重启所有微服务)"
     echo "  ./ops.sh start whisper          # 启动 Whisper STT (Docker)"
-    echo "  ./ops.sh start zero-gateway     # 启动独立网关"
     echo "  ./ops.sh build rust             # 构建 Rust 服务"
     echo "  ./ops.sh status                 # 查看状态"
     echo "  ./ops.sh health                 # 健康检查"
-    echo "  ./ops.sh logs zero-daemon       # 查看 Zero Daemon 日志"
+    echo "  ./ops.sh logs zero-daemon       # 查看 Daemon 日志"
     echo "  ./ops.sh logs all               # 查看所有服务日志快照"
-    echo "  ./ops.sh logs all 50            # 查看所有服务日志 (最后 50 行)"
     echo "  ./ops.sh tail api               # 实时跟踪 API 日志"
     echo "  ./ops.sh tail all               # 实时聚合监控所有服务"
-    echo "  ./ops.sh tail running           # 实时监控运行中的服务"
-    echo "  ./ops.sh tail core              # 实时监控核心服务"
     echo "  ./ops.sh clean all              # 清理临时文件"
     echo ""
     echo "架构说明:"
-    echo "  zero-daemon 是组合服务，包含 gateway + channels + scheduler"
-    echo "  独立 Rust 服务用于需要单独部署各组件的场景"
+    echo "  zero-daemon 是进程编排器，spawn 并监控以下子进程:"
+    echo "    • zero-gateway  (4430): 认证、路由、配额、MCP、Webhook"
+    echo "    • zero-channels (4431): Telegram、Discord、Slack 等 IM 渠道"
+    echo "    • zero-workflow (4432): Webhook、Cron、Git 工作流"
+    echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
     echo ""
 }

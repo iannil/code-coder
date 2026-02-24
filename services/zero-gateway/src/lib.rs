@@ -2,6 +2,8 @@
 //!
 //! This crate provides the gateway service for the Zero ecosystem:
 //! - JWT and API Key authentication
+//! - Pairing-based authentication for device pairing
+//! - Webhook endpoints for external integrations
 //! - Request routing and load balancing
 //! - Token quota management and metering
 //! - Security sandbox and audit logging
@@ -15,12 +17,20 @@
 //!                         ↓
 //!                   Record usage
 //! ```
+//!
+//! ## Authentication Modes
+//!
+//! The gateway supports multiple authentication modes:
+//! - `pairing`: Device pairing with one-time codes (for local/trusted environments)
+//! - `jwt`: JWT token authentication (for multi-user environments)
+//! - `both`: Both pairing and JWT are accepted
 
 #![warn(clippy::all)]
 #![allow(clippy::pedantic)]
 
 pub mod auth;
 pub mod metering;
+pub mod pairing;
 pub mod parallel;
 pub mod provider;
 pub mod proxy;
@@ -30,8 +40,10 @@ pub mod routes;
 pub mod routing_policy;
 pub mod sandbox;
 pub mod user;
+pub mod webhook;
 
 pub use parallel::{ParallelRequest, ParallelResponse, ParallelState, parallel_routes};
+pub use pairing::{PairingState, pairing_routes};
 pub use provider::{
     AnthropicProvider, AuthStyle, ChatRequest, ChatResponse, CompatibleProvider, GeminiProvider,
     OllamaProvider, OpenAIProvider, OpenRouterProvider, Provider, ProviderError, ProviderRegistry,
@@ -39,6 +51,7 @@ pub use provider::{
 };
 pub use rbac::{RbacState, require_access};
 pub use routing_policy::{RoutingDecision, RoutingPolicy, RoutingPolicyConfig, SensitivityLevel};
+pub use webhook::{WebhookState, webhook_routes};
 
 use axum::Router;
 use std::net::SocketAddr;
@@ -52,8 +65,25 @@ pub fn build_router(config: &Config) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    // Use the new unified router builder
-    routes::build_all_routes(config).layer(cors)
+    // Build base routes
+    let router = routes::build_all_routes(config);
+
+    // Add pairing routes if auth_mode includes pairing
+    let router = if config.gateway.auth_mode == "pairing" || config.gateway.auth_mode == "both" {
+        let pairing_state = PairingState::new(
+            config.gateway.require_pairing,
+            &config.gateway.paired_tokens,
+        );
+        router.merge(pairing_routes(pairing_state))
+    } else {
+        router
+    };
+
+    // Add webhook routes
+    let webhook_state = WebhookState::new(&config.gateway.codecoder_endpoint);
+    let router = router.merge(webhook_routes(webhook_state));
+
+    router.layer(cors)
 }
 
 /// Build the gateway router using legacy separate route builders (for backward compatibility).

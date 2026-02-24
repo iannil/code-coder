@@ -261,9 +261,10 @@ impl WorkflowService {
         // Build and start HTTP server
         let router = self.build_router();
 
-        // Default port 4412 for workflow service
-        let port = self.config.workflow.webhook.port.unwrap_or(4412);
-        let addr = SocketAddr::from(([127, 0, 0, 1], port));
+        // Use the workflow service's configured port (default: 4432)
+        let port = self.config.workflow.port;
+        let host: std::net::IpAddr = self.config.workflow.host.parse().unwrap_or([127, 0, 0, 1].into());
+        let addr = SocketAddr::from((host, port));
 
         tracing::info!("Starting Zero Workflow HTTP server on {}", addr);
 

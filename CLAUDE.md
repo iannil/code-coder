@@ -153,32 +153,58 @@ bun run --cwd packages/ccode build
 
 ### 端口配置
 
-**核心服务:**
+**核心服务 (4400-4409):**
 
 - CodeCoder API Server: 4400 (Bun/TypeScript)
 - Web Frontend (Vite): 4401 (React)
-- Zero CLI Daemon: 4402 (Rust, 组合服务: gateway + channels + scheduler)
+- Zero CLI Daemon: 4402 (Rust, 进程编排器)
 - Faster Whisper Server: 4403 (Docker)
 
-**独立 Rust 服务 (可选，用于模块化部署):**
-
-- Zero Gateway: 4410 (认证/路由/配额)
-- Zero Channels: 4411 (Telegram/Discord/Slack)
-- Zero Workflow: 4412 (Webhook/Cron/Git)
-
-**协议/工具服务:**
+**协议服务 (4420-4429):**
 
 - MCP Server (HTTP): 4420 (Model Context Protocol)
+
+**Rust 微服务 (4430-4439):**
+
+- Zero Gateway: 4430 (统一网关: 认证/路由/配额/MCP/Webhook)
+- Zero Channels: 4431 (IM 渠道: Telegram/Discord/Slack)
+- Zero Workflow: 4432 (工作流: Webhook/Cron/Git)
+
+#### 服务架构
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      zero-cli daemon 命令                        │
+│                        (进程编排器)                              │
+│  职责: spawn 子进程、健康检查、自动重启、日志聚合                  │
+│              │                │                │                │
+│              ▼                ▼                ▼                │
+│       ┌──────────┐     ┌──────────┐     ┌──────────┐           │
+│       │  zero-   │     │  zero-   │     │  zero-   │           │
+│       │ gateway  │     │ channels │     │ workflow │           │
+│       │  :4430   │     │  :4431   │     │  :4432   │           │
+│       └──────────┘     └──────────┘     └──────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Gateway 功能:**
+- 配对码认证 (Pairing) + JWT 双模式
+- Webhook 端点 (/webhook)
+- MCP JSON-RPC 端点 (/mcp)
+- 用户管理 CRUD + RBAC
+- 配额管理和审计日志
+- Tunnel 支持 (Cloudflare/Tailscale/ngrok)
 
 ### 运维脚本
 
 ```bash
-./ops.sh start          # 启动核心服务
+./ops.sh start          # 开发模式: daemon 自动管理微服务
 ./ops.sh start all      # 启动所有服务
 ./ops.sh stop           # 停止所有服务
 ./ops.sh status         # 查看服务状态
 ./ops.sh build rust     # 构建 Rust 服务
 ./ops.sh logs zero-daemon  # 查看日志
+./ops.sh health         # 健康检查
 ```
 
 ### 统一配置

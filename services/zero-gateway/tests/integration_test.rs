@@ -22,13 +22,18 @@ fn create_test_app(temp_dir: &TempDir) -> axum::Router {
 
     let config = Config {
         gateway: GatewayConfig {
-            port: 4410,
+            port: 4430,
             host: "127.0.0.1".to_string(),
+            auth_mode: "jwt".to_string(), // Use JWT mode for tests
+            require_pairing: false,
+            paired_tokens: vec![],
+            allow_public_bind: false,
             jwt_secret: Some("test-secret-key-for-integration-tests!".to_string()),
             token_expiry_secs: 3600,
             rate_limiting: false,
             rate_limit_rpm: 60,
             codecoder_endpoint: "http://127.0.0.1:4400".to_string(),
+            tunnel: Default::default(),
         },
         ..Default::default()
     };

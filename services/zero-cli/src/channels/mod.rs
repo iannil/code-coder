@@ -550,8 +550,10 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
 
     let mut common_cfg = common::Config::default();
 
-    // Note: channels.port/host use defaults from zero-common (port 4411)
-    // Do NOT override with gateway.port as gateway already uses that port in daemon mode
+    // Use port 4431 for channels to avoid conflict with daemon's port 4402
+    // This is separate from the daemon HTTP server
+    common_cfg.channels.port = 4431;
+    common_cfg.channels.host = "127.0.0.1".to_string();
 
     // Map Telegram config
     if let Some(ref tg) = config.channels_config.telegram {
