@@ -30,6 +30,7 @@
 
 pub mod auth;
 pub mod context;
+pub mod hitl;
 pub mod metering;
 pub mod pairing;
 pub mod parallel;
