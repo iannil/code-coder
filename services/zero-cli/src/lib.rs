@@ -38,6 +38,7 @@ pub mod onboard;
 pub mod process;
 pub mod providers;
 pub mod runtime;
+pub mod sandbox;
 pub mod security;
 pub mod service;
 pub mod session;

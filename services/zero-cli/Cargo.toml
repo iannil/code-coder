@@ -107,6 +107,9 @@ http-body-util = "0.1"
 # Docker API client for sandbox execution
 bollard = "0.16"
 
+# Human-readable duration serialization
+humantime-serde = "1.1"
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.14"
