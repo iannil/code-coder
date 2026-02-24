@@ -3,7 +3,10 @@
 //! This module provides the memory factory and unique hygiene functionality.
 //! Core memory implementations are imported from `zero-memory`.
 
+pub mod crystallize;
 pub mod hygiene;
+
+pub use crystallize::{CrystallizedKnowledge, Crystallizer};
 
 // Re-export memory types from zero-memory
 pub use zero_memory::{MarkdownMemory, Memory, MemoryCategory, MemoryEntry, SqliteMemory};
