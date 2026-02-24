@@ -17,6 +17,8 @@ pub mod audit;
 pub mod bus;
 pub mod config;
 pub mod error;
+#[cfg(feature = "hitl-client")]
+pub mod hitl_client;
 pub mod logging;
 pub mod security;
 pub mod util;
