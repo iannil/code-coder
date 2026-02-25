@@ -43,6 +43,9 @@ chrono = { workspace = true }
 # UUID
 uuid = { workspace = true }
 
+# URL parsing
+url = { workspace = true }
+
 # Internal crates
 zero-common = { workspace = true }
 zero-memory = { workspace = true }
