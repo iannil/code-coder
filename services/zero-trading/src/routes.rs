@@ -79,6 +79,68 @@ pub struct ForceAnalysisRequest {
 }
 
 // ============================================================================
+// Paper Trading Request/Response Types
+// ============================================================================
+
+/// Paper trading start request
+#[derive(Debug, Deserialize)]
+pub struct PaperStartRequest {
+    #[serde(default = "default_capital")]
+    pub initial_capital: f64,
+    pub duration_secs: Option<u64>,
+    #[serde(default = "default_max_positions")]
+    pub max_positions: usize,
+    #[serde(default = "default_true")]
+    pub enable_notifications: bool,
+}
+
+fn default_capital() -> f64 {
+    100_000.0
+}
+
+fn default_max_positions() -> usize {
+    5
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Paper trading status response
+#[derive(Debug, Serialize)]
+pub struct PaperStatusResponse {
+    pub state: String,
+    pub start_time: Option<String>,
+    pub elapsed_seconds: Option<i64>,
+    pub trades_count: usize,
+    pub current_pnl: Option<f64>,
+}
+
+/// Paper trading trades response
+#[derive(Debug, Serialize)]
+pub struct PaperTradesResponse {
+    pub trades: Vec<crate::paper_trading::PaperTrade>,
+    pub count: usize,
+}
+
+/// Paper trading report response
+#[derive(Debug, Serialize)]
+pub struct PaperReportResponse {
+    pub title: String,
+    pub period: String,
+    pub summary: crate::paper_trading::SessionSummary,
+    pub verification: crate::paper_trading::VerificationResult,
+    pub text_report: String,
+}
+
+/// Generic success response
+#[derive(Debug, Serialize)]
+pub struct SuccessResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+// ============================================================================
 // Route Handlers
 // ============================================================================
 
@@ -241,4 +303,105 @@ pub async fn check_agent_status(
         "report_generator_available": report_available,
         "codecoder_endpoint": state.config.codecoder.endpoint
     }))
+}
+
+// ============================================================================
+// Paper Trading Routes
+// ============================================================================
+
+/// POST /api/v1/paper/start - Start paper trading session
+pub async fn paper_start(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<PaperStartRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    use crate::paper_trading::PaperTradingConfig;
+    use crate::strategy::SignalStrength;
+
+    let config = PaperTradingConfig {
+        initial_capital: req.initial_capital,
+        max_position_pct: 20.0,
+        min_signal_strength: SignalStrength::Medium,
+        max_positions: req.max_positions,
+        enable_notifications: req.enable_notifications,
+        scan_interval_secs: 60,
+        max_duration: req.duration_secs.map(std::time::Duration::from_secs),
+    };
+
+    let duration = req.duration_secs.map(std::time::Duration::from_secs);
+
+    match state.paper_manager.start_session(config, duration).await {
+        Ok(()) => Ok(Json(SuccessResponse {
+            success: true,
+            message: "Paper trading session started".to_string(),
+        })),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to start paper trading");
+            Err(StatusCode::BAD_REQUEST)
+        }
+    }
+}
+
+/// POST /api/v1/paper/stop - Stop paper trading session
+pub async fn paper_stop(
+    State(state): State<Arc<TradingState>>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    match state.paper_manager.stop_session().await {
+        Ok(()) => Ok(Json(SuccessResponse {
+            success: true,
+            message: "Paper trading session stopped".to_string(),
+        })),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to stop paper trading");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+/// GET /api/v1/paper/status - Get paper trading status
+pub async fn paper_status(
+    State(state): State<Arc<TradingState>>,
+) -> Json<PaperStatusResponse> {
+    let status = state.paper_manager.get_status().await;
+    let trades = state.paper_manager.get_trades().await;
+    let result = state.paper_manager.get_result().await;
+
+    let current_pnl = result.as_ref().map(|r| r.summary.net_profit);
+
+    Json(PaperStatusResponse {
+        state: format!("{:?}", status.state),
+        start_time: status.start_time.map(|t| t.to_rfc3339()),
+        elapsed_seconds: status.elapsed_seconds,
+        trades_count: trades.len(),
+        current_pnl,
+    })
+}
+
+/// GET /api/v1/paper/trades - Get paper trades
+pub async fn paper_trades(
+    State(state): State<Arc<TradingState>>,
+) -> Json<PaperTradesResponse> {
+    let trades = state.paper_manager.get_trades().await;
+    let count = trades.len();
+    Json(PaperTradesResponse { trades, count })
+}
+
+/// GET /api/v1/paper/report - Get paper trading report
+pub async fn paper_report(
+    State(state): State<Arc<TradingState>>,
+) -> Result<Json<PaperReportResponse>, StatusCode> {
+    match state.paper_manager.get_report().await {
+        Some(report) => {
+            let verification = report.meets_verification_criteria();
+            let text_report = report.to_text_report();
+
+            Ok(Json(PaperReportResponse {
+                title: report.title,
+                period: report.period,
+                summary: report.summary,
+                verification,
+                text_report,
+            }))
+        }
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }

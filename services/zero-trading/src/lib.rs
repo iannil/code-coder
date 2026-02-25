@@ -165,6 +165,12 @@ impl TradingService {
             .route("/api/v1/macro/report", get(routes::generate_macro_report))
             .route("/api/v1/macro/report/send", axum::routing::post(routes::send_macro_report))
             .route("/api/v1/macro/status", get(routes::check_agent_status))
+            // Paper trading routes
+            .route("/api/v1/paper/start", axum::routing::post(routes::paper_start))
+            .route("/api/v1/paper/stop", axum::routing::post(routes::paper_stop))
+            .route("/api/v1/paper/status", get(routes::paper_status))
+            .route("/api/v1/paper/trades", get(routes::paper_trades))
+            .route("/api/v1/paper/report", get(routes::paper_report))
             .with_state(self.state.clone());
 
         // Start the market data updater

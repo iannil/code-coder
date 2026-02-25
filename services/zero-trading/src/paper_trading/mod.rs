@@ -13,11 +13,11 @@
 
 mod runner;
 mod validator;
-mod report;
+pub mod report;
 
 pub use runner::{PaperTradingRunner, PaperTradingConfig, SessionResult};
 pub use validator::{SignalValidator, ValidationResult, ValidationMetrics};
-pub use report::{PaperTradingReport, SessionSummary};
+pub use report::{PaperTradingReport, SessionSummary, VerificationResult};
 
 use std::sync::Arc;
 use std::time::Duration;
