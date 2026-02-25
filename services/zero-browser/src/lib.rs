@@ -10,5 +10,9 @@ pub mod pattern;
 pub mod replay;
 pub mod routes;
 
+pub use browser::{LearnFilter, Session, SessionConfig, SessionManager};
 pub use error::BrowserError;
-pub use pattern::types::{ApiPattern, AuthPattern, HeaderPattern};
+pub use network::NetworkMonitor;
+pub use pattern::{extract_patterns, ApiPattern, AuthPattern, HeaderPattern};
+pub use replay::{ReplayExecutor, ReplayParams, ReplayResponse};
+pub use routes::{build_router, AppState};
