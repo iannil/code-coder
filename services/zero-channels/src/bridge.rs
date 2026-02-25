@@ -365,6 +365,22 @@ impl CodeCoderBridge {
         self.capture_bridge.clone()
     }
 
+    /// Format duration in human-readable form.
+    /// - < 1s: "850ms"
+    /// - 1-60s: "3.2s"
+    /// - > 60s: "1m25s"
+    fn format_duration(duration_ms: u64) -> String {
+        if duration_ms < 1000 {
+            format!("{}ms", duration_ms)
+        } else if duration_ms < 60_000 {
+            format!("{:.1}s", duration_ms as f64 / 1000.0)
+        } else {
+            let minutes = duration_ms / 60_000;
+            let seconds = (duration_ms % 60_000) / 1000;
+            format!("{}m{}s", minutes, seconds)
+        }
+    }
+
     /// Process an incoming message and send response.
     ///
     /// This is the main entry point for the bridge.
