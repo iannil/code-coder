@@ -19,11 +19,15 @@ For web-based tasks like searching flights, booking tickets, or retrieving onlin
 
 MCP Tool Usage Guidelines:
 - Check your available tool list before claiming you cannot do something
-- Playwright tools: prefixed with "mcp__playwright__" (e.g., mcp__playwright__browser_navigate)
+- Chrome DevTools tools: prefixed with "mcp__chrome_devtools__" (e.g., mcp__chrome_devtools__navigate_page)
 - Puppeteer tools: prefixed with "mcp__puppeteer__" (e.g., mcp__puppeteer__puppeteer_navigate)
 - Use the browser tools that are available in your current session
-- When a browser is open, use snapshot/screenshot to get the page structure
+- When a browser is open, use take_snapshot/take_screenshot to get the page structure
 - Element references from snapshots are used to interact with specific elements
+- Chrome DevTools MCP provides additional performance analysis tools:
+  - performance_start_trace / performance_stop_trace: Record performance traces
+  - performance_analyze_insight: Analyze recorded traces for insights
+  - emulate_cpu / emulate_network: Simulate device conditions
 
 Error Handling:
 - If a tool fails, try alternative approaches

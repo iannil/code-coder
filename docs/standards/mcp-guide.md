@@ -47,35 +47,84 @@ MCP servers are configured in your `~/.codecoder/config.jsonc` file.
 
 ## MCP Server Examples
 
-### Playwright MCP (Browser Automation)
+### Chrome DevTools MCP (Browser Automation)
 
-The Playwright MCP server enables browser automation for the `code-reverse` agent.
+The Chrome DevTools MCP server enables browser automation with direct Chrome DevTools Protocol integration. This is the recommended browser automation backend for CodeCoder.
 
 ```jsonc
 {
   "mcp": {
-    "playwright": {
+    "chrome-devtools": {
       "type": "local",
-      "command": ["npx", "-y", "@executeautomation/playwright-mcp-server"],
-      "enabledAgents": ["code-reverse"],
+      "command": ["npx", "chrome-devtools-mcp@latest"],
+      "enabledAgents": ["code-reverse", "general", "build"],
       "timeout": 60000
     }
   }
 }
 ```
 
+**Requirements:**
+
+- Node.js v20.19+
+- Chrome stable version installed
+
 **Features:**
 
-- Screenshot capture
-- Page navigation
-- Network monitoring
-- Form interaction
-- Element extraction
+- Screenshot capture (`take_screenshot`)
+- Page navigation (`navigate_page`)
+- Accessibility snapshot (`take_snapshot`)
+- Network monitoring (`list_network_requests`, `get_network_request`)
+- Console messages (`list_console_messages`)
+- Form interaction (`fill`, `fill_form`, `click`)
+- Element interaction (`hover`, `drag`)
+- File upload (`upload_file`)
+- JavaScript execution (`evaluate_script`)
+- Dialog handling (`handle_dialog`)
+- Page management (`list_pages`, `new_page`, `close_page`, `select_page`)
+- Performance Analysis:
+  - Trace recording (`performance_start_trace`, `performance_stop_trace`)
+  - Performance insights (`performance_analyze_insight`)
+  - CPU throttling (`emulate_cpu`)
+  - Network throttling (`emulate_network`)
+
+**Tool Name Mapping (from Playwright MCP):**
+
+| Playwright MCP | Chrome DevTools MCP |
+|----------------|---------------------|
+| `browser_navigate` | `navigate_page` |
+| `browser_click` | `click` |
+| `browser_type` | `fill` |
+| `browser_fill_form` | `fill_form` |
+| `browser_file_upload` | `upload_file` |
+| `browser_evaluate` | `evaluate_script` |
+| `browser_drag` | `drag` |
+| `browser_handle_dialog` | `handle_dialog` |
+| `browser_snapshot` | `take_snapshot` |
+| `browser_take_screenshot` | `take_screenshot` |
+| `browser_console_messages` | `list_console_messages` |
+| `browser_network_requests` | `list_network_requests` |
+| `browser_tabs` | `list_pages` |
+| `browser_wait_for` | `wait_for` |
+| `browser_hover` | `hover` |
+| `browser_resize` | `resize_page` |
+| `browser_press_key` | (use `evaluate_script`) |
+| - | `performance_start_trace` (new) |
+| - | `performance_stop_trace` (new) |
+| - | `performance_analyze_insight` (new) |
+| - | `emulate_cpu` (new) |
+| - | `emulate_network` (new) |
 
 **Usage in code-reverse agent:**
 
 ```bash
 codecoder --agent code-reverse "Analyze https://example.com and generate a pixel-perfect recreation plan"
+```
+
+**Performance Analysis Example:**
+
+```bash
+codecoder --agent code-reverse "Analyze https://example.com with performance tracing to identify render-blocking resources"
 ```
 
 ### Filesystem MCP
@@ -152,10 +201,10 @@ You can restrict which agents can access specific MCP servers using the `enabled
 ```jsonc
 {
   "mcp": {
-    "playwright": {
+    "chrome-devtools": {
       "type": "local",
-      "command": ["npx", "-y", "@executeautomation/playwright-mcp-server"],
-      "enabledAgents": ["code-reverse", "build"]
+      "command": ["npx", "chrome-devtools-mcp@latest"],
+      "enabledAgents": ["code-reverse", "general", "build"]
     }
   }
 }
@@ -270,7 +319,7 @@ Here are some popular MCP servers you can use:
 | Server | Description | Installation |
 |--------|-------------|--------------|
 | `codecoder` (built-in) | CodeCoder's 20+ development tools | `ccode mcp serve` |
-| `@executeautomation/playwright-mcp-server` | Browser automation | `npx -y @executeautomation/playwright-mcp-server` |
+| `chrome-devtools-mcp` | Browser automation with Chrome DevTools Protocol | `npx chrome-devtools-mcp@latest` |
 | `@modelcontextprotocol/server-filesystem` | Filesystem access | `npx -y @modelcontextprotocol/server-filesystem /path` |
 | `@modelcontextprotocol/server-github` | GitHub integration | `npx -y @modelcontextprotocol/server-github` |
 | `@modelcontextprotocol/server-sqlite` | SQLite database | `npx -y @modelcontextprotocol/server-sqlite --db-path ./data.db` |

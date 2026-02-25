@@ -301,6 +301,19 @@ export namespace AutonomousEvent {
     }),
   )
 
+  export const EvolutionCompleted = BusEvent.define(
+    "autonomous.evolution.completed",
+    z.object({
+      sessionId: z.string(),
+      solved: z.boolean(),
+      attempts: z.number(),
+      summary: z.string(),
+      knowledgeId: z.string().optional(),
+      learnedToolId: z.string().optional(),
+      durationMs: z.number().optional(),
+    }),
+  )
+
   export const IterationStarted = BusEvent.define(
     "autonomous.iteration.started",
     z.object({

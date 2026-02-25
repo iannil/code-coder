@@ -57,18 +57,17 @@ export namespace RemotePolicy {
     "curl",
     "http",
 
-    // MCP Playwright browser operations (mutating/navigating)
-    "mcp__playwright__browser_navigate",
-    "mcp__playwright__browser_click",
-    "mcp__playwright__browser_type",
-    "mcp__playwright__browser_fill_form",
-    "mcp__playwright__browser_file_upload",
-    "mcp__playwright__browser_evaluate",
-    "mcp__playwright__browser_run_code",
-    "mcp__playwright__browser_select_option",
-    "mcp__playwright__browser_drag",
-    "mcp__playwright__browser_press_key",
-    "mcp__playwright__browser_handle_dialog",
+    // MCP Chrome DevTools browser operations (mutating/navigating)
+    "mcp__chrome_devtools__navigate_page",
+    "mcp__chrome_devtools__click",
+    "mcp__chrome_devtools__fill",
+    "mcp__chrome_devtools__fill_form",
+    "mcp__chrome_devtools__upload_file",
+    "mcp__chrome_devtools__evaluate_script",
+    "mcp__chrome_devtools__drag",
+    "mcp__chrome_devtools__handle_dialog",
+    "mcp__chrome_devtools__new_page",
+    "mcp__chrome_devtools__close_page",
 
     // MCP Puppeteer browser operations (mutating/navigating)
     "mcp__puppeteer__puppeteer_navigate",
@@ -91,18 +90,24 @@ export namespace RemotePolicy {
     "git_log",
     "git_diff",
 
-    // MCP Playwright read-only operations
-    "mcp__playwright__browser_snapshot",
-    "mcp__playwright__browser_take_screenshot",
-    "mcp__playwright__browser_console_messages",
-    "mcp__playwright__browser_network_requests",
-    "mcp__playwright__browser_tabs",
-    "mcp__playwright__browser_wait_for",
-    "mcp__playwright__browser_navigate_back",
-    "mcp__playwright__browser_resize",
-    "mcp__playwright__browser_hover",
-    "mcp__playwright__browser_close",
-    "mcp__playwright__browser_install",
+    // MCP Chrome DevTools read-only operations
+    "mcp__chrome_devtools__take_snapshot",
+    "mcp__chrome_devtools__take_screenshot",
+    "mcp__chrome_devtools__list_console_messages",
+    "mcp__chrome_devtools__list_network_requests",
+    "mcp__chrome_devtools__get_network_request",
+    "mcp__chrome_devtools__list_pages",
+    "mcp__chrome_devtools__select_page",
+    "mcp__chrome_devtools__wait_for",
+    "mcp__chrome_devtools__navigate_page_history",
+    "mcp__chrome_devtools__resize_page",
+    "mcp__chrome_devtools__hover",
+    // MCP Chrome DevTools performance analysis tools
+    "mcp__chrome_devtools__performance_start_trace",
+    "mcp__chrome_devtools__performance_stop_trace",
+    "mcp__chrome_devtools__performance_analyze_insight",
+    "mcp__chrome_devtools__emulate_cpu",
+    "mcp__chrome_devtools__emulate_network",
 
     // MCP Puppeteer read-only operations
     "mcp__puppeteer__puppeteer_screenshot",
@@ -314,34 +319,33 @@ export namespace RemotePolicy {
       case "delete":
         return `Delete file: ${(args as { path?: string })?.path ?? "unknown path"}`
 
-      // MCP Playwright operations
-      case "mcp__playwright__browser_navigate":
+      // MCP Chrome DevTools operations
+      case "mcp__chrome_devtools__navigate_page":
       case "mcp__puppeteer__puppeteer_navigate":
         return `Navigate browser to: ${(args as { url?: string })?.url ?? "unknown URL"}`
 
-      case "mcp__playwright__browser_click":
+      case "mcp__chrome_devtools__click":
       case "mcp__puppeteer__puppeteer_click":
         return `Click element: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? (args as { selector?: string })?.selector ?? "unknown"}`
 
-      case "mcp__playwright__browser_type":
+      case "mcp__chrome_devtools__fill":
       case "mcp__puppeteer__puppeteer_fill":
         return `Type text into: ${(args as { element?: string })?.element ?? (args as { ref?: string })?.ref ?? (args as { selector?: string })?.selector ?? "unknown"}`
 
-      case "mcp__playwright__browser_fill_form":
+      case "mcp__chrome_devtools__fill_form":
         return `Fill form with ${((args as { fields?: unknown[] })?.fields?.length ?? 0)} fields`
 
-      case "mcp__playwright__browser_file_upload":
+      case "mcp__chrome_devtools__upload_file":
         return `Upload files: ${((args as { paths?: string[] })?.paths ?? []).join(", ") || "unknown"}`
 
-      case "mcp__playwright__browser_evaluate":
-      case "mcp__playwright__browser_run_code":
+      case "mcp__chrome_devtools__evaluate_script":
       case "mcp__puppeteer__puppeteer_evaluate":
         return `Execute JavaScript in browser`
 
       default:
         // Handle other MCP tools generically
-        if (normalizedTool.startsWith("mcp__playwright__")) {
-          const action = normalizedTool.replace("mcp__playwright__browser_", "")
+        if (normalizedTool.startsWith("mcp__chrome_devtools__")) {
+          const action = normalizedTool.replace("mcp__chrome_devtools__", "")
           return `Browser ${action} operation`
         }
         if (normalizedTool.startsWith("mcp__puppeteer__")) {

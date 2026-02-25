@@ -137,6 +137,7 @@ function filterByCategories(notes: string[], categories: MemoryCategory[]): stri
     项目上下文: ["project", "context", "structure", "architecture"],
     关键决策: ["decision", "chose", "selected", "decided"],
     经验教训: ["learned", "lesson", "mistake", "fix", "issue"],
+    成功方案: ["solution", "solved", "success", "resolved", "pattern"],
   }
 
   for (const cat of categories) {

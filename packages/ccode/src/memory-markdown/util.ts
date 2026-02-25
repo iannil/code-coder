@@ -50,11 +50,12 @@ export function formatDailyEntry(entry: DailyEntry): string {
  * Get emoji icon for entry type
  */
 function entryTypeIcon(type: DailyEntry["type"]): string {
-  const icons = {
+  const icons: Record<DailyEntry["type"], string> = {
     decision: "💭",
     action: "⚡",
     output: "📤",
     error: "❌",
+    solution: "✅",
   }
   return icons[type] || "📝"
 }

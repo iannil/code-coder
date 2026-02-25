@@ -14,6 +14,7 @@ import { createSafetyIntegration, type SafetyIntegration } from "../safety/integ
 import { RequirementTracker, createRequirementTracker } from "../planning/requirement-tracker"
 import { NextStepPlanner, createNextStepPlanner, type CompletionCriteria, type NextStepPlan } from "../planning/next-step-planner"
 import { WebSearcher, createWebSearcher, type WebSolution } from "../execution/web-search"
+import { createEvolutionLoop, type EvolutionLoop, type EvolutionResult } from "../execution/evolution-loop"
 
 const log = Log.create({ service: "autonomous.orchestrator" })
 
@@ -25,6 +26,8 @@ export interface OrchestratorConfig {
   resourceBudget: ResourceBudget
   executionConfig?: ExecutionConfig
   unattended: boolean
+  /** Enable evolution loop for autonomous problem solving (default: true) */
+  enableEvolutionLoop?: boolean
 }
 
 /**
@@ -51,6 +54,7 @@ export class Orchestrator {
   private safetyGuard: SafetyGuard
   private safetyIntegration: SafetyIntegration
   private webSearcher: WebSearcher
+  private evolutionLoop: EvolutionLoop | null = null
   private config: OrchestratorConfig
   private context: SessionContext
   private requirementTracker: RequirementTracker
@@ -59,6 +63,7 @@ export class Orchestrator {
   private recentFailures: number = 0
   private recentErrors: string[] = []
   private webSearchSolutions: WebSolution[] = []
+  private evolutionResults: EvolutionResult[] = []
 
   constructor(context: SessionContext, config: OrchestratorConfig) {
     this.context = context
@@ -85,6 +90,19 @@ export class Orchestrator {
     this.webSearcher = createWebSearcher(this.context.sessionId, {
       confidenceThreshold: config.autonomyLevel === "lunatic" ? 0.2 : 0.4,
     })
+
+    // Initialize evolution loop for autonomous problem solving
+    if (config.enableEvolutionLoop !== false) {
+      this.evolutionLoop = createEvolutionLoop({
+        maxRetries: config.autonomyLevel === "lunatic" ? 5 : 3,
+        enableLLMCodeGeneration: true,
+        enableLLMReflection: true,
+        enableWebSearch: true,
+        enableSedimentation: true,
+        enableToolLearning: true,
+        enableToolDiscovery: true,
+      })
+    }
 
     // Initialize requirement tracker
     this.requirementTracker = createRequirementTracker(this.context.sessionId)
@@ -381,6 +399,9 @@ export class Orchestrator {
             confidence: searchSolution.confidence,
             sourceCount: searchSolution.sources.length,
           })
+        } else {
+          // Try evolution loop if web search didn't find high-confidence solution
+          await this.tryEvolutionLoop(testResult.errors)
         }
       }
       if (!verifyResult.success) {
@@ -390,6 +411,9 @@ export class Orchestrator {
         const searchSolution = await this.searchForSolutions(verifyResult.errors)
         if (searchSolution && searchSolution.confidence > 0.5) {
           this.webSearchSolutions.push(searchSolution)
+        } else {
+          // Try evolution loop for verification errors
+          await this.tryEvolutionLoop(verifyResult.errors)
         }
       }
 
@@ -447,6 +471,76 @@ export class Orchestrator {
    */
   getWebSearchSolutions(): WebSolution[] {
     return this.webSearchSolutions
+  }
+
+  /**
+   * Get evolution results from current session
+   */
+  getEvolutionResults(): EvolutionResult[] {
+    return this.evolutionResults
+  }
+
+  /**
+   * Try the evolution loop for autonomous problem solving
+   *
+   * This implements the 4-step evolution cycle from goals.md 3.3:
+   * 1. 主动资源检索 - Proactive web search
+   * 2. 动态编程保底 - LLM-based code generation
+   * 3. 自主反思与重试 - Self-reflection on errors
+   * 4. 沉淀与进化 - Knowledge sedimentation
+   */
+  private async tryEvolutionLoop(errors: string[]): Promise<EvolutionResult | null> {
+    if (!this.evolutionLoop || errors.length === 0) return null
+
+    try {
+      log.info("Attempting evolution loop for autonomous problem solving", {
+        sessionId: this.context.sessionId,
+        errorCount: errors.length,
+      })
+
+      const result = await this.evolutionLoop.evolve({
+        sessionId: this.context.sessionId,
+        description: errors.slice(0, 3).join("\n"),
+        errorMessage: errors[0],
+        maxRetries: 3,
+        enableWebSearch: true,
+        enableCodeExecution: true,
+      })
+
+      this.evolutionResults.push(result)
+
+      if (result.solved) {
+        log.info("Evolution loop solved the problem", {
+          sessionId: this.context.sessionId,
+          attempts: result.attempts.length,
+          durationMs: result.durationMs,
+          knowledgeId: result.knowledgeId,
+          learnedToolId: result.learnedToolId,
+        })
+
+        // Publish event for UI tracking
+        await Bus.publish(AutonomousEvent.EvolutionCompleted, {
+          sessionId: this.context.sessionId,
+          solved: true,
+          attempts: result.attempts.length,
+          summary: result.summary,
+        })
+      } else {
+        log.info("Evolution loop could not solve the problem", {
+          sessionId: this.context.sessionId,
+          attempts: result.attempts.length,
+          summary: result.summary,
+        })
+      }
+
+      return result
+    } catch (error) {
+      log.warn("Evolution loop failed", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      return null
+    }
   }
 
   /**

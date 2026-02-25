@@ -35,6 +35,8 @@ import PROMPT_EXPANDER from "./prompt/expander.txt"
 import PROMPT_EXPANDER_FICTION from "./prompt/expander-fiction.txt"
 import PROMPT_EXPANDER_NONFICTION from "./prompt/expander-nonfiction.txt"
 import PROMPT_GENERAL from "./prompt/general.txt"
+import PROMPT_PRD_GENERATOR from "./prompt/prd-generator.txt"
+import PROMPT_FEASIBILITY_ASSESS from "./prompt/feasibility-assess.txt"
 import * as WriterService from "./writer-service"
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -496,6 +498,32 @@ export namespace Agent {
         },
         temperature: 0.6,
         color: "magenta",
+      },
+      "prd-generator": {
+        name: "prd-generator",
+        description:
+          "产品需求文档(PRD)生成专家，将会议纪要或需求讨论转化为结构化PRD，包含用户分析、功能需求、交互设计、技术方案和开发计划",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_PRD_GENERATOR,
+        permission: PermissionNext.merge(defaults, user),
+        options: {
+          maxOutputTokens: 64_000,
+        },
+        temperature: 0.5,
+        color: "blue",
+      },
+      "feasibility-assess": {
+        name: "feasibility-assess",
+        description:
+          "技术可行性评估专家，基于代码库语义图分析需求复杂度、现有能力、变更清单、依赖关系和风险，输出结构化JSON评估报告",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_FEASIBILITY_ASSESS,
+        permission: PermissionNext.merge(defaults, user),
+        options: {},
+        temperature: 0.3,
+        color: "yellow",
       },
     }
 

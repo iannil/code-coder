@@ -130,6 +130,27 @@ export type {
   EvolutionConfig,
 } from "./execution/evolution-loop"
 
+// LLM Solver (Phase 1 Enhancement)
+export { LLMSolver, getLLMSolver, createLLMSolver } from "./execution/llm-solver"
+export type {
+  CodeGenerationContext,
+  CodeGenerationResult,
+  ReflectionContext,
+  ReflectionAnalysis,
+  LLMSolverConfig,
+} from "./execution/llm-solver"
+
+// Memory Writer (Phase 1 Enhancement)
+export {
+  writeEvolutionToMemory,
+  sedimentEvolutionSuccess,
+  logEvolutionFailure,
+} from "./execution/memory-writer"
+export type {
+  EvolutionMemoryContext,
+  MemoryWriteOptions,
+} from "./execution/memory-writer"
+
 // Safety
 export { SafetyGuard, parseResourceBudget } from "./safety/constraints"
 export type { ResourceBudget, ResourceUsage, SafetyCheckResult, SafetyConfig } from "./safety/constraints"

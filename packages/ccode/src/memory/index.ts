@@ -18,6 +18,23 @@ export { Sync } from "./storage/sync"
 export { DynamicToolRegistry, ToolTypes, ToolRegistry, ToolSearch, ToolLearner } from "./tools/index"
 export { searchTools, learnTool, getToolForExecution } from "./tools/index"
 
+// Embedding Provider (Phase 2)
+export {
+  EmbeddingProvider,
+  getEmbeddingProvider,
+  createEmbeddingProvider,
+  resetEmbeddingProvider,
+} from "./embedding-provider"
+export type { EmbeddingResult, EmbeddingProviderConfig } from "./embedding-provider"
+
+// Markdown Chunker (Phase 2)
+export { MarkdownChunker, getChunker, createChunker, chunkMarkdown } from "./chunker"
+export type { Chunk, ChunkMetadata, ChunkerConfig } from "./chunker"
+
+// Global Context Hub (Phase 2)
+export { GlobalContextHub, getContextHub, createContextHub, retrieveContext } from "./context-hub"
+export type { ContextItem, ContextSource, ContextResult, RetrievalOptions } from "./context-hub"
+
 // Note: Types are available as Preferences.CodeStyle, Style.EditChoice, etc.
 
 import { Preferences } from "./preferences"
