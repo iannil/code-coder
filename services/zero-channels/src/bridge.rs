@@ -2624,4 +2624,25 @@ mod tests {
         assert!(result.is_some());
         assert_eq!(result.unwrap(), SessionCommand::Compact);
     }
+
+    #[test]
+    fn test_format_duration_milliseconds() {
+        assert_eq!(CodeCoderBridge::format_duration(0), "0ms");
+        assert_eq!(CodeCoderBridge::format_duration(500), "500ms");
+        assert_eq!(CodeCoderBridge::format_duration(999), "999ms");
+    }
+
+    #[test]
+    fn test_format_duration_seconds() {
+        assert_eq!(CodeCoderBridge::format_duration(1000), "1.0s");
+        assert_eq!(CodeCoderBridge::format_duration(3200), "3.2s");
+        assert_eq!(CodeCoderBridge::format_duration(59999), "60.0s");
+    }
+
+    #[test]
+    fn test_format_duration_minutes() {
+        assert_eq!(CodeCoderBridge::format_duration(60000), "1m0s");
+        assert_eq!(CodeCoderBridge::format_duration(85000), "1m25s");
+        assert_eq!(CodeCoderBridge::format_duration(125000), "2m5s");
+    }
 }
