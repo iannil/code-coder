@@ -15,6 +15,7 @@
 import { createEnhancedWebSearch, type EnhancedWebSearch } from "./enhanced-web-search"
 import { createSandboxExecutor, type SandboxExecutor, type SandboxResult, type ReflectionResult } from "./sandbox"
 import { getKnowledgeSedimentation, type KnowledgeSedimentation, type ExtractionContext } from "./knowledge-sedimentation"
+import { createGithubScout, type GithubScout, type GithubScoutResult } from "./github-scout"
 import { DynamicToolRegistry, type ToolTypes } from "@/memory/tools"
 import type { FetchedContent } from "./web-search"
 import { getLLMSolver, type LLMSolver, type ReflectionAnalysis } from "./llm-solver"
@@ -83,6 +84,8 @@ export interface EvolutionResult {
   learnedToolId?: string
   /** Tool ID if an existing tool was used */
   usedToolId?: string
+  /** GitHub Scout result if triggered */
+  githubScoutResult?: GithubScoutResult
   /** Total duration in ms */
   durationMs: number
   /** Summary of the process */
@@ -111,6 +114,12 @@ export interface EvolutionConfig {
   enableLLMCodeGeneration: boolean
   /** Enable LLM-based reflection (recommended) */
   enableLLMReflection: boolean
+  /** Enable GitHub Scout for open-source solution search */
+  enableGithubScout: boolean
+  /** GitHub Scout integration mode */
+  githubScoutMode: "autonomous" | "recommend" | "ask"
+  /** GitHub Scout minimum trigger confidence */
+  githubScoutTriggerThreshold: number
 }
 
 // ============================================================================
@@ -128,6 +137,9 @@ const DEFAULT_CONFIG: EvolutionConfig = {
   toolMatchThreshold: 0.7,
   enableLLMCodeGeneration: true,
   enableLLMReflection: true,
+  enableGithubScout: true,
+  githubScoutMode: "autonomous",
+  githubScoutTriggerThreshold: 0.6,
 }
 
 // ============================================================================
@@ -149,6 +161,7 @@ export class EvolutionLoop {
   private sandbox: SandboxExecutor | null = null
   private knowledge: KnowledgeSedimentation | null = null
   private llmSolver: LLMSolver | null = null
+  private githubScout: GithubScout | null = null
   private previousAttempts: Array<{ code: string; error: string }> = []
 
   constructor(config: Partial<EvolutionConfig> = {}) {
@@ -173,6 +186,13 @@ export class EvolutionLoop {
 
     if (this.config.enableLLMCodeGeneration || this.config.enableLLMReflection) {
       this.llmSolver = getLLMSolver()
+    }
+
+    if (this.config.enableGithubScout) {
+      this.githubScout = createGithubScout({
+        integrationMode: this.config.githubScoutMode,
+        triggerThreshold: this.config.githubScoutTriggerThreshold,
+      })
     }
   }
 
@@ -207,6 +227,45 @@ export class EvolutionLoop {
       log.info("Web search completed", { sourceCount: webSources.length })
     }
 
+    // Step 1.5: GitHub Scout - Search for open-source solutions
+    let githubScoutResult: GithubScoutResult | undefined
+    if (this.config.enableGithubScout && this.githubScout) {
+      log.info("Step 1.5: GitHub Scout - searching for open-source solutions")
+      githubScoutResult = await this.githubScout.scout({
+        sessionId: problem.sessionId,
+        description: problem.description,
+        technology: problem.technology,
+        workingDir: problem.workingDir,
+      })
+
+      // If GitHub Scout found and installed a solution, return early
+      if (
+        githubScoutResult.triggered &&
+        githubScoutResult.integration?.success &&
+        githubScoutResult.integration.action === "installed"
+      ) {
+        log.info("GitHub Scout found and installed solution", {
+          repo: githubScoutResult.topRecommendation?.repo.fullName,
+        })
+        return {
+          solved: true,
+          solution: `Open-source solution installed: ${githubScoutResult.topRecommendation?.repo.fullName}`,
+          attempts: [],
+          githubScoutResult,
+          durationMs: Date.now() - startTime,
+          summary: githubScoutResult.summary,
+        }
+      }
+
+      // Log if scout found recommendations but didn't auto-install
+      if (githubScoutResult.triggered && githubScoutResult.topRecommendation) {
+        log.info("GitHub Scout found recommendations", {
+          topRepo: githubScoutResult.topRecommendation.repo.fullName,
+          recommendation: githubScoutResult.topRecommendation.recommendation,
+        })
+      }
+    }
+
     // Step 2: Check existing knowledge
     const existingKnowledge = await this.searchExistingKnowledge(problem)
     if (existingKnowledge) {
@@ -218,6 +277,7 @@ export class EvolutionLoop {
         knowledgeId: existingKnowledge.id,
         learnedToolId: undefined,
         usedToolId: undefined,
+        githubScoutResult,
         durationMs: Date.now() - startTime,
         summary: `Found existing solution from knowledge base: ${existingKnowledge.title}`,
       }
@@ -240,6 +300,7 @@ export class EvolutionLoop {
             toolName: toolResult.toolName,
           }],
           usedToolId: toolResult.toolId,
+          githubScoutResult,
           durationMs: Date.now() - startTime,
           summary: `Problem solved using existing tool: ${toolResult.toolName}`,
         }
@@ -259,6 +320,7 @@ export class EvolutionLoop {
           attempts,
           learnedToolId: undefined,
           usedToolId: undefined,
+          githubScoutResult,
           durationMs: Date.now() - startTime,
           summary: "Could not generate solution code. Consider seeking human assistance.",
         }
@@ -343,6 +405,7 @@ export class EvolutionLoop {
             attempts,
             knowledgeId,
             learnedToolId,
+            githubScoutResult,
             durationMs: Date.now() - startTime,
             summary: `Problem solved after ${attemptNumber} attempt(s).${knowledgeId ? " Solution saved to knowledge base." : ""}${learnedToolId ? " Learned as reusable tool." : ""}`,
           }
@@ -381,6 +444,7 @@ export class EvolutionLoop {
       attempts,
       learnedToolId: undefined,
       usedToolId: undefined,
+      githubScoutResult,
       durationMs: Date.now() - startTime,
       summary: `Could not solve problem after ${attempts.length} attempts. Consider seeking human assistance.`,
     }

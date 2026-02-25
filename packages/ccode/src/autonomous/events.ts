@@ -314,6 +314,42 @@ export namespace AutonomousEvent {
     }),
   )
 
+  // ============================================================================
+  // GitHub Scout Events
+  // ============================================================================
+
+  export const GithubScoutTriggered = BusEvent.define(
+    "autonomous.github_scout.triggered",
+    z.object({
+      sessionId: z.string(),
+      confidence: z.number(),
+      category: z.enum(["high", "medium", "low"]),
+      queries: z.array(z.string()),
+    }),
+  )
+
+  export const RepoEvaluated = BusEvent.define(
+    "autonomous.github_scout.repo_evaluated",
+    z.object({
+      sessionId: z.string(),
+      reposEvaluated: z.number(),
+      topRepo: z.string().optional(),
+      topScore: z.number().optional(),
+      recommendation: z.enum(["adopt", "trial", "assess", "avoid"]).optional(),
+    }),
+  )
+
+  export const IntegrationExecuted = BusEvent.define(
+    "autonomous.github_scout.integration_executed",
+    z.object({
+      sessionId: z.string(),
+      repo: z.string(),
+      mode: z.enum(["autonomous", "recommend", "ask"]),
+      action: z.enum(["installed", "recommended", "user_declined", "skipped", "failed"]),
+      success: z.boolean(),
+    }),
+  )
+
   export const IterationStarted = BusEvent.define(
     "autonomous.iteration.started",
     z.object({

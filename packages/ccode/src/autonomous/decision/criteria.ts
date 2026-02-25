@@ -10,6 +10,7 @@ export type DecisionType =
   | "rollback"
   | "checkpoint"
   | "resource"
+  | "resource_acquisition"
   | "other"
 
 export type RiskLevel = "low" | "medium" | "high" | "critical"
@@ -57,6 +58,7 @@ export const AutonomousDecisionCriteriaSchema = z.object({
     "rollback",
     "checkpoint",
     "resource",
+    "resource_acquisition",
     "other",
   ]),
   description: z.string(),
@@ -162,6 +164,29 @@ export const DecisionTemplates = {
     optionality: 7,
     surplus: 3,
     evolution: 4,
+  }),
+
+  /**
+   * Search for open-source solution vs build from scratch
+   *
+   * High scores because:
+   * - Convergence: 8 = searching keeps options open (can still build)
+   * - Leverage: 9 = small search effort could save large build effort
+   * - Optionality: 9 = fully reversible, can ignore results
+   * - Surplus: 9 = low cost (just API calls)
+   * - Evolution: 7 = learn about ecosystem and best practices
+   *
+   * Expected score: ~8.2/10 → Auto-approve
+   */
+  searchVsBuild: (reason: string): Partial<AutonomousDecisionCriteria> => ({
+    type: "resource_acquisition",
+    description: `Search GitHub for open-source solution: ${reason}`,
+    riskLevel: "low",
+    convergence: 8,
+    leverage: 9,
+    optionality: 9,
+    surplus: 9,
+    evolution: 7,
   }),
 }
 

@@ -37,6 +37,32 @@ export const LoopDetectionConfigSchema = z.object({
 })
 export type LoopDetectionConfig = z.infer<typeof LoopDetectionConfigSchema>
 
+export const GithubScoutConfigSchema = z.object({
+  /** Enable GitHub Scout feature */
+  enabled: z.boolean().default(true),
+  /** Integration mode: autonomous(default) | recommend | ask */
+  integrationMode: z.enum(["autonomous", "recommend", "ask"]).default("autonomous"),
+  /** Operations that require asking user confirmation */
+  askForPermissions: z
+    .array(z.enum(["global_install", "sudo", "system_config", "system_deps"]))
+    .default(["global_install", "sudo", "system_config"]),
+  /** Maximum number of dependencies to auto-install */
+  maxAutoInstallDeps: z.number().min(1).max(50).default(10),
+  /** Whether to allow packages with security warnings */
+  allowSecurityWarnings: z.boolean().default(false),
+  /** Minimum trigger confidence to activate search (0-1) */
+  triggerThreshold: z.number().min(0).max(1).default(0.6),
+  /** Minimum CLOSE decision score for searching */
+  decisionThreshold: z.number().min(0).max(10).default(6.0),
+  /** Maximum repositories to evaluate */
+  maxReposToEvaluate: z.number().min(1).max(20).default(5),
+  /** Enable caching of search results */
+  enableCache: z.boolean().default(true),
+  /** Cache TTL in milliseconds (default: 1 hour) */
+  cacheTTLMs: z.number().default(3600000),
+})
+export type GithubScoutConfig = z.infer<typeof GithubScoutConfigSchema>
+
 export const AutonomousModeConfigSchema = z.object({
   enabled: z.boolean().default(false),
 
@@ -53,6 +79,9 @@ export const AutonomousModeConfigSchema = z.object({
   checkpoints: CheckpointConfigSchema,
 
   loopDetection: LoopDetectionConfigSchema,
+
+  /** GitHub Scout configuration for open-source solution discovery */
+  githubScout: GithubScoutConfigSchema.optional(),
 
   phaseTimeouts: z
     .object({
@@ -127,12 +156,26 @@ export const DEFAULT_AUTONOMOUS_MODE_CONFIG: AutonomousModeConfig = {
     threshold: 3,
     autoBreak: true,
   },
+  githubScout: {
+    enabled: true,
+    integrationMode: "autonomous",
+    askForPermissions: ["global_install", "sudo", "system_config"],
+    maxAutoInstallDeps: 10,
+    allowSecurityWarnings: false,
+    triggerThreshold: 0.6,
+    decisionThreshold: 6.0,
+    maxReposToEvaluate: 5,
+    enableCache: true,
+    cacheTTLMs: 3600000,
+  },
 }
 
 export function mergeAutonomousModeConfig(userConfig?: Partial<AutonomousModeConfig>): AutonomousModeConfig {
   if (!userConfig) {
     return DEFAULT_AUTONOMOUS_MODE_CONFIG
   }
+
+  const defaultGithubScout = DEFAULT_AUTONOMOUS_MODE_CONFIG.githubScout!
 
   return {
     ...DEFAULT_AUTONOMOUS_MODE_CONFIG,
@@ -153,5 +196,19 @@ export function mergeAutonomousModeConfig(userConfig?: Partial<AutonomousModeCon
       ...DEFAULT_AUTONOMOUS_MODE_CONFIG.loopDetection,
       ...userConfig.loopDetection,
     },
+    githubScout: userConfig.githubScout
+      ? {
+          enabled: userConfig.githubScout.enabled ?? defaultGithubScout.enabled,
+          integrationMode: userConfig.githubScout.integrationMode ?? defaultGithubScout.integrationMode,
+          askForPermissions: userConfig.githubScout.askForPermissions ?? defaultGithubScout.askForPermissions,
+          maxAutoInstallDeps: userConfig.githubScout.maxAutoInstallDeps ?? defaultGithubScout.maxAutoInstallDeps,
+          allowSecurityWarnings: userConfig.githubScout.allowSecurityWarnings ?? defaultGithubScout.allowSecurityWarnings,
+          triggerThreshold: userConfig.githubScout.triggerThreshold ?? defaultGithubScout.triggerThreshold,
+          decisionThreshold: userConfig.githubScout.decisionThreshold ?? defaultGithubScout.decisionThreshold,
+          maxReposToEvaluate: userConfig.githubScout.maxReposToEvaluate ?? defaultGithubScout.maxReposToEvaluate,
+          enableCache: userConfig.githubScout.enableCache ?? defaultGithubScout.enableCache,
+          cacheTTLMs: userConfig.githubScout.cacheTTLMs ?? defaultGithubScout.cacheTTLMs,
+        }
+      : defaultGithubScout,
   }
 }

@@ -16,7 +16,7 @@ const log = Log.create({ service: "autonomous.decision.history" })
 const StoredDecisionRecord = z.object({
   id: z.string(),
   sessionId: z.string(),
-  type: z.enum(["architecture", "implementation", "refactor", "bugfix", "feature", "test", "rollback", "checkpoint", "resource", "other"]),
+  type: z.enum(["architecture", "implementation", "refactor", "bugfix", "feature", "test", "rollback", "checkpoint", "resource", "resource_acquisition", "other"]),
   description: z.string(),
   context: z.string(),
   score: z.object({
@@ -333,6 +333,7 @@ export namespace DecisionHistory {
         rollback: "other",
         checkpoint: "other",
         resource: "other",
+        resource_acquisition: "other",
         other: "other",
       }
 
@@ -377,6 +378,7 @@ export namespace DecisionHistory {
         "rollback",
         "checkpoint",
         "resource",
+        "resource_acquisition",
         "other",
       ]
 
