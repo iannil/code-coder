@@ -112,6 +112,8 @@ pub fn run_wizard() -> Result<Config> {
         mcp: crate::config::McpConfig::default(),
         workflow_host: None,
         workflow_port: None,
+        trading_host: None,
+        trading_port: None,
     };
 
     println!(
@@ -307,6 +309,8 @@ pub fn run_quick_setup(
         mcp: crate::config::McpConfig::default(),
         workflow_host: None,
         workflow_port: None,
+        trading_host: None,
+        trading_port: None,
     };
 
     config.save()?;

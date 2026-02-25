@@ -36,6 +36,7 @@ mod service;
 mod session;
 mod skills;
 mod tools;
+mod trading;
 mod tunnel;
 mod util;
 
@@ -187,6 +188,12 @@ enum Commands {
         /// Run in stdio mode (for subprocess communication)
         #[arg(long)]
         stdio: bool,
+    },
+
+    /// Manage automated trading (PO3+SMT strategy)
+    Trading {
+        #[command(subcommand)]
+        trading_command: trading::TradingCommands,
     },
 }
 
@@ -555,6 +562,10 @@ async fn main() -> Result<()> {
                 axum::serve(listener, app).await?;
                 Ok(())
             }
+        }
+
+        Commands::Trading { trading_command } => {
+            trading::handle_command(trading_command, &config).await
         }
     }
 }

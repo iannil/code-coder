@@ -405,6 +405,10 @@ pub struct Config {
     /// Workflow service configuration
     pub workflow_host: Option<String>,
     pub workflow_port: Option<u16>,
+
+    /// Trading service configuration
+    pub trading_host: Option<String>,
+    pub trading_port: Option<u16>,
 }
 
 // ── Identity (AIEOS / OpenClaw format) ──────────────────────────
@@ -1254,6 +1258,8 @@ impl Default for Config {
             mcp: McpConfig::default(),
             workflow_host: None,
             workflow_port: None,
+            trading_host: None,
+            trading_port: None,
         }
     }
 }
@@ -1647,6 +1653,8 @@ impl Config {
             mcp,
             workflow_host: defaults.workflow_host,
             workflow_port: defaults.workflow_port,
+            trading_host: defaults.trading_host,
+            trading_port: defaults.trading_port,
         }
     }
 
@@ -1880,6 +1888,8 @@ mod tests {
             mcp: McpConfig::default(),
             workflow_host: None,
             workflow_port: None,
+            trading_host: None,
+            trading_port: None,
         };
 
         let toml_str = toml::to_string_pretty(&config).unwrap();
@@ -1957,6 +1967,8 @@ default_temperature = 0.7
             mcp: McpConfig::default(),
             workflow_host: None,
             workflow_port: None,
+            trading_host: None,
+            trading_port: None,
         };
 
         config.save().unwrap();
