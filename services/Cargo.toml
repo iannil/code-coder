@@ -9,6 +9,7 @@ members = [
     "zero-memory",
     "zero-tools",
     "zero-agent",
+    "zero-browser",
 ]
 
 # Shared dependencies across workspace

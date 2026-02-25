@@ -1,0 +1,1 @@
+//! Pattern extraction logic.

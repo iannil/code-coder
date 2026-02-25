@@ -1,0 +1,53 @@
+[package]
+name = "zero-browser"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Browser automation service with API learning capabilities"
+
+[[bin]]
+name = "zero-browser"
+path = "src/main.rs"
+
+[dependencies]
+# CDP client
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+futures = "0.3"
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP server
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# HTTP client (for replay)
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Internal crates
+zero-common = { workspace = true }
+zero-memory = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = "0.4"
+wiremock = "0.6"
