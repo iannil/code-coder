@@ -19,7 +19,11 @@ pub use runner::{PaperTradingRunner, PaperTradingConfig, SessionResult};
 pub use validator::{SignalValidator, ValidationResult, ValidationMetrics};
 pub use report::{PaperTradingReport, SessionSummary};
 
+use std::sync::Arc;
+use std::time::Duration;
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 /// Paper trading session state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,11 +126,6 @@ impl PaperTrade {
 // Paper Trading Manager
 // ============================================================================
 
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::RwLock;
-use anyhow::Result;
-
 /// Status of a paper trading session (API response)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperSessionStatus {
@@ -138,10 +137,20 @@ pub struct PaperSessionStatus {
     pub elapsed_seconds: Option<i64>,
 }
 
-/// Manager for paper trading sessions (API-friendly wrapper)
+/// Manager for paper trading sessions (API-friendly wrapper).
+///
+/// This struct provides a safe, concurrent interface for managing paper trading
+/// sessions. It handles session lifecycle, state management, and provides access
+/// to trade data and reports.
+///
+/// # Concurrency
+///
+/// The manager uses `Arc<RwLock<_>>` for all mutable state to ensure thread-safe
+/// access. State transitions are managed exclusively by the background task to
+/// avoid race conditions.
 pub struct PaperTradingManager {
     config: zero_common::config::Config,
-    runner: Arc<RwLock<Option<PaperTradingRunner>>>,
+    runner: Arc<RwLock<Option<Arc<PaperTradingRunner>>>>,
     state: Arc<RwLock<SessionState>>,
     last_result: Arc<RwLock<Option<SessionResult>>>,
     start_time: Arc<RwLock<Option<chrono::DateTime<chrono::Utc>>>>,
@@ -171,13 +180,13 @@ impl PaperTradingManager {
             return Err(anyhow::anyhow!("Session already running"));
         }
 
-        // Create the runner
-        let runner = PaperTradingRunner::new(&self.config, paper_config);
+        // Create the runner and wrap in Arc for shared ownership
+        let runner = Arc::new(PaperTradingRunner::new(&self.config, paper_config));
 
-        // Store the runner
+        // Store the runner (clone Arc, not move)
         {
             let mut runner_guard = self.runner.write().await;
-            *runner_guard = Some(runner);
+            *runner_guard = Some(Arc::clone(&runner));
         }
 
         // Update state and start time
@@ -192,19 +201,12 @@ impl PaperTradingManager {
 
         // Clone Arcs for the spawned task
         let state_clone = Arc::clone(&self.state);
-        let runner_clone = Arc::clone(&self.runner);
         let last_result_clone = Arc::clone(&self.last_result);
 
         // Spawn the session in a background task
+        // Note: We use the cloned Arc<runner> directly, avoiding holding locks during execution
         tokio::spawn(async move {
-            let result = {
-                let runner_guard = runner_clone.read().await;
-                if let Some(ref runner) = *runner_guard {
-                    runner.run_session(duration).await
-                } else {
-                    Err(anyhow::anyhow!("Runner not initialized"))
-                }
-            };
+            let result = runner.run_session(duration).await;
 
             // Update state based on result
             match result {
@@ -225,25 +227,20 @@ impl PaperTradingManager {
         Ok(())
     }
 
-    /// Stop the current session
+    /// Stop the current session.
+    ///
+    /// This only signals the runner to stop. The actual state transition
+    /// to `Completed` is handled by the background task to avoid race conditions.
     pub async fn stop_session(&self) -> Result<()> {
         let current_state = *self.state.read().await;
         if current_state != SessionState::Running {
             return Err(anyhow::anyhow!("No session running"));
         }
 
-        // Stop the runner
-        {
-            let runner_guard = self.runner.read().await;
-            if let Some(ref runner) = *runner_guard {
-                runner.stop().await;
-            }
-        }
-
-        // Update state
-        {
-            let mut state = self.state.write().await;
-            *state = SessionState::Completed;
+        // Stop the runner - state transition is handled by the background task
+        let runner_guard = self.runner.read().await;
+        if let Some(ref runner) = *runner_guard {
+            runner.stop().await;
         }
 
         Ok(())
@@ -269,20 +266,27 @@ impl PaperTradingManager {
         }
     }
 
-    /// Get trades from the current or last session
+    /// Get trades from the current or last session.
+    ///
+    /// Priority: running session trades > last completed session trades.
+    /// This ensures that when a new session starts after one completes,
+    /// we return the current session's trades, not the old ones.
     pub async fn get_trades(&self) -> Vec<PaperTrade> {
-        // First check for results from completed session
-        {
-            let result_guard = self.last_result.read().await;
-            if let Some(ref result) = *result_guard {
-                return result.trades.clone();
+        // Check current session state
+        let current_state = *self.state.read().await;
+
+        // If session is running, get trades from the runner
+        if current_state == SessionState::Running {
+            let runner_guard = self.runner.read().await;
+            if let Some(ref runner) = *runner_guard {
+                return runner.get_all_trades().await;
             }
         }
 
-        // Otherwise get from running session
-        let runner_guard = self.runner.read().await;
-        if let Some(ref runner) = *runner_guard {
-            return runner.get_all_trades().await;
+        // Otherwise, fall back to last completed session's results
+        let result_guard = self.last_result.read().await;
+        if let Some(ref result) = *result_guard {
+            return result.trades.clone();
         }
 
         Vec::new()
@@ -442,6 +446,36 @@ mod tests {
 
         // Stopping when not running should fail
         let result = manager.stop_session().await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_paper_trading_manager_start_session_state_transition() {
+        let config = zero_common::config::Config::default();
+        let manager = PaperTradingManager::new(&config);
+
+        // Initial state should be Idle
+        assert_eq!(manager.get_state().await, SessionState::Idle);
+
+        // Start a session with very short duration
+        let paper_config = PaperTradingConfig {
+            scan_interval_secs: 1,
+            max_duration: Some(Duration::from_millis(10)),
+            ..Default::default()
+        };
+        let result = manager.start_session(paper_config.clone(), Some(Duration::from_millis(10))).await;
+        assert!(result.is_ok());
+
+        // State should immediately transition to Running
+        assert_eq!(manager.get_state().await, SessionState::Running);
+
+        // Status should reflect running state with start_time set
+        let status = manager.get_status().await;
+        assert_eq!(status.state, SessionState::Running);
+        assert!(status.start_time.is_some());
+
+        // Attempting to start another session while running should fail
+        let result = manager.start_session(paper_config, None).await;
         assert!(result.is_err());
     }
 }
