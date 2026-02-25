@@ -215,8 +215,8 @@ describe("Memory System Integrity Evaluation", () => {
       const nodes = Array.from({ length: 1000 }, (_, i) => ({
         id: `node_${i}`,
         name: `function_${i}`,
-        callers: i > 0 ? [`node_${Math.floor(Math.random() * i)}`] : [],
-        callees: [],
+        callers: i > 0 ? [`node_${Math.floor(Math.random() * i)}`] : [] as string[],
+        callees: [] as string[],
       }))
 
       // Add callees

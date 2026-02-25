@@ -397,7 +397,7 @@ describe("Autonomous Extreme Evaluation", () => {
         "rapid_decisions",
         async () => {
           const criteria = buildCriteria({
-            type: "tool_usage",
+            type: "other",
             description: "Quick decision",
             riskLevel: "low",
             convergence: 7,
@@ -427,7 +427,7 @@ describe("Autonomous Extreme Evaluation", () => {
       // Generate decisions
       for (let i = 0; i < 200; i++) {
         const criteria = buildCriteria({
-          type: i % 3 === 0 ? "implementation" : i % 3 === 1 ? "tool_usage" : "recovery",
+          type: i % 3 === 0 ? "implementation" : i % 3 === 1 ? "feature" : "refactor",
           description: `Pattern test ${i}`,
           riskLevel: "medium",
           convergence: 5 + (i % 5),
@@ -454,7 +454,7 @@ describe("Autonomous Extreme Evaluation", () => {
   })
 
   describe("CLOSE Framework Stress Tests", () => {
-    test.each(AUTONOMY_LEVELS)("autonomy level %s has consistent thresholds", async (level) => {
+    test.each([...AUTONOMY_LEVELS])("autonomy level %s has consistent thresholds", async (level) => {
       const engine = createDecisionEngine({ autonomyLevel: level as AutonomyLevel })
       const config = engine.getConfig()
 

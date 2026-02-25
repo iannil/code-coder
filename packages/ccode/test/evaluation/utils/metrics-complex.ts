@@ -442,7 +442,7 @@ export interface EvaluationDimension {
   details: string[]
 }
 
-export interface EvaluationSummary {
+export interface ComplexEvaluationSummary {
   overallScore: number
   dimensions: EvaluationDimension[]
   passRate: number
@@ -453,7 +453,7 @@ export interface EvaluationSummary {
 /**
  * Generate evaluation summary
  */
-export function generateEvaluationSummary(dimensions: EvaluationDimension[]): EvaluationSummary {
+export function generateEvaluationSummary(dimensions: EvaluationDimension[]): ComplexEvaluationSummary {
   const totalWeight = dimensions.reduce((sum, d) => sum + d.weight, 0)
   const weightedScore = dimensions.reduce((sum, d) => sum + d.score * d.weight, 0)
   const overallScore = totalWeight > 0 ? weightedScore / totalWeight : 0

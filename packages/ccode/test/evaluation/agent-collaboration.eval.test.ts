@@ -603,7 +603,7 @@ describe("Agent Collaboration Evaluation", () => {
 
         executions.push({
           chainId: `chain_${i}`,
-          agents: AGENT_CHAINS.standard,
+          agents: [...AGENT_CHAINS.standard],
           completed,
           duration: 2000 + (i % 30) * 100,
           contextPreserved,

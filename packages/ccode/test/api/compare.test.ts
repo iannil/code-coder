@@ -18,7 +18,7 @@ function createMockRequest(body: object): HttpRequest {
   return {
     method: "POST",
     url: new URL("http://localhost:4400/api/v1/compare"),
-    headers: new Map([["content-type", "application/json"]]),
+    headers: new Headers([["content-type", "application/json"]]),
     body: stream,
   }
 }
@@ -103,7 +103,7 @@ describe("Compare API", () => {
       const request: HttpRequest = {
         method: "GET",
         url: new URL("http://localhost:4400/api/v1/compare/health"),
-        headers: new Map(),
+        headers: new Headers(),
         body: null,
       }
 
@@ -133,7 +133,7 @@ describe("Compare API", () => {
       const request: HttpRequest = {
         method: "GET",
         url: new URL("http://localhost:4400/api/v1/compare/models"),
-        headers: new Map(),
+        headers: new Headers(),
         body: null,
       }
 

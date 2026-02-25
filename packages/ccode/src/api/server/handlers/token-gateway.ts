@@ -318,7 +318,8 @@ export async function getGatewayConfig(_req: HttpRequest, _params: RouteParams):
 
 /** PUT /api/v1/gateway/config - Update gateway configuration */
 export async function updateGatewayConfig(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const currentConfig = loadConfig()
 
   const updatedConfig: GatewayConfig = {
@@ -368,7 +369,8 @@ export async function getPool(_req: HttpRequest, params: RouteParams): Promise<H
 
 /** POST /api/v1/gateway/pools - Create a department pool */
 export async function createPool(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const config = loadConfig()
   const pools = loadPools()
 
@@ -398,7 +400,8 @@ export async function createPool(req: HttpRequest, _params: RouteParams): Promis
 
 /** PUT /api/v1/gateway/pools/:id - Update a department pool */
 export async function updatePool(req: HttpRequest, params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const pools = loadPools()
   const index = pools.findIndex((p) => p.id === params.id)
 
@@ -491,7 +494,8 @@ export async function getAllocation(_req: HttpRequest, params: RouteParams): Pro
 
 /** POST /api/v1/gateway/allocations - Create or update user allocation */
 export async function upsertAllocation(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const allocations = loadAllocations()
   const pools = loadPools()
 
@@ -570,7 +574,8 @@ export async function deleteAllocation(_req: HttpRequest, params: RouteParams): 
 
 /** POST /api/v1/gateway/record - Record token usage (called by metering middleware) */
 export async function recordUsage(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const { userId, inputTokens, outputTokens, model } = body
 
   if (!userId || inputTokens === undefined || outputTokens === undefined) {
@@ -798,7 +803,8 @@ export async function listAlerts(req: HttpRequest, _params: RouteParams): Promis
 
 /** POST /api/v1/gateway/alerts/:id/acknowledge - Acknowledge an alert */
 export async function acknowledgeAlert(req: HttpRequest, params: RouteParams): Promise<HttpResponse> {
-  const body = req.body ? JSON.parse(req.body) : {}
+  const bodyText = req.body ? await new Response(req.body).text() : "{}"
+  const body = JSON.parse(bodyText)
   const alerts = loadAlerts()
   const index = alerts.findIndex((a) => a.id === params.id)
 

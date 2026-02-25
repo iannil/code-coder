@@ -236,7 +236,8 @@ function filterTradesByDateRange(startDate?: string, endDate?: string): TradeEnt
 
 export async function handleCreateTrade(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as Partial<TradeEntry>
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as Partial<TradeEntry>
 
     if (!body.symbol || !body.direction || !body.entry_price || !body.quantity || !body.entry_reason) {
       return errorResponse("Missing required fields: symbol, direction, entry_price, quantity, entry_reason", 400)
@@ -320,7 +321,8 @@ export async function handleUpdateTrade(req: HttpRequest, params: RouteParams): 
     const trade = trades.get(id)
     if (!trade) return errorResponse("Trade not found", 404)
 
-    const body = (await req.json()) as Partial<TradeEntry>
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as Partial<TradeEntry>
 
     // Update allowed fields
     const updated: TradeEntry = {
@@ -355,7 +357,8 @@ export async function handleUpdateTrade(req: HttpRequest, params: RouteParams): 
 
 export async function handleSaveJournal(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as Partial<JournalEntry>
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as Partial<JournalEntry>
 
     if (!body.date || !body.summary) {
       return errorResponse("Missing required fields: date, summary", 400)
@@ -421,7 +424,8 @@ export async function handleListJournals(req: HttpRequest, _params: RouteParams)
 
 export async function handleGenerateReview(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as { period: ReviewPeriod }
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as { period: ReviewPeriod }
     const period = body.period ?? "daily"
 
     const today = new Date()

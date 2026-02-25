@@ -130,13 +130,6 @@ async function readRequestBody(body: ReadableStream | null | undefined): Promise
 // Helper Functions
 // ============================================================================
 
-async function readRequestBody(body: ReadableStream | null | undefined): Promise<string> {
-  if (!body) {
-    throw new Error("Request body is empty")
-  }
-  return await new Response(body).text()
-}
-
 async function callModel(
   modelSpec: string,
   prompt: string,

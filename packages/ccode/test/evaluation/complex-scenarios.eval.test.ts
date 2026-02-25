@@ -540,9 +540,6 @@ describe("Complex Real-World Scenarios Evaluation", () => {
         // All phases except possibly the last one succeed
         phase.status = phaseIndex < workflow.phases.length - 1 ? "completed" : "completed"
         phaseIndex++
-
-        // Stop on failure
-        if (phase.status === "failed") break
       }
 
       const completedPhases = workflow.phases.filter((p) => p.status === "completed").length

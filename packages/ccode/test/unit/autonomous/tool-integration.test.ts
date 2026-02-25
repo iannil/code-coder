@@ -68,6 +68,7 @@ process.exit(0);`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const loop = createEvolutionLoop(createConfig())
@@ -93,6 +94,7 @@ console.log(str.split("").reverse().join(""));`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const loop = createEvolutionLoop(createConfig({
@@ -116,6 +118,7 @@ console.log(str.split("").reverse().join(""));`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const loop = createEvolutionLoop(createConfig({
@@ -211,6 +214,7 @@ process.exit(0);`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const initialStats = tool.stats
@@ -271,6 +275,7 @@ process.exit(0);`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const loop = createEvolutionLoop(createConfig())
@@ -318,6 +323,7 @@ process.exit(0);`,
         language: "nodejs",
         parameters: [],
         examples: [],
+        createdBy: "agent",
       })
 
       const loop = createEvolutionLoop(createConfig())

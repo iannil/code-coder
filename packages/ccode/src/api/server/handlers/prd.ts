@@ -294,7 +294,8 @@ ${meeting.notes}
 
 export async function handleGeneratePRD(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as PRDGenerateRequest
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as PRDGenerateRequest
 
     if (!body.meeting || !body.meeting.title || !body.meeting.notes) {
       return errorResponse("Missing required fields: meeting.title, meeting.notes", 400)
@@ -344,7 +345,8 @@ export async function handleGeneratePRD(req: HttpRequest, _params: RouteParams):
 
 export async function handleFromMeeting(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as {
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as {
       meeting_id: string
       calendar_id?: string
       output_format?: string

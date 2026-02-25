@@ -4,10 +4,16 @@
 
 import { describe, it, expect } from "bun:test"
 import { getTrends, getTeams, getActivity, getSummary, executiveHealth } from "../../src/api/server/handlers/executive"
+import type { HttpRequest } from "../../src/api/server/types"
 
 // Mock request helper
-function createMockRequest(url: string): Request {
-  return new Request(`http://localhost:4400${url}`)
+function createMockRequest(url: string): HttpRequest {
+  return {
+    method: "GET",
+    url: new URL(`http://localhost:4400${url}`),
+    headers: new Headers(),
+    body: null,
+  }
 }
 
 describe("Executive API", () => {

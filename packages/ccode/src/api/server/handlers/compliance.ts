@@ -234,7 +234,8 @@ export async function handleGetLog(_req: HttpRequest, params: RouteParams): Prom
 
 export async function handleGenerateReport(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as {
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as {
       start_date: string
       end_date: string
       compliance_standard?: string
@@ -422,7 +423,8 @@ export async function handleGetStatus(_req: HttpRequest, _params: RouteParams): 
 
 export async function handleExport(req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const body = (await req.json()) as {
+    const bodyText = req.body ? await new Response(req.body).text() : "{}"
+    const body = JSON.parse(bodyText) as {
       start_date: string
       end_date: string
       format?: "json" | "csv"
