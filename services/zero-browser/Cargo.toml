@@ -53,4 +53,5 @@ zero-memory = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = "0.4"
+urlencoding = "2.1"
 wiremock = "0.6"
