@@ -19,6 +19,7 @@ pub mod config;
 pub mod error;
 #[cfg(feature = "hitl-client")]
 pub mod hitl_client;
+pub mod hybrid;
 pub mod logging;
 pub mod security;
 pub mod util;
@@ -38,6 +39,10 @@ pub use config::{
     ToolsConfig, WorkflowConfig,
 };
 pub use error::{Error, Result};
+pub use hybrid::{
+    AgentResult, AnalysisTrigger, DecisionSource, HybridConfig, HybridDecision,
+    HybridDecisionMaker,
+};
 pub use validation::{Validate, ValidationError, ValidationResult};
 
 /// Re-export commonly used types for convenience
@@ -48,6 +53,7 @@ pub mod prelude {
         AgentConfig, ApiKeysConfig, Config, ProvidersConfig, ReliabilityConfig, ToolsConfig,
     };
     pub use crate::error::{Error, Result};
+    pub use crate::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
     pub use crate::logging::init_logging;
     pub use crate::validation::{Validate, ValidationError};
 }

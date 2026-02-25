@@ -96,6 +96,10 @@ pub struct Config {
     /// Human-in-the-Loop (HitL) configuration
     #[serde(default)]
     pub hitl: HitLConfig,
+
+    /// Trading service configuration
+    #[serde(default)]
+    pub trading: Option<TradingConfig>,
 }
 
 impl Config {
@@ -1703,6 +1707,272 @@ pub struct CustomTunnelConfig {
     /// Optional regex to extract public URL from command stdout
     #[serde(default)]
     pub url_pattern: Option<String>,
+}
+
+// ============================================================================
+// Trading Configuration
+// ============================================================================
+
+/// Trading service configuration for automated trading.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingConfig {
+    /// Trading service HTTP port
+    #[serde(default = "default_trading_port")]
+    pub port: u16,
+
+    /// Trading service HTTP host
+    #[serde(default = "default_gateway_host")]
+    pub host: String,
+
+    /// Tushare Pro API token for A-share data
+    #[serde(default)]
+    pub tushare_token: Option<String>,
+
+    /// Futu OpenAPI configuration
+    #[serde(default)]
+    pub futu: Option<FutuConfig>,
+
+    /// SMT pairs for divergence detection
+    #[serde(default)]
+    pub smt_pairs: Option<Vec<SmtPairConfig>>,
+
+    /// Timeframes for multi-timeframe analysis (e.g., ["D", "H4", "H1"])
+    #[serde(default)]
+    pub timeframes: Option<Vec<String>>,
+
+    /// Minimum bars for accumulation phase detection
+    #[serde(default)]
+    pub min_accumulation_bars: Option<usize>,
+
+    /// Manipulation threshold (ATR multiple)
+    #[serde(default)]
+    pub manipulation_threshold: Option<f64>,
+
+    /// Require multi-timeframe alignment
+    #[serde(default)]
+    pub require_alignment: Option<bool>,
+
+    /// Signal expiry in minutes
+    #[serde(default)]
+    pub signal_expiry_minutes: Option<i64>,
+
+    /// Maximum number of open positions
+    #[serde(default)]
+    pub max_positions: Option<usize>,
+
+    /// Maximum capital per position (percentage)
+    #[serde(default)]
+    pub max_position_pct: Option<f64>,
+
+    /// Maximum daily capital deployment (percentage)
+    #[serde(default)]
+    pub max_daily_capital_pct: Option<f64>,
+
+    /// Default stop loss percentage
+    #[serde(default)]
+    pub default_stop_loss_pct: Option<f64>,
+
+    /// Enable automatic execution
+    #[serde(default)]
+    pub auto_execute: Option<bool>,
+
+    /// Enable paper trading (simulation mode)
+    #[serde(default = "default_paper_trading")]
+    pub paper_trading: Option<bool>,
+
+    /// Enable macro economic filter
+    #[serde(default)]
+    pub macro_filter_enabled: Option<bool>,
+
+    /// Workflow service endpoint for macro data
+    #[serde(default)]
+    pub workflow_endpoint: Option<String>,
+
+    /// Macro data cache duration in seconds
+    #[serde(default)]
+    pub macro_cache_secs: Option<u64>,
+
+    /// Telegram notification settings
+    #[serde(default)]
+    pub telegram_notification: Option<TradingNotificationConfig>,
+
+    /// Macro agent configuration for intelligent analysis
+    #[serde(default)]
+    pub macro_agent: Option<MacroAgentConfig>,
+}
+
+impl Default for TradingConfig {
+    fn default() -> Self {
+        Self {
+            port: default_trading_port(),
+            host: default_gateway_host(),
+            tushare_token: None,
+            futu: None,
+            smt_pairs: None,
+            timeframes: None,
+            min_accumulation_bars: None,
+            manipulation_threshold: None,
+            require_alignment: None,
+            signal_expiry_minutes: None,
+            max_positions: None,
+            max_position_pct: None,
+            max_daily_capital_pct: None,
+            default_stop_loss_pct: None,
+            auto_execute: None,
+            paper_trading: Some(true),
+            macro_filter_enabled: None,
+            workflow_endpoint: None,
+            macro_cache_secs: None,
+            telegram_notification: None,
+            macro_agent: None,
+        }
+    }
+}
+
+/// Futu OpenAPI configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FutuConfig {
+    /// OpenD gateway host
+    #[serde(default = "default_futu_host")]
+    pub host: String,
+    /// OpenD gateway port
+    #[serde(default = "default_futu_port")]
+    pub port: u16,
+    /// Trading password (encrypted)
+    #[serde(default)]
+    pub trading_password: Option<String>,
+    /// Enable real trading (vs paper trading)
+    #[serde(default)]
+    pub real_trading: bool,
+}
+
+/// SMT pair configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmtPairConfig {
+    /// Primary symbol (e.g., "000300.SH")
+    pub primary: String,
+    /// Reference symbol (e.g., "000905.SH")
+    pub reference: String,
+    /// Pair name for display
+    pub name: String,
+    /// Description
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// Trading notification configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingNotificationConfig {
+    /// Enable notifications
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Telegram chat ID for notifications
+    #[serde(default)]
+    pub telegram_chat_id: Option<String>,
+    /// Zero-channels service endpoint
+    #[serde(default = "default_channels_endpoint")]
+    pub channels_endpoint: String,
+    /// Channel type (telegram, feishu, wecom, etc.)
+    #[serde(default = "default_channel_type")]
+    pub channel_type: String,
+    /// Retry count for failed notifications
+    #[serde(default = "default_retry_count")]
+    pub retry_count: u32,
+    /// Notify on new signals
+    #[serde(default = "default_true")]
+    pub notify_signals: bool,
+    /// Notify on order execution
+    #[serde(default = "default_true")]
+    pub notify_orders: bool,
+    /// Notify on position changes
+    #[serde(default = "default_true")]
+    pub notify_positions: bool,
+}
+
+/// Macro agent configuration for intelligent analysis.
+///
+/// The macro agent integrates with CodeCoder to provide deep
+/// macro-economic analysis when anomaly conditions are detected.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroAgentConfig {
+    /// Enable macro agent integration
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// CodeCoder API endpoint for agent calls
+    #[serde(default = "default_codecoder_endpoint")]
+    pub codecoder_endpoint: String,
+
+    /// Request timeout in seconds
+    #[serde(default = "default_macro_agent_timeout")]
+    pub timeout_secs: u64,
+
+    /// Cache duration for agent analysis in seconds
+    #[serde(default = "default_macro_agent_cache")]
+    pub cache_duration_secs: u64,
+
+    /// Enable weekly macro reports
+    #[serde(default = "default_true")]
+    pub weekly_report_enabled: bool,
+
+    /// Weekly report cron expression (default: Monday 9 AM)
+    #[serde(default)]
+    pub weekly_report_cron: Option<String>,
+
+    /// Enable monthly macro reports
+    #[serde(default = "default_true")]
+    pub monthly_report_enabled: bool,
+
+    /// Monthly report cron expression (default: 1st day 9 AM)
+    #[serde(default)]
+    pub monthly_report_cron: Option<String>,
+}
+
+impl Default for MacroAgentConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            codecoder_endpoint: default_codecoder_endpoint(),
+            timeout_secs: default_macro_agent_timeout(),
+            cache_duration_secs: default_macro_agent_cache(),
+            weekly_report_enabled: true,
+            weekly_report_cron: None,
+            monthly_report_enabled: true,
+            monthly_report_cron: None,
+        }
+    }
+}
+
+fn default_macro_agent_timeout() -> u64 {
+    30 // 30 seconds for agent calls
+}
+
+fn default_macro_agent_cache() -> u64 {
+    3600 // 1 hour cache for agent analysis
+}
+
+fn default_trading_port() -> u16 {
+    4434 // Part of 4430-4439 range for Rust microservices
+}
+
+fn default_channel_type() -> String {
+    "telegram".to_string()
+}
+
+fn default_retry_count() -> u32 {
+    3
+}
+
+fn default_futu_host() -> String {
+    "127.0.0.1".into()
+}
+
+fn default_futu_port() -> u16 {
+    11111 // Default Futu OpenD port
+}
+
+fn default_paper_trading() -> Option<bool> {
+    Some(true)
 }
 
 #[cfg(test)]

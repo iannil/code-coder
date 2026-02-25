@@ -188,6 +188,7 @@ bun run --cwd packages/ccode build
 ```
 
 **Gateway 功能:**
+
 - 配对码认证 (Pairing) + JWT 双模式
 - Webhook 端点 (/webhook)
 - MCP JSON-RPC 端点 (/mcp)
@@ -213,6 +214,25 @@ bun run --cwd packages/ccode build
 - 禁止使用`.toml`格式
 
 ## 架构
+
+> **核心原则**: 高确定性任务用 zero-* (Rust) 保证效率；高不确定性任务用 ccode (LLM) 保证正确反应。
+>
+> 详细架构文档见 `docs/architecture/`:
+>
+> - `ARCHITECTURE.md` - 整体架构概览
+> - `CCODE_VS_ZERO.md` - ccode 与 zero-* 的关系和职责划分
+> - `DESIGN_PHILOSOPHY.md` - 设计哲学和原则
+
+### 确定性 vs 不确定性划分
+
+| 任务类型 | 最佳工具 | 原因 |
+|---------|---------|------|
+| 协议解析、签名验证、调度 | zero-* (Rust) | 规则明确，需要高性能和安全性 |
+| 意图理解、代码生成、决策建议 | ccode (LLM) | 需要推理和领域知识 |
+
+混合模式参考实现：`services/zero-trading/src/macro_agent/orchestrator.rs` (MacroOrchestrator)
+
+通用 trait：`services/zero-common/src/hybrid.rs` (HybridDecisionMaker)
 
 ### Monorepo 结构
 

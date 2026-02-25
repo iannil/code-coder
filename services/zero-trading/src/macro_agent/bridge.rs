@@ -1,0 +1,469 @@
+//! Agent bridge for communicating with the CodeCoder API.
+//!
+//! This module provides HTTP client functionality to call the macro agent
+//! in CodeCoder for deep analysis of macroeconomic conditions.
+
+use anyhow::{Context, Result};
+use std::time::Duration;
+use tracing::{debug, info, warn};
+
+use super::types::{AgentAnalysis, AgentRequest, AgentResponse, MacroContext, ReportType};
+use crate::macro_filter::{EconomicCyclePhase, TradingBias};
+
+/// Configuration for the agent bridge.
+#[derive(Debug, Clone)]
+pub struct AgentBridgeConfig {
+    /// CodeCoder API endpoint
+    pub codecoder_endpoint: String,
+    /// Request timeout
+    pub timeout: Duration,
+    /// Maximum retries for failed requests
+    pub max_retries: u32,
+    /// Backoff duration between retries
+    pub retry_backoff: Duration,
+}
+
+impl Default for AgentBridgeConfig {
+    fn default() -> Self {
+        Self {
+            codecoder_endpoint: "http://127.0.0.1:4400".to_string(),
+            timeout: Duration::from_secs(30),
+            max_retries: 2,
+            retry_backoff: Duration::from_secs(1),
+        }
+    }
+}
+
+/// Bridge for calling the macro agent via CodeCoder API.
+pub struct AgentBridge {
+    /// Configuration
+    config: AgentBridgeConfig,
+    /// HTTP client
+    client: reqwest::Client,
+}
+
+impl AgentBridge {
+    /// Create a new agent bridge with the given configuration.
+    pub fn new(config: AgentBridgeConfig) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(config.timeout)
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
+        Self { config, client }
+    }
+
+    /// Analyze macro conditions using the macro agent.
+    ///
+    /// This sends the current macro context to the CodeCoder API's macro agent
+    /// and parses the response into a structured analysis.
+    pub async fn analyze(&self, context: &MacroContext) -> Result<AgentAnalysis> {
+        let prompt = self.build_analysis_prompt(context);
+
+        let request = AgentRequest {
+            agent: "macro".to_string(),
+            message: prompt,
+            stream: false,
+        };
+
+        let response = self.send_request(&request).await?;
+        self.parse_analysis_response(&response.content)
+    }
+
+    /// Generate a periodic macro report.
+    pub async fn generate_report(&self, report_type: ReportType) -> Result<String> {
+        let prompt = self.build_report_prompt(report_type);
+
+        let request = AgentRequest {
+            agent: "macro".to_string(),
+            message: prompt,
+            stream: false,
+        };
+
+        let response = self.send_request(&request).await?;
+        Ok(response.content)
+    }
+
+    /// Send a request to the CodeCoder API with retry logic.
+    async fn send_request(&self, request: &AgentRequest) -> Result<AgentResponse> {
+        let url = format!("{}/api/v1/chat", self.config.codecoder_endpoint);
+
+        let mut last_error = None;
+
+        for attempt in 1..=self.config.max_retries + 1 {
+            match self.try_send(&url, request).await {
+                Ok(response) => {
+                    info!(
+                        agent = %request.agent,
+                        attempt,
+                        "Agent request successful"
+                    );
+                    return Ok(response);
+                }
+                Err(e) => {
+                    warn!(
+                        agent = %request.agent,
+                        attempt,
+                        max_attempts = self.config.max_retries + 1,
+                        error = %e,
+                        "Agent request failed, retrying..."
+                    );
+                    last_error = Some(e);
+
+                    if attempt <= self.config.max_retries {
+                        tokio::time::sleep(self.config.retry_backoff).await;
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown error")))
+    }
+
+    /// Try to send a single request.
+    async fn try_send(&self, url: &str, request: &AgentRequest) -> Result<AgentResponse> {
+        debug!(url, agent = %request.agent, "Sending request to CodeCoder API");
+
+        let response = self
+            .client
+            .post(url)
+            .json(request)
+            .send()
+            .await
+            .context("Failed to send request to CodeCoder API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_default();
+            anyhow::bail!("CodeCoder API error: HTTP {} - {}", status, error_text);
+        }
+
+        let agent_response: AgentResponse = response
+            .json()
+            .await
+            .context("Failed to parse CodeCoder API response")?;
+
+        Ok(agent_response)
+    }
+
+    /// Build the analysis prompt for the macro agent.
+    fn build_analysis_prompt(&self, context: &MacroContext) -> String {
+        format!(
+            r#"分析当前宏观环境对A股交易的影响。
+
+## 当前数据
+- PMI: {}
+- M2同比: {}
+- 社融: {}
+- 风险偏好指数: {:.1}
+- 当前仓位建议: {:.2}x
+- 规则引擎判断: {:?}
+- 备注: {}
+
+## 请提供以下分析
+1. **周期判断**: 当前经济处于什么周期阶段（扩张/早期复苏/放缓/收缩）
+2. **仓位建议**: 建议的仓位调整系数（0.3-1.5，1.0为正常）
+3. **交易偏向**: 应该偏向做多、做空、中性还是避免交易
+4. **风险提示**: 当前需要关注的主要风险点
+5. **置信度**: 对以上判断的置信度（0.0-1.0）
+
+请用JSON格式返回结果，格式如下：
+```json
+{{
+  "cycle_phase": "Expansion|EarlyRecovery|Slowdown|Contraction",
+  "position_advice": 0.8,
+  "trading_bias": "Bullish|Neutral|Bearish|AvoidTrading",
+  "risk_warnings": ["风险1", "风险2"],
+  "reasoning": "详细分析说明",
+  "confidence": 0.75
+}}
+```"#,
+            context.pmi.map(|p| format!("{:.1}", p)).unwrap_or_else(|| "未知".to_string()),
+            context.m2_growth.map(|m| format!("{:.1}%", m)).unwrap_or_else(|| "未知".to_string()),
+            context.social_financing.map(|s| format!("{:.2}万亿", s)).unwrap_or_else(|| "未知".to_string()),
+            context.risk_appetite,
+            context.position_multiplier,
+            context.trading_bias,
+            context.notes
+        )
+    }
+
+    /// Build the prompt for periodic reports.
+    fn build_report_prompt(&self, report_type: ReportType) -> String {
+        match report_type {
+            ReportType::Weekly => r#"生成本周宏观经济简报，包括：
+
+1. **核心数据回顾**（PMI、工业增加值、固定资产投资）
+2. **周期位置判断**（当前经济处于什么阶段）
+3. **下周交易建议**（仓位、方向、关注点）
+4. **风险提示**（需要警惕的风险因素）
+
+请用Markdown格式，适合发送到Telegram。"#.to_string(),
+
+            ReportType::Monthly => r#"生成月度宏观经济分析报告，包括：
+
+1. **宏观经济总览**
+   - 主要经济指标汇总
+   - 与上月/去年同期对比
+
+2. **货币政策分析**
+   - M2增速变化
+   - 社融数据解读
+   - 利率环境判断
+
+3. **周期定位**
+   - 当前经济周期阶段
+   - 与历史周期对比
+
+4. **A股市场影响**
+   - 对不同行业的影响
+   - 建议关注的板块
+
+5. **下月展望**
+   - 关键数据发布时间
+   - 建议的交易策略
+
+请用Markdown格式，适合发送到Telegram。"#.to_string(),
+
+            ReportType::AdHoc => r#"分析当前宏观环境，提供即时交易建议：
+
+1. 当前经济周期判断
+2. 仓位建议（0.3-1.5）
+3. 交易方向建议
+4. 主要风险提示
+
+请简洁明了，适合快速决策参考。"#.to_string(),
+        }
+    }
+
+    /// Parse the agent's response into a structured analysis.
+    fn parse_analysis_response(&self, content: &str) -> Result<AgentAnalysis> {
+        // Try to extract JSON from the response
+        let json_str = self.extract_json(content)?;
+
+        // Parse the JSON
+        let parsed: serde_json::Value = serde_json::from_str(&json_str)
+            .context("Failed to parse agent response as JSON")?;
+
+        // Extract fields with fallbacks
+        let cycle_phase = self.parse_cycle_phase(
+            parsed.get("cycle_phase")
+                .and_then(|v| v.as_str())
+                .unwrap_or("EarlyRecovery")
+        );
+
+        let position_advice = parsed.get("position_advice")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1.0)
+            .clamp(0.3, 1.5);
+
+        let trading_bias = self.parse_trading_bias(
+            parsed.get("trading_bias")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Neutral")
+        );
+
+        let risk_warnings: Vec<String> = parsed.get("risk_warnings")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let reasoning = parsed.get("reasoning")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let confidence = parsed.get("confidence")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.5)
+            .clamp(0.0, 1.0);
+
+        Ok(AgentAnalysis {
+            cycle_phase,
+            position_advice,
+            risk_warnings,
+            trading_bias,
+            reasoning,
+            confidence,
+        })
+    }
+
+    /// Extract JSON from a response that may contain markdown code blocks.
+    fn extract_json(&self, content: &str) -> Result<String> {
+        // Try to find JSON in code blocks first
+        if let Some(start) = content.find("```json") {
+            let start = start + 7;
+            if let Some(end) = content[start..].find("```") {
+                return Ok(content[start..start + end].trim().to_string());
+            }
+        }
+
+        // Try to find raw JSON
+        if let Some(start) = content.find('{') {
+            // Find matching closing brace
+            let mut depth = 0;
+            let mut end = start;
+            for (i, c) in content[start..].char_indices() {
+                match c {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if depth == 0 {
+                return Ok(content[start..end].to_string());
+            }
+        }
+
+        anyhow::bail!("Could not find JSON in response")
+    }
+
+    /// Parse cycle phase from string.
+    fn parse_cycle_phase(&self, s: &str) -> EconomicCyclePhase {
+        match s.to_lowercase().as_str() {
+            "expansion" | "扩张" => EconomicCyclePhase::Expansion,
+            "earlyrecovery" | "early_recovery" | "早期复苏" | "复苏" => EconomicCyclePhase::EarlyRecovery,
+            "slowdown" | "放缓" | "减速" => EconomicCyclePhase::Slowdown,
+            "contraction" | "收缩" | "衰退" => EconomicCyclePhase::Contraction,
+            _ => EconomicCyclePhase::EarlyRecovery,
+        }
+    }
+
+    /// Parse trading bias from string.
+    fn parse_trading_bias(&self, s: &str) -> TradingBias {
+        match s.to_lowercase().as_str() {
+            "bullish" | "多头" | "看多" => TradingBias::Bullish,
+            "neutral" | "中性" | "观望" => TradingBias::Neutral,
+            "bearish" | "空头" | "看空" => TradingBias::Bearish,
+            "avoidtrading" | "avoid_trading" | "避免交易" | "空仓" => TradingBias::AvoidTrading,
+            _ => TradingBias::Neutral,
+        }
+    }
+
+    /// Check if the CodeCoder API is available.
+    pub async fn health_check(&self) -> bool {
+        let url = format!("{}/health", self.config.codecoder_endpoint);
+        match self.client.get(&url).send().await {
+            Ok(response) => response.status().is_success(),
+            Err(_) => false,
+        }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_agent_bridge_config_default() {
+        let config = AgentBridgeConfig::default();
+        assert_eq!(config.codecoder_endpoint, "http://127.0.0.1:4400");
+        assert_eq!(config.timeout, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn test_parse_cycle_phase() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        assert_eq!(bridge.parse_cycle_phase("Expansion"), EconomicCyclePhase::Expansion);
+        assert_eq!(bridge.parse_cycle_phase("扩张"), EconomicCyclePhase::Expansion);
+        assert_eq!(bridge.parse_cycle_phase("Contraction"), EconomicCyclePhase::Contraction);
+        assert_eq!(bridge.parse_cycle_phase("收缩"), EconomicCyclePhase::Contraction);
+        assert_eq!(bridge.parse_cycle_phase("unknown"), EconomicCyclePhase::EarlyRecovery);
+    }
+
+    #[test]
+    fn test_parse_trading_bias() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        assert_eq!(bridge.parse_trading_bias("Bullish"), TradingBias::Bullish);
+        assert_eq!(bridge.parse_trading_bias("看多"), TradingBias::Bullish);
+        assert_eq!(bridge.parse_trading_bias("AvoidTrading"), TradingBias::AvoidTrading);
+        assert_eq!(bridge.parse_trading_bias("避免交易"), TradingBias::AvoidTrading);
+    }
+
+    #[test]
+    fn test_extract_json_from_code_block() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        let content = r#"
+Here is the analysis:
+
+```json
+{"cycle_phase": "Expansion", "position_advice": 1.2}
+```
+
+That's my recommendation.
+"#;
+
+        let json = bridge.extract_json(content).unwrap();
+        assert!(json.contains("Expansion"));
+    }
+
+    #[test]
+    fn test_extract_json_raw() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        let content = r#"Based on analysis: {"cycle_phase": "Slowdown", "position_advice": 0.7} is the result."#;
+
+        let json = bridge.extract_json(content).unwrap();
+        assert!(json.contains("Slowdown"));
+    }
+
+    #[test]
+    fn test_parse_analysis_response() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        let content = r#"```json
+{
+  "cycle_phase": "Expansion",
+  "position_advice": 1.2,
+  "trading_bias": "Bullish",
+  "risk_warnings": ["通胀压力", "外部风险"],
+  "reasoning": "经济扩张期，适合积极配置",
+  "confidence": 0.8
+}
+```"#;
+
+        let analysis = bridge.parse_analysis_response(content).unwrap();
+        assert_eq!(analysis.cycle_phase, EconomicCyclePhase::Expansion);
+        assert!((analysis.position_advice - 1.2).abs() < 0.001);
+        assert_eq!(analysis.trading_bias, TradingBias::Bullish);
+        assert_eq!(analysis.risk_warnings.len(), 2);
+        assert!((analysis.confidence - 0.8).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_build_analysis_prompt() {
+        let bridge = AgentBridge::new(AgentBridgeConfig::default());
+
+        let context = MacroContext {
+            pmi: Some(51.5),
+            m2_growth: Some(9.2),
+            social_financing: Some(3.5),
+            risk_appetite: 55.0,
+            position_multiplier: 1.0,
+            trading_bias: TradingBias::Neutral,
+            notes: "规则引擎正常运行".to_string(),
+        };
+
+        let prompt = bridge.build_analysis_prompt(&context);
+        assert!(prompt.contains("51.5"));
+        assert!(prompt.contains("9.2%"));
+        assert!(prompt.contains("周期判断"));
+    }
+}

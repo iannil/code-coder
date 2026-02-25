@@ -1,0 +1,61 @@
+[package]
+name = "zero-trading"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Automated trading service for the Zero ecosystem - PO3+SMT strategy for A-shares"
+readme = "README.md"
+
+[[bin]]
+name = "zero-trading"
+path = "src/main.rs"
+
+[dependencies]
+# Internal
+zero-common = { workspace = true, features = ["hitl-client"] }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP
+reqwest = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+http-body-util = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Time & Cron
+chrono = { workspace = true }
+cron = { workspace = true }
+
+# Database
+rusqlite = { workspace = true }
+
+# Async traits
+async-trait = { workspace = true }
+
+# Async utilities
+futures = "0.3"
+
+# Statistics for technical analysis
+statrs = "0.17"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.14"

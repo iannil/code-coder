@@ -465,7 +465,7 @@ impl TelegramChannel {
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
             "reply_markup": {
                 "inline_keyboard": keyboard
             }
@@ -535,7 +535,7 @@ impl TelegramChannel {
             "chat_id": chat_id,
             "message_id": message_id,
             "text": text,
-            "parse_mode": "Markdown"
+            "parse_mode": "HTML"
         });
 
         let resp = self
@@ -578,14 +578,14 @@ impl TelegramChannel {
         })
     }
 
-    /// Send a single message chunk with Markdown parsing.
+    /// Send a single message chunk with HTML parsing.
     async fn send_single_chunk(&self, message: &str, chat_id: &str) -> anyhow::Result<()> {
-        let converted = format::convert_to_telegram_markdown(message);
+        let converted = format::convert_to_telegram_html(message);
 
         let body = serde_json::json!({
             "chat_id": chat_id,
             "text": converted,
-            "parse_mode": "Markdown"
+            "parse_mode": "HTML"
         });
 
         let resp = self
@@ -602,10 +602,10 @@ impl TelegramChannel {
         let status = resp.status();
         let error_text = resp.text().await.unwrap_or_default();
 
-        // Telegram returns "Bad Request: can't parse entities" for Markdown errors
+        // Telegram returns "Bad Request: can't parse entities" for HTML errors
         if status.as_u16() == 400 && error_text.contains("parse entities") {
             tracing::warn!(
-                "Telegram Markdown parsing failed, retrying without parse_mode: {}",
+                "Telegram HTML parsing failed, retrying without parse_mode: {}",
                 error_text
             );
 

@@ -127,6 +127,32 @@ export interface SearchResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
+  general: {
+    displayName: "General Assistant",
+    shortDescription: "General-purpose assistant for conversation and queries",
+    category: "custom",
+    capabilities: [
+      { id: "conversation", name: "Conversation", description: "Natural conversation", primary: true },
+      { id: "query", name: "Query Handling", description: "Answer questions and queries", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "help", priority: 5 },
+      { type: "keyword", value: "帮助", priority: 5 },
+      { type: "keyword", value: "问", priority: 4 },
+    ],
+    examples: [
+      {
+        title: "General query",
+        input: "What is the weather today?",
+        output: "Responds with helpful information",
+        tags: ["general", "query"],
+      },
+    ],
+    tags: ["general", "assistant", "conversation"],
+    builtin: true,
+    icon: "💬",
+    recommended: true,  // Default agent for unmatched queries
+  },
   build: {
     displayName: "Build",
     shortDescription: "Primary development agent for building features and fixing bugs",
@@ -153,7 +179,7 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     tags: ["development", "coding", "primary"],
     builtin: true,
     icon: "🔨",
-    recommended: true,
+    // Build requires explicit trigger matching (not default for unmatched queries)
   },
   plan: {
     displayName: "Plan",
@@ -204,7 +230,7 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     tags: ["review", "quality", "engineering"],
     builtin: true,
     icon: "🔍",
-    recommended: true,
+    // Code-reviewer requires explicit trigger (e.g., "review", "check code")
   },
   "security-reviewer": {
     displayName: "Security Reviewer",

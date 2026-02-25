@@ -6,6 +6,7 @@ members = [
     "zero-gateway",
     "zero-channels",
     "zero-workflow",
+    "zero-trading",
     "zero-memory",
     "zero-tools",
     "zero-agent",
