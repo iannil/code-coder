@@ -11,6 +11,7 @@
 #                      • zero-gateway (4430): 认证/路由/配额/MCP/Webhook
 #                      • zero-channels (4431): Telegram/Discord/Slack
 #                      • zero-workflow (4432): Webhook/Cron/Git
+#                      • zero-browser (4433): 浏览器自动化/API学习
 #   - whisper:       Whisper STT Server (Docker)
 #
 # 用法:
@@ -56,7 +57,7 @@ CORE_SERVICES="api web zero-daemon whisper"
 # 所有服务 (基础设施 + 核心服务)
 ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
 # Rust 微服务 (由 daemon spawn，日志文件独立)
-RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow"
+RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow zero-browser"
 
 # 服务配置函数
 get_service_port() {
@@ -65,6 +66,7 @@ get_service_port() {
         web) echo "4401" ;;
         zero-daemon) echo "4402" ;;
         whisper) echo "4403" ;;
+        zero-browser) echo "4433" ;;
         redis) echo "${REDIS_PORT}" ;;
         *) echo "" ;;
     esac
@@ -80,6 +82,7 @@ get_service_name() {
         zero-gateway) echo "Zero Gateway" ;;
         zero-channels) echo "Zero Channels" ;;
         zero-workflow) echo "Zero Workflow" ;;
+        zero-browser) echo "Zero Browser" ;;
         *) echo "" ;;
     esac
 }
@@ -1206,6 +1209,7 @@ show_help() {
     echo "    • zero-gateway  (4430): 认证、路由、配额、MCP、Webhook"
     echo "    • zero-channels (4431): Telegram、Discord、Slack 等 IM 渠道"
     echo "    • zero-workflow (4432): Webhook、Cron、Git 工作流"
+    echo "    • zero-browser  (4433): 浏览器自动化、API 学习与重放"
     echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
     echo ""
