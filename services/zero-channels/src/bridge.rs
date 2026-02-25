@@ -817,6 +817,8 @@ impl CodeCoderBridge {
         text: &str,
         agent: Option<String>,
     ) -> Result<()> {
+        let start = Instant::now();
+
         // Create a tracing context for this operation
         let ctx = RequestContext {
             trace_id: message.trace_id.clone(),
@@ -849,7 +851,10 @@ impl CodeCoderBridge {
         // Route the response
         match response {
             Ok(resp) => {
-                let content = OutgoingContent::Markdown { text: resp.message };
+                let duration_ms = start.elapsed().as_millis() as u64;
+                let duration_text = Self::format_duration(duration_ms);
+                let text_with_time = format!("{}\n\n_⏱ {}_", resp.message, duration_text);
+                let content = OutgoingContent::Markdown { text: text_with_time };
                 let result = self.router.respond(&message.id, content).await;
 
                 if !result.success {
