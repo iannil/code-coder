@@ -4,16 +4,17 @@
 # 用于管理项目所有服务的启动、停止、状态查看
 #
 # 架构说明:
-#   - api:          CodeCoder API Server (Bun/TypeScript)
-#   - web:          Web Frontend (Vite/React)
-#   - zero-daemon:  进程编排器 (Rust) - 管理以下子进程:
-#                     • zero-gateway (4430): 认证/路由/配额/MCP/Webhook
-#                     • zero-channels (4431): Telegram/Discord/Slack
-#                     • zero-workflow (4432): Webhook/Cron/Git
-#   - whisper:      Whisper STT Server (Docker)
+#   - redis:         Redis Server (Docker) - 会话存储，IM 渠道依赖
+#   - api:           CodeCoder API Server (Bun/TypeScript)
+#   - web:           Web Frontend (Vite/React)
+#   - zero-daemon:   进程编排器 (Rust) - 管理以下子进程:
+#                      • zero-gateway (4430): 认证/路由/配额/MCP/Webhook
+#                      • zero-channels (4431): Telegram/Discord/Slack
+#                      • zero-workflow (4432): Webhook/Cron/Git
+#   - whisper:       Whisper STT Server (Docker)
 #
 # 用法:
-#   ./ops.sh start [service]   - 启动服务 (all|api|web|zero-daemon|whisper)
+#   ./ops.sh start [service]   - 启动服务 (all|redis|api|web|zero-daemon|whisper)
 #   ./ops.sh stop [service]    - 停止服务
 #   ./ops.sh restart [service] - 重启服务
 #   ./ops.sh status            - 查看所有服务状态
@@ -43,12 +44,19 @@ RUST_TARGET_DIR="${RUST_SERVICES_DIR}/target/release"
 # Docker 容器名称
 WHISPER_CONTAINER="codecoder-whisper"
 WHISPER_IMAGE="${WHISPER_IMAGE:-fedirz/faster-whisper-server:latest-cpu}"
+REDIS_CONTAINER="codecoder-redis"
+REDIS_IMAGE="${REDIS_IMAGE:-redis:7-alpine}"
+REDIS_PORT="${REDIS_PORT:-6379}"
 
 # 服务列表 (按启动顺序)
+# 基础设施服务 (Redis 需要先于依赖它的服务启动)
+INFRA_SERVICES="redis"
 # 核心服务 (daemon 内部管理 gateway/channels/workflow)
 CORE_SERVICES="api web zero-daemon whisper"
-# 所有服务 (同核心服务，独立 Rust 服务由 daemon 管理)
-ALL_SERVICES="${CORE_SERVICES}"
+# 所有服务 (基础设施 + 核心服务)
+ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
+# Rust 微服务 (由 daemon spawn，日志文件独立)
+RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow"
 
 # 服务配置函数
 get_service_port() {
@@ -57,6 +65,7 @@ get_service_port() {
         web) echo "4401" ;;
         zero-daemon) echo "4402" ;;
         whisper) echo "4403" ;;
+        redis) echo "${REDIS_PORT}" ;;
         *) echo "" ;;
     esac
 }
@@ -67,6 +76,10 @@ get_service_name() {
         web) echo "Web Frontend (Vite)" ;;
         zero-daemon) echo "Zero CLI Daemon" ;;
         whisper) echo "Whisper STT Server" ;;
+        redis) echo "Redis Server" ;;
+        zero-gateway) echo "Zero Gateway" ;;
+        zero-channels) echo "Zero Channels" ;;
+        zero-workflow) echo "Zero Workflow" ;;
         *) echo "" ;;
     esac
 }
@@ -75,14 +88,14 @@ get_service_type() {
     case "$1" in
         api|web) echo "node" ;;
         zero-daemon) echo "rust" ;;
-        whisper) echo "docker" ;;
+        whisper|redis) echo "docker" ;;
         *) echo "" ;;
     esac
 }
 
 is_valid_service() {
     case "$1" in
-        api|web|zero-daemon|whisper) return 0 ;;
+        api|web|zero-daemon|whisper|redis) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -90,6 +103,13 @@ is_valid_service() {
 is_core_service() {
     case "$1" in
         api|web|zero-daemon|whisper) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+is_infra_service() {
+    case "$1" in
+        redis) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -201,7 +221,13 @@ is_running() {
 
     # Docker 容器
     if [ "${service_type}" = "docker" ]; then
-        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
+        local container_name
+        case "${service}" in
+            whisper) container_name="${WHISPER_CONTAINER}" ;;
+            redis) container_name="${REDIS_CONTAINER}" ;;
+            *) return 1 ;;
+        esac
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
             return 0
         fi
         return 1
@@ -229,7 +255,13 @@ get_pid() {
 
     # Docker 容器
     if [ "${service_type}" = "docker" ]; then
-        docker inspect -f '{{.State.Pid}}' "${WHISPER_CONTAINER}" 2>/dev/null || echo ""
+        local container_name
+        case "${service}" in
+            whisper) container_name="${WHISPER_CONTAINER}" ;;
+            redis) container_name="${REDIS_CONTAINER}" ;;
+            *) echo ""; return ;;
+        esac
+        docker inspect -f '{{.State.Pid}}' "${container_name}" 2>/dev/null || echo ""
         return
     fi
 
@@ -308,6 +340,51 @@ start_service() {
             # daemon 自动管理 gateway/channels/workflow 子进程
             nohup "${RUST_TARGET_DIR}/zero-cli" daemon --host 127.0.0.1 \
                 > "${log_file}" 2>&1 &
+            ;;
+
+        redis)
+            # 检查 Docker 是否可用
+            if ! command -v docker &> /dev/null; then
+                log_error "Docker 未安装"
+                echo "  请先安装 Docker Desktop"
+                return 1
+            fi
+            if ! docker info &> /dev/null; then
+                log_error "Docker 未运行"
+                echo "  请启动 Docker Desktop"
+                return 1
+            fi
+
+            # 检查是否已有同名容器（可能是已停止的）
+            if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${REDIS_CONTAINER}$"; then
+                log_info "移除已存在的 Redis 容器..."
+                docker rm -f "${REDIS_CONTAINER}" > /dev/null 2>&1 || true
+            fi
+
+            local redis_data_dir="${HOME}/.codecoder/redis"
+            mkdir -p "${redis_data_dir}"
+
+            log_info "启动 Redis Docker 容器..."
+            docker run -d \
+                --name "${REDIS_CONTAINER}" \
+                -p "${port}:6379" \
+                -v "${redis_data_dir}:/data" \
+                "${REDIS_IMAGE}" \
+                redis-server --appendonly yes \
+                > /dev/null 2>&1
+
+            # Docker 容器不使用 PID 文件，直接返回
+            sleep 2
+            if is_running "redis"; then
+                log_success "${service_name} 启动成功 (Container: ${REDIS_CONTAINER}, Port: ${port})"
+                echo "  数据目录: ${redis_data_dir}"
+                echo "  镜像: ${REDIS_IMAGE}"
+            else
+                log_error "${service_name} 启动失败"
+                echo "  查看日志: docker logs ${REDIS_CONTAINER}"
+                return 1
+            fi
+            return 0
             ;;
 
         whisper)
@@ -393,7 +470,13 @@ stop_service() {
             log_warn "${service_name} 未在运行"
             return 0
         fi
-        docker stop "${WHISPER_CONTAINER}" > /dev/null 2>&1 || true
+        local container_name
+        case "${service}" in
+            whisper) container_name="${WHISPER_CONTAINER}" ;;
+            redis) container_name="${REDIS_CONTAINER}" ;;
+            *) log_error "未知 Docker 服务: ${service}"; return 1 ;;
+        esac
+        docker stop "${container_name}" > /dev/null 2>&1 || true
         log_success "${service_name} 已停止"
         return 0
     fi
@@ -439,6 +522,13 @@ restart_service() {
 start_core() {
     log_info "启动核心服务..."
     echo ""
+
+    # 检查 Redis 是否在运行（IM 渠道依赖）
+    if ! is_running "redis"; then
+        log_warn "Redis 未运行，IM 渠道功能可能受限"
+        echo "  提示: 运行 './ops.sh start redis' 或 './ops.sh start all' 启动 Redis"
+        echo ""
+    fi
 
     # 先统一编译 Rust 服务
     local has_rust_service=false
@@ -500,6 +590,33 @@ show_status() {
     printf "║ %-25s │ %-10s │ %-8s │ %-6s │ %-6s ║\n" "服务" "状态" "PID" "端口" "类型"
     echo "╠════════════════════════════════════════════════════════════════════════╣"
 
+    echo -e "║ ${CYAN}基础设施服务${NC}                                                          ║"
+
+    for service in ${INFRA_SERVICES}; do
+        local service_name
+        service_name=$(get_service_name "${service}")
+        local port
+        port=$(get_service_port "${service}")
+        local service_type
+        service_type=$(get_service_type "${service}")
+        local status
+        local pid="-"
+
+        if is_running "${service}"; then
+            status="${GREEN}运行中${NC}"
+            if [ "${service_type}" = "docker" ]; then
+                pid="docker"
+            else
+                pid=$(get_pid "${service}")
+            fi
+        else
+            status="${RED}已停止${NC}"
+        fi
+
+        printf "║ %-25s │ %b%-2s │ %-8s │ %-6s │ %-6s ║\n" "${service_name}" "${status}" "" "${pid}" "${port}" "${service_type}"
+    done
+
+    echo "╠────────────────────────────────────────────────────────────────────────╣"
     echo -e "║ ${CYAN}核心服务${NC}                                                              ║"
 
     for service in ${CORE_SERVICES}; do
@@ -536,6 +653,19 @@ show_status() {
 
     # 显示端口占用情况
     echo "端口占用检查:"
+    # 基础设施服务端口
+    for service in ${INFRA_SERVICES}; do
+        local port
+        port=$(get_service_port "${service}")
+        local service_name
+        service_name=$(get_service_name "${service}")
+        if check_port "${port}"; then
+            echo -e "  ${port} (${service_name}): ${GREEN}已占用${NC}"
+        else
+            echo -e "  ${port} (${service_name}): ${YELLOW}空闲${NC}"
+        fi
+    done
+    # 核心服务端口
     for service in ${CORE_SERVICES}; do
         local port
         port=$(get_service_port "${service}")
@@ -594,13 +724,19 @@ show_logs() {
 
     # Docker 使用 Docker 日志
     if [ "${service_type}" = "docker" ]; then
-        if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
-            log_error "Whisper 容器不存在"
+        local container_name
+        case "${service}" in
+            whisper) container_name="${WHISPER_CONTAINER}" ;;
+            redis) container_name="${REDIS_CONTAINER}" ;;
+            *) log_error "未知 Docker 服务: ${service}"; return 1 ;;
+        esac
+        if ! docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
+            log_error "${service_name} 容器不存在"
             return 1
         fi
         log_info "显示 ${service_name} 日志 (最后 50 行):"
         echo "----------------------------------------"
-        docker logs --tail 50 "${WHISPER_CONTAINER}" 2>&1
+        docker logs --tail 50 "${container_name}" 2>&1
         return 0
     fi
 
@@ -627,13 +763,19 @@ tail_logs() {
 
     # Docker 使用 Docker 日志
     if [ "${service_type}" = "docker" ]; then
-        if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${WHISPER_CONTAINER}$"; then
-            log_error "Whisper 容器未运行"
+        local container_name
+        case "${service}" in
+            whisper) container_name="${WHISPER_CONTAINER}" ;;
+            redis) container_name="${REDIS_CONTAINER}" ;;
+            *) log_error "未知 Docker 服务: ${service}"; return 1 ;;
+        esac
+        if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^${container_name}$"; then
+            log_error "${service_name} 容器未运行"
             return 1
         fi
         log_info "实时跟踪 ${service_name} 日志 (Ctrl+C 退出):"
         echo "----------------------------------------"
-        docker logs -f "${WHISPER_CONTAINER}" 2>&1
+        docker logs -f "${container_name}" 2>&1
         return 0
     fi
 
@@ -657,6 +799,10 @@ get_service_color() {
         web) echo "\033[0;34m" ;;           # 蓝色
         zero-daemon) echo "\033[0;35m" ;;   # 紫色
         whisper) echo "\033[0;36m" ;;       # 青色
+        redis) echo "\033[0;31m" ;;         # 红色
+        zero-gateway) echo "\033[0;33m" ;;  # 黄色
+        zero-channels) echo "\033[0;91m" ;; # 亮红色
+        zero-workflow) echo "\033[0;94m" ;; # 亮蓝色
         *) echo "\033[0m" ;;                # 默认
     esac
 }
@@ -697,6 +843,14 @@ tail_all_logs() {
             fi
         elif [ -f "${log_file}" ]; then
             services_to_tail="${services_to_tail} ${service}"
+        fi
+    done
+
+    # 添加 Rust 微服务日志 (由 daemon spawn，日志文件独立)
+    for rust_service in ${RUST_MICROSERVICES}; do
+        local rust_log="${LOG_DIR}/${rust_service}.log"
+        if [ -f "${rust_log}" ]; then
+            services_to_tail="${services_to_tail} ${rust_service}"
         fi
     done
 
@@ -812,7 +966,58 @@ show_all_logs() {
             fi
         fi
     done
+
+    # 显示 Rust 微服务日志 (由 daemon spawn)
+    for rust_service in ${RUST_MICROSERVICES}; do
+        local log_file="${LOG_DIR}/${rust_service}.log"
+        if [ -f "${log_file}" ]; then
+            local service_name
+            service_name=$(get_service_name "${rust_service}")
+            local color
+            color=$(get_service_color "${rust_service}")
+            echo ""
+            echo -e "${color}━━━ ${service_name} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            tail -n "${lines}" "${log_file}"
+        fi
+    done
     echo ""
+}
+
+# 按 trace_id 搜索并聚合所有日志
+show_trace_logs() {
+    local trace_id="$1"
+    if [ -z "${trace_id}" ]; then
+        log_error "请提供 trace_id"
+        echo "  用法: ./ops.sh logs trace <trace_id>"
+        return 1
+    fi
+
+    log_info "搜索 trace_id: ${trace_id}"
+    echo ""
+
+    local found=false
+
+    # 搜索所有日志文件
+    for log_file in "${LOG_DIR}"/*.log; do
+        if [ -f "${log_file}" ]; then
+            local matches
+            matches=$(grep "${trace_id}" "${log_file}" 2>/dev/null || true)
+            if [ -n "${matches}" ]; then
+                local service_name
+                service_name=$(basename "${log_file}" .log)
+                local color
+                color=$(get_service_color "${service_name}")
+                echo -e "${color}━━━ ${service_name} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo "${matches}"
+                echo ""
+                found=true
+            fi
+        fi
+    done
+
+    if [ "${found}" = false ]; then
+        log_warn "未找到匹配的日志条目"
+    fi
 }
 
 # 构建命令
@@ -848,6 +1053,18 @@ check_health() {
     if ! is_running "${service}"; then
         echo -e "  ${service_name}: ${RED}未运行${NC}"
         return 1
+    fi
+
+    # Redis 健康检查 (使用 docker exec)
+    if [ "${service}" = "redis" ]; then
+        local redis_ping
+        redis_ping=$(docker exec "${REDIS_CONTAINER}" redis-cli ping 2>/dev/null || echo "")
+        if [ "${redis_ping}" = "PONG" ]; then
+            echo -e "  ${service_name}: ${GREEN}健康${NC} (PING PONG)"
+        else
+            echo -e "  ${service_name}: ${YELLOW}运行中但无响应${NC}"
+        fi
+        return 0
     fi
 
     # HTTP 健康检查
@@ -929,13 +1146,17 @@ show_help() {
     echo "  health             检查服务健康状态"
     echo "  logs <service>     查看服务日志 (最后 50 行)"
     echo "  logs all [n]       查看所有服务日志 (最后 n 行，默认 20)"
+    echo "  logs trace <id>    按 trace_id 搜索并聚合所有服务日志"
     echo "  tail <service>     实时跟踪服务日志"
-    echo "  tail all           实时聚合监控所有服务日志"
+    echo "  tail all           实时聚合监控所有服务日志 (含 Rust 微服务)"
     echo "  tail running       实时监控运行中服务日志 (默认)"
     echo "  tail core          实时监控核心服务日志"
     echo "  build [target]     构建服务 (rust|all)"
     echo "  clean [target]     清理临时文件 (pids|logs|all)"
     echo "  help               显示此帮助信息"
+    echo ""
+    echo "基础设施服务 (所有服务的依赖):"
+    echo "  redis              Redis Server (端口 ${REDIS_PORT}, Docker) - 会话存储"
     echo ""
     echo "核心服务 (./ops.sh start 默认启动这些):"
     echo "  api                CodeCoder API Server (端口 4400, Bun)"
@@ -949,32 +1170,38 @@ show_help() {
     echo "  zero-workflow      工作流服务 (端口 4432) - Webhook/Cron/Git"
     echo ""
     echo "服务组:"
-    echo "  all                所有服务 (同 core)"
-    echo "  core               仅核心服务 (默认)"
+    echo "  all                所有服务 (基础设施 + 核心服务)"
+    echo "  core               仅核心服务"
     echo "  running            仅运行中的服务 (用于 tail 命令)"
     echo ""
     echo "环境变量:"
+    echo "  REDIS_PORT         Redis 端口 (默认: 6379)"
+    echo "  REDIS_IMAGE        Redis Docker 镜像 (默认: redis:7-alpine)"
     echo "  WHISPER_MODEL      Whisper 模型: tiny|base|small|medium|large (默认: base)"
-    echo "  WHISPER_IMAGE      Docker 镜像 (默认: fedirz/faster-whisper-server:latest-cpu)"
+    echo "  WHISPER_IMAGE      Whisper Docker 镜像 (默认: fedirz/faster-whisper-server:latest-cpu)"
     echo "  DEBUG=1            显示调试信息"
     echo ""
     echo "示例:"
-    echo "  ./ops.sh start                  # 启动核心服务"
-    echo "  ./ops.sh start all              # 同上"
+    echo "  ./ops.sh start                  # 启动所有服务 (含 Redis)"
+    echo "  ./ops.sh start redis            # 只启动 Redis"
     echo "  ./ops.sh start api              # 只启动 API 服务"
     echo "  ./ops.sh stop web               # 只停止 Web 服务"
     echo "  ./ops.sh restart zero-daemon    # 重启 Daemon (会重启所有微服务)"
     echo "  ./ops.sh start whisper          # 启动 Whisper STT (Docker)"
     echo "  ./ops.sh build rust             # 构建 Rust 服务"
     echo "  ./ops.sh status                 # 查看状态"
-    echo "  ./ops.sh health                 # 健康检查"
+    echo "  ./ops.sh health                 # 健康检查 (含 Redis PING)"
+    echo "  ./ops.sh logs redis             # 查看 Redis 日志"
     echo "  ./ops.sh logs zero-daemon       # 查看 Daemon 日志"
+    echo "  ./ops.sh logs zero-channels     # 查看 Rust 微服务日志"
     echo "  ./ops.sh logs all               # 查看所有服务日志快照"
+    echo "  ./ops.sh logs trace <trace_id>  # 按 trace_id 搜索日志"
     echo "  ./ops.sh tail api               # 实时跟踪 API 日志"
     echo "  ./ops.sh tail all               # 实时聚合监控所有服务"
     echo "  ./ops.sh clean all              # 清理临时文件"
     echo ""
     echo "架构说明:"
+    echo "  Redis 用于存储 IM 渠道的会话映射 (conversation_id → session_id)"
     echo "  zero-daemon 是进程编排器，spawn 并监控以下子进程:"
     echo "    • zero-gateway  (4430): 认证、路由、配额、MCP、Webhook"
     echo "    • zero-channels (4431): Telegram、Discord、Slack 等 IM 渠道"
@@ -1040,8 +1267,15 @@ main() {
         logs)
             if [ "${service}" = "all" ] || [ "${service}" = "core" ]; then
                 show_all_logs "${3:-20}"
+            elif [ "${service}" = "trace" ]; then
+                show_trace_logs "${3:-}"
             elif is_valid_service "${service}"; then
                 show_logs "${service}"
+            # 支持直接查看 Rust 微服务日志
+            elif [ -f "${LOG_DIR}/${service}.log" ]; then
+                log_info "显示 ${service} 日志 (最后 50 行):"
+                echo "----------------------------------------"
+                tail -n 50 "${LOG_DIR}/${service}.log"
             else
                 log_error "未知服务: ${service}"
                 exit 1

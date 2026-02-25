@@ -937,7 +937,20 @@ impl Channel for TelegramChannel {
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_millis() as i64,
+                        // Initialize tracing context for distributed tracing
+                        trace_id: zero_common::logging::generate_trace_id(),
+                        span_id: zero_common::logging::generate_span_id(),
+                        parent_span_id: None,
                     };
+
+                    tracing::info!(
+                        trace_id = %msg.trace_id,
+                        span_id = %msg.span_id,
+                        message_id = %msg.id,
+                        channel_id = %msg.channel_id,
+                        user_id = %msg.user_id,
+                        "Telegram message received - initiating trace"
+                    );
 
                     callback(msg);
                 }

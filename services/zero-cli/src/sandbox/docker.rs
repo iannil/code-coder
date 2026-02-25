@@ -196,12 +196,13 @@ impl DockerSandbox {
     ) -> Result<()> {
         // Use base64 encoding to safely pass code through shell
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, code);
+        let command = format!("echo '{}' | base64 -d > {}", encoded, filename);
 
         let create_options = CreateExecOptions {
             cmd: Some(vec![
                 "sh",
                 "-c",
-                &format!("echo '{}' | base64 -d > {}", encoded, filename),
+                &command,
             ]),
             attach_stdout: Some(true),
             attach_stderr: Some(true),

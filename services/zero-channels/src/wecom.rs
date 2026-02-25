@@ -627,6 +627,9 @@ pub fn process_event_callback(
                 attachments: vec![],
                 metadata: std::collections::HashMap::new(),
                 timestamp: msg.create_time * 1000, // Convert to millis
+                trace_id: zero_common::logging::generate_trace_id(),
+                span_id: zero_common::logging::generate_span_id(),
+                parent_span_id: None,
             };
             return Ok((None, Some(channel_msg)));
         }

@@ -4,6 +4,7 @@
 //! for the Zero microservices (gateway, channels, workflow).
 
 use anyhow::{Context, Result};
+use std::fs::OpenOptions;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use tokio::time::{Duration, interval};
@@ -21,6 +22,8 @@ pub struct ServiceConfig {
     pub host: String,
     /// Additional command-line arguments
     pub args: Vec<String>,
+    /// Optional log file path for stdout/stderr redirection
+    pub log_file: Option<PathBuf>,
 }
 
 /// A managed child process.
@@ -66,9 +69,38 @@ impl ManagedProcess {
             cmd.arg(arg);
         }
 
-        // Set up stdio for logging
-        cmd.stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        // Set up stdio - redirect to log file if configured, otherwise inherit
+        if let Some(log_path) = &self.config.log_file {
+            // Ensure parent directory exists
+            if let Some(parent) = log_path.parent() {
+                std::fs::create_dir_all(parent).with_context(|| {
+                    format!("Failed to create log directory: {}", parent.display())
+                })?;
+            }
+
+            // Open log file in append mode (create if not exists)
+            let log_file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(log_path)
+                .with_context(|| format!("Failed to open log file: {}", log_path.display()))?;
+
+            let log_file_err = log_file
+                .try_clone()
+                .with_context(|| "Failed to clone log file handle")?;
+
+            cmd.stdout(Stdio::from(log_file))
+                .stderr(Stdio::from(log_file_err));
+
+            tracing::debug!(
+                "Redirecting {} output to {}",
+                self.config.name,
+                log_path.display()
+            );
+        } else {
+            // No log file configured - inherit parent's stdio
+            cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());
+        }
 
         let child = cmd
             .spawn()
@@ -107,23 +139,42 @@ impl ManagedProcess {
     /// Stop the process gracefully.
     pub fn stop(&mut self) {
         if let Some(mut child) = self.process.take() {
+            let pid = child.id();
+
             // Send SIGTERM first for graceful shutdown (Unix only)
             #[cfg(unix)]
             {
-                use std::os::unix::process::ExitStatusExt;
-                // Try to let the process exit gracefully
-                // Give it a short window before forcing kill
-                std::thread::sleep(Duration::from_millis(100));
+                // Use kill command to send SIGTERM
+                let _ = std::process::Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .output();
+
+                // Wait up to 3 seconds for graceful shutdown
+                for _ in 0..30 {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            tracing::info!("Stopped {} (exited with {})", self.config.name, status);
+                            return;
+                        }
+                        Ok(None) => {
+                            std::thread::sleep(Duration::from_millis(100));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Error checking process status: {}", e);
+                            break;
+                        }
+                    }
+                }
             }
 
             // Check if still running and force kill if needed
             match child.try_wait() {
-                Ok(Some(_)) => {
-                    // Process already exited
-                    tracing::info!("Stopped {} (already exited)", self.config.name);
+                Ok(Some(status)) => {
+                    tracing::info!("Stopped {} (exited with {})", self.config.name, status);
                 }
                 Ok(None) => {
-                    // Still running, force kill
+                    // Still running after grace period, force kill
+                    tracing::warn!("{} did not exit gracefully, sending SIGKILL", self.config.name);
                     let _ = child.kill();
                     let _ = child.wait();
                     tracing::info!("Stopped {} (killed)", self.config.name);
@@ -329,6 +380,7 @@ mod tests {
             port: 8080,
             host: "127.0.0.1".into(),
             args: vec![],
+            log_file: None,
         };
 
         let service = ManagedProcess::new(config.clone());
@@ -347,6 +399,7 @@ mod tests {
             port: 4430,
             host: "127.0.0.1".into(),
             args: vec![],
+            log_file: None,
         });
 
         manager.add_service(ServiceConfig {
@@ -355,6 +408,7 @@ mod tests {
             port: 4431,
             host: "127.0.0.1".into(),
             args: vec![],
+            log_file: None,
         });
 
         assert_eq!(manager.services.len(), 2);

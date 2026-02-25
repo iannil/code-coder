@@ -403,16 +403,18 @@ export async function clearConversation(req: HttpRequest, _params: RouteParams):
 
     // Remove the session mapping
     let hadMapping = false
+    let redisError: Error | null = null
     if (ConversationStore.isInitialized()) {
       try {
         hadMapping = await ConversationStore.delete_(input.conversation_id)
-      } catch (redisError) {
+      } catch (err) {
+        redisError = err instanceof Error ? err : new Error(String(err))
         console.error(
           JSON.stringify({
             timestamp: new Date().toISOString(),
             event: "redis_error",
             function: "clearConversation",
-            error: redisError instanceof Error ? redisError.message : String(redisError),
+            error: redisError.message,
           }),
         )
       }
@@ -423,15 +425,28 @@ export async function clearConversation(req: HttpRequest, _params: RouteParams):
       success: true,
       had_mapping: hadMapping,
       conversation_id: input.conversation_id,
+      redis_error: redisError?.message,
     })
+
+    // Return different messages based on actual result
+    const message = redisError
+      ? "⚠️ 清空上下文时出现错误，请重试。"
+      : hadMapping
+        ? "✨ 上下文已清空，下一条消息将开始新对话。"
+        : "✨ 已准备开始新对话。"
 
     return jsonResponse({
       success: true,
       data: {
-        message: "上下文已清空，下一条消息将开始新对话。",
-        message_en: "Context cleared. Next message will start a new conversation.",
+        message,
+        message_en: redisError
+          ? "Error clearing context, please retry."
+          : hadMapping
+            ? "Context cleared. Next message will start a new conversation."
+            : "Ready to start a new conversation.",
         conversation_id: input.conversation_id,
         cleared: hadMapping,
+        redis_error: redisError ? true : undefined,
       },
     })
   } catch (error) {

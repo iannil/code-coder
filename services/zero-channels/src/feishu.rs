@@ -484,6 +484,9 @@ pub fn process_event_callback(
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_millis() as i64,
+                            trace_id: zero_common::logging::generate_trace_id(),
+                            span_id: zero_common::logging::generate_span_id(),
+                            parent_span_id: None,
                         };
                         return Ok((None, Some(msg)));
                     }

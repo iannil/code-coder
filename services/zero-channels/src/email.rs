@@ -345,6 +345,9 @@ impl EmailChannel {
                             attachments: vec![],
                             metadata: std::collections::HashMap::new(),
                             timestamp: ts,
+                            trace_id: zero_common::logging::generate_trace_id(),
+                            span_id: zero_common::logging::generate_span_id(),
+                            parent_span_id: None,
                         };
                         if tx.send(msg).await.is_err() {
                             return Ok(());
@@ -468,6 +471,9 @@ impl Channel for EmailChannel {
                             attachments: vec![],
                             metadata: std::collections::HashMap::new(),
                             timestamp: ts,
+                            trace_id: zero_common::logging::generate_trace_id(),
+                            span_id: zero_common::logging::generate_span_id(),
+                            parent_span_id: None,
                         };
                         callback(msg);
                     }

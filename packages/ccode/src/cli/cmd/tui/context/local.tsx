@@ -74,6 +74,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             setAgentStore("current", value.name)
           })
         },
+        reset() {
+          setAgentStore("current", agents()[0].name)
+        },
         color(name: string) {
           const all = sync.data.agent
           const agent = all.find((x) => x.name === name)

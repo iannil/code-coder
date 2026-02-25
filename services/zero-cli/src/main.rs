@@ -11,7 +11,6 @@
 use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use tracing::{info, Level};
-use tracing_subscriber::FmtSubscriber;
 
 mod agent;
 mod channels;
@@ -31,6 +30,7 @@ mod onboard;
 mod process;
 mod providers;
 mod runtime;
+mod sandbox;
 mod security;
 mod service;
 mod session;
@@ -127,6 +127,10 @@ enum Commands {
         /// Workflow port (zero-workflow service)
         #[arg(long, default_value = "4432")]
         workflow_port: u16,
+
+        /// Directory for child service logs (default: ../.logs relative to working dir)
+        #[arg(long)]
+        log_dir: Option<std::path::PathBuf>,
     },
 
     /// Manage OS service lifecycle (launchd/systemd user service)
@@ -339,9 +343,12 @@ enum CredentialCommands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Initialize logging
-    let subscriber = FmtSubscriber::builder()
+    // Initialize logging with JSON format for structured tracing
+    let subscriber = tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
+        .json()
+        .with_current_span(true)
+        .with_target(true)
         .finish();
 
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
@@ -394,13 +401,14 @@ async fn main() -> Result<()> {
             gateway_port,
             channels_port,
             workflow_port,
+            log_dir,
         } => {
             info!("🧠 Starting Zero CLI Daemon (process orchestrator)");
             info!("   Management API: http://{host}:4402");
             info!("   Gateway:  http://{host}:{gateway_port}");
             info!("   Channels: http://{host}:{channels_port}");
             info!("   Workflow: http://{host}:{workflow_port}");
-            daemon::run_orchestrator(config, host, gateway_port, channels_port, workflow_port).await
+            daemon::run_orchestrator(config, host, gateway_port, channels_port, workflow_port, log_dir).await
         }
 
         Commands::Status => {

@@ -38,6 +38,7 @@ pub async fn run_orchestrator(
     gateway_port: u16,
     channels_port: u16,
     workflow_port: u16,
+    log_dir: Option<PathBuf>,
 ) -> Result<()> {
     let initial_backoff = config.reliability.channel_initial_backoff_secs.max(1);
     let max_backoff = config
@@ -132,6 +133,14 @@ pub async fn run_orchestrator(
     let bin_dir = find_rust_bin_dir()?;
     tracing::info!("Using Rust binaries from: {}", bin_dir.display());
 
+    // Compute log directory (default: ../.logs from working dir, i.e., project_root/.logs)
+    let resolved_log_dir = log_dir.unwrap_or_else(|| {
+        std::env::current_dir()
+            .map(|cwd| cwd.join("../.logs"))
+            .unwrap_or_else(|_| PathBuf::from(".logs"))
+    });
+    tracing::info!("Service logs directory: {}", resolved_log_dir.display());
+
     // Create service manager
     let mut manager = ServiceManager::new(bin_dir);
 
@@ -142,6 +151,7 @@ pub async fn run_orchestrator(
         port: gateway_port,
         host: host.clone(),
         args: vec![],
+        log_file: Some(resolved_log_dir.join("zero-gateway.log")),
     });
 
     // Add zero-channels service
@@ -151,6 +161,7 @@ pub async fn run_orchestrator(
         port: channels_port,
         host: host.clone(),
         args: vec![],
+        log_file: Some(resolved_log_dir.join("zero-channels.log")),
     });
 
     // Add zero-workflow service
@@ -160,6 +171,7 @@ pub async fn run_orchestrator(
         port: workflow_port,
         host: host.clone(),
         args: vec![],
+        log_file: Some(resolved_log_dir.join("zero-workflow.log")),
     });
 
     // Start all services
@@ -195,7 +207,7 @@ pub async fn run_orchestrator(
             // Also verify via HTTP health endpoints
             for status in manager.status() {
                 if status.running {
-                    let healthy = health_checker.check(&status.name, status.port).await;
+                    let healthy = health_checker.check("127.0.0.1", status.port).await;
                     if !healthy {
                         tracing::warn!(
                             "{} process running but HTTP health check failed (port {})",
@@ -229,9 +241,26 @@ pub async fn run_orchestrator(
     println!("   Components: state-writer{mcp_status}{heartbeat_status}");
     println!("   Press Ctrl+C to stop");
 
-    // Wait for Ctrl+C
-    tokio::signal::ctrl_c().await?;
-    println!("\n🛑 Shutting down...");
+    // Wait for shutdown signal (Ctrl+C or SIGTERM)
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigterm = signal(SignalKind::terminate())?;
+        let mut sigint = signal(SignalKind::interrupt())?;
+        tokio::select! {
+            _ = sigterm.recv() => {
+                println!("\n🛑 Received SIGTERM, shutting down...");
+            }
+            _ = sigint.recv() => {
+                println!("\n🛑 Received SIGINT, shutting down...");
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c().await?;
+        println!("\n🛑 Shutting down...");
+    }
 
     crate::health::mark_component_error("daemon", "shutdown requested");
 

@@ -13,7 +13,9 @@ use crate::wecom::WeComChannel;
 use crate::whatsapp::WhatsAppChannel;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::RwLock;
+use zero_common::logging::{generate_span_id, LifecycleEventType, RequestContext};
 
 // ============================================================================
 // OutboundRouter
@@ -47,6 +49,8 @@ pub struct PendingResponse {
     pub original_message: ChannelMessage,
     /// Timestamp when the request was made
     pub requested_at: i64,
+    /// Tracing context for this request
+    pub trace_context: Option<(String, String)>, // (trace_id, span_id)
 }
 
 /// Result of a send operation.
@@ -115,12 +119,20 @@ impl OutboundRouter {
     /// This is called when a message is received and forwarded to CodeCoder,
     /// so we know where to route the response.
     pub async fn register_pending(&self, message: ChannelMessage) {
+        // Extract tracing context from the message
+        let trace_context = if message.has_tracing() {
+            Some((message.trace_id.clone(), message.span_id.clone()))
+        } else {
+            None
+        };
+
         let entry = PendingResponse {
             original_message: message.clone(),
             requested_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64,
+            trace_context,
         };
 
         let mut pending = self.pending.write().await;
@@ -129,6 +141,7 @@ impl OutboundRouter {
         tracing::debug!(
             message_id = %message.id,
             channel_type = ?message.channel_type,
+            trace_id = %message.trace_id,
             "Registered pending response"
         );
     }
@@ -160,6 +173,8 @@ impl OutboundRouter {
     ///
     /// This is the primary method for routing CodeCoder responses.
     pub async fn respond(&self, original_message_id: &str, content: OutgoingContent) -> SendResult {
+        let start = Instant::now();
+
         let pending = {
             let pending = self.pending.read().await;
             pending.get(original_message_id).cloned()
@@ -173,6 +188,29 @@ impl OutboundRouter {
             };
         };
 
+        // Create tracing context if available
+        let ctx = pending.trace_context.as_ref().map(|(trace_id, parent_span_id)| {
+            RequestContext {
+                trace_id: trace_id.clone(),
+                span_id: generate_span_id(),
+                parent_span_id: Some(parent_span_id.clone()),
+                service: "zero-channels".to_string(),
+                user_id: Some(pending.original_message.user_id.clone()),
+                baggage: HashMap::new(),
+            }
+        });
+
+        if let Some(ref ctx) = ctx {
+            ctx.log_event(
+                LifecycleEventType::FunctionStart,
+                serde_json::json!({
+                    "function": "OutboundRouter::respond",
+                    "channel": pending.original_message.channel_type.as_str(),
+                    "message_id": original_message_id,
+                }),
+            );
+        }
+
         let outgoing = OutgoingMessage {
             channel_type: pending.original_message.channel_type,
             channel_id: pending.original_message.channel_id.clone(),
@@ -181,6 +219,19 @@ impl OutboundRouter {
         };
 
         let result = self.send(outgoing).await;
+        let duration_ms = start.elapsed().as_millis() as u64;
+
+        if let Some(ref ctx) = ctx {
+            ctx.log_event(
+                LifecycleEventType::FunctionEnd,
+                serde_json::json!({
+                    "function": "OutboundRouter::respond",
+                    "duration_ms": duration_ms,
+                    "success": result.success,
+                    "error": result.error,
+                }),
+            );
+        }
 
         // Remove the pending entry on success
         if result.success {
@@ -417,6 +468,9 @@ mod tests {
             attachments: vec![],
             metadata: std::collections::HashMap::new(),
             timestamp: 1234567890000,
+            trace_id: "trace-abc-123".into(),
+            span_id: "span-xyz".into(),
+            parent_span_id: None,
         }
     }
 

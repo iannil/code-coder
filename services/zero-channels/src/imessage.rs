@@ -264,6 +264,9 @@ end tell"#
                             attachments: vec![],
                             metadata: HashMap::new(),
                             timestamp: chrono::Utc::now().timestamp_millis(),
+                            trace_id: zero_common::logging::generate_trace_id(),
+                            span_id: zero_common::logging::generate_span_id(),
+                            parent_span_id: None,
                         };
 
                         callback(msg);

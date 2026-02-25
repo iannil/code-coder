@@ -137,9 +137,11 @@ impl RequestContext {
 
     /// Log an event with this context.
     pub fn log_event(&self, event_type: LifecycleEventType, payload: serde_json::Value) {
-        let event = LifecycleEvent::new(
+        let event = LifecycleEvent::with_context(
             &self.trace_id,
             &self.span_id,
+            self.parent_span_id.clone(),
+            &self.service,
             event_type,
             payload,
         );
@@ -163,7 +165,10 @@ pub struct LifecycleEvent {
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub trace_id: String,
     pub span_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
     pub event_type: LifecycleEventType,
+    pub service: String,
     pub payload: serde_json::Value,
 }
 
@@ -196,20 +201,39 @@ impl LifecycleEvent {
             timestamp: chrono::Utc::now(),
             trace_id: trace_id.into(),
             span_id: span_id.into(),
+            parent_span_id: None,
             event_type,
+            service: "zero-channels".to_string(),
             payload,
         }
     }
 
-    /// Log this event.
+    /// Create a new lifecycle event with full context.
+    pub fn with_context(
+        trace_id: impl Into<String>,
+        span_id: impl Into<String>,
+        parent_span_id: Option<String>,
+        service: impl Into<String>,
+        event_type: LifecycleEventType,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self {
+            timestamp: chrono::Utc::now(),
+            trace_id: trace_id.into(),
+            span_id: span_id.into(),
+            parent_span_id,
+            event_type,
+            service: service.into(),
+            payload,
+        }
+    }
+
+    /// Log this event as raw JSON to stdout.
+    /// This outputs a flat JSON structure matching the TypeScript format for ODD compliance.
     pub fn log(&self) {
-        tracing::info!(
-            trace_id = %self.trace_id,
-            span_id = %self.span_id,
-            event_type = ?self.event_type,
-            payload = %self.payload,
-            "lifecycle_event"
-        );
+        if let Ok(json) = serde_json::to_string(self) {
+            println!("{json}");
+        }
     }
 }
 
@@ -352,6 +376,24 @@ mod tests {
         );
         assert_eq!(event.trace_id, "trace-123");
         assert_eq!(event.span_id, "span-456");
+        assert_eq!(event.service, "zero-channels");
+        assert!(event.parent_span_id.is_none());
+    }
+
+    #[test]
+    fn test_lifecycle_event_with_context() {
+        let event = LifecycleEvent::with_context(
+            "trace-789",
+            "span-abc",
+            Some("parent-xyz".to_string()),
+            "test-service",
+            LifecycleEventType::FunctionEnd,
+            serde_json::json!({"result": "ok"}),
+        );
+        assert_eq!(event.trace_id, "trace-789");
+        assert_eq!(event.span_id, "span-abc");
+        assert_eq!(event.parent_span_id, Some("parent-xyz".to_string()));
+        assert_eq!(event.service, "test-service");
     }
 
     #[test]

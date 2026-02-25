@@ -1260,6 +1260,9 @@ mod tests {
             attachments: vec![],
             metadata: HashMap::new(),
             timestamp: 1234567890000,
+            trace_id: "test-trace-123".into(),
+            span_id: "test-span".into(),
+            parent_span_id: None,
         }
     }
 

@@ -261,6 +261,9 @@ async fn telegram_webhook(
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as i64,
+                trace_id: zero_common::logging::generate_trace_id(),
+                span_id: zero_common::logging::generate_span_id(),
+                parent_span_id: None,
             };
 
             if let Err(e) = state.message_tx.send(channel_msg).await {
@@ -672,6 +675,9 @@ async fn generic_webhook(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64,
+        trace_id: zero_common::logging::generate_trace_id(),
+        span_id: zero_common::logging::generate_span_id(),
+        parent_span_id: None,
     };
 
     if let Err(e) = state.message_tx.send(msg).await {

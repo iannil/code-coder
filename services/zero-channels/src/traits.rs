@@ -109,6 +109,9 @@ mod tests {
             attachments: vec![],
             metadata: HashMap::new(),
             timestamp: 0,
+            trace_id: "test-trace".into(),
+            span_id: "test-span".into(),
+            parent_span_id: None,
         };
 
         let response = handler.handle(message).await.unwrap();

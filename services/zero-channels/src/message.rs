@@ -62,6 +62,15 @@ pub struct ChannelMessage {
     pub metadata: HashMap<String, String>,
     /// Timestamp (Unix millis)
     pub timestamp: i64,
+    /// Trace ID for distributed tracing (UUID format)
+    #[serde(default)]
+    pub trace_id: String,
+    /// Current span ID for this operation
+    #[serde(default)]
+    pub span_id: String,
+    /// Parent span ID (if any)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
 }
 
 /// Message content types.
@@ -193,6 +202,23 @@ impl ChannelMessage {
     pub const fn is_image(&self) -> bool {
         matches!(self.content, MessageContent::Image { .. })
     }
+
+    /// Check if this message has valid tracing context.
+    pub fn has_tracing(&self) -> bool {
+        !self.trace_id.is_empty() && !self.span_id.is_empty()
+    }
+
+    /// Create a RequestContext from this message for distributed tracing.
+    pub fn to_request_context(&self, service: impl Into<String>) -> zero_common::logging::RequestContext {
+        zero_common::logging::RequestContext {
+            trace_id: self.trace_id.clone(),
+            span_id: self.span_id.clone(),
+            parent_span_id: self.parent_span_id.clone(),
+            service: service.into(),
+            user_id: Some(self.user_id.clone()),
+            baggage: std::collections::HashMap::new(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -212,11 +238,104 @@ mod tests {
             attachments: vec![],
             metadata: HashMap::new(),
             timestamp: 1234567890000,
+            trace_id: "trace-abc-123".into(),
+            span_id: "span-xyz".into(),
+            parent_span_id: None,
         };
 
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ChannelMessage = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.id, "123");
         assert_eq!(parsed.text(), Some("Hello, world!"));
+        assert_eq!(parsed.trace_id, "trace-abc-123");
+        assert_eq!(parsed.span_id, "span-xyz");
+    }
+
+    #[test]
+    fn test_has_tracing() {
+        let msg_with_tracing = ChannelMessage {
+            id: "123".into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: "trace-abc".into(),
+            span_id: "span-xyz".into(),
+            parent_span_id: None,
+        };
+
+        assert!(msg_with_tracing.has_tracing());
+
+        let msg_without_tracing = ChannelMessage {
+            id: "123".into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: String::new(),
+            span_id: String::new(),
+            parent_span_id: None,
+        };
+
+        assert!(!msg_without_tracing.has_tracing());
+    }
+
+    #[test]
+    fn test_tracing_fields_serialization_defaults() {
+        // Test that tracing fields default to empty when deserializing JSON without them
+        let json = r#"{
+            "id": "123",
+            "channel_type": "telegram",
+            "channel_id": "456",
+            "user_id": "user1",
+            "content": {"type": "text", "text": "Hello"},
+            "timestamp": 1234567890000
+        }"#;
+
+        let parsed: ChannelMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.trace_id, "");
+        assert_eq!(parsed.span_id, "");
+        assert!(parsed.parent_span_id.is_none());
+    }
+
+    #[test]
+    fn test_parent_span_id_skipped_when_none() {
+        let msg = ChannelMessage {
+            id: "123".into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: "trace-abc".into(),
+            span_id: "span-xyz".into(),
+            parent_span_id: None,
+        };
+
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(!json.contains("parent_span_id"));
+
+        let msg_with_parent = ChannelMessage {
+            parent_span_id: Some("parent-123".into()),
+            ..msg
+        };
+
+        let json = serde_json::to_string(&msg_with_parent).unwrap();
+        assert!(json.contains("parent_span_id"));
+        assert!(json.contains("parent-123"));
     }
 }

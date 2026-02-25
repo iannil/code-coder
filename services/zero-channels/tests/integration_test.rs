@@ -363,6 +363,9 @@ async fn test_outbound_router_pending_registration() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 1234567890000,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     // Register pending
@@ -387,6 +390,9 @@ async fn test_outbound_router_take_pending() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 1234567890000,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     router.register_pending(message).await;
@@ -418,6 +424,9 @@ async fn test_outbound_router_cleanup_stale() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 1234567890000,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     router.register_pending(message).await;

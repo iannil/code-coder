@@ -13,9 +13,10 @@ use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use zero_common::config::CaptureConfig;
+use zero_common::logging::{generate_span_id, LifecycleEventType, RequestContext};
 
 // ============================================================================
 // CodeCoder API Types
@@ -304,6 +305,28 @@ pub struct CodeCoderBridge {
     capture_bridge: Option<Arc<CaptureBridge>>,
 }
 
+// ============================================================================
+// Session Control Commands
+// ============================================================================
+
+/// Session control command types for IM channels.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SessionCommand {
+    /// Clear context and start fresh (/new, /clear)
+    New,
+    /// Compact/summarize context (/compact, /summary)
+    Compact,
+}
+
+impl std::fmt::Display for SessionCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionCommand::New => write!(f, "new"),
+            SessionCommand::Compact => write!(f, "compact"),
+        }
+    }
+}
+
 impl CodeCoderBridge {
     /// Create a new bridge.
     pub fn new(endpoint: impl Into<String>, router: Arc<OutboundRouter>) -> Self {
@@ -349,6 +372,28 @@ impl CodeCoderBridge {
     /// - Feasibility questions -> /api/v1/assess/feasibility
     /// - General chat -> /api/v1/chat
     pub async fn process(&self, message: ChannelMessage) -> Result<()> {
+        let start = Instant::now();
+
+        // Create tracing context from the message
+        let ctx = RequestContext {
+            trace_id: message.trace_id.clone(),
+            span_id: generate_span_id(),
+            parent_span_id: Some(message.span_id.clone()),
+            service: "zero-channels".to_string(),
+            user_id: Some(message.user_id.clone()),
+            baggage: std::collections::HashMap::new(),
+        };
+
+        ctx.log_event(
+            LifecycleEventType::FunctionStart,
+            serde_json::json!({
+                "function": "CodeCoderBridge::process",
+                "channel": message.channel_type.as_str(),
+                "user_id": message.user_id,
+                "message_id": message.id,
+            }),
+        );
+
         // Register the message for response routing
         self.router.register_pending(message.clone()).await;
 
@@ -357,6 +402,13 @@ impl CodeCoderBridge {
             MessageContent::Text { text } => text.clone(),
             MessageContent::Voice { .. } => {
                 // Voice should have been transcribed before reaching here
+                ctx.log_event(
+                    LifecycleEventType::Error,
+                    serde_json::json!({
+                        "function": "CodeCoderBridge::process",
+                        "error": "Voice messages should be transcribed first",
+                    }),
+                );
                 return Err(anyhow::anyhow!("Voice messages should be transcribed first"));
             }
             MessageContent::Image { caption, .. } => {
@@ -374,6 +426,41 @@ impl CodeCoderBridge {
                 )
             }
         };
+
+        // Process the message based on intent
+        let result = self.process_with_context(&message, &text, &ctx).await;
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        ctx.log_event(
+            LifecycleEventType::FunctionEnd,
+            serde_json::json!({
+                "function": "CodeCoderBridge::process",
+                "duration_ms": duration_ms,
+                "success": result.is_ok(),
+            }),
+        );
+
+        result
+    }
+
+    /// Internal processing with tracing context.
+    async fn process_with_context(
+        &self,
+        message: &ChannelMessage,
+        text: &str,
+        _ctx: &RequestContext,
+    ) -> Result<()> {
+
+        // Check if this is a session control command (/new or /compact) - highest priority
+        if let Some(command) = Self::parse_session_command(text) {
+            tracing::info!(
+                message_id = %message.id,
+                command = %command,
+                "Detected session control command"
+            );
+
+            return self.handle_session_command(message, &command).await;
+        }
 
         // Check if this is a capture request (highest priority for capture-related messages)
         if let Some(ref capture_bridge) = self.capture_bridge {
@@ -595,6 +682,10 @@ impl CodeCoderBridge {
         let lines = vec![
             "🤖 **可用的 Agent 列表**",
             "",
+            "**会话控制**",
+            "• `/new` 或 `/clear` - 清空上下文，开始新对话",
+            "• `/compact` 或 `/summary` - 压缩上下文，保留摘要继续对话",
+            "",
             "**祝融说系列 (ZRS)**",
             "• `@macro` - 宏观经济分析（PMI、GDP等数据解读）",
             "• `@decision` - CLOSE决策框架（五维评估分析）",
@@ -710,17 +801,34 @@ impl CodeCoderBridge {
         text: &str,
         agent: Option<String>,
     ) -> Result<()> {
+        // Create a tracing context for this operation
+        let ctx = RequestContext {
+            trace_id: message.trace_id.clone(),
+            span_id: generate_span_id(),
+            parent_span_id: Some(message.span_id.clone()),
+            service: "zero-channels".to_string(),
+            user_id: Some(message.user_id.clone()),
+            baggage: std::collections::HashMap::new(),
+        };
+
         // Build the request with agent if specified
+        // Use consistent conversation_id: metadata value or fallback to channel:channel_id
+        let conversation_id = message
+            .metadata
+            .get("conversation_id")
+            .cloned()
+            .unwrap_or_else(|| format!("{}:{}", message.channel_type.as_str(), message.channel_id));
+
         let request = ChatRequest {
             message: text.to_string(),
-            conversation_id: message.metadata.get("conversation_id").cloned(),
+            conversation_id: Some(conversation_id),
             agent: agent.or_else(|| message.metadata.get("agent").cloned()),
             user_id: message.user_id.clone(),
             channel: message.channel_type.as_str().to_string(),
         };
 
-        // Send to CodeCoder
-        let response = self.call_codecoder(&request).await;
+        // Send to CodeCoder with tracing context
+        let response = self.call_codecoder(&request, &ctx).await;
 
         // Route the response
         match response {
@@ -750,28 +858,309 @@ impl CodeCoderBridge {
         Ok(())
     }
 
-    /// Call the CodeCoder API.
-    async fn call_codecoder(&self, request: &ChatRequest) -> Result<ChatResponseData> {
-        let url = format!("{}/api/v1/chat", self.endpoint);
+    // ========================================================================
+    // Session Control Commands (/new, /compact)
+    // ========================================================================
+
+    /// Parse session control command from message.
+    ///
+    /// Detects patterns like:
+    /// - `/new` or `/clear` → SessionCommand::New
+    /// - `/compact` or `/summary` → SessionCommand::Compact
+    fn parse_session_command(content: &str) -> Option<SessionCommand> {
+        let trimmed = content.trim().to_lowercase();
+
+        // Match exact commands or commands with trailing text
+        if trimmed == "/new" || trimmed == "/clear" || trimmed.starts_with("/new ") || trimmed.starts_with("/clear ") {
+            return Some(SessionCommand::New);
+        }
+
+        if trimmed == "/compact" || trimmed == "/summary" || trimmed.starts_with("/compact ") || trimmed.starts_with("/summary ") {
+            return Some(SessionCommand::Compact);
+        }
+
+        None
+    }
+
+    /// Handle a session control command.
+    async fn handle_session_command(
+        &self,
+        message: &ChannelMessage,
+        command: &SessionCommand,
+    ) -> Result<()> {
+        // Get the conversation_id from message metadata or use channel_id as fallback
+        let conversation_id = message
+            .metadata
+            .get("conversation_id")
+            .cloned()
+            .unwrap_or_else(|| format!("{}:{}", message.channel_type.as_str(), message.channel_id));
+
+        match command {
+            SessionCommand::New => {
+                self.call_clear_conversation(&message, &conversation_id).await
+            }
+            SessionCommand::Compact => {
+                self.call_compact_conversation(&message, &conversation_id).await
+            }
+        }
+    }
+
+    /// Call the clear conversation API.
+    async fn call_clear_conversation(
+        &self,
+        message: &ChannelMessage,
+        conversation_id: &str,
+    ) -> Result<()> {
+        let url = format!("{}/api/v1/chat/clear", self.endpoint);
+
+        let body = serde_json::json!({
+            "conversation_id": conversation_id,
+            "user_id": message.user_id,
+            "channel": message.channel_type.as_str()
+        });
 
         tracing::debug!(
             endpoint = %url,
-            user_id = %request.user_id,
-            "Calling CodeCoder API"
+            conversation_id = %conversation_id,
+            "Calling clear conversation API"
         );
 
         let response = self
             .client
             .post(&url)
+            .json(&body)
+            .timeout(self.timeout)
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let data: serde_json::Value = resp.json().await.unwrap_or_default();
+
+                // Check for Redis error in response
+                let redis_error = data
+                    .get("data")
+                    .and_then(|d| d.get("redis_error"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                // Check if mapping was actually cleared
+                let cleared = data
+                    .get("data")
+                    .and_then(|d| d.get("cleared"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                // Use the message from API response
+                let message_text = data
+                    .get("data")
+                    .and_then(|d| d.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("✨ 上下文已清空，开始新对话！");
+
+                tracing::info!(
+                    conversation_id = %conversation_id,
+                    cleared = cleared,
+                    redis_error = redis_error,
+                    "Clear conversation completed"
+                );
+
+                let content = OutgoingContent::Text {
+                    text: message_text.to_string(),
+                };
+                let result = self.router.respond(&message.id, content).await;
+
+                if !result.success {
+                    tracing::error!(
+                        message_id = %message.id,
+                        error = ?result.error,
+                        "Failed to send clear response"
+                    );
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                tracing::error!(
+                    status = %status,
+                    error = %error_text,
+                    "Clear conversation API failed"
+                );
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 清空上下文失败: {}", error_text),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Clear conversation API call failed");
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 清空上下文失败: {}", e),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Call the compact conversation API.
+    async fn call_compact_conversation(
+        &self,
+        message: &ChannelMessage,
+        conversation_id: &str,
+    ) -> Result<()> {
+        let url = format!("{}/api/v1/chat/compact", self.endpoint);
+
+        let body = serde_json::json!({
+            "conversation_id": conversation_id,
+            "user_id": message.user_id,
+            "channel": message.channel_type.as_str()
+        });
+
+        tracing::debug!(
+            endpoint = %url,
+            conversation_id = %conversation_id,
+            "Calling compact conversation API"
+        );
+
+        // Send a "processing" message first since compaction can take time
+        let processing_content = OutgoingContent::Text {
+            text: "🔄 正在压缩上下文...".to_string(),
+        };
+        let _ = self.router.respond(&message.id, processing_content).await;
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .timeout(self.timeout)
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let data: serde_json::Value = resp.json().await.unwrap_or_default();
+                let message_text = data
+                    .get("data")
+                    .and_then(|d| d.get("message"))
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("📦 上下文已压缩！");
+
+                let compacted = data
+                    .get("data")
+                    .and_then(|d| d.get("compacted"))
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false);
+
+                let emoji = if compacted { "✅" } else { "ℹ️" };
+
+                let content = OutgoingContent::Text {
+                    text: format!("{} {}", emoji, message_text),
+                };
+                let result = self.router.respond(&message.id, content).await;
+
+                if !result.success {
+                    tracing::error!(
+                        message_id = %message.id,
+                        error = ?result.error,
+                        "Failed to send compact response"
+                    );
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                tracing::error!(
+                    status = %status,
+                    error = %error_text,
+                    "Compact conversation API failed"
+                );
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 压缩上下文失败: {}", error_text),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Compact conversation API call failed");
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 压缩上下文失败: {}", e),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Call the CodeCoder API with tracing context propagation.
+    async fn call_codecoder(&self, request: &ChatRequest, ctx: &RequestContext) -> Result<ChatResponseData> {
+        let url = format!("{}/api/v1/chat", self.endpoint);
+        let start = Instant::now();
+
+        // Create child span for HTTP call
+        let http_ctx = ctx.child_span();
+
+        http_ctx.log_event(
+            LifecycleEventType::HttpRequest,
+            serde_json::json!({
+                "function": "call_codecoder",
+                "url": url,
+                "user_id": request.user_id,
+                "channel": request.channel,
+            }),
+        );
+
+        tracing::debug!(
+            trace_id = %ctx.trace_id,
+            span_id = %http_ctx.span_id,
+            endpoint = %url,
+            user_id = %request.user_id,
+            "Calling CodeCoder API"
+        );
+
+        // Build headers with tracing context
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Ok(trace_id) = ctx.trace_id.parse() {
+            headers.insert("X-Trace-Id", trace_id);
+        }
+        if let Ok(span_id) = http_ctx.span_id.parse() {
+            headers.insert("X-Span-Id", span_id);
+        }
+        if let Some(ref user_id) = ctx.user_id {
+            if let Ok(user_id) = user_id.parse() {
+                headers.insert("X-User-Id", user_id);
+            }
+        }
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(headers)
             .json(request)
             .timeout(self.timeout)
             .send()
             .await?;
 
         let status = response.status();
+        let duration_ms = start.elapsed().as_millis() as u64;
 
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
+
+            http_ctx.log_event(
+                LifecycleEventType::HttpResponse,
+                serde_json::json!({
+                    "function": "call_codecoder",
+                    "status": status.as_u16(),
+                    "duration_ms": duration_ms,
+                    "success": false,
+                    "error": error_text,
+                }),
+            );
 
             // Try to parse as error response
             if let Ok(error) = serde_json::from_str::<ErrorResponse>(&error_text) {
@@ -790,6 +1179,16 @@ impl CodeCoderBridge {
         // Check if API returned success
         if !api_response.success {
             let error_msg = api_response.error.unwrap_or_else(|| "Unknown error".to_string());
+            http_ctx.log_event(
+                LifecycleEventType::HttpResponse,
+                serde_json::json!({
+                    "function": "call_codecoder",
+                    "status": status.as_u16(),
+                    "duration_ms": duration_ms,
+                    "success": false,
+                    "error": error_msg,
+                }),
+            );
             return Err(anyhow::anyhow!("CodeCoder API error: {}", error_msg));
         }
 
@@ -797,6 +1196,18 @@ impl CodeCoderBridge {
         let chat_response = api_response.data.ok_or_else(|| {
             anyhow::anyhow!("CodeCoder API returned success but no data")
         })?;
+
+        http_ctx.log_event(
+            LifecycleEventType::HttpResponse,
+            serde_json::json!({
+                "function": "call_codecoder",
+                "status": status.as_u16(),
+                "duration_ms": duration_ms,
+                "success": true,
+                "agent": chat_response.agent,
+                "tokens": chat_response.usage.as_ref().map(|u| u.total_tokens),
+            }),
+        );
 
         tracing::debug!(
             conversation_id = ?chat_response.conversation_id,
@@ -2118,6 +2529,11 @@ mod tests {
     fn test_agent_help_format() {
         let help = CodeCoderBridge::format_agent_help();
 
+        // Should contain session control commands
+        assert!(help.contains("会话控制"));
+        assert!(help.contains("/new"));
+        assert!(help.contains("/compact"));
+
         // Should contain key sections
         assert!(help.contains("🤖 **可用的 Agent 列表**"));
         assert!(help.contains("祝融说系列"));
@@ -2127,5 +2543,64 @@ mod tests {
         assert!(help.contains("工程质量"));
         assert!(help.contains("@code-reviewer"));
         assert!(help.contains("使用方式"));
+    }
+
+    #[test]
+    fn test_session_command_parsing() {
+        use super::{CodeCoderBridge, SessionCommand};
+
+        // Should match /new command
+        let result = CodeCoderBridge::parse_session_command("/new");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::New);
+
+        // Should match /new with trailing text
+        let result = CodeCoderBridge::parse_session_command("/new please");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::New);
+
+        // Should match /clear command
+        let result = CodeCoderBridge::parse_session_command("/clear");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::New);
+
+        // Should match /compact command
+        let result = CodeCoderBridge::parse_session_command("/compact");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::Compact);
+
+        // Should match /summary command (alias for compact)
+        let result = CodeCoderBridge::parse_session_command("/summary");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::Compact);
+
+        // Should be case insensitive
+        let result = CodeCoderBridge::parse_session_command("/NEW");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::New);
+
+        let result = CodeCoderBridge::parse_session_command("/COMPACT");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::Compact);
+
+        // Should NOT match regular messages
+        assert!(CodeCoderBridge::parse_session_command("hello").is_none());
+        assert!(CodeCoderBridge::parse_session_command("new message").is_none());
+        assert!(CodeCoderBridge::parse_session_command("@new agent").is_none());
+        assert!(CodeCoderBridge::parse_session_command("this is /new in middle").is_none());
+    }
+
+    #[test]
+    fn test_session_command_with_whitespace() {
+        use super::{CodeCoderBridge, SessionCommand};
+
+        // Should handle leading/trailing whitespace
+        let result = CodeCoderBridge::parse_session_command("  /new  ");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::New);
+
+        let result = CodeCoderBridge::parse_session_command("\t/compact\n");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::Compact);
     }
 }

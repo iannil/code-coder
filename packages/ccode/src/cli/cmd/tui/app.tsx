@@ -288,6 +288,7 @@ function App() {
         const current = promptRef.current
         // Don't require focus - if there's any text, preserve it
         const currentPrompt = current?.current?.input ? current.current : undefined
+        local.agent.reset()
         route.navigate({
           type: "home",
           initialPrompt: currentPrompt,

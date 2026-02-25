@@ -4712,6 +4712,7 @@ dependencies = [
  "rand 0.8.5",
  "redis",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
@@ -4751,8 +4752,10 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
  "zero-common",
+ "zero-memory",
 ]
 
 [[package]]

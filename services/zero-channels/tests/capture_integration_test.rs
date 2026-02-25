@@ -262,6 +262,9 @@ fn test_capture_bridge_is_capturable_with_link() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 0,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     assert!(bridge.is_capturable(&message));
@@ -286,6 +289,9 @@ fn test_capture_bridge_is_capturable_with_forward() {
         attachments: vec![],
         metadata,
         timestamp: 0,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     assert!(bridge.is_capturable(&message));
@@ -307,6 +313,9 @@ fn test_capture_bridge_is_capturable_with_trigger_prefix() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 0,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     assert!(bridge.is_capturable(&message));
@@ -322,6 +331,9 @@ fn test_capture_bridge_is_capturable_with_trigger_prefix() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 0,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     assert!(bridge.is_capturable(&message2));
@@ -343,6 +355,9 @@ fn test_capture_bridge_not_capturable_plain_text() {
         attachments: vec![],
         metadata: std::collections::HashMap::new(),
         timestamp: 0,
+        trace_id: "test-trace".into(),
+        span_id: "test-span".into(),
+        parent_span_id: None,
     };
 
     assert!(!bridge.is_capturable(&message));
@@ -374,6 +389,9 @@ fn test_capture_bridge_is_capture_request() {
             attachments: vec![],
             metadata: std::collections::HashMap::new(),
             timestamp: 0,
+            trace_id: "test-trace".into(),
+            span_id: "test-span".into(),
+            parent_span_id: None,
         };
 
         assert_eq!(
