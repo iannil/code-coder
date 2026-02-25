@@ -238,6 +238,20 @@ impl PaperTradingRunner {
         *state = SessionState::Completed;
     }
 
+    /// Get all current trades (both open and closed)
+    pub async fn get_all_trades(&self) -> Vec<PaperTrade> {
+        let closed = self.closed_trades.read().await;
+        let open = self.trades.read().await;
+        let mut trades: Vec<PaperTrade> = closed.clone();
+        trades.extend(open.values().cloned());
+        trades
+    }
+
+    /// Get current session state
+    pub async fn get_state(&self) -> SessionState {
+        *self.state.read().await
+    }
+
     /// Check if within A-share trading hours
     fn is_within_trading_hours(&self) -> bool {
         let now = Local::now();

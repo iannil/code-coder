@@ -60,6 +60,7 @@ use crate::execution::ExecutionEngine;
 use crate::macro_agent::{MacroOrchestrator, MacroReportGenerator};
 use crate::macro_filter::MacroFilter;
 use crate::notification::NotificationClient;
+use crate::paper_trading::PaperTradingManager;
 use crate::strategy::StrategyEngine;
 
 /// Trading service state
@@ -80,6 +81,8 @@ pub struct TradingState {
     pub notification: Arc<NotificationClient>,
     /// Report generator
     pub report_generator: Arc<MacroReportGenerator>,
+    /// Paper trading manager
+    pub paper_manager: Arc<PaperTradingManager>,
 }
 
 impl TradingState {
@@ -103,6 +106,9 @@ impl TradingState {
             Arc::clone(&notification),
         ));
 
+        // Create paper trading manager
+        let paper_manager = Arc::new(PaperTradingManager::new(&config));
+
         Self {
             config,
             data,
@@ -112,6 +118,7 @@ impl TradingState {
             macro_orchestrator,
             notification,
             report_generator,
+            paper_manager,
         }
     }
 }
