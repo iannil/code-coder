@@ -550,16 +550,15 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
 
     let mut common_cfg = common::Config::default();
 
-    // Use port 4431 for channels to avoid conflict with daemon's port 4402
-    // This is separate from the daemon HTTP server
-    common_cfg.channels.port = 4431;
-    common_cfg.channels.host = "127.0.0.1".to_string();
+    // Set the channels service port via services config
+    common_cfg.services.channels.port = Some(4431);
+    common_cfg.network.bind = "127.0.0.1".to_string();
 
-    // Map Telegram config
+    // Map Telegram config - token goes to secrets
     if let Some(ref tg) = config.channels_config.telegram {
+        common_cfg.secrets.channels.telegram_bot_token = Some(tg.bot_token.clone());
         common_cfg.channels.telegram = Some(common::TelegramConfig {
             enabled: true,
-            bot_token: Some(tg.bot_token.clone()),
             allowed_users: tg.allowed_users.clone(),
             allowed_chats: vec![],
             trading_chat_id: None,
@@ -598,13 +597,10 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
         });
     }
 
-    // Map CodeCoder endpoint - parse URL to extract host and port
+    // Map CodeCoder endpoint - use services config for port
     if let Ok(url) = url::Url::parse(&config.codecoder.endpoint) {
-        if let Some(host) = url.host_str() {
-            common_cfg.codecoder.host = host.to_string();
-        }
         if let Some(port) = url.port() {
-            common_cfg.codecoder.port = port;
+            common_cfg.services.codecoder.port = Some(port);
         }
     }
 

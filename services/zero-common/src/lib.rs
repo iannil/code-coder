@@ -34,9 +34,9 @@ pub use bus::{
     RedisBus, RedisBusConfig, SessionPayload,
 };
 pub use config::{
-    AgentConfig, ApiKeysConfig, ChannelsConfig, CodeCoderConfig, Config, GatewayConfig,
-    MemoryConfig, ObservabilityConfig, OllamaConfig, ProvidersConfig, ReliabilityConfig,
-    ToolsConfig, WorkflowConfig,
+    AgentConfig, ChannelsConfig, CodeCoderConfig, Config, GatewayConfig, LlmConfig,
+    LlmOllamaConfig, LlmProviderConfig, MemoryConfig, ObservabilityConfig, ToolsConfig,
+    WorkflowConfig,
 };
 pub use error::{Error, Result};
 pub use hybrid::{
@@ -49,9 +49,7 @@ pub use validation::{Validate, ValidationError, ValidationResult};
 pub mod prelude {
     pub use crate::audit::{AuditConfig, AuditEventBuilder, AuditEventType, AuditLogger};
     pub use crate::bus::{create_bus, topics, BusBackend, Event, EventBus};
-    pub use crate::config::{
-        AgentConfig, ApiKeysConfig, Config, ProvidersConfig, ReliabilityConfig, ToolsConfig,
-    };
+    pub use crate::config::{AgentConfig, Config, LlmConfig, ToolsConfig};
     pub use crate::error::{Error, Result};
     pub use crate::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
     pub use crate::logging::init_logging;

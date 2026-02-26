@@ -211,35 +211,37 @@ pub fn create_registry(
     registry
 }
 
-/// Create a registry with all configured providers from API keys config.
-pub fn create_full_registry(api_keys: &zero_common::config::ApiKeysConfig) -> ProviderRegistry {
+/// Create a registry with all configured providers from config.
+///
+/// Uses config.get_api_key() which reads from secrets.llm with env fallback.
+pub fn create_full_registry(config: &zero_common::config::Config) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
     // Primary providers
-    if let Some(ref key) = api_keys.anthropic {
+    if let Some(key) = config.get_api_key("anthropic") {
         if !key.is_empty() {
-            registry.register(Arc::new(AnthropicProvider::new(key)));
+            registry.register(Arc::new(AnthropicProvider::new(&key)));
         }
     }
 
-    if let Some(ref key) = api_keys.openai {
+    if let Some(key) = config.get_api_key("openai") {
         if !key.is_empty() {
-            registry.register(Arc::new(OpenAIProvider::new(key)));
+            registry.register(Arc::new(OpenAIProvider::new(&key)));
         }
     }
 
-    if let Some(ref key) = api_keys.google {
+    if let Some(key) = config.get_api_key("google") {
         if !key.is_empty() {
-            registry.register(Arc::new(GeminiProvider::new(Some(key))));
+            registry.register(Arc::new(GeminiProvider::new(Some(&key))));
         }
     } else if GeminiProvider::has_any_auth() {
         // Try CLI auth for Gemini
         registry.register(Arc::new(GeminiProvider::new(None)));
     }
 
-    if let Some(ref key) = api_keys.openrouter {
+    if let Some(key) = config.get_api_key("openrouter") {
         if !key.is_empty() {
-            registry.register(Arc::new(OpenRouterProvider::new(Some(key))));
+            registry.register(Arc::new(OpenRouterProvider::new(Some(&key))));
         }
     }
 
@@ -247,51 +249,51 @@ pub fn create_full_registry(api_keys: &zero_common::config::ApiKeysConfig) -> Pr
     registry.register(Arc::new(OllamaProvider::new(None)));
 
     // Compatible providers
-    if let Some(ref key) = api_keys.groq {
+    if let Some(key) = config.get_api_key("groq") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::groq(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::groq(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.mistral {
+    if let Some(key) = config.get_api_key("mistral") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::mistral(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::mistral(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.xai {
+    if let Some(key) = config.get_api_key("xai") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::xai(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::xai(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.deepseek {
+    if let Some(key) = config.get_api_key("deepseek") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::deepseek(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::deepseek(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.together {
+    if let Some(key) = config.get_api_key("together") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::together(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::together(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.fireworks {
+    if let Some(key) = config.get_api_key("fireworks") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::fireworks(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::fireworks(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.perplexity {
+    if let Some(key) = config.get_api_key("perplexity") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::perplexity(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::perplexity(Some(&key))));
         }
     }
 
-    if let Some(ref key) = api_keys.cohere {
+    if let Some(key) = config.get_api_key("cohere") {
         if !key.is_empty() {
-            registry.register(Arc::new(CompatibleProvider::cohere(Some(key))));
+            registry.register(Arc::new(CompatibleProvider::cohere(Some(&key))));
         }
     }
 

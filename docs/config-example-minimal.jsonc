@@ -1,0 +1,33 @@
+{
+  // ============================================================================
+  // MINIMAL CONFIGURATION EXAMPLE
+  // ============================================================================
+  //
+  // All fields in ~/.codecoder/config.json have sensible defaults.
+  // This file shows the absolute minimum needed for a working setup.
+  //
+  // Default ports:
+  //   - codecoder: 4400
+  //   - gateway: 4430
+  //   - channels: 4431
+  //   - workflow: 4432
+  //   - trading: 4434
+  //
+  // Default bind address: 127.0.0.1 (local only)
+  // Default auth mode: "pairing"
+  // Default LLM: anthropic/claude-sonnet-4-20250514
+  //
+  // ============================================================================
+
+  "$schema": "https://code-coder.com/config.json",
+
+  // The only thing you need for AI functionality is at least one LLM API key:
+  "secrets": {
+    "llm": {
+      "anthropic": "sk-ant-xxx"    // Or any other provider: openai, deepseek, etc.
+    }
+  }
+
+  // Everything else is optional and uses sensible defaults.
+  // See config-example-full.jsonc for all available options.
+}

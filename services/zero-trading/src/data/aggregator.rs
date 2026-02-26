@@ -11,16 +11,16 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
-use super::ashare::AshareAdapter;
+use super::itick::ITickAdapter;
 use super::health::HealthMonitorConfig;
 use super::lixin::LixinAdapter;
 use super::router::{DataProviderRouter, RouterConfig};
-use super::{Candle, DataCache, ProviderInfo, SmtPair, Timeframe};
+use super::{Candle, DataCache, IndexData, IndexOverview, ProviderInfo, SmtPair, Timeframe};
 use zero_common::config::Config;
 
 /// Market data aggregator with multi-provider support.
 ///
-/// Manages multiple data providers (Ashare, Lixin) with automatic
+/// Manages multiple data providers (iTick, Lixin) with automatic
 /// failover based on health status and priority.
 pub struct MarketDataAggregator {
     /// Data provider router for failover
@@ -117,20 +117,24 @@ impl MarketDataAggregator {
                 }
 
                 match entry.provider.as_str() {
-                    "ashare" => {
-                        let adapter = AshareAdapter::with_priority(entry.priority);
-                        self.router.register(Arc::new(adapter)).await;
-                        info!(provider = "ashare", priority = entry.priority, "Registered Ashare provider");
-                        has_provider = true;
+                    "itick" => {
+                        if let Some(api_key) = config.itick_api_key() {
+                            let adapter = ITickAdapter::with_priority(api_key, entry.priority);
+                            self.router.register(Arc::new(adapter)).await;
+                            info!(provider = "itick", priority = entry.priority, "Registered iTick provider");
+                            has_provider = true;
+                        } else {
+                            warn!("iTick enabled but no API key configured (set secrets.external.itick)");
+                        }
                     }
                     "lixin" => {
-                        if let Some(token) = trading_config.and_then(|t| t.lixin_token.as_ref()) {
-                            let adapter = LixinAdapter::with_priority(token.clone(), entry.priority);
+                        if let Some(token) = config.lixin_token() {
+                            let adapter = LixinAdapter::with_priority(token, entry.priority);
                             self.router.register(Arc::new(adapter)).await;
                             info!(provider = "lixin", priority = entry.priority, "Registered Lixin provider");
                             has_provider = true;
                         } else {
-                            warn!("Lixin enabled but no token configured");
+                            warn!("Lixin enabled but no token configured (set secrets.external.lixin)");
                         }
                     }
                     other => {
@@ -139,15 +143,22 @@ impl MarketDataAggregator {
                 }
             }
         } else {
-            // Default: use Ashare if no explicit config
-            let adapter = AshareAdapter::new();
-            self.router.register(Arc::new(adapter)).await;
-            info!(provider = "ashare", "Registered default Ashare provider");
-            has_provider = true;
+            // Default: use iTick if API key is available, otherwise warn
+            if let Some(api_key) = config.itick_api_key() {
+                let adapter = ITickAdapter::new(api_key);
+                self.router.register(Arc::new(adapter)).await;
+                info!(provider = "itick", "Registered default iTick provider");
+                has_provider = true;
+            } else {
+                warn!(
+                    "No iTick API key configured. Set secrets.external.itick in config. \
+                     Get a free API key at https://itick.org"
+                );
+            }
 
             // Also register Lixin if token is available (as backup)
-            if let Some(token) = trading_config.and_then(|t| t.lixin_token.as_ref()) {
-                let adapter = LixinAdapter::new(token.clone());
+            if let Some(token) = config.lixin_token() {
+                let adapter = LixinAdapter::new(token);
                 self.router.register(Arc::new(adapter)).await;
                 info!(provider = "lixin", "Registered Lixin provider as backup");
                 has_provider = true;
@@ -302,6 +313,98 @@ impl MarketDataAggregator {
         &self.smt_pairs
     }
 
+    /// Get index overview data for daily macro reports.
+    ///
+    /// Fetches recent daily candles for the given index symbols and computes
+    /// change percentage and moving averages.
+    ///
+    /// # Arguments
+    /// * `symbols` - Index symbols to fetch (e.g., ["000300.SH", "000905.SH"])
+    /// * `days` - Number of days of history to use for MA calculation
+    ///
+    /// # Returns
+    /// An `IndexOverview` containing data for all requested indices.
+    pub async fn get_index_overview(&self, symbols: &[String], days: u32) -> Result<IndexOverview> {
+        let mut indices = Vec::new();
+
+        for symbol in symbols {
+            match self.get_candles(symbol, Timeframe::Daily, days as usize + 1).await {
+                Ok(candles) if !candles.is_empty() => {
+                    let latest = &candles[candles.len() - 1];
+                    let prev = if candles.len() > 1 {
+                        Some(&candles[candles.len() - 2])
+                    } else {
+                        None
+                    };
+
+                    // Calculate change percentage
+                    let change_pct = prev
+                        .map(|p| {
+                            if p.close > 0.0 {
+                                ((latest.close - p.close) / p.close) * 100.0
+                            } else {
+                                0.0
+                            }
+                        })
+                        .unwrap_or(0.0);
+
+                    // Calculate moving averages
+                    let ma5 = if candles.len() >= 5 {
+                        let sum: f64 = candles[candles.len() - 5..].iter().map(|c| c.close).sum();
+                        Some(sum / 5.0)
+                    } else {
+                        None
+                    };
+
+                    let ma20 = if candles.len() >= 20 {
+                        let sum: f64 = candles[candles.len() - 20..].iter().map(|c| c.close).sum();
+                        Some(sum / 20.0)
+                    } else {
+                        None
+                    };
+
+                    // Get index name from symbol
+                    let name = self.get_index_name(symbol);
+
+                    indices.push(IndexData {
+                        symbol: symbol.clone(),
+                        name,
+                        close: latest.close,
+                        change_pct,
+                        volume: latest.volume,
+                        ma5,
+                        ma20,
+                    });
+                }
+                Ok(_) => {
+                    warn!(symbol, "No candle data available for index");
+                }
+                Err(e) => {
+                    warn!(symbol, error = %e, "Failed to fetch index data");
+                }
+            }
+        }
+
+        Ok(IndexOverview {
+            indices,
+            as_of: Utc::now(),
+        })
+    }
+
+    /// Get human-readable index name from symbol
+    fn get_index_name(&self, symbol: &str) -> String {
+        match symbol {
+            "000001.SH" => "上证指数".to_string(),
+            "000300.SH" => "沪深300".to_string(),
+            "000905.SH" => "中证500".to_string(),
+            "000016.SH" => "上证50".to_string(),
+            "000688.SH" => "科创50".to_string(),
+            "399001.SZ" => "深证成指".to_string(),
+            "399006.SZ" => "创业板指".to_string(),
+            _ => symbol.to_string(),
+        }
+    }
+
     /// Start the background data updater
     pub async fn start_updater(&self) -> Result<()> {
         info!("Starting market data updater");
@@ -448,12 +551,32 @@ mod tests {
         let config = Config::default();
         let aggregator = MarketDataAggregator::new(&config);
 
-        // Initially not connected until initialized
-        // After initialization, should have at least Ashare registered
+        // Initialize without API keys - should have no providers
+        aggregator.initialize(&config).await.unwrap();
+
+        let providers = aggregator.get_providers_info().await;
+        // Without API keys configured, no providers should be registered
+        // (iTick requires API key, Lixin requires token)
+        assert!(providers.is_empty());
+        assert!(!aggregator.is_connected());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires valid iTick API key"]
+    async fn test_aggregator_with_itick() {
+        let api_key = std::env::var("ITICK_API_KEY").expect("ITICK_API_KEY not set");
+
+        let mut config = Config::default();
+        let mut trading_config = zero_common::config::TradingConfig::default();
+        trading_config.itick_api_key = Some(api_key);
+        config.trading = Some(trading_config);
+
+        let aggregator = MarketDataAggregator::new(&config);
         aggregator.initialize(&config).await.unwrap();
 
         let providers = aggregator.get_providers_info().await;
         assert!(!providers.is_empty());
-        assert!(providers.iter().any(|p| p.name == "ashare"));
+        assert!(providers.iter().any(|p| p.name == "itick"));
+        assert!(aggregator.is_connected());
     }
 }

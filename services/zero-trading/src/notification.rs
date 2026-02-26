@@ -1,10 +1,20 @@
 //! Notification module for sending trading signals.
 //!
 //! Integrates with zero-channels to send signals to Telegram and other channels.
+//!
+//! # Features
+//! - Enhanced signal notifications with execution recommendations
+//! - Retry queue for failed notifications (persists to disk)
+//! - Background retry task for resilient delivery
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use zero_common::config::Config;
 
 use crate::macro_filter::{MacroEnvironment, TradingBias};
@@ -36,6 +46,186 @@ struct SendResponse {
     error: Option<String>,
 }
 
+/// A notification that failed to send and is queued for retry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FailedNotification {
+    /// Unique ID for this notification
+    pub id: String,
+    /// Message content
+    pub message: String,
+    /// Channel type (telegram, etc.)
+    pub channel_type: String,
+    /// Channel ID (chat ID, etc.)
+    pub channel_id: String,
+    /// Original timestamp when signal was generated
+    pub created_at: DateTime<Utc>,
+    /// Number of retry attempts
+    pub retry_count: u32,
+    /// Last retry attempt timestamp
+    pub last_retry_at: Option<DateTime<Utc>>,
+    /// Last error message
+    pub last_error: Option<String>,
+    /// Signal ID if this is a trading signal notification
+    pub signal_id: Option<String>,
+}
+
+impl FailedNotification {
+    /// Create a new failed notification entry
+    pub fn new(
+        message: String,
+        channel_type: String,
+        channel_id: String,
+        signal_id: Option<String>,
+    ) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            message,
+            channel_type,
+            channel_id,
+            created_at: Utc::now(),
+            retry_count: 0,
+            last_retry_at: None,
+            last_error: None,
+            signal_id,
+        }
+    }
+
+    /// Check if this notification should be retried
+    pub fn should_retry(&self, max_retries: u32) -> bool {
+        self.retry_count < max_retries
+    }
+
+    /// Check if this notification has expired (older than 1 hour)
+    pub fn is_expired(&self) -> bool {
+        let age = Utc::now().signed_duration_since(self.created_at);
+        age.num_hours() >= 1
+    }
+}
+
+/// Retry queue for failed notifications
+#[derive(Debug)]
+pub struct NotificationRetryQueue {
+    /// Queue of failed notifications
+    queue: Arc<RwLock<VecDeque<FailedNotification>>>,
+    /// Path to persist queue to disk
+    persist_path: Option<PathBuf>,
+    /// Maximum queue size
+    max_size: usize,
+}
+
+impl NotificationRetryQueue {
+    /// Create a new retry queue
+    pub fn new(persist_path: Option<PathBuf>, max_size: usize) -> Self {
+        let queue = Self {
+            queue: Arc::new(RwLock::new(VecDeque::new())),
+            persist_path,
+            max_size,
+        };
+
+        // Try to load persisted queue
+        if let Some(path) = &queue.persist_path {
+            if path.exists() {
+                if let Ok(data) = std::fs::read_to_string(path) {
+                    if let Ok(items) = serde_json::from_str::<Vec<FailedNotification>>(&data) {
+                        let mut q = queue.queue.blocking_write();
+                        for item in items {
+                            if !item.is_expired() {
+                                q.push_back(item);
+                            }
+                        }
+                        tracing::info!(
+                            loaded = q.len(),
+                            path = %path.display(),
+                            "Loaded persisted notification queue"
+                        );
+                    }
+                }
+            }
+        }
+
+        queue
+    }
+
+    /// Add a failed notification to the queue
+    pub async fn push(&self, notification: FailedNotification) {
+        let mut queue = self.queue.write().await;
+
+        // Remove oldest if at capacity
+        if queue.len() >= self.max_size {
+            queue.pop_front();
+        }
+
+        queue.push_back(notification);
+        tracing::debug!(queue_size = queue.len(), "Added notification to retry queue");
+
+        // Persist to disk
+        self.persist_async(&queue).await;
+    }
+
+    /// Get the next notification to retry
+    pub async fn pop(&self) -> Option<FailedNotification> {
+        let mut queue = self.queue.write().await;
+        let notification = queue.pop_front();
+
+        if notification.is_some() {
+            self.persist_async(&queue).await;
+        }
+
+        notification
+    }
+
+    /// Re-queue a notification after failed retry
+    pub async fn requeue(&self, mut notification: FailedNotification, error: String) {
+        notification.retry_count += 1;
+        notification.last_retry_at = Some(Utc::now());
+        notification.last_error = Some(error);
+
+        let mut queue = self.queue.write().await;
+        queue.push_back(notification);
+
+        self.persist_async(&queue).await;
+    }
+
+    /// Get queue size
+    pub async fn len(&self) -> usize {
+        self.queue.read().await.len()
+    }
+
+    /// Check if queue is empty
+    pub async fn is_empty(&self) -> bool {
+        self.queue.read().await.is_empty()
+    }
+
+    /// Persist queue to disk
+    async fn persist_async(&self, queue: &VecDeque<FailedNotification>) {
+        if let Some(path) = &self.persist_path {
+            let items: Vec<_> = queue.iter().collect();
+            if let Ok(data) = serde_json::to_string(&items) {
+                if let Err(e) = tokio::fs::write(path, data).await {
+                    tracing::warn!(error = %e, "Failed to persist notification queue");
+                }
+            }
+        }
+    }
+
+    /// Remove expired notifications
+    pub async fn cleanup(&self) {
+        let mut queue = self.queue.write().await;
+        let before = queue.len();
+        queue.retain(|n| !n.is_expired());
+        let after = queue.len();
+
+        if before != after {
+            tracing::info!(
+                removed = before - after,
+                remaining = after,
+                "Cleaned up expired notifications"
+            );
+            self.persist_async(&queue).await;
+        }
+    }
+}
+
 /// Notification client for sending trading signals
 pub struct NotificationClient {
     enabled: bool,
@@ -47,6 +237,10 @@ pub struct NotificationClient {
     notify_orders: bool,
     notify_positions: bool,
     client: reqwest::Client,
+    /// Retry queue for failed notifications
+    retry_queue: Arc<NotificationRetryQueue>,
+    /// Maximum retries for queued notifications
+    max_queue_retries: u32,
 }
 
 impl NotificationClient {
@@ -98,6 +292,11 @@ impl NotificationClient {
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
+        // Initialize retry queue with persistence path
+        let persist_path = dirs::data_local_dir()
+            .map(|p| p.join("codecoder").join("notification_queue.json"));
+        let retry_queue = Arc::new(NotificationRetryQueue::new(persist_path, 100));
+
         Self {
             enabled,
             channels_endpoint,
@@ -108,6 +307,8 @@ impl NotificationClient {
             notify_orders,
             notify_positions,
             client,
+            retry_queue,
+            max_queue_retries: 10, // Retry up to 10 times over ~1 hour
         }
     }
 
@@ -139,7 +340,7 @@ impl NotificationClient {
         }
 
         let message = signal.to_telegram_message();
-        self.send_message(&message).await
+        self.send_message_with_signal_id(&message, Some(signal.id.clone())).await
     }
 
     /// Send an enhanced trading signal notification with execution recommendations
@@ -173,7 +374,7 @@ impl NotificationClient {
             &urgency,
         );
 
-        self.send_message(&message).await
+        self.send_message_with_signal_id(&message, Some(signal.id.clone())).await
     }
 
     /// Generate execution recommendation based on signal and macro context
@@ -330,6 +531,15 @@ impl NotificationClient {
 
     /// Send a custom message
     pub async fn send_message(&self, message: &str) -> Result<()> {
+        self.send_message_with_signal_id(message, None).await
+    }
+
+    /// Send a message with optional signal ID for retry tracking
+    pub async fn send_message_with_signal_id(
+        &self,
+        message: &str,
+        signal_id: Option<String>,
+    ) -> Result<()> {
         if !self.is_enabled() {
             return Ok(());
         }
@@ -370,7 +580,114 @@ impl NotificationClient {
             }
         }
 
+        // All immediate retries failed, add to persistent retry queue
+        let failed = FailedNotification::new(
+            message.to_string(),
+            self.channel_type.clone(),
+            self.channel_id.clone(),
+            signal_id,
+        );
+
+        tracing::warn!(
+            notification_id = %failed.id,
+            "All immediate retries failed, queuing notification for background retry"
+        );
+
+        self.retry_queue.push(failed).await;
+
         Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Unknown error")))
+    }
+
+    /// Process a single notification from the retry queue
+    ///
+    /// Returns true if queue is empty or notification was successfully sent/expired
+    pub async fn process_retry_queue(&self) -> bool {
+        if !self.is_enabled() {
+            return true;
+        }
+
+        let notification = match self.retry_queue.pop().await {
+            Some(n) => n,
+            None => return true, // Queue is empty
+        };
+
+        // Skip expired notifications
+        if notification.is_expired() {
+            tracing::info!(
+                notification_id = %notification.id,
+                signal_id = ?notification.signal_id,
+                "Notification expired, removing from queue"
+            );
+            return false;
+        }
+
+        // Skip if max retries reached
+        if !notification.should_retry(self.max_queue_retries) {
+            tracing::warn!(
+                notification_id = %notification.id,
+                retry_count = notification.retry_count,
+                "Max retries reached, dropping notification"
+            );
+            return false;
+        }
+
+        // Try to send
+        let url = format!("{}/api/v1/send", self.channels_endpoint);
+        let request = SendRequest {
+            channel_type: notification.channel_type.clone(),
+            channel_id: notification.channel_id.clone(),
+            content: SendContent::Markdown { text: notification.message.clone() },
+        };
+
+        match self.try_send(&url, &request).await {
+            Ok(()) => {
+                tracing::info!(
+                    notification_id = %notification.id,
+                    signal_id = ?notification.signal_id,
+                    retry_count = notification.retry_count,
+                    "Queued notification sent successfully"
+                );
+                false
+            }
+            Err(e) => {
+                // Requeue for later retry
+                self.retry_queue.requeue(notification, e.to_string()).await;
+                false
+            }
+        }
+    }
+
+    /// Start background retry task
+    ///
+    /// Processes the retry queue every 5 minutes
+    pub async fn start_retry_task(self: Arc<Self>) {
+        tracing::info!("Starting notification retry background task");
+
+        loop {
+            // Process up to 10 notifications per cycle
+            for _ in 0..10 {
+                if self.process_retry_queue().await {
+                    break; // Queue is empty
+                }
+            }
+
+            // Cleanup expired notifications
+            self.retry_queue.cleanup().await;
+
+            // Log queue status
+            let queue_size = self.retry_queue.len().await;
+            if queue_size > 0 {
+                tracing::debug!(queue_size, "Retry queue status");
+            }
+
+            // Sleep for 5 minutes
+            tokio::time::sleep(Duration::from_secs(300)).await;
+        }
+    }
+
+    /// Get retry queue statistics
+    pub async fn queue_stats(&self) -> (usize, bool) {
+        (self.retry_queue.len().await, self.retry_queue.is_empty().await)
     }
 
     /// Try to send a single request

@@ -204,6 +204,12 @@ impl TradingService {
             }
         });
 
+        // Start the notification retry background task
+        let notification_client = Arc::clone(&self.state.notification);
+        tokio::spawn(async move {
+            notification_client.start_retry_task().await;
+        });
+
         // Start HTTP server
         let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
         tracing::info!(address = %addr, "Starting HTTP server");

@@ -557,7 +557,7 @@ async fn main() -> Result<()> {
                 info!("Starting MCP server in stdio mode");
                 server.serve_stdio().await
             } else {
-                // HTTP mode - use the gateway port
+                // HTTP mode - use the gateway port from zero-cli config
                 let port = if config.mcp.server_api_key.is_some() { config.gateway.port } else { 8081 };
 
                 info!("Starting MCP server on http://127.0.0.1:{port}/mcp");

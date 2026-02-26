@@ -24,6 +24,14 @@ pub struct ReportGeneratorConfig {
     pub monthly_enabled: bool,
     /// Monthly report cron expression (default: "0 9 1 * *" = 1st day 9 AM)
     pub monthly_cron: String,
+    /// Enable daily morning reports (pre-market)
+    pub daily_morning_enabled: bool,
+    /// Daily morning report cron expression (default: "0 9 * * *" = 9 AM daily)
+    pub daily_morning_cron: String,
+    /// Enable daily afternoon reports (post-market)
+    pub daily_afternoon_enabled: bool,
+    /// Daily afternoon report cron expression (default: "0 16 * * *" = 4 PM daily)
+    pub daily_afternoon_cron: String,
 }
 
 impl Default for ReportGeneratorConfig {
@@ -33,6 +41,10 @@ impl Default for ReportGeneratorConfig {
             weekly_cron: "0 9 * * 1".to_string(),
             monthly_enabled: true,
             monthly_cron: "0 9 1 * *".to_string(),
+            daily_morning_enabled: true,
+            daily_morning_cron: "0 9 * * *".to_string(),
+            daily_afternoon_enabled: true,
+            daily_afternoon_cron: "0 16 * * *".to_string(),
         }
     }
 }
@@ -41,6 +53,8 @@ impl Default for ReportGeneratorConfig {
 struct ReportState {
     last_weekly: Option<DateTime<Utc>>,
     last_monthly: Option<DateTime<Utc>>,
+    last_daily_morning: Option<DateTime<Utc>>,
+    last_daily_afternoon: Option<DateTime<Utc>>,
 }
 
 /// Macro report generator with scheduling support.
@@ -69,6 +83,8 @@ impl MacroReportGenerator {
             state: RwLock::new(ReportState {
                 last_weekly: None,
                 last_monthly: None,
+                last_daily_morning: None,
+                last_daily_afternoon: None,
             }),
         }
     }
@@ -81,6 +97,8 @@ impl MacroReportGenerator {
         info!(
             weekly_enabled = self.config.weekly_enabled,
             monthly_enabled = self.config.monthly_enabled,
+            daily_morning_enabled = self.config.daily_morning_enabled,
+            daily_afternoon_enabled = self.config.daily_afternoon_enabled,
             "Starting macro report scheduler"
         );
 
@@ -108,6 +126,20 @@ impl MacroReportGenerator {
         if self.config.monthly_enabled && self.should_generate_monthly(&now).await {
             if let Err(e) = self.generate_and_send(ReportType::Monthly).await {
                 error!(error = %e, "Failed to generate monthly report");
+            }
+        }
+
+        // Check daily morning report (9 AM Beijing time, weekdays only)
+        if self.config.daily_morning_enabled && self.should_generate_daily_morning(&now).await {
+            if let Err(e) = self.generate_and_send(ReportType::DailyMorning).await {
+                error!(error = %e, "Failed to generate daily morning report");
+            }
+        }
+
+        // Check daily afternoon report (4 PM Beijing time, weekdays only)
+        if self.config.daily_afternoon_enabled && self.should_generate_daily_afternoon(&now).await {
+            if let Err(e) = self.generate_and_send(ReportType::DailyAfternoon).await {
+                error!(error = %e, "Failed to generate daily afternoon report");
             }
         }
     }
@@ -167,6 +199,70 @@ impl MacroReportGenerator {
         true
     }
 
+    /// Check if daily morning report should be generated.
+    ///
+    /// Daily morning reports are generated at 9:00 AM Beijing time on weekdays.
+    async fn should_generate_daily_morning(&self, now: &DateTime<Utc>) -> bool {
+        use chrono::{Datelike, Timelike};
+
+        // Convert to Beijing time (UTC+8)
+        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+
+        // Skip weekends (Saturday = 5, Sunday = 6 in chrono's Weekday)
+        let weekday = beijing.weekday();
+        if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+            return false;
+        }
+
+        // Check if it's 9:00-9:59 Beijing time
+        if beijing.hour() != 9 {
+            return false;
+        }
+
+        // Check if we already generated today
+        let state = self.state.read().await;
+        if let Some(last) = state.last_daily_morning {
+            // Don't generate if we already did today
+            if last.date_naive() == now.date_naive() {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Check if daily afternoon report should be generated.
+    ///
+    /// Daily afternoon reports are generated at 4:00 PM Beijing time on weekdays.
+    async fn should_generate_daily_afternoon(&self, now: &DateTime<Utc>) -> bool {
+        use chrono::{Datelike, Timelike};
+
+        // Convert to Beijing time (UTC+8)
+        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+
+        // Skip weekends
+        let weekday = beijing.weekday();
+        if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+            return false;
+        }
+
+        // Check if it's 16:00-16:59 Beijing time
+        if beijing.hour() != 16 {
+            return false;
+        }
+
+        // Check if we already generated today
+        let state = self.state.read().await;
+        if let Some(last) = state.last_daily_afternoon {
+            // Don't generate if we already did today
+            if last.date_naive() == now.date_naive() {
+                return false;
+            }
+        }
+
+        true
+    }
+
     /// Generate and send a report.
     async fn generate_and_send(&self, report_type: ReportType) -> Result<()> {
         info!(report_type = %report_type, "Generating macro report");
@@ -212,6 +308,12 @@ impl MacroReportGenerator {
             ReportType::Monthly => {
                 let prev_month = beijing - chrono::Duration::days(beijing.day() as i64);
                 format!("{}", prev_month.format("%Y年%m月"))
+            }
+            ReportType::DailyMorning => {
+                format!("{} 早间", beijing.format("%Y-%m-%d"))
+            }
+            ReportType::DailyAfternoon => {
+                format!("{} 收盘", beijing.format("%Y-%m-%d"))
             }
             ReportType::AdHoc => beijing.format("%Y-%m-%d %H:%M").to_string(),
         }
@@ -284,6 +386,8 @@ impl MacroReportGenerator {
         match report_type {
             ReportType::Weekly => state.last_weekly = Some(now),
             ReportType::Monthly => state.last_monthly = Some(now),
+            ReportType::DailyMorning => state.last_daily_morning = Some(now),
+            ReportType::DailyAfternoon => state.last_daily_afternoon = Some(now),
             ReportType::AdHoc => {}
         }
     }
@@ -333,14 +437,20 @@ mod tests {
         let config = ReportGeneratorConfig::default();
         assert!(config.weekly_enabled);
         assert!(config.monthly_enabled);
+        assert!(config.daily_morning_enabled);
+        assert!(config.daily_afternoon_enabled);
         assert_eq!(config.weekly_cron, "0 9 * * 1");
         assert_eq!(config.monthly_cron, "0 9 1 * *");
+        assert_eq!(config.daily_morning_cron, "0 9 * * *");
+        assert_eq!(config.daily_afternoon_cron, "0 16 * * *");
     }
 
     #[test]
     fn test_report_type_display() {
         assert_eq!(ReportType::Weekly.to_string(), "周度");
         assert_eq!(ReportType::Monthly.to_string(), "月度");
+        assert_eq!(ReportType::DailyMorning.to_string(), "早间");
+        assert_eq!(ReportType::DailyAfternoon.to_string(), "午后");
         assert_eq!(ReportType::AdHoc.to_string(), "即时");
     }
 
@@ -383,6 +493,12 @@ mod tests {
 
         let adhoc = generator.get_period_description(ReportType::AdHoc);
         assert!(adhoc.contains(":"));
+
+        let daily_morning = generator.get_period_description(ReportType::DailyMorning);
+        assert!(daily_morning.contains("早间"));
+
+        let daily_afternoon = generator.get_period_description(ReportType::DailyAfternoon);
+        assert!(daily_afternoon.contains("收盘"));
     }
 
     #[test]

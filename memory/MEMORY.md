@@ -262,6 +262,24 @@
   - 系统隐藏 (3): compaction, title, summary
 - **结论**: 功能完成度确认 90%+，所有核心能力就绪
 
+### 2026-02-26: Zero Trading 信号生成模式确立
+
+- **决策**: 移除 Broker 实盘交易模块，定位为"信号生成器 + IM 推送"
+- **理由**: 风控、合规、灵活性考量；实盘交易涉及复杂的监管要求
+- **影响**: 删除 broker/futu.rs、broker/mod.rs，保留 Paper Trading 用于策略验证
+- **后续**: 用户可根据信号自行在券商平台执行交易
+
+### 2026-02-26: 数据源架构升级
+
+- **决策**: 采用 iTick (主) + Lixin (备用) 双数据源架构
+- **理由**: 替代不稳定的 Ashare/Tushare 数据源，提高数据可靠性
+- **技术细节**:
+  - 新增 `itick.rs` - iTick API 集成（实时行情 + 历史数据）
+  - 新增 `rate_limiter.rs` - 令牌桶限流算法
+  - 新增 `lixin.rs` - 备用数据源
+  - 删除 `ashare.rs`、`tushare.rs`
+- **配置变更**: 数据源配置移至 `secrets.external.itick` 和 `secrets.external.lixin`
+
 ## 经验教训
 
 ### 代码清理

@@ -160,6 +160,18 @@ fn create_report_config(config: &Config) -> ReportGeneratorConfig {
         monthly_cron: macro_agent
             .and_then(|m| m.monthly_report_cron.clone())
             .unwrap_or_else(|| "0 9 1 * *".to_string()),
+        daily_morning_enabled: macro_agent
+            .map(|m| m.daily_morning_enabled)
+            .unwrap_or(true),
+        daily_morning_cron: macro_agent
+            .and_then(|m| m.daily_morning_cron.clone())
+            .unwrap_or_else(|| "0 9 * * *".to_string()),
+        daily_afternoon_enabled: macro_agent
+            .map(|m| m.daily_afternoon_enabled)
+            .unwrap_or(true),
+        daily_afternoon_cron: macro_agent
+            .and_then(|m| m.daily_afternoon_cron.clone())
+            .unwrap_or_else(|| "0 16 * * *".to_string()),
     }
 }
 
@@ -197,7 +209,11 @@ mod tests {
 
         assert!(report_config.weekly_enabled);
         assert!(report_config.monthly_enabled);
+        assert!(report_config.daily_morning_enabled);
+        assert!(report_config.daily_afternoon_enabled);
         assert_eq!(report_config.weekly_cron, "0 9 * * 1");
+        assert_eq!(report_config.daily_morning_cron, "0 9 * * *");
+        assert_eq!(report_config.daily_afternoon_cron, "0 16 * * *");
     }
 
     #[test]

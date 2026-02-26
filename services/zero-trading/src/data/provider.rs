@@ -140,11 +140,11 @@ impl ProviderError {
 
 /// Trait for market data providers.
 ///
-/// All data sources (Ashare, Lixin, etc.) implement this trait
+/// All data sources (iTick, Lixin, etc.) implement this trait
 /// to provide a unified interface for the data router.
 #[async_trait]
 pub trait DataProvider: Send + Sync {
-    /// Get the provider name (e.g., "ashare", "lixin")
+    /// Get the provider name (e.g., "itick", "lixin")
     fn name(&self) -> &'static str;
 
     /// Get the provider priority (lower = higher priority)

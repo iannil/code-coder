@@ -9,7 +9,7 @@ use axum::{
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use tower::ServiceExt;
-use zero_common::config::{Config, GatewayConfig};
+use zero_common::config::Config;
 use zero_gateway::{
     routes::{build_all_routes_with_db, ErrorResponse, ListUsersResponse, LoginResponse, UserResponse},
     sandbox::{Sandbox, SandboxConfig},
@@ -20,23 +20,24 @@ fn create_test_app(temp_dir: &TempDir) -> axum::Router {
     // Set up environment for the test
     std::env::set_var("JWT_SECRET", "test-secret-key-for-integration-tests!");
 
-    // Create default gateway config and override public fields
-    let mut gateway = GatewayConfig::default();
-    gateway.port = 4430;
-    gateway.host = "127.0.0.1".to_string();
-    gateway.auth_mode = "jwt".to_string(); // Use JWT mode for tests
-    gateway.require_pairing = false;
-    gateway.paired_tokens = vec![];
-    gateway.allow_public_bind = false;
-    gateway.jwt_secret = Some("test-secret-key-for-integration-tests!".to_string());
-    gateway.token_expiry_secs = 3600;
-    gateway.rate_limiting = false;
-    gateway.rate_limit_rpm = 60;
+    // Create default config and override fields
+    let mut config = Config::default();
 
-    let config = Config {
-        gateway,
-        ..Default::default()
-    };
+    // Set port via services config
+    config.services.gateway.port = Some(4430);
+    config.network.bind = "127.0.0.1".to_string();
+
+    // Auth settings via top-level auth config
+    config.auth.mode = "jwt".to_string();
+    config.auth.jwt_secret = Some("test-secret-key-for-integration-tests!".to_string());
+    config.auth.token_expiry_secs = 3600;
+
+    // Gateway-specific settings
+    config.gateway.require_pairing = false;
+    config.gateway.paired_tokens = vec![];
+    config.gateway.allow_public_bind = false;
+    config.gateway.rate_limiting = false;
+    config.gateway.rate_limit_rpm = 60;
 
     // Use a unique database path for each test
     let db_path = temp_dir.path().join("test-gateway.db");

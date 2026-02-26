@@ -168,6 +168,10 @@ pub enum ReportType {
     Weekly,
     /// Monthly macro report
     Monthly,
+    /// Daily morning report (pre-market, 9:00 Beijing time)
+    DailyMorning,
+    /// Daily afternoon report (post-market, 16:00 Beijing time)
+    DailyAfternoon,
     /// Ad-hoc report
     AdHoc,
 }
@@ -177,6 +181,8 @@ impl std::fmt::Display for ReportType {
         match self {
             ReportType::Weekly => write!(f, "周度"),
             ReportType::Monthly => write!(f, "月度"),
+            ReportType::DailyMorning => write!(f, "早间"),
+            ReportType::DailyAfternoon => write!(f, "午后"),
             ReportType::AdHoc => write!(f, "即时"),
         }
     }

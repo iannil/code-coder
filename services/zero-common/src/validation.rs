@@ -50,7 +50,7 @@ impl Config {
         }
 
         // Validate channels config
-        if let Err(e) = self.channels.validate() {
+        if let Err(e) = self.channels.validate(self) {
             errors.push(e);
         }
 
@@ -74,7 +74,7 @@ impl Config {
             errors.push(e);
         }
 
-        // Check for port conflicts
+        // Check for port conflicts using accessor methods
         if let Err(e) = self.check_port_conflicts() {
             errors.push(e);
         }
@@ -89,12 +89,15 @@ impl Config {
     }
 
     /// Check for port conflicts between services.
+    ///
+    /// Uses the config accessor methods (gateway_port(), channels_port(), etc.)
+    /// which read from services.*.port with defaults.
     fn check_port_conflicts(&self) -> ValidationResult<()> {
         let mut ports: Vec<(u16, &str)> = vec![
-            (self.gateway.port, "gateway.port"),
-            (self.channels.port, "channels.port"),
-            (self.workflow.port, "workflow.port"),
-            (self.codecoder.port, "codecoder.port"),
+            (self.gateway_port(), "services.gateway.port"),
+            (self.channels_port(), "services.channels.port"),
+            (self.workflow_port(), "services.workflow.port"),
+            (self.codecoder_port(), "services.codecoder.port"),
         ];
 
         // Add workflow webhook port if specified
@@ -103,8 +106,8 @@ impl Config {
         }
 
         // Add trading port if trading config exists
-        if let Some(ref trading) = self.trading {
-            ports.push((trading.port, "trading.port"));
+        if self.trading.is_some() {
+            ports.push((self.trading_port(), "services.trading.port"));
         }
 
         // Check for duplicates
@@ -134,29 +137,6 @@ impl Config {
 
 impl Validate for GatewayConfig {
     fn validate(&self) -> ValidationResult<()> {
-        // Port validation
-        if self.port == 0 {
-            return Err(ValidationError::InvalidPort {
-                port: self.port,
-                field: "gateway.port".into(),
-            });
-        }
-
-        // Host validation
-        if self.host.is_empty() {
-            return Err(ValidationError::MissingField {
-                field: "gateway.host".into(),
-            });
-        }
-
-        // Token expiry validation
-        if self.token_expiry_secs == 0 {
-            return Err(ValidationError::InvalidValue {
-                field: "gateway.token_expiry_secs".into(),
-                reason: "must be greater than 0".into(),
-            });
-        }
-
         // Rate limit validation
         if self.rate_limiting && self.rate_limit_rpm == 0 {
             return Err(ValidationError::InvalidValue {
@@ -169,68 +149,54 @@ impl Validate for GatewayConfig {
     }
 }
 
-impl Validate for ChannelsConfig {
-    fn validate(&self) -> ValidationResult<()> {
-        // Port validation
-        if self.port == 0 {
-            return Err(ValidationError::InvalidPort {
-                port: self.port,
-                field: "channels.port".into(),
-            });
-        }
-
-        // Host validation
-        if self.host.is_empty() {
-            return Err(ValidationError::MissingField {
-                field: "channels.host".into(),
-            });
-        }
-
-        // Validate Telegram if enabled
+impl ChannelsConfig {
+    /// Validate with access to parent config for credential checks.
+    pub fn validate(&self, config: &Config) -> ValidationResult<()> {
+        // Validate Telegram if enabled - check token in secrets
         if let Some(ref telegram) = self.telegram {
-            if telegram.enabled && telegram.bot_token.as_ref().map_or(true, |t| t.is_empty()) {
+            if telegram.enabled && config.telegram_bot_token().is_none() {
                 return Err(ValidationError::MissingField {
-                    field: "channels.telegram.bot_token".into(),
+                    field: "secrets.channels.telegram_bot_token".into(),
                 });
             }
         }
 
-        // Validate Discord if enabled
+        // Validate Discord if enabled - check token in secrets
         if let Some(ref discord) = self.discord {
-            if discord.enabled && discord.bot_token.is_empty() {
+            if discord.enabled && config.discord_bot_token().is_none() {
                 return Err(ValidationError::MissingField {
-                    field: "channels.discord.bot_token".into(),
+                    field: "secrets.channels.discord_bot_token".into(),
                 });
             }
         }
 
-        // Validate Slack if enabled
+        // Validate Slack if enabled - check tokens in secrets
         if let Some(ref slack) = self.slack {
             if slack.enabled {
-                if slack.bot_token.is_empty() {
+                if config.slack_bot_token().is_none() {
                     return Err(ValidationError::MissingField {
-                        field: "channels.slack.bot_token".into(),
+                        field: "secrets.channels.slack_bot_token".into(),
                     });
                 }
-                if slack.app_token.is_empty() {
+                if config.slack_app_token().is_none() {
                     return Err(ValidationError::MissingField {
-                        field: "channels.slack.app_token".into(),
+                        field: "secrets.channels.slack_app_token".into(),
                     });
                 }
             }
         }
 
-        // Validate Feishu if enabled
+        // Validate Feishu if enabled - check credentials in secrets
         if let Some(ref feishu) = self.feishu {
             if feishu.enabled {
-                if feishu.app_id.is_empty() {
+                if config.feishu_app_id().is_none() {
                     return Err(ValidationError::MissingField {
-                        field: "channels.feishu.app_id".into(),
+                        field: "secrets.channels.feishu_app_id".into(),
                     });
                 }
-                if feishu.app_secret.is_empty() {
+                if config.feishu_app_secret().is_none() {
                     return Err(ValidationError::MissingField {
-                        field: "channels.feishu.app_secret".into(),
+                        field: "secrets.channels.feishu_app_secret".into(),
                     });
                 }
             }
@@ -321,24 +287,10 @@ impl Validate for WorkflowConfig {
 
 impl Validate for CodeCoderConfig {
     fn validate(&self) -> ValidationResult<()> {
-        // Validate host is not empty when enabled
-        if self.enabled && self.host.is_empty() {
-            return Err(ValidationError::MissingField {
-                field: "codecoder.host".into(),
-            });
-        }
-
-        if self.timeout_secs == 0 {
+        // Validate timeout is positive when enabled
+        if self.enabled && self.timeout_secs == 0 {
             return Err(ValidationError::InvalidValue {
                 field: "codecoder.timeout_secs".into(),
-                reason: "must be greater than 0".into(),
-            });
-        }
-
-        // Validate port is valid
-        if self.enabled && self.port == 0 {
-            return Err(ValidationError::InvalidValue {
-                field: "codecoder.port".into(),
                 reason: "must be greater than 0".into(),
             });
         }
@@ -416,13 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_gateway_port() {
-        let mut config = Config::default();
-        config.gateway.port = 0;
-        assert!(config.validate().is_err());
-    }
-
-    #[test]
     fn test_invalid_log_level() {
         let mut config = Config::default();
         config.observability.log_level = "invalid".into();
@@ -436,8 +381,9 @@ mod tests {
     #[test]
     fn test_port_conflict() {
         let mut config = Config::default();
-        config.gateway.port = 4402;
-        config.channels.port = 4402;
+        // Set two services to the same port
+        config.services.gateway.port = Some(4402);
+        config.services.channels.port = Some(4402);
         let result = config.validate();
         assert!(result.is_err());
         if let Err(ValidationError::Conflict { reason }) = result {
@@ -450,11 +396,11 @@ mod tests {
         let mut config = Config::default();
         config.channels.telegram = Some(TelegramConfig {
             enabled: true,
-            bot_token: Some("".into()),
             allowed_users: vec![],
             allowed_chats: vec![],
             trading_chat_id: None,
         });
+        // No token in secrets
         let result = config.validate();
         assert!(result.is_err());
     }
@@ -469,17 +415,9 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_codecoder_host() {
+    fn test_codecoder_timeout_validation() {
         let mut config = Config::default();
-        config.codecoder.host = "".into();
-        let result = config.validate();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_invalid_codecoder_port() {
-        let mut config = Config::default();
-        config.codecoder.port = 0;
+        config.codecoder.timeout_secs = 0;
         let result = config.validate();
         assert!(result.is_err());
     }

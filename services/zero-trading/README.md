@@ -1,6 +1,8 @@
 # Zero Trading Service
 
-Automated trading service using PO3 (Power of 3) + SMT divergence strategy, adapted for A-shares T+1 rules.
+Trading signal generator using PO3 (Power of 3) + SMT divergence strategy, adapted for A-shares T+1 rules.
+
+**Design Philosophy**: This service generates trading signals and pushes them via IM channels. It does NOT execute trades directly. Users can use these signals to make their own trading decisions.
 
 ## Port
 
@@ -14,13 +16,13 @@ Automated trading service using PO3 (Power of 3) + SMT divergence strategy, adap
 │                           :4434                                      │
 ├─────────────────────────────────────────────────────────────────────┤
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
-│  │  Market Data    │  │  Strategy       │  │  Execution      │     │
-│  │  Aggregator     │  │  Engine         │  │  Engine         │     │
+│  │  Market Data    │  │  Strategy       │  │  Signal         │     │
+│  │  Aggregator     │  │  Engine         │  │  Generator      │     │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘     │
 │                                                                     │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
-│  │  Paper Trading  │  │  Backtest       │  │  Broker         │     │
-│  │  Verification   │  │  Engine         │  │  Integration    │     │
+│  │  Paper Trading  │  │  Backtest       │  │  IM             │     │
+│  │  Verification   │  │  Engine         │  │  Notification   │     │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -29,7 +31,10 @@ Automated trading service using PO3 (Power of 3) + SMT divergence strategy, adap
 
 ### Data (`src/data/`)
 - **mod.rs** - Core data types (Candle, Timeframe, SmtPair)
-- **tushare.rs** - Tushare Pro API adapter
+- **provider.rs** - DataProvider trait and router
+- **itick.rs** - iTick API adapter (primary data source)
+- **lixin.rs** - Lixin API adapter (backup data source)
+- **rate_limiter.rs** - Token bucket rate limiting
 - **cache.rs** - Data cache with TTL
 - **aggregator.rs** - Multi-timeframe data aggregation
 
@@ -44,10 +49,6 @@ Automated trading service using PO3 (Power of 3) + SMT divergence strategy, adap
 - **position.rs** - Position management
 - **order.rs** - Order types and status
 - **t1_risk.rs** - T+1 risk rules (next-day decision)
-
-### Broker (`src/broker/`)
-- **mod.rs** - Broker trait definition
-- **futu.rs** - Futu OpenAPI adapter (TCP to OpenD)
 
 ### Backtest (`src/backtest/`)
 - **mod.rs** - Module entry
@@ -98,12 +99,16 @@ Configured via `~/.codecoder/config.json`:
   "trading": {
     "host": "127.0.0.1",
     "port": 4434,
-    "paper_trading": true,
-    "tushare_token": "your_token",
-    "futu": {
-      "host": "127.0.0.1",
-      "port": 11111,
-      "real_trading": false
+    "paper_trading": true
+  },
+  "secrets": {
+    "external": {
+      "itick": {
+        "api_key": "your-itick-api-key"
+      },
+      "lixin": {
+        "api_key": "your-lixin-api-key"
+      }
     }
   }
 }

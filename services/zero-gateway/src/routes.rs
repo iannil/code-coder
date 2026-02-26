@@ -133,14 +133,15 @@ pub fn build_all_routes(config: &Config) -> Router {
 /// Build the complete router with all routes, using a custom database path.
 /// This is useful for testing with isolated databases.
 pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Router {
+    // Auth settings are now in config.auth
     let jwt_secret = config
-        .gateway
+        .auth
         .jwt_secret
         .clone()
         .or_else(|| std::env::var("JWT_SECRET").ok())
         .unwrap_or_else(|| "zero-gateway-default-secret-change-me!".to_string());
 
-    let auth_state = AuthState::new(&jwt_secret, config.gateway.token_expiry_secs);
+    let auth_state = AuthState::new(&jwt_secret, config.auth.token_expiry_secs);
 
     // Initialize user store
     let db_path = db_path.unwrap_or_else(get_db_path);
@@ -268,16 +269,9 @@ pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Ro
 
     // Merge all routes
     // Create provider registry for parallel inference
-    let anthropic_key = config
-        .api_keys
-        .anthropic
-        .clone()
-        .or_else(|| std::env::var("ANTHROPIC_API_KEY").ok());
-    let openai_key = config
-        .api_keys
-        .openai
-        .clone()
-        .or_else(|| std::env::var("OPENAI_API_KEY").ok());
+    // Use config.get_api_key() which reads from secrets.llm with env fallback
+    let anthropic_key = config.get_api_key("anthropic");
+    let openai_key = config.get_api_key("openai");
 
     let registry = create_registry(anthropic_key.as_deref(), openai_key.as_deref());
     let parallel_state = ParallelState::new(registry);
@@ -345,7 +339,7 @@ pub fn proxy_routes(config: &Config) -> Router {
     let proxy_state = ProxyState::new(&config.codecoder_endpoint());
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "zero-gateway-default-secret-change-me!".to_string());
-    let auth_state = AuthState::new(jwt_secret, config.gateway.token_expiry_secs);
+    let auth_state = AuthState::new(jwt_secret, config.auth.token_expiry_secs);
 
     Router::new()
         .route("/api/v1/proxy/*path", any(proxy_request))

@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn test_create_task_context() {
-        let ctx = TaskContext::new("user123", "telegram");
+        let ctx = TaskContext::new("user123", "channel456", "telegram");
         assert_eq!(ctx.user_id, "user123");
         assert_eq!(ctx.platform, "telegram");
         assert_eq!(ctx.source, "remote");

@@ -71,8 +71,8 @@ pub fn build_router(config: &Config) -> Router {
     // Build base routes
     let router = routes::build_all_routes(config);
 
-    // Add pairing routes if auth_mode includes pairing
-    let router = if config.gateway.auth_mode == "pairing" || config.gateway.auth_mode == "both" {
+    // Add pairing routes if auth.mode includes pairing
+    let router = if config.auth.mode == "pairing" || config.auth.mode == "both" {
         let pairing_state = PairingState::new(
             config.gateway.require_pairing,
             &config.gateway.paired_tokens,

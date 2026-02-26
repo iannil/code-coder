@@ -10,16 +10,20 @@
 //!
 //! # Rate Limits
 //! - Varies by subscription tier
+//! - Default: 100 requests/minute (conservative)
+//! - Proactive rate limiting enabled to avoid errors
 //! - Recommended as backup data source
 
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
 
 use super::provider::{DataCapabilities, DataProvider, ProviderError};
+use super::rate_limiter::{RateLimiter, SharedRateLimiter};
 use super::{Candle, Timeframe};
 
 // ============================================================================
@@ -34,6 +38,12 @@ const STOCK_DAILY_ENDPOINT: &str = "/a/stock/fs/daily-candlestick";
 
 /// Index daily candlestick endpoint
 const INDEX_DAILY_ENDPOINT: &str = "/a/index/fs/daily-candlestick";
+
+/// Default rate limit: 100 requests per minute (conservative)
+const DEFAULT_RATE_LIMIT_RPM: u32 = 100;
+
+/// Retry delay after rate limit error (seconds)
+const RATE_LIMIT_RETRY_SECS: u64 = 10;
 
 // ============================================================================
 // Symbol Mapping
@@ -79,6 +89,8 @@ fn is_index_symbol(symbol: &str) -> bool {
 ///
 /// Provides high-quality financial data through the Lixinger Open API.
 /// Requires a paid API token.
+///
+/// Rate limiting is applied proactively to avoid hitting API limits.
 pub struct LixinAdapter {
     /// API token
     token: String,
@@ -86,46 +98,65 @@ pub struct LixinAdapter {
     client: reqwest::Client,
     /// Priority level
     priority: u8,
+    /// Rate limiter for proactive throttling
+    rate_limiter: SharedRateLimiter,
 }
 
 impl LixinAdapter {
     /// Create a new Lixin adapter with token
     pub fn new(token: impl Into<String>) -> Self {
-        Self::with_priority(token, 2) // Default priority 2 (after Ashare)
+        Self::with_priority(token, 2) // Default priority 2 (after iTick)
     }
 
     /// Create with custom priority
     pub fn with_priority(token: impl Into<String>, priority: u8) -> Self {
+        Self::with_rate_limit(token, priority, DEFAULT_RATE_LIMIT_RPM)
+    }
+
+    /// Create with custom priority and rate limit
+    pub fn with_rate_limit(token: impl Into<String>, priority: u8, rate_limit_rpm: u32) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
+        let rate_limiter = Arc::new(RateLimiter::new("lixin", rate_limit_rpm));
+
         Self {
             token: token.into(),
             client,
             priority,
+            rate_limiter,
         }
     }
 
     /// Create from config
     pub fn from_config(config: &zero_common::config::Config) -> Option<Self> {
-        let trading = config.trading.as_ref()?;
-        let token = trading.lixin_token.as_ref()?;
+        let token = config.lixin_token()?;
 
         // Check if lixin is enabled in data_sources config
-        let priority = trading
-            .data_sources
+        let (priority, rate_limit_rpm) = config
+            .trading
             .as_ref()
+            .and_then(|t| t.data_sources.as_ref())
             .and_then(|ds| {
                 ds.sources
                     .iter()
                     .find(|s| s.provider == "lixin" && s.enabled)
-                    .map(|s| s.priority)
+                    .map(|s| {
+                        let rpm = s
+                            .config
+                            .as_ref()
+                            .and_then(|c| c.get("rate_limit_rpm"))
+                            .and_then(|v| v.as_u64())
+                            .map(|v| v as u32)
+                            .unwrap_or(DEFAULT_RATE_LIMIT_RPM);
+                        (s.priority, rpm)
+                    })
             })
-            .unwrap_or(2);
+            .unwrap_or((2, DEFAULT_RATE_LIMIT_RPM));
 
-        Some(Self::with_priority(token.clone(), priority))
+        Some(Self::with_rate_limit(token, priority, rate_limit_rpm))
     }
 
     /// Call the Lixinger API
@@ -135,6 +166,9 @@ impl LixinAdapter {
         request: &LixinRequest,
     ) -> Result<LixinResponse<T>, ProviderError> {
         let url = format!("{}{}", LIXIN_API_BASE, endpoint);
+
+        // Acquire rate limit token before making request
+        self.rate_limiter.acquire().await;
 
         debug!(url = %url, "Calling Lixinger API");
 
@@ -162,7 +196,7 @@ impl LixinAdapter {
 
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(ProviderError::RateLimited {
-                retry_after_secs: Some(60),
+                retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
             });
         }
 
@@ -187,7 +221,7 @@ impl LixinAdapter {
             }
             if msg.contains("频率") || msg.contains("限制") {
                 return Err(ProviderError::RateLimited {
-                    retry_after_secs: Some(60),
+                    retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
                 });
             }
 

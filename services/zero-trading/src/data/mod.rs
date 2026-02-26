@@ -4,15 +4,16 @@
 //! Supports multiple data providers with automatic failover.
 //!
 //! # Data Sources
-//! - **Ashare** (Primary): Free eastmoney API, no rate limits
-//! - **Lixin** (Backup): 理杏仁 API, requires token, high-quality data
+//! - **iTick** (Primary): REST API with minute-level data, 15 years history
+//! - **Lixin** (Backup): 理杏仁 API, requires token, high-quality daily data
 
 mod cache;
 mod aggregator;
 mod provider;
 mod health;
 mod router;
-mod ashare;
+mod rate_limiter;
+mod itick;
 mod lixin;
 
 pub use cache::DataCache;
@@ -20,7 +21,8 @@ pub use aggregator::MarketDataAggregator;
 pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo};
 pub use health::{HealthMonitor, HealthMonitorConfig, ProviderHealth};
 pub use router::{DataProviderRouter, RouterConfig};
-pub use ashare::AshareAdapter;
+pub use rate_limiter::{RateLimiter, SharedRateLimiter, shared_limiter};
+pub use itick::ITickAdapter;
 pub use lixin::LixinAdapter;
 
 use chrono::{DateTime, NaiveDate, Utc};
@@ -310,6 +312,38 @@ pub fn default_smt_pairs() -> Vec<SmtPair> {
             description: Some("金融板块领先指标".to_string()),
         },
     ]
+}
+
+// ============================================================================
+// Index Overview for Daily Reports
+// ============================================================================
+
+/// Overview of multiple indices for daily macro reports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexOverview {
+    /// Index data for each tracked symbol
+    pub indices: Vec<IndexData>,
+    /// Timestamp when data was fetched
+    pub as_of: DateTime<Utc>,
+}
+
+/// Single index data point for daily reports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexData {
+    /// Index symbol (e.g., "000300.SH")
+    pub symbol: String,
+    /// Index name (e.g., "沪深300")
+    pub name: String,
+    /// Current/latest close price
+    pub close: f64,
+    /// Daily change percentage
+    pub change_pct: f64,
+    /// Trading volume
+    pub volume: f64,
+    /// 5-day moving average (optional)
+    pub ma5: Option<f64>,
+    /// 20-day moving average (optional)
+    pub ma20: Option<f64>,
 }
 
 // ============================================================================

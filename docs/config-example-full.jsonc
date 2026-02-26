@@ -59,8 +59,8 @@
       "feishu_app_secret": "xxx"
     },
     "external": {
-      "tushare": "xxx",
-      "lixin": "xxx",
+      "itick": "xxx",                       // iTick API key for A-share market data (replaces deprecated tushare)
+      "lixin": "xxx",                       // Lixin (理杏仁) API token
       "cloudflare_tunnel": "eyJxxx",
       "ngrok_auth": "xxx",
       "elevenlabs": "xxx"
@@ -68,19 +68,44 @@
   },
 
   // Tunnel configuration for external access
+  // Each provider requires its specific object structure (null is not valid)
   "tunnel": {
-    "provider": "cloudflare",      // "none" | "cloudflare" | "tailscale" | "ngrok"
-    "cloudflare_token": "eyJxxx"   // Or use secrets.external.cloudflare_tunnel
+    "provider": "cloudflare",             // "none" | "cloudflare" | "tailscale" | "ngrok" | "custom"
+    // Only configure the provider you're using; omit others
+    "cloudflare": {                       // Cloudflare Tunnel (Zero Trust)
+      "token": "eyJxxx"                   // Token from Cloudflare Zero Trust dashboard
+    },
+    "tailscale": {                        // Tailscale Tunnel
+      "funnel": false,                    // true = public internet, false = tailnet only
+      "hostname": "myhost"                // Optional hostname override
+    },
+    "ngrok": {                            // ngrok Tunnel
+      "auth_token": "xxx",                // ngrok auth token
+      "domain": "example.ngrok.io"        // Optional custom domain
+    },
+    "custom": {                           // Custom tunnel command
+      "start_command": "bore local {port} --to bore.pub",  // Use {port} and {host} placeholders
+      "health_url": "https://example.com/health",          // Optional health check URL
+      "url_pattern": "listening on (https://[^ ]+)"        // Optional regex to extract public URL
+    }
   },
 
-  // Simplified LLM configuration
+  // Simplified LLM configuration (consolidated from old providers + reliability)
   "llm": {
     "default": "anthropic/claude-sonnet-4-20250514",
+    "retries": 2,                   // Number of retries before fallback
+    "backoff_ms": 1000,             // Backoff between retries
+    "fallbacks": [],                // Fallback provider chain
     "providers": {
       "deepseek": {
         "base_url": "https://api.deepseek.com",
         "models": ["deepseek-chat", "deepseek-coder"]
       }
+    },
+    "ollama": {
+      "base_url": "http://localhost:11434",
+      "default_model": "llama3",
+      "timeout_secs": 300
     }
   },
 
@@ -95,7 +120,9 @@
   "observability": {
     "log_level": "info",           // trace | debug | info | warn | error
     "log_format": "pretty",        // json | pretty
-    "tracing": true
+    "tracing": true,               // Enable distributed tracing
+    "show_trace_id": false,        // Include trace_id in log output (useful for debugging)
+    "excluded_targets": []         // Log targets to exclude (e.g., ["hyper", "tower"])
   },
 
   // Channel enable configuration
@@ -155,10 +182,21 @@
       "enabled": true,
       "timeout_secs": 30,
       "cache_duration_secs": 3600,
+      // Weekly report (every Monday 9:00 AM Beijing time)
       "weekly_report_enabled": true,
       "weekly_report_cron": "0 0 9 * * 1",
+      // Monthly report (1st day of each month 9:00 AM Beijing time)
       "monthly_report_enabled": true,
-      "monthly_report_cron": "0 0 9 1 * *"
+      "monthly_report_cron": "0 0 9 1 * *",
+      // Daily morning report (pre-market, 9:00 AM Beijing time, weekdays)
+      "daily_morning_enabled": true,
+      "daily_morning_cron": "0 0 9 * * *",
+      // Daily afternoon report (post-market, 4:00 PM Beijing time, weekdays)
+      "daily_afternoon_enabled": true,
+      "daily_afternoon_cron": "0 0 16 * * *",
+      // Include index data (000300.SH, 000905.SH, 000001.SH) in daily reports
+      "include_index_data": true,
+      "index_symbols": ["000300.SH", "000905.SH", "000001.SH"]
     },
     "loop_config": {               // Canonical name (or use "loop" alias)
       "interval_secs": 5,
@@ -178,12 +216,27 @@
     },
     "data_sources": {
       "sources": [
-        { "provider": "ashare", "enabled": true, "priority": 1 },
-        { "provider": "lixin", "enabled": true, "priority": 2 }
+        {
+          "provider": "itick",
+          "enabled": true,
+          "priority": 1,
+          "config": {
+            "rate_limit_rpm": 300    // 5 req/sec (free tier default)
+          }
+        },
+        {
+          "provider": "lixin",
+          "enabled": true,
+          "priority": 2,
+          "config": {
+            "rate_limit_rpm": 100    // Conservative default (varies by tier)
+          }
+        }
       ],
-      "health_check_interval_secs": 30,
-      "unhealthy_threshold": 3,
-      "max_retries": 2
+      "health_check_interval_secs": 30,    // Interval between health checks (default: 30)
+      "unhealthy_threshold": 3,            // Consecutive failures before unhealthy (default: 3)
+      "max_retries": 2,                    // Retries per provider before failover (default: 2)
+      "health_check_timeout_secs": 10      // Timeout for health check requests (default: 10)
     }
   },
 

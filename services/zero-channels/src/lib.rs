@@ -113,9 +113,9 @@ pub fn build_channels_router(
         .as_ref()
         .filter(|t| t.enabled)
         .and_then(|t| {
-            // First try secrets, then fall back to legacy field
-            let token = config.telegram_bot_token().or_else(|| t.bot_token.clone());
-            token.map(|tok| Arc::new(TelegramChannel::new(tok, t.allowed_users.clone())))
+            // Token is now only in secrets.channels.telegram_bot_token
+            config.telegram_bot_token()
+                .map(|tok| Arc::new(TelegramChannel::new(tok, t.allowed_users.clone())))
         });
 
     // Create Feishu channel if configured

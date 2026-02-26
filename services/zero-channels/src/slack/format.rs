@@ -37,6 +37,11 @@ static LINK_PATTERN: LazyLock<Regex> =
 static DASH_LIST_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(\s*)- (.*)$").unwrap());
 static CODE_BLOCK_START: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^```(\w*)$").unwrap());
 
+/// Placeholder markers for bold text during conversion.
+/// Using null bytes to avoid collision with real content.
+const BOLD_OPEN: &str = "\x00B\x00";
+const BOLD_CLOSE: &str = "\x00/B\x00";
+
 /// Convert standard Markdown to Slack mrkdwn format.
 ///
 /// # Conversion Rules
@@ -81,17 +86,19 @@ pub fn convert_to_slack_mrkdwn(input: &str) -> String {
 }
 
 /// Convert a single line according to Slack formatting rules.
+/// Uses placeholders for bold markers to protect from italic conversion.
 fn convert_line(line: &str) -> String {
     // H1: # Title -> *Title* (bold in Slack)
+    // Uses placeholder to protect from italic conversion
     if let Some(caps) = H1_PATTERN.captures(line) {
         let title = caps.get(1).map_or("", |m| m.as_str());
-        return format!("*{}*", title);
+        return format!("{}{}{}", BOLD_OPEN, title, BOLD_CLOSE);
     }
 
     // H2: ## Title -> *Title*
     if let Some(caps) = H2_PATTERN.captures(line) {
         let title = caps.get(1).map_or("", |m| m.as_str());
-        return format!("*{}*", title);
+        return format!("{}{}{}", BOLD_OPEN, title, BOLD_CLOSE);
     }
 
     // H3: ### Title -> _Title_ (italic)
@@ -120,13 +127,19 @@ fn convert_line(line: &str) -> String {
 fn convert_inline_formatting(text: &str) -> String {
     let mut result = text.to_string();
 
-    // Convert **bold** to *bold* (must do before italic)
-    result = BOLD_PATTERN.replace_all(&result, "*$1*").to_string();
+    // Step 1: Replace **bold** with placeholder to protect from italic conversion
+    result = BOLD_PATTERN
+        .replace_all(&result, |caps: &regex::Captures| {
+            format!("{}{}{}", BOLD_OPEN, &caps[1], BOLD_CLOSE)
+        })
+        .to_string();
 
-    // Convert standalone *italic* to _italic_
-    // This is tricky because *bold* in Slack also uses single asterisks
-    // We handle this by checking context (after bold conversion)
+    // Step 2: Convert standalone *italic* to _italic_
+    // Now safe because bold patterns are protected by placeholders
     result = convert_italic(&result);
+
+    // Step 3: Restore bold markers (* in Slack mrkdwn)
+    result = result.replace(BOLD_OPEN, "*").replace(BOLD_CLOSE, "*");
 
     // Convert ~~strikethrough~~ to ~strikethrough~
     result = STRIKETHROUGH_PATTERN.replace_all(&result, "~$1~").to_string();

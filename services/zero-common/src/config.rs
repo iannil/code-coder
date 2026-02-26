@@ -10,12 +10,21 @@
 //!
 //! # Environment Variable Mapping
 //!
-//! - `ZERO_GATEWAY_PORT` → gateway.port
-//! - `ZERO_JWT_SECRET` → gateway.jwt_secret
-//! - `ANTHROPIC_API_KEY` → api_keys.anthropic
-//! - `OPENAI_API_KEY` → api_keys.openai
-//! - `GOOGLE_API_KEY` → api_keys.google
-//! - `DEEPSEEK_API_KEY` → api_keys.deepseek
+//! ## Service Ports
+//! - `ZERO_GATEWAY_PORT` → services.gateway.port
+//! - `ZERO_CHANNELS_PORT` → services.channels.port
+//! - `ZERO_WORKFLOW_PORT` → services.workflow.port
+//! - `CODECODER_PORT` → services.codecoder.port
+//! - `ZERO_BIND_ADDRESS` → network.bind
+//!
+//! ## Auth
+//! - `ZERO_JWT_SECRET` → auth.jwt_secret
+//!
+//! ## LLM API Keys (→ secrets.llm.*)
+//! - `ANTHROPIC_API_KEY` → secrets.llm.anthropic
+//! - `OPENAI_API_KEY` → secrets.llm.openai
+//! - `GOOGLE_API_KEY` → secrets.llm.google
+//! - `DEEPSEEK_API_KEY` → secrets.llm.deepseek
 //! - etc.
 
 use anyhow::{Context, Result};
@@ -198,10 +207,13 @@ pub struct ChannelSecretsConfig {
 /// External service credentials.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ExternalSecretsConfig {
-    #[serde(default)]
-    pub tushare: Option<String>,
+    /// Lixin (理杏仁) API token for A-share market data
     #[serde(default)]
     pub lixin: Option<String>,
+    /// iTick API key for A-share market data (primary source)
+    /// Get your API key at: https://itick.org
+    #[serde(default)]
+    pub itick: Option<String>,
     #[serde(default)]
     pub cloudflare_tunnel: Option<String>,
     #[serde(default)]
@@ -215,6 +227,8 @@ pub struct ExternalSecretsConfig {
 // ============================================================================
 
 /// Simplified LLM configuration.
+///
+/// Consolidates all LLM-related settings including reliability and Ollama.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
     /// Default model in provider/model format
@@ -224,6 +238,22 @@ pub struct LlmConfig {
     /// Custom provider configurations
     #[serde(default)]
     pub providers: HashMap<String, LlmProviderConfig>,
+
+    /// Fallback provider chain (tried in order when primary fails)
+    #[serde(default)]
+    pub fallbacks: Vec<String>,
+
+    /// Number of retries before switching to fallback provider
+    #[serde(default = "default_llm_retries")]
+    pub retries: u32,
+
+    /// Backoff time between retries in milliseconds
+    #[serde(default = "default_llm_backoff_ms")]
+    pub backoff_ms: u64,
+
+    /// Ollama (local models) configuration
+    #[serde(default)]
+    pub ollama: LlmOllamaConfig,
 }
 
 impl Default for LlmConfig {
@@ -231,8 +261,58 @@ impl Default for LlmConfig {
         Self {
             default: default_llm_model(),
             providers: HashMap::new(),
+            fallbacks: vec![],
+            retries: default_llm_retries(),
+            backoff_ms: default_llm_backoff_ms(),
+            ollama: LlmOllamaConfig::default(),
         }
     }
+}
+
+fn default_llm_retries() -> u32 {
+    2
+}
+
+fn default_llm_backoff_ms() -> u64 {
+    1000
+}
+
+/// Ollama (local models) configuration within LlmConfig.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmOllamaConfig {
+    /// Ollama API base URL
+    #[serde(default = "default_ollama_url")]
+    pub base_url: String,
+
+    /// Default model for Ollama
+    #[serde(default = "default_ollama_model")]
+    pub default_model: String,
+
+    /// Request timeout in seconds (local models can be slow)
+    #[serde(default = "default_ollama_timeout")]
+    pub timeout_secs: u64,
+}
+
+impl Default for LlmOllamaConfig {
+    fn default() -> Self {
+        Self {
+            base_url: default_ollama_url(),
+            default_model: default_ollama_model(),
+            timeout_secs: default_ollama_timeout(),
+        }
+    }
+}
+
+fn default_ollama_url() -> String {
+    "http://localhost:11434".into()
+}
+
+fn default_ollama_model() -> String {
+    "llama3".into()
+}
+
+fn default_ollama_timeout() -> u64 {
+    300 // 5 minutes, local models can be slow
 }
 
 fn default_llm_model() -> String {
@@ -402,18 +482,18 @@ pub struct Config {
     pub voice: VoiceConfig,
 
     // =========================================================================
-    // Legacy Configuration (backward compatibility, will be migrated)
+    // Service Configuration (business logic, not port/host)
     // =========================================================================
 
-    /// Gateway configuration
+    /// Gateway configuration (business settings only)
     #[serde(default)]
     pub gateway: GatewayConfig,
 
-    /// Channels configuration
+    /// Channels configuration (business settings only)
     #[serde(default)]
     pub channels: ChannelsConfig,
 
-    /// Workflow configuration
+    /// Workflow configuration (business settings only)
     #[serde(default)]
     pub workflow: WorkflowConfig,
 
@@ -428,14 +508,6 @@ pub struct Config {
     /// Memory/persistence configuration
     #[serde(default)]
     pub memory: MemoryConfig,
-
-    /// API keys for LLM providers
-    #[serde(default)]
-    pub api_keys: ApiKeysConfig,
-
-    /// Provider configuration (routing, fallbacks)
-    #[serde(default)]
-    pub providers: ProvidersConfig,
 
     /// Agent execution configuration
     #[serde(default)]
@@ -500,45 +572,36 @@ impl Config {
 
     /// Apply environment variable overrides to the configuration.
     pub fn apply_env_overrides(&mut self) {
-        // Gateway overrides
+        // Service port overrides (use services.* structure)
         if let Ok(port) = std::env::var("ZERO_GATEWAY_PORT") {
             if let Ok(p) = port.parse() {
-                self.gateway.port = p;
+                self.services.gateway.port = Some(p);
             }
         }
-        if let Ok(host) = std::env::var("ZERO_GATEWAY_HOST") {
-            self.gateway.host = host;
-        }
-        if let Ok(secret) = std::env::var("ZERO_JWT_SECRET") {
-            self.gateway.jwt_secret = Some(secret);
-        }
-
-        // Channels overrides
         if let Ok(port) = std::env::var("ZERO_CHANNELS_PORT") {
             if let Ok(p) = port.parse() {
-                self.channels.port = p;
+                self.services.channels.port = Some(p);
+            }
+        }
+        if let Ok(port) = std::env::var("ZERO_WORKFLOW_PORT") {
+            if let Ok(p) = port.parse() {
+                self.services.workflow.port = Some(p);
+            }
+        }
+        if let Ok(port) = std::env::var("CODECODER_PORT") {
+            if let Ok(p) = port.parse() {
+                self.services.codecoder.port = Some(p);
             }
         }
 
-        // CodeCoder overrides
-        if let Ok(port) = std::env::var("CODECODER_PORT") {
-            if let Ok(p) = port.parse() {
-                self.codecoder.port = p;
-            }
+        // Network bind address override
+        if let Ok(bind) = std::env::var("ZERO_BIND_ADDRESS") {
+            self.network.bind = bind;
         }
-        if let Ok(host) = std::env::var("CODECODER_HOST") {
-            self.codecoder.host = host;
-        }
-        // Legacy endpoint env var support: parse to extract host/port
-        if let Ok(endpoint) = std::env::var("CODECODER_ENDPOINT") {
-            if let Ok(url) = url::Url::parse(&endpoint) {
-                if let Some(host) = url.host_str() {
-                    self.codecoder.host = host.to_string();
-                }
-                if let Some(port) = url.port() {
-                    self.codecoder.port = port;
-                }
-            }
+
+        // Auth overrides
+        if let Ok(secret) = std::env::var("ZERO_JWT_SECRET") {
+            self.auth.jwt_secret = Some(secret);
         }
 
         // Log level override
@@ -546,11 +609,69 @@ impl Config {
             self.observability.log_level = level;
         }
 
-        // Apply API key env fallbacks
-        self.api_keys = self.api_keys.with_env_fallback();
+        // Apply LLM API key env fallbacks to secrets.llm
+        self.apply_llm_env_fallbacks();
 
         // Apply legacy endpoint field if present in config
         self.codecoder.apply_legacy_endpoint();
+    }
+
+    /// Apply LLM API key environment variable fallbacks.
+    fn apply_llm_env_fallbacks(&mut self) {
+        if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
+            self.secrets.llm.anthropic = Some(key);
+        }
+        if let Ok(key) = std::env::var("OPENAI_API_KEY") {
+            self.secrets.llm.openai = Some(key);
+        }
+        if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+            self.secrets.llm.deepseek = Some(key);
+        }
+        if let Ok(key) = std::env::var("GOOGLE_API_KEY").or_else(|_| std::env::var("GEMINI_API_KEY")) {
+            self.secrets.llm.google = Some(key);
+        }
+        if let Ok(key) = std::env::var("OPENROUTER_API_KEY") {
+            self.secrets.llm.openrouter = Some(key);
+        }
+        if let Ok(key) = std::env::var("GROQ_API_KEY") {
+            self.secrets.llm.groq = Some(key);
+        }
+        if let Ok(key) = std::env::var("MISTRAL_API_KEY") {
+            self.secrets.llm.mistral = Some(key);
+        }
+        if let Ok(key) = std::env::var("XAI_API_KEY") {
+            self.secrets.llm.xai = Some(key);
+        }
+        if let Ok(key) = std::env::var("TOGETHER_API_KEY") {
+            self.secrets.llm.together = Some(key);
+        }
+        if let Ok(key) = std::env::var("FIREWORKS_API_KEY") {
+            self.secrets.llm.fireworks = Some(key);
+        }
+        if let Ok(key) = std::env::var("PERPLEXITY_API_KEY") {
+            self.secrets.llm.perplexity = Some(key);
+        }
+        if let Ok(key) = std::env::var("COHERE_API_KEY") {
+            self.secrets.llm.cohere = Some(key);
+        }
+        if let Ok(key) = std::env::var("CLOUDFLARE_API_KEY") {
+            self.secrets.llm.cloudflare = Some(key);
+        }
+        if let Ok(key) = std::env::var("VENICE_API_KEY") {
+            self.secrets.llm.venice = Some(key);
+        }
+        if let Ok(key) = std::env::var("MOONSHOT_API_KEY") {
+            self.secrets.llm.moonshot = Some(key);
+        }
+        if let Ok(key) = std::env::var("GLM_API_KEY") {
+            self.secrets.llm.glm = Some(key);
+        }
+        if let Ok(key) = std::env::var("MINIMAX_API_KEY") {
+            self.secrets.llm.minimax = Some(key);
+        }
+        if let Ok(key) = std::env::var("QIANFAN_API_KEY") {
+            self.secrets.llm.qianfan = Some(key);
+        }
     }
 
     /// Save configuration to the default path.
@@ -743,23 +864,42 @@ impl Config {
         self.channels.feishu.as_ref().map(|f| f.enabled).unwrap_or(false)
             && self.feishu_app_id().is_some()
     }
+
+    // =========================================================================
+    // Trading data source credential accessors (from secrets.external)
+    // =========================================================================
+
+    /// Get iTick API key for A-share market data.
+    ///
+    /// Priority: secrets.external.itick > trading.itick_api_key (deprecated)
+    #[allow(deprecated)]
+    pub fn itick_api_key(&self) -> Option<String> {
+        self.secrets
+            .external
+            .itick
+            .clone()
+            .or_else(|| self.trading.as_ref().and_then(|t| t.itick_api_key.clone()))
+    }
+
+    /// Get Lixin API token for A-share market data.
+    ///
+    /// Priority: secrets.external.lixin > trading.lixin_token (deprecated)
+    #[allow(deprecated)]
+    pub fn lixin_token(&self) -> Option<String> {
+        self.secrets
+            .external
+            .lixin
+            .clone()
+            .or_else(|| self.trading.as_ref().and_then(|t| t.lixin_token.clone()))
+    }
 }
 
 /// Gateway service configuration.
+///
+/// Business-only settings. Port/host are in services.gateway/network.bind.
+/// Auth settings are in the top-level auth config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayConfig {
-    /// Gateway HTTP port
-    #[serde(default = "default_gateway_port")]
-    pub port: u16,
-
-    /// Gateway HTTP host
-    #[serde(default = "default_gateway_host")]
-    pub host: String,
-
-    /// Authentication mode: "pairing" | "jwt" | "both"
-    #[serde(default = "default_auth_mode")]
-    pub auth_mode: String,
-
     /// Require pairing before accepting requests (pairing mode)
     #[serde(default)]
     pub require_pairing: bool,
@@ -772,14 +912,6 @@ pub struct GatewayConfig {
     #[serde(default)]
     pub allow_public_bind: bool,
 
-    /// JWT secret for token signing (auto-generated if not set)
-    #[serde(default)]
-    pub jwt_secret: Option<String>,
-
-    /// Token expiry in seconds
-    #[serde(default = "default_token_expiry")]
-    pub token_expiry_secs: u64,
-
     /// Enable rate limiting
     #[serde(default = "default_true")]
     pub rate_limiting: bool,
@@ -787,48 +919,25 @@ pub struct GatewayConfig {
     /// Requests per minute per user
     #[serde(default = "default_rate_limit")]
     pub rate_limit_rpm: u32,
-
-    /// Tunnel configuration for external access
-    #[serde(default)]
-    pub tunnel: TunnelConfig,
-
-    /// DEPRECATED: Legacy codecoder_endpoint field for backward compatibility.
-    /// Use Config::codecoder_endpoint() instead. This field is ignored.
-    #[serde(default, skip_serializing)]
-    #[allow(dead_code)]
-    codecoder_endpoint: Option<String>,
 }
 
 impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
-            port: default_gateway_port(),
-            host: default_gateway_host(),
-            auth_mode: default_auth_mode(),
             require_pairing: false,
             paired_tokens: vec![],
             allow_public_bind: false,
-            jwt_secret: None,
-            token_expiry_secs: default_token_expiry(),
             rate_limiting: true,
             rate_limit_rpm: default_rate_limit(),
-            tunnel: TunnelConfig::default(),
-            codecoder_endpoint: None,
         }
     }
 }
 
 /// Channels service configuration.
+///
+/// Business-only settings. Port/host are in services.channels/network.bind.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelsConfig {
-    /// Channels HTTP port
-    #[serde(default = "default_channels_port")]
-    pub port: u16,
-
-    /// Channels HTTP host
-    #[serde(default = "default_channels_host")]
-    pub host: String,
-
     /// Telegram bot configuration
     #[serde(default)]
     pub telegram: Option<TelegramConfig>,
@@ -899,8 +1008,6 @@ pub struct ChannelsConfig {
 impl Default for ChannelsConfig {
     fn default() -> Self {
         Self {
-            port: default_channels_port(),
-            host: default_channels_host(),
             telegram: None,
             discord: None,
             slack: None,
@@ -922,12 +1029,11 @@ impl Default for ChannelsConfig {
 }
 
 /// Telegram channel configuration.
+///
+/// Bot token is stored in secrets.channels.telegram_bot_token.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
     pub enabled: bool,
-    /// Bot token (legacy field, prefer secrets.channels.telegram_bot_token)
-    #[serde(default)]
-    pub bot_token: Option<String>,
     #[serde(default)]
     pub allowed_users: Vec<String>,
     #[serde(default)]
@@ -1197,14 +1303,6 @@ pub struct AutoCaptureConfig {
 /// Workflow service configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
-    /// Workflow service HTTP port
-    #[serde(default = "default_workflow_port")]
-    pub port: u16,
-
-    /// Workflow service HTTP host
-    #[serde(default = "default_gateway_host")]
-    pub host: String,
-
     /// Cron scheduler configuration
     #[serde(default)]
     pub cron: CronConfig,
@@ -1229,8 +1327,6 @@ pub struct WorkflowConfig {
 impl Default for WorkflowConfig {
     fn default() -> Self {
         Self {
-            port: default_workflow_port(),
-            host: default_gateway_host(),
             cron: CronConfig::default(),
             webhook: WebhookConfig::default(),
             git: GitIntegrationConfig::default(),
@@ -1437,55 +1533,24 @@ pub struct CodeCoderConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// CodeCoder HTTP port
-    #[serde(default = "default_codecoder_port")]
-    pub port: u16,
-
-    /// CodeCoder HTTP host
-    #[serde(default = "default_codecoder_host")]
-    pub host: String,
-
     /// API timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
-
-    /// Legacy endpoint field for backward compatibility (deprecated)
-    /// If set, will be parsed to extract host/port. Prefer using host/port directly.
-    #[serde(default, skip_serializing)]
-    endpoint: Option<String>,
 }
 
 impl Default for CodeCoderConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            port: default_codecoder_port(),
-            host: default_codecoder_host(),
             timeout_secs: default_timeout(),
-            endpoint: None,
         }
     }
 }
 
 impl CodeCoderConfig {
-    /// Get the full endpoint URL.
-    pub fn endpoint(&self) -> String {
-        format!("http://{}:{}", self.host, self.port)
-    }
-
-    /// Apply legacy endpoint field if present, extracting host/port from it.
-    /// This provides backward compatibility with old config files.
+    /// Apply legacy endpoint field if present (no-op, kept for backward compat).
     pub fn apply_legacy_endpoint(&mut self) {
-        if let Some(ref endpoint) = self.endpoint {
-            if let Ok(url) = url::Url::parse(endpoint) {
-                if let Some(host) = url.host_str() {
-                    self.host = host.to_string();
-                }
-                if let Some(port) = url.port() {
-                    self.port = port;
-                }
-            }
-        }
+        // No-op: port/host are now in services.codecoder and network.bind
     }
 }
 
@@ -1555,287 +1620,6 @@ impl Default for MemoryConfig {
             backend: default_memory_backend(),
             path: None,
             connection_string: None,
-        }
-    }
-}
-
-/// API keys for LLM providers.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ApiKeysConfig {
-    /// Anthropic API key (env: ANTHROPIC_API_KEY)
-    #[serde(default)]
-    pub anthropic: Option<String>,
-
-    /// OpenAI API key (env: OPENAI_API_KEY)
-    #[serde(default)]
-    pub openai: Option<String>,
-
-    /// Google AI (Gemini) API key (env: GOOGLE_API_KEY or GEMINI_API_KEY)
-    #[serde(default)]
-    pub google: Option<String>,
-
-    /// DeepSeek API key (env: DEEPSEEK_API_KEY)
-    #[serde(default)]
-    pub deepseek: Option<String>,
-
-    /// OpenRouter API key (env: OPENROUTER_API_KEY)
-    #[serde(default)]
-    pub openrouter: Option<String>,
-
-    /// Groq API key (env: GROQ_API_KEY)
-    #[serde(default)]
-    pub groq: Option<String>,
-
-    /// Mistral API key (env: MISTRAL_API_KEY)
-    #[serde(default)]
-    pub mistral: Option<String>,
-
-    /// xAI (Grok) API key (env: XAI_API_KEY)
-    #[serde(default)]
-    pub xai: Option<String>,
-
-    /// Together AI API key (env: TOGETHER_API_KEY)
-    #[serde(default)]
-    pub together: Option<String>,
-
-    /// Fireworks AI API key (env: FIREWORKS_API_KEY)
-    #[serde(default)]
-    pub fireworks: Option<String>,
-
-    /// Perplexity API key (env: PERPLEXITY_API_KEY)
-    #[serde(default)]
-    pub perplexity: Option<String>,
-
-    /// Cohere API key (env: COHERE_API_KEY)
-    #[serde(default)]
-    pub cohere: Option<String>,
-
-    /// Cloudflare AI API key (env: CLOUDFLARE_API_KEY)
-    #[serde(default)]
-    pub cloudflare: Option<String>,
-
-    /// Venice AI API key (env: VENICE_API_KEY)
-    #[serde(default)]
-    pub venice: Option<String>,
-
-    /// Moonshot (Kimi) API key (env: MOONSHOT_API_KEY)
-    #[serde(default)]
-    pub moonshot: Option<String>,
-
-    /// GLM (Zhipu) API key (env: GLM_API_KEY)
-    #[serde(default)]
-    pub glm: Option<String>,
-
-    /// MiniMax API key (env: MINIMAX_API_KEY)
-    #[serde(default)]
-    pub minimax: Option<String>,
-
-    /// Qianfan (Baidu) API key (env: QIANFAN_API_KEY)
-    #[serde(default)]
-    pub qianfan: Option<String>,
-
-    /// ElevenLabs API key for TTS (env: ELEVENLABS_API_KEY)
-    #[serde(default)]
-    pub elevenlabs: Option<String>,
-}
-
-impl ApiKeysConfig {
-    /// Load API keys from environment variables, merging with config values.
-    /// Environment variables take precedence.
-    pub fn with_env_fallback(&self) -> Self {
-        Self {
-            anthropic: std::env::var("ANTHROPIC_API_KEY")
-                .ok()
-                .or_else(|| self.anthropic.clone()),
-            openai: std::env::var("OPENAI_API_KEY")
-                .ok()
-                .or_else(|| self.openai.clone()),
-            google: std::env::var("GOOGLE_API_KEY")
-                .ok()
-                .or_else(|| std::env::var("GEMINI_API_KEY").ok())
-                .or_else(|| self.google.clone()),
-            deepseek: std::env::var("DEEPSEEK_API_KEY")
-                .ok()
-                .or_else(|| self.deepseek.clone()),
-            openrouter: std::env::var("OPENROUTER_API_KEY")
-                .ok()
-                .or_else(|| self.openrouter.clone()),
-            groq: std::env::var("GROQ_API_KEY")
-                .ok()
-                .or_else(|| self.groq.clone()),
-            mistral: std::env::var("MISTRAL_API_KEY")
-                .ok()
-                .or_else(|| self.mistral.clone()),
-            xai: std::env::var("XAI_API_KEY")
-                .ok()
-                .or_else(|| self.xai.clone()),
-            together: std::env::var("TOGETHER_API_KEY")
-                .ok()
-                .or_else(|| self.together.clone()),
-            fireworks: std::env::var("FIREWORKS_API_KEY")
-                .ok()
-                .or_else(|| self.fireworks.clone()),
-            perplexity: std::env::var("PERPLEXITY_API_KEY")
-                .ok()
-                .or_else(|| self.perplexity.clone()),
-            cohere: std::env::var("COHERE_API_KEY")
-                .ok()
-                .or_else(|| self.cohere.clone()),
-            cloudflare: std::env::var("CLOUDFLARE_API_KEY")
-                .ok()
-                .or_else(|| self.cloudflare.clone()),
-            venice: std::env::var("VENICE_API_KEY")
-                .ok()
-                .or_else(|| self.venice.clone()),
-            moonshot: std::env::var("MOONSHOT_API_KEY")
-                .ok()
-                .or_else(|| self.moonshot.clone()),
-            glm: std::env::var("GLM_API_KEY")
-                .ok()
-                .or_else(|| self.glm.clone()),
-            minimax: std::env::var("MINIMAX_API_KEY")
-                .ok()
-                .or_else(|| self.minimax.clone()),
-            qianfan: std::env::var("QIANFAN_API_KEY")
-                .ok()
-                .or_else(|| self.qianfan.clone()),
-            elevenlabs: std::env::var("ELEVENLABS_API_KEY")
-                .ok()
-                .or_else(|| self.elevenlabs.clone()),
-        }
-    }
-
-    /// Get API key for a provider by name.
-    pub fn get(&self, provider: &str) -> Option<&String> {
-        match provider {
-            "anthropic" => self.anthropic.as_ref(),
-            "openai" => self.openai.as_ref(),
-            "google" | "gemini" | "google-gemini" => self.google.as_ref(),
-            "deepseek" => self.deepseek.as_ref(),
-            "openrouter" => self.openrouter.as_ref(),
-            "groq" => self.groq.as_ref(),
-            "mistral" => self.mistral.as_ref(),
-            "xai" | "grok" => self.xai.as_ref(),
-            "together" | "together-ai" => self.together.as_ref(),
-            "fireworks" | "fireworks-ai" => self.fireworks.as_ref(),
-            "perplexity" => self.perplexity.as_ref(),
-            "cohere" => self.cohere.as_ref(),
-            "cloudflare" | "cloudflare-ai" => self.cloudflare.as_ref(),
-            "venice" => self.venice.as_ref(),
-            "moonshot" | "kimi" => self.moonshot.as_ref(),
-            "glm" | "zhipu" => self.glm.as_ref(),
-            "minimax" => self.minimax.as_ref(),
-            "qianfan" | "baidu" => self.qianfan.as_ref(),
-            "elevenlabs" => self.elevenlabs.as_ref(),
-            _ => None,
-        }
-    }
-}
-
-/// Provider configuration for LLM routing.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProvidersConfig {
-    /// Default provider name
-    #[serde(default = "default_provider")]
-    pub default: String,
-
-    /// Default model for the default provider
-    #[serde(default = "default_model")]
-    pub default_model: String,
-
-    /// Ollama configuration (local models)
-    #[serde(default)]
-    pub ollama: OllamaConfig,
-
-    /// Reliability configuration for retries and fallbacks
-    #[serde(default)]
-    pub reliability: ReliabilityConfig,
-
-    /// Custom provider endpoints (for self-hosted or alternative APIs)
-    #[serde(default)]
-    pub custom_endpoints: HashMap<String, String>,
-}
-
-impl Default for ProvidersConfig {
-    fn default() -> Self {
-        Self {
-            default: default_provider(),
-            default_model: default_model(),
-            ollama: OllamaConfig::default(),
-            reliability: ReliabilityConfig::default(),
-            custom_endpoints: HashMap::new(),
-        }
-    }
-}
-
-/// Ollama (local models) configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaConfig {
-    /// Ollama API base URL
-    #[serde(default = "default_ollama_url")]
-    pub base_url: String,
-
-    /// Default model for Ollama
-    #[serde(default = "default_ollama_model")]
-    pub default_model: String,
-
-    /// Request timeout in seconds (local models can be slow)
-    #[serde(default = "default_ollama_timeout")]
-    pub timeout_secs: u64,
-}
-
-impl Default for OllamaConfig {
-    fn default() -> Self {
-        Self {
-            base_url: default_ollama_url(),
-            default_model: default_ollama_model(),
-            timeout_secs: default_ollama_timeout(),
-        }
-    }
-}
-
-/// Reliability configuration for provider retries and fallbacks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReliabilityConfig {
-    /// Number of retries before switching to fallback provider
-    #[serde(default = "default_provider_retries")]
-    pub provider_retries: u32,
-
-    /// Backoff time between retries in milliseconds
-    #[serde(default = "default_provider_backoff")]
-    pub provider_backoff_ms: u64,
-
-    /// Fallback provider chain (tried in order)
-    #[serde(default)]
-    pub fallback_providers: Vec<String>,
-
-    /// Initial backoff for channel reconnection
-    #[serde(default = "default_channel_initial_backoff")]
-    pub channel_initial_backoff_secs: u64,
-
-    /// Maximum backoff for channel reconnection
-    #[serde(default = "default_channel_max_backoff")]
-    pub channel_max_backoff_secs: u64,
-
-    /// Scheduler poll interval
-    #[serde(default = "default_scheduler_poll")]
-    pub scheduler_poll_secs: u64,
-
-    /// Scheduler task retries
-    #[serde(default = "default_scheduler_retries")]
-    pub scheduler_retries: u32,
-}
-
-impl Default for ReliabilityConfig {
-    fn default() -> Self {
-        Self {
-            provider_retries: default_provider_retries(),
-            provider_backoff_ms: default_provider_backoff(),
-            fallback_providers: vec![],
-            channel_initial_backoff_secs: default_channel_initial_backoff(),
-            channel_max_backoff_secs: default_channel_max_backoff(),
-            scheduler_poll_secs: default_scheduler_poll(),
-            scheduler_retries: default_scheduler_retries(),
         }
     }
 }
@@ -1943,32 +1727,14 @@ impl Default for ToolsConfig {
 }
 
 // Default value functions
-fn default_gateway_port() -> u16 {
-    4430 // Was 4410 - moved to 4430-4439 range for Rust microservices
-}
-fn default_gateway_host() -> String {
+fn default_host() -> String {
     "127.0.0.1".into()
-}
-fn default_channels_port() -> u16 {
-    4431 // Was 4411 - moved to 4430-4439 range for Rust microservices
-}
-fn default_channels_host() -> String {
-    "127.0.0.1".into()
-}
-fn default_workflow_port() -> u16 {
-    4432 // New - part of 4430-4439 range for Rust microservices
 }
 fn default_token_expiry() -> u64 {
     86400 // 24 hours
 }
 fn default_rate_limit() -> u32 {
     60
-}
-fn default_codecoder_port() -> u16 {
-    4400 // CodeCoder API server port
-}
-fn default_codecoder_host() -> String {
-    "127.0.0.1".into()
 }
 fn default_timeout() -> u64 {
     1800 // 30 minutes - LLM tasks can run long
@@ -2018,50 +1784,6 @@ fn default_streaming_enabled() -> bool {
 
 fn default_progress_throttle_ms() -> u64 {
     1000 // 1 second
-}
-
-fn default_provider() -> String {
-    "anthropic".into()
-}
-
-fn default_model() -> String {
-    "claude-sonnet-4-20250514".into()
-}
-
-fn default_ollama_url() -> String {
-    "http://localhost:11434".into()
-}
-
-fn default_ollama_model() -> String {
-    "llama3".into()
-}
-
-fn default_ollama_timeout() -> u64 {
-    300 // 5 minutes, local models can be slow
-}
-
-fn default_provider_retries() -> u32 {
-    2
-}
-
-fn default_provider_backoff() -> u64 {
-    1000 // 1 second
-}
-
-fn default_channel_initial_backoff() -> u64 {
-    2
-}
-
-fn default_channel_max_backoff() -> u64 {
-    60
-}
-
-fn default_scheduler_poll() -> u64 {
-    15
-}
-
-fn default_scheduler_retries() -> u32 {
-    2
 }
 
 fn default_max_iterations() -> u32 {
@@ -2359,12 +2081,21 @@ pub struct TradingConfig {
     pub port: u16,
 
     /// Trading service HTTP host
-    #[serde(default = "default_gateway_host")]
+    #[serde(default = "default_host")]
     pub host: String,
 
+    /// DEPRECATED: Use secrets.external.lixin instead.
     /// 理杏仁 (Lixinger) API token for A-share data
     #[serde(default)]
+    #[deprecated(since = "0.2.0", note = "Use secrets.external.lixin instead")]
     pub lixin_token: Option<String>,
+
+    /// DEPRECATED: Use secrets.external.itick instead.
+    /// iTick API key for A-share market data (primary source)
+    /// Get your API key at: https://itick.org
+    #[serde(default)]
+    #[deprecated(since = "0.2.0", note = "Use secrets.external.itick instead")]
+    pub itick_api_key: Option<String>,
 
     /// SMT pairs for divergence detection
     #[serde(default)]
@@ -2451,12 +2182,14 @@ pub struct TradingConfig {
     workflow_endpoint: Option<String>,
 }
 
+#[allow(deprecated)]
 impl Default for TradingConfig {
     fn default() -> Self {
         Self {
             port: default_trading_port(),
-            host: default_gateway_host(),
+            host: default_host(),
             lixin_token: None,
+            itick_api_key: None,
             smt_pairs: None,
             timeframes: None,
             min_accumulation_bars: None,
@@ -2487,8 +2220,13 @@ impl Default for TradingConfig {
 
 /// Configuration for multi-data-source market data aggregation.
 ///
-/// Enables automatic failover between data providers (Ashare, Lixin)
+/// Enables automatic failover between data providers (iTick, Lixin)
 /// based on health status and priority.
+///
+/// # Data Sources
+/// - **iTick** (recommended primary): REST API with minute-level data
+/// - **Lixin** (recommended backup): Daily data with high-quality fundamentals
+/// - **Ashare** (deprecated): Web scraper, unstable
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataSourcesConfig {
     /// List of data source configurations
@@ -2517,9 +2255,15 @@ impl Default for DataSourcesConfig {
         Self {
             sources: vec![
                 DataSourceEntry {
-                    provider: "ashare".to_string(),
+                    provider: "itick".to_string(),
                     enabled: true,
                     priority: 1,
+                    config: None,
+                },
+                DataSourceEntry {
+                    provider: "lixin".to_string(),
+                    enabled: true,
+                    priority: 2,
                     config: None,
                 },
             ],
@@ -2534,7 +2278,7 @@ impl Default for DataSourcesConfig {
 /// Configuration for a single data source provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataSourceEntry {
-    /// Provider name: "ashare", "lixin"
+    /// Provider name: "itick", "lixin", "ashare" (deprecated)
     pub provider: String,
 
     /// Whether this provider is enabled
@@ -2650,6 +2394,30 @@ pub struct MacroAgentConfig {
     #[serde(default)]
     pub monthly_report_cron: Option<String>,
 
+    /// Enable daily morning reports (pre-market, 9:00 Beijing time)
+    #[serde(default = "default_true")]
+    pub daily_morning_enabled: bool,
+
+    /// Daily morning report cron expression (default: 9:00 Beijing time)
+    #[serde(default)]
+    pub daily_morning_cron: Option<String>,
+
+    /// Enable daily afternoon reports (post-market, 16:00 Beijing time)
+    #[serde(default = "default_true")]
+    pub daily_afternoon_enabled: bool,
+
+    /// Daily afternoon report cron expression (default: 16:00 Beijing time)
+    #[serde(default)]
+    pub daily_afternoon_cron: Option<String>,
+
+    /// Include index data in daily reports
+    #[serde(default = "default_true")]
+    pub include_index_data: bool,
+
+    /// Index symbols to include in reports (default: major A-share indices)
+    #[serde(default = "default_index_symbols")]
+    pub index_symbols: Vec<String>,
+
     /// DEPRECATED: Legacy codecoder_endpoint field for backward compatibility.
     /// Use Config::codecoder_endpoint() instead. This field is ignored.
     #[serde(default, skip_serializing)]
@@ -2667,6 +2435,12 @@ impl Default for MacroAgentConfig {
             weekly_report_cron: None,
             monthly_report_enabled: true,
             monthly_report_cron: None,
+            daily_morning_enabled: true,
+            daily_morning_cron: None,
+            daily_afternoon_enabled: true,
+            daily_afternoon_cron: None,
+            include_index_data: true,
+            index_symbols: default_index_symbols(),
             codecoder_endpoint: None,
         }
     }
@@ -2678,6 +2452,14 @@ fn default_macro_agent_timeout() -> u64 {
 
 fn default_macro_agent_cache() -> u64 {
     3600 // 1 hour cache for agent analysis
+}
+
+fn default_index_symbols() -> Vec<String> {
+    vec![
+        "000300.SH".to_string(), // 沪深300
+        "000905.SH".to_string(), // 中证500
+        "000001.SH".to_string(), // 上证指数
+    ]
 }
 
 fn default_trading_port() -> u16 {
@@ -2817,10 +2599,13 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = Config::default();
-        assert_eq!(config.gateway.port, 4430);
-        assert_eq!(config.channels.port, 4431);
+        // Test service port accessors
+        assert_eq!(config.gateway_port(), 4430);
+        assert_eq!(config.channels_port(), 4431);
+        assert_eq!(config.workflow_port(), 4432);
+        assert_eq!(config.codecoder_port(), 4400);
+        // Test other defaults
         assert!(config.codecoder.enabled);
-        assert_eq!(config.providers.default, "anthropic");
         assert!(config.agent.enabled);
         assert!(config.tools.shell_enabled);
     }
@@ -2830,46 +2615,43 @@ mod tests {
         let config = Config::default();
         let json = serde_json::to_string_pretty(&config).unwrap();
         let parsed: Config = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.gateway.port, config.gateway.port);
-        assert_eq!(parsed.channels.port, config.channels.port);
-        assert_eq!(parsed.providers.default, config.providers.default);
+        // Test that round-trip works with accessor methods
+        assert_eq!(parsed.gateway_port(), config.gateway_port());
+        assert_eq!(parsed.channels_port(), config.channels_port());
+        assert_eq!(parsed.llm.default, config.llm.default);
     }
 
     #[test]
-    fn test_api_keys_get() {
-        let keys = ApiKeysConfig {
-            anthropic: Some("sk-ant-123".into()),
-            openai: Some("sk-openai-456".into()),
-            ..Default::default()
-        };
+    fn test_get_api_key() {
+        let mut config = Config::default();
+        config.secrets.llm.anthropic = Some("sk-ant-123".into());
+        config.secrets.llm.openai = Some("sk-openai-456".into());
 
-        assert_eq!(keys.get("anthropic"), Some(&"sk-ant-123".into()));
-        assert_eq!(keys.get("openai"), Some(&"sk-openai-456".into()));
-        assert_eq!(keys.get("unknown"), None);
+        assert_eq!(config.get_api_key("anthropic"), Some("sk-ant-123".to_string()));
+        assert_eq!(config.get_api_key("openai"), Some("sk-openai-456".to_string()));
+        assert_eq!(config.get_api_key("unknown"), None);
     }
 
     #[test]
-    fn test_api_keys_aliases() {
-        let keys = ApiKeysConfig {
-            google: Some("google-key".into()),
-            xai: Some("xai-key".into()),
-            together: Some("together-key".into()),
-            ..Default::default()
-        };
+    fn test_get_api_key_aliases() {
+        let mut config = Config::default();
+        config.secrets.llm.google = Some("google-key".into());
+        config.secrets.llm.xai = Some("xai-key".into());
+        config.secrets.llm.together = Some("together-key".into());
 
         // Test aliases
-        assert_eq!(keys.get("gemini"), Some(&"google-key".into()));
-        assert_eq!(keys.get("google-gemini"), Some(&"google-key".into()));
-        assert_eq!(keys.get("grok"), Some(&"xai-key".into()));
-        assert_eq!(keys.get("together-ai"), Some(&"together-key".into()));
+        assert_eq!(config.get_api_key("gemini"), Some("google-key".to_string()));
+        assert_eq!(config.get_api_key("grok"), Some("xai-key".to_string()));
+        assert_eq!(config.get_api_key("together-ai"), Some("together-key".to_string()));
     }
 
     #[test]
-    fn test_reliability_config_defaults() {
-        let reliability = ReliabilityConfig::default();
-        assert_eq!(reliability.provider_retries, 2);
-        assert_eq!(reliability.provider_backoff_ms, 1000);
-        assert!(reliability.fallback_providers.is_empty());
+    fn test_llm_config_defaults() {
+        let llm = LlmConfig::default();
+        assert_eq!(llm.default, "anthropic/claude-sonnet-4-20250514");
+        assert_eq!(llm.retries, 2);
+        assert_eq!(llm.backoff_ms, 1000);
+        assert!(llm.fallbacks.is_empty());
     }
 
     #[test]
@@ -2893,8 +2675,8 @@ mod tests {
     }
 
     #[test]
-    fn test_ollama_config_defaults() {
-        let ollama = OllamaConfig::default();
+    fn test_llm_ollama_config_defaults() {
+        let ollama = LlmOllamaConfig::default();
         assert_eq!(ollama.base_url, "http://localhost:11434");
         assert_eq!(ollama.default_model, "llama3");
         assert_eq!(ollama.timeout_secs, 300);
@@ -2903,11 +2685,11 @@ mod tests {
     #[test]
     fn test_partial_config_deserialization() {
         // Test that partial JSON with only some fields works (uses defaults for rest)
-        let json = r#"{"gateway": {"port": 8080}}"#;
+        let json = r#"{"services": {"gateway": {"port": 8080}}}"#;
         let config: Config = serde_json::from_str(json).unwrap();
-        assert_eq!(config.gateway.port, 8080);
-        assert_eq!(config.gateway.host, "127.0.0.1"); // default
-        assert_eq!(config.channels.port, 4431); // default (was 4411)
+        assert_eq!(config.gateway_port(), 8080);
+        assert_eq!(config.bind_address(), "127.0.0.1"); // default
+        assert_eq!(config.channels_port(), 4431); // default
     }
 
     #[test]
@@ -2930,24 +2712,32 @@ mod tests {
     }
 
     #[test]
-    fn test_providers_config() {
+    fn test_llm_config() {
+        // Test that LLM config can be parsed with new structure
         let json = r#"{
-            "providers": {
-                "default": "openai",
-                "default_model": "gpt-4-turbo",
+            "llm": {
+                "default": "openai/gpt-4-turbo",
+                "retries": 3,
+                "backoff_ms": 2000,
+                "fallbacks": ["anthropic/claude-3-sonnet"],
                 "ollama": {
                     "base_url": "http://192.168.1.100:11434"
                 },
-                "custom_endpoints": {
-                    "my-provider": "https://my-api.example.com"
+                "providers": {
+                    "my-provider": {
+                        "base_url": "https://my-api.example.com",
+                        "models": ["model-1", "model-2"]
+                    }
                 }
             }
         }"#;
         let config: Config = serde_json::from_str(json).unwrap();
-        assert_eq!(config.providers.default, "openai");
-        assert_eq!(config.providers.default_model, "gpt-4-turbo");
-        assert_eq!(config.providers.ollama.base_url, "http://192.168.1.100:11434");
-        assert!(config.providers.custom_endpoints.contains_key("my-provider"));
+        assert_eq!(config.llm.default, "openai/gpt-4-turbo");
+        assert_eq!(config.llm.retries, 3);
+        assert_eq!(config.llm.backoff_ms, 2000);
+        assert_eq!(config.llm.fallbacks.len(), 1);
+        assert_eq!(config.llm.ollama.base_url, "http://192.168.1.100:11434");
+        assert!(config.llm.providers.contains_key("my-provider"));
     }
 
     #[test]
