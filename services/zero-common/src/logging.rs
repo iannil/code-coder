@@ -1,6 +1,12 @@
 //! Logging utilities for Zero services.
 //!
 //! Provides structured JSON logging with trace IDs for observability.
+//!
+//! # Noise Filtering
+//!
+//! By default, noisy library modules (hyper, reqwest, h2, rustls, tokio_util)
+//! are set to `warn` level to reduce log clutter while keeping business logs
+//! at the specified level.
 
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -8,9 +14,107 @@ use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
+/// Default noisy modules that should be filtered to warn level.
+///
+/// These modules produce high-volume debug/trace logs that typically
+/// don't provide useful business context (connection pool management,
+/// HTTP/2 frame handling, TLS handshakes, etc.)
+pub const NOISY_MODULES: &[&str] = &[
+    "hyper",
+    "hyper_util",
+    "reqwest",
+    "h2",
+    "rustls",
+    "tokio_util",
+    "tower_http",
+    "tungstenite",
+];
+
+/// Build the default EnvFilter with noise suppression.
+///
+/// Creates a filter that sets noisy library modules to `warn` while
+/// keeping the base log level for business logic.
+fn build_filter(log_level: &str) -> EnvFilter {
+    // Try environment variable first (allows override)
+    if let Ok(filter) = EnvFilter::try_from_default_env() {
+        return filter;
+    }
+
+    // Build filter with noise suppression
+    let mut directives = String::from(log_level);
+
+    for module in NOISY_MODULES {
+        directives.push_str(&format!(",{}=warn", module));
+    }
+
+    EnvFilter::new(&directives)
+}
+
 /// Initialize logging with the given configuration.
+///
+/// # Arguments
+///
+/// * `log_level` - Base log level (trace, debug, info, warn, error)
+/// * `log_format` - Output format: "json" for structured JSON, "pretty" for human-readable
+///
+/// # Noise Filtering
+///
+/// Noisy modules (hyper, reqwest, h2, etc.) are automatically set to `warn`
+/// level unless overridden via `RUST_LOG` environment variable.
 pub fn init_logging(log_level: &str, log_format: &str) {
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(log_level));
+    let filter = build_filter(log_level);
+
+    let subscriber = tracing_subscriber::registry().with(filter);
+
+    if log_format == "json" {
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .json()
+            .with_span_events(FmtSpan::CLOSE)
+            .with_current_span(true)
+            .with_target(true)
+            .with_file(true)
+            .with_line_number(true);
+        let _ = subscriber.with(fmt_layer).try_init();
+    } else {
+        // Default to pretty format
+        // Uses local time from tracing-subscriber (no chrono dependency)
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(true)
+            .with_target(true)
+            .with_file(false)
+            .with_line_number(false);
+        let _ = subscriber.with(fmt_layer).try_init();
+    }
+
+    tracing::info!(
+        log_level = %log_level,
+        log_format = %log_format,
+        noise_filtered = NOISY_MODULES.len(),
+        "Logging initialized"
+    );
+}
+
+/// Initialize logging with custom excluded targets.
+///
+/// Like `init_logging`, but allows specifying additional modules to exclude.
+pub fn init_logging_with_exclusions(
+    log_level: &str,
+    log_format: &str,
+    excluded_targets: &[String],
+) {
+    // Build filter with both default and custom exclusions
+    let mut directives = String::from(log_level);
+
+    for module in NOISY_MODULES {
+        directives.push_str(&format!(",{}=warn", module));
+    }
+
+    for target in excluded_targets {
+        directives.push_str(&format!(",{}=warn", target));
+    }
+
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&directives));
 
     let subscriber = tracing_subscriber::registry().with(filter);
 
@@ -33,7 +137,12 @@ pub fn init_logging(log_level: &str, log_format: &str) {
         let _ = subscriber.with(fmt_layer).try_init();
     }
 
-    tracing::info!(log_level = %log_level, log_format = %log_format, "Logging initialized");
+    tracing::info!(
+        log_level = %log_level,
+        log_format = %log_format,
+        noise_filtered = NOISY_MODULES.len() + excluded_targets.len(),
+        "Logging initialized with custom exclusions"
+    );
 }
 
 /// Generate a new trace ID for request tracing.
@@ -348,9 +457,86 @@ macro_rules! log_error {
     };
 }
 
+/// Create a tracing span for API calls with business context.
+///
+/// # Example
+///
+/// ```ignore
+/// let span = request_span!("api_call", trace_id, user_id = %user, endpoint = "/chat");
+/// let _enter = span.enter();
+/// // ... do work
+/// ```
+#[macro_export]
+macro_rules! request_span {
+    ($name:expr, $trace_id:expr) => {
+        tracing::info_span!($name, trace_id = %$trace_id)
+    };
+    ($name:expr, $trace_id:expr, $($field:tt)*) => {
+        tracing::info_span!($name, trace_id = %$trace_id, $($field)*)
+    };
+}
+
+/// Create a tracing span for IM channel message handling.
+///
+/// # Example
+///
+/// ```ignore
+/// let span = channel_span!("telegram", trace_id, user_id = %user, chat_id = %chat);
+/// let _enter = span.enter();
+/// // ... handle message
+/// ```
+#[macro_export]
+macro_rules! channel_span {
+    ($channel:expr, $trace_id:expr, $user_id:expr) => {
+        tracing::info_span!(
+            "channel_message",
+            channel = $channel,
+            trace_id = %$trace_id,
+            user_id = %$user_id
+        )
+    };
+    ($channel:expr, $trace_id:expr, $user_id:expr, $($field:tt)*) => {
+        tracing::info_span!(
+            "channel_message",
+            channel = $channel,
+            trace_id = %$trace_id,
+            user_id = %$user_id,
+            $($field)*
+        )
+    };
+}
+
+/// Create a tracing span for external API calls.
+///
+/// # Example
+///
+/// ```ignore
+/// let span = api_call_span!(trace_id, endpoint = "/api/v1/chat", method = "POST");
+/// let _enter = span.enter();
+/// // ... call API
+/// tracing::info!(duration_ms = %elapsed, "API call completed");
+/// ```
+#[macro_export]
+macro_rules! api_call_span {
+    ($trace_id:expr, $($field:tt)*) => {
+        tracing::info_span!("api_call", trace_id = %$trace_id, $($field)*)
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_noisy_modules_list() {
+        // Ensure we have the expected noisy modules
+        assert!(NOISY_MODULES.contains(&"hyper"));
+        assert!(NOISY_MODULES.contains(&"hyper_util"));
+        assert!(NOISY_MODULES.contains(&"reqwest"));
+        assert!(NOISY_MODULES.contains(&"h2"));
+        assert!(NOISY_MODULES.contains(&"rustls"));
+        assert!(NOISY_MODULES.contains(&"tokio_util"));
+    }
 
     #[test]
     fn test_generate_trace_id() {

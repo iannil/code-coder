@@ -27,6 +27,7 @@ static H2_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^## (.+)$").u
 static H3_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^### (.+)$").unwrap());
 static H4_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#### (.+)$").unwrap());
 static BOLD_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\*\*(.+?)\*\*").unwrap());
+#[allow(dead_code)] // Reserved for future italic handling improvements
 static ITALIC_ASTERISK_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?<!\*)\*([^*]+)\*(?!\*)").unwrap());
 static STRIKETHROUGH_PATTERN: LazyLock<Regex> =
@@ -219,7 +220,6 @@ pub fn split_message(text: &str) -> Vec<String> {
         if current_chunk.len() + line_with_newline.len() > MAX_BLOCK_TEXT_LENGTH {
             if !current_chunk.is_empty() {
                 chunks.push(current_chunk);
-                current_chunk = String::new();
             }
 
             // If a single line is too long, split it

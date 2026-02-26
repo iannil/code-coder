@@ -106,8 +106,8 @@ pub fn build_router_legacy(config: &Config) -> Router {
 /// Start the gateway server.
 pub async fn start_server(config: &Config) -> anyhow::Result<()> {
     let addr = SocketAddr::from((
-        config.gateway.host.parse::<std::net::IpAddr>()?,
-        config.gateway.port,
+        config.bind_address().parse::<std::net::IpAddr>()?,
+        config.gateway_port(),
     ));
 
     let router = build_router(config);

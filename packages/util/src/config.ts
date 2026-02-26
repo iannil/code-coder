@@ -8,223 +8,189 @@
 import z from "zod"
 import { watch, type FSWatcher } from "fs"
 
+// ============================================================================
+// Network Configuration
+// ============================================================================
+
+/**
+ * Global network configuration.
+ * Controls the bind address for all services.
+ */
+export interface NetworkConfig {
+  /** Bind address for all services. Default: "127.0.0.1" (local only) */
+  bind?: string
+  /** Public URL for callbacks (optional) */
+  public_url?: string
+}
+
+// ============================================================================
+// Services Port Configuration
+// ============================================================================
+
+/**
+ * Simplified service port configuration.
+ */
+export interface ServicesConfig {
+  codecoder?: { port?: number }
+  gateway?: { port?: number }
+  channels?: { port?: number }
+  workflow?: { port?: number }
+  trading?: { port?: number }
+}
+
+// ============================================================================
+// Authentication Configuration
+// ============================================================================
+
+/**
+ * Authentication configuration.
+ */
+export interface AuthConfig {
+  /** Authentication mode: "pairing" | "jwt" | "none" */
+  mode?: string
+  /** JWT secret (auto-generated if not set) */
+  jwt_secret?: string
+  /** Token expiry in seconds */
+  token_expiry_secs?: number
+}
+
+// ============================================================================
+// Secrets Configuration
+// ============================================================================
+
+/**
+ * Grouped secrets configuration.
+ */
+export interface SecretsConfig {
+  /** LLM provider API keys */
+  llm?: LlmSecretsConfig
+  /** IM channel credentials */
+  channels?: ChannelSecretsConfig
+  /** External service credentials */
+  external?: ExternalSecretsConfig
+}
+
+export interface LlmSecretsConfig {
+  anthropic?: string
+  openai?: string
+  deepseek?: string
+  google?: string
+  openrouter?: string
+  groq?: string
+  mistral?: string
+  xai?: string
+  together?: string
+  fireworks?: string
+  perplexity?: string
+  cohere?: string
+  cloudflare?: string
+  venice?: string
+  moonshot?: string
+  glm?: string
+  minimax?: string
+  qianfan?: string
+}
+
+export interface ChannelSecretsConfig {
+  telegram_bot_token?: string
+  discord_bot_token?: string
+  slack_bot_token?: string
+  slack_app_token?: string
+  feishu_app_id?: string
+  feishu_app_secret?: string
+}
+
+export interface ExternalSecretsConfig {
+  tushare?: string
+  lixin?: string
+  cloudflare_tunnel?: string
+  ngrok_auth?: string
+  elevenlabs?: string
+}
+
+// ============================================================================
+// LLM Configuration
+// ============================================================================
+
+/**
+ * Simplified LLM configuration.
+ */
+export interface LlmConfigNew {
+  /** Default model in provider/model format */
+  default?: string
+  /** Custom provider configurations */
+  providers?: Record<string, { base_url?: string; models?: string[] }>
+}
+
+// ============================================================================
+// Voice Configuration
+// ============================================================================
+
+/**
+ * Voice configuration (TTS/STT).
+ */
+export interface VoiceConfigNew {
+  tts?: { provider?: string; voice?: string }
+  stt?: { provider?: string; model?: string }
+}
+
+// ============================================================================
+// Tunnel Configuration
+// ============================================================================
+
+/**
+ * Tunnel configuration for external access.
+ */
+export interface TunnelConfigNew {
+  /** Tunnel provider: "none" | "cloudflare" | "tailscale" | "ngrok" */
+  provider?: string
+  cloudflare_token?: string
+  ngrok_auth_token?: string
+}
+
+// ============================================================================
+// Channel Enable Configuration (simplified from legacy)
+// ============================================================================
+
+/**
+ * Simplified channel enable/disable configuration.
+ * Used for channels.telegram.enabled etc.
+ */
+export interface ChannelEnableConfig {
+  enabled?: boolean
+  allowed_users?: string[]
+}
+
+// ============================================================================
+// Root Configuration
+// ============================================================================
+
 /**
  * Root configuration structure for all Zero services.
  * Stored at `~/.codecoder/config.json`.
  */
 export interface Config {
-  /** Gateway configuration */
-  gateway?: GatewayConfig
-  /** Channels configuration */
-  channels?: ChannelsConfig
-  /** Workflow configuration */
-  workflow?: WorkflowConfig
-  /** CodeCoder integration */
-  codecoder?: CodeCoderConfig
-  /** Observability configuration */
-  observability?: ObservabilityConfig
-  /** Memory/persistence configuration */
-  memory?: MemoryConfig
-}
-
-/**
- * Gateway service configuration.
- */
-export interface GatewayConfig {
-  /** Gateway HTTP port (default: 4410) */
-  port?: number
-  /** Gateway HTTP host (default: "127.0.0.1") */
-  host?: string
-  /** JWT secret for token signing (auto-generated if not set) */
-  jwt_secret?: string
-  /** Token expiry in seconds (default: 86400 = 24 hours) */
-  token_expiry_secs?: number
-  /** Enable rate limiting (default: true) */
-  rate_limiting?: boolean
-  /** Requests per minute per user (default: 60) */
-  rate_limit_rpm?: number
-  /** CodeCoder API endpoint to proxy to */
-  codecoder_endpoint?: string
-}
-
-/**
- * Channels service configuration.
- */
-export interface ChannelsConfig {
-  /** Channels HTTP port (default: 4411) */
-  port?: number
-  /** Channels HTTP host (default: "127.0.0.1") */
-  host?: string
-  /** Telegram bot configuration */
-  telegram?: TelegramConfig
-  /** Discord bot configuration */
-  discord?: DiscordConfig
-  /** Slack bot configuration */
-  slack?: SlackConfig
-  /** Feishu bot configuration */
-  feishu?: FeishuConfig
-  /** TTS configuration */
-  tts?: TtsConfig
-  /** STT configuration */
-  stt?: SttConfig
-}
-
-/**
- * Telegram channel configuration.
- */
-export interface TelegramConfig {
-  enabled: boolean
-  bot_token: string
-  allowed_users?: string[]
-  allowed_chats?: number[]
-}
-
-/**
- * Discord channel configuration.
- */
-export interface DiscordConfig {
-  enabled: boolean
-  bot_token: string
-  allowed_guilds?: string[]
-  allowed_channels?: string[]
-}
-
-/**
- * Slack channel configuration.
- */
-export interface SlackConfig {
-  enabled: boolean
-  bot_token: string
-  app_token: string
-  signing_secret?: string
-}
-
-/**
- * Feishu channel configuration.
- */
-export interface FeishuConfig {
-  enabled: boolean
-  app_id: string
-  app_secret: string
-  encrypt_key?: string
-  verification_token?: string
-  allowed_users?: string[]
-}
-
-/**
- * TTS (Text-to-Speech) configuration.
- */
-export interface TtsConfig {
-  /** Provider: "openai" | "elevenlabs" | "azure" */
-  provider: string
-  api_key?: string
-  voice?: string
-}
-
-/**
- * STT (Speech-to-Text) configuration.
- */
-export interface SttConfig {
-  /** Provider: "openai" | "azure" | "google" | "compatible" */
-  provider: string
-  api_key?: string
-  model?: string
-}
-
-/**
- * Workflow service configuration.
- */
-export interface WorkflowConfig {
-  /** Cron scheduler configuration */
-  cron?: CronConfig
-  /** Webhook configuration */
-  webhook?: WebhookConfig
-  /** Git integration configuration */
-  git?: GitIntegrationConfig
-}
-
-/**
- * Cron scheduler configuration.
- */
-export interface CronConfig {
-  /** Enable cron scheduler */
-  enabled?: boolean
-  /** Scheduled tasks */
-  tasks?: CronTask[]
-}
-
-/**
- * A scheduled cron task.
- */
-export interface CronTask {
-  /** Task ID */
-  id: string
-  /** Cron expression (6-field format) */
-  expression: string
-  /** Command or workflow to execute */
-  command: string
-  /** Task description */
-  description?: string
-}
-
-/**
- * Webhook configuration.
- */
-export interface WebhookConfig {
-  /** Enable webhook receiver */
-  enabled?: boolean
-  /** Webhook port (if separate from gateway) */
-  port?: number
-  /** Webhook secret for signature verification */
-  secret?: string
-}
-
-/**
- * Git integration configuration.
- */
-export interface GitIntegrationConfig {
-  /** Enable Git webhook handling */
-  enabled?: boolean
-  /** GitHub webhook secret */
-  github_secret?: string
-  /** GitLab webhook token */
-  gitlab_token?: string
-}
-
-/**
- * CodeCoder integration configuration.
- */
-export interface CodeCoderConfig {
-  /** Enable CodeCoder integration (default: true) */
-  enabled?: boolean
-  /** CodeCoder API endpoint (default: "http://127.0.0.1:4400") */
-  endpoint?: string
-  /** API timeout in seconds (default: 300) */
-  timeout_secs?: number
-}
-
-/**
- * Observability configuration.
- */
-export interface ObservabilityConfig {
-  /** Log level: "trace" | "debug" | "info" | "warn" | "error" (default: "info") */
-  log_level?: "trace" | "debug" | "info" | "warn" | "error"
-  /** Log format: "json" | "pretty" (default: "pretty") */
-  log_format?: "json" | "pretty"
-  /** Enable request tracing (default: true) */
-  tracing?: boolean
-}
-
-/**
- * Memory/persistence configuration.
- */
-export interface MemoryConfig {
-  /** Backend type: "sqlite" | "postgres" (default: "sqlite") */
-  backend?: "sqlite" | "postgres"
-  /** Database path (for SQLite) */
-  path?: string
-  /** Connection string (for PostgreSQL) */
-  connection_string?: string
+  /** Global network configuration */
+  network?: NetworkConfig
+  /** Simplified service port configuration */
+  services?: ServicesConfig
+  /** Authentication configuration */
+  auth?: AuthConfig
+  /** Grouped secrets */
+  secrets?: SecretsConfig
+  /** Simplified LLM configuration */
+  llm?: LlmConfigNew
+  /** Voice configuration */
+  voice?: VoiceConfigNew
+  /** Tunnel configuration */
+  tunnel?: TunnelConfigNew
+  /** Channel enable configuration (telegram, discord, etc.) */
+  channels?: {
+    telegram?: ChannelEnableConfig
+    discord?: ChannelEnableConfig
+    slack?: ChannelEnableConfig
+    feishu?: ChannelEnableConfig
+  }
 }
 
 // ============================================================================
@@ -424,35 +390,23 @@ export type OutgoingContent =
 // ============================================================================
 
 export const DEFAULT_CONFIG: Config = {
-  gateway: {
-    port: 4410,
-    host: "127.0.0.1",
+  network: {
+    bind: "127.0.0.1",
+  },
+  services: {
+    codecoder: { port: 4400 },
+    gateway: { port: 4430 },
+    channels: { port: 4431 },
+    workflow: { port: 4432 },
+    trading: { port: 4434 },
+  },
+  auth: {
+    mode: "pairing",
     token_expiry_secs: 86400,
-    rate_limiting: true,
-    rate_limit_rpm: 60,
-    codecoder_endpoint: "http://127.0.0.1:4400",
   },
-  channels: {
-    port: 4411,
-    host: "127.0.0.1",
-  },
-  workflow: {
-    cron: { enabled: false, tasks: [] },
-    webhook: { enabled: false },
-    git: { enabled: false },
-  },
-  codecoder: {
-    enabled: true,
-    endpoint: "http://127.0.0.1:4400",
-    timeout_secs: 300,
-  },
-  observability: {
-    log_level: "info",
-    log_format: "pretty",
-    tracing: true,
-  },
-  memory: {
-    backend: "sqlite",
+  voice: {
+    tts: { provider: "compatible", voice: "nova" },
+    stt: { provider: "local", model: "base" },
   },
 }
 
@@ -479,95 +433,120 @@ export function configPath(): string {
 // Config Schema (Zod validation)
 // ============================================================================
 
+const NetworkSchema = z.object({
+  bind: z.string().optional(),
+  public_url: z.string().optional(),
+}).optional()
+
+const ServicePortSchema = z.object({
+  port: z.number().int().positive().optional(),
+}).optional()
+
+const ServicesSchema = z.object({
+  codecoder: ServicePortSchema,
+  gateway: ServicePortSchema,
+  channels: ServicePortSchema,
+  workflow: ServicePortSchema,
+  trading: ServicePortSchema,
+}).optional()
+
+const AuthSchema = z.object({
+  mode: z.enum(["pairing", "jwt", "none"]).optional(),
+  jwt_secret: z.string().optional(),
+  token_expiry_secs: z.number().int().positive().optional(),
+}).optional()
+
+const LlmSecretsSchema = z.object({
+  anthropic: z.string().optional(),
+  openai: z.string().optional(),
+  deepseek: z.string().optional(),
+  google: z.string().optional(),
+  openrouter: z.string().optional(),
+  groq: z.string().optional(),
+  mistral: z.string().optional(),
+  xai: z.string().optional(),
+  together: z.string().optional(),
+  fireworks: z.string().optional(),
+  perplexity: z.string().optional(),
+  cohere: z.string().optional(),
+  cloudflare: z.string().optional(),
+  venice: z.string().optional(),
+  moonshot: z.string().optional(),
+  glm: z.string().optional(),
+  minimax: z.string().optional(),
+  qianfan: z.string().optional(),
+}).optional()
+
+const ChannelSecretsSchema = z.object({
+  telegram_bot_token: z.string().optional(),
+  discord_bot_token: z.string().optional(),
+  slack_bot_token: z.string().optional(),
+  slack_app_token: z.string().optional(),
+  feishu_app_id: z.string().optional(),
+  feishu_app_secret: z.string().optional(),
+}).optional()
+
+const ExternalSecretsSchema = z.object({
+  tushare: z.string().optional(),
+  lixin: z.string().optional(),
+  cloudflare_tunnel: z.string().optional(),
+  ngrok_auth: z.string().optional(),
+  elevenlabs: z.string().optional(),
+}).optional()
+
+const SecretsSchema = z.object({
+  llm: LlmSecretsSchema,
+  channels: ChannelSecretsSchema,
+  external: ExternalSecretsSchema,
+}).optional()
+
+const LlmSchema = z.object({
+  default: z.string().optional(),
+  providers: z.record(z.string(), z.object({
+    base_url: z.string().optional(),
+    models: z.array(z.string()).optional(),
+  })).optional(),
+}).optional()
+
+const VoiceSchema = z.object({
+  tts: z.object({
+    provider: z.string().optional(),
+    voice: z.string().optional(),
+  }).optional(),
+  stt: z.object({
+    provider: z.string().optional(),
+    model: z.string().optional(),
+  }).optional(),
+}).optional()
+
+const TunnelSchema = z.object({
+  provider: z.enum(["none", "cloudflare", "tailscale", "ngrok"]).optional(),
+  cloudflare_token: z.string().optional(),
+  ngrok_auth_token: z.string().optional(),
+}).optional()
+
+const ChannelEnableSchema = z.object({
+  enabled: z.boolean().optional(),
+  allowed_users: z.array(z.string()).optional(),
+}).optional()
+
 /**
  * Zod schema for the root configuration.
  * Provides runtime validation and TypeScript type inference.
  */
 export const ConfigSchema = z.object({
-  gateway: z.object({
-    port: z.number().int().positive().optional(),
-    host: z.string().optional(),
-    jwt_secret: z.string().optional(),
-    token_expiry_secs: z.number().int().positive().optional(),
-    rate_limiting: z.boolean().optional(),
-    rate_limit_rpm: z.number().int().positive().optional(),
-    codecoder_endpoint: z.string().optional(),
-  }).optional(),
+  network: NetworkSchema,
+  services: ServicesSchema,
+  auth: AuthSchema,
+  secrets: SecretsSchema,
+  llm: LlmSchema,
+  voice: VoiceSchema,
+  tunnel: TunnelSchema,
   channels: z.object({
-    port: z.number().int().positive().optional(),
-    host: z.string().optional(),
-    telegram: z.object({
-      enabled: z.boolean(),
-      bot_token: z.string(),
-      allowed_users: z.array(z.string()).optional(),
-      allowed_chats: z.array(z.number()).optional(),
-    }).optional(),
-    discord: z.object({
-      enabled: z.boolean(),
-      bot_token: z.string(),
-      allowed_guilds: z.array(z.string()).optional(),
-      allowed_channels: z.array(z.string()).optional(),
-    }).optional(),
-    slack: z.object({
-      enabled: z.boolean(),
-      bot_token: z.string(),
-      app_token: z.string(),
-      signing_secret: z.string().optional(),
-    }).optional(),
-    feishu: z.object({
-      enabled: z.boolean(),
-      app_id: z.string(),
-      app_secret: z.string(),
-      encrypt_key: z.string().optional(),
-      verification_token: z.string().optional(),
-      allowed_users: z.array(z.string()).optional(),
-    }).optional(),
-    tts: z.object({
-      provider: z.string(),
-      api_key: z.string().optional(),
-      voice: z.string().optional(),
-    }).optional(),
-    stt: z.object({
-      provider: z.string(),
-      api_key: z.string().optional(),
-      model: z.string().optional(),
-    }).optional(),
-  }).optional(),
-  workflow: z.object({
-    cron: z.object({
-      enabled: z.boolean().optional(),
-      tasks: z.array(z.object({
-        id: z.string(),
-        expression: z.string(),
-        command: z.string(),
-        description: z.string().optional(),
-      })).optional(),
-    }).optional(),
-    webhook: z.object({
-      enabled: z.boolean().optional(),
-      port: z.number().int().positive().optional(),
-      secret: z.string().optional(),
-    }).optional(),
-    git: z.object({
-      enabled: z.boolean().optional(),
-      github_secret: z.string().optional(),
-      gitlab_token: z.string().optional(),
-    }).optional(),
-  }).optional(),
-  codecoder: z.object({
-    enabled: z.boolean().optional(),
-    endpoint: z.string().optional(),
-    timeout_secs: z.number().int().positive().optional(),
-  }).optional(),
-  observability: z.object({
-    log_level: z.enum(["trace", "debug", "info", "warn", "error"]).optional(),
-    log_format: z.enum(["json", "pretty"]).optional(),
-    tracing: z.boolean().optional(),
-  }).optional(),
-  memory: z.object({
-    backend: z.enum(["sqlite", "postgres"]).optional(),
-    path: z.string().optional(),
-    connection_string: z.string().optional(),
+    telegram: ChannelEnableSchema,
+    discord: ChannelEnableSchema,
+    slack: ChannelEnableSchema,
+    feishu: ChannelEnableSchema,
   }).optional(),
 }).passthrough()
 
@@ -662,6 +641,87 @@ export class ConfigManager {
     return this.loaded ? this.config : { ...DEFAULT_CONFIG }
   }
 
+  // ===========================================================================
+  // Endpoint helper methods
+  // ===========================================================================
+
+  /**
+   * Get the effective bind address.
+   */
+  getBindAddress(): string {
+    return this.config.network?.bind ?? "127.0.0.1"
+  }
+
+  /**
+   * Get the effective port for CodeCoder service.
+   */
+  getCodeCoderPort(): number {
+    return this.config.services?.codecoder?.port ?? 4400
+  }
+
+  /**
+   * Get the effective port for Gateway service.
+   */
+  getGatewayPort(): number {
+    return this.config.services?.gateway?.port ?? 4430
+  }
+
+  /**
+   * Get the effective port for Channels service.
+   */
+  getChannelsPort(): number {
+    return this.config.services?.channels?.port ?? 4431
+  }
+
+  /**
+   * Get the effective port for Workflow service.
+   */
+  getWorkflowPort(): number {
+    return this.config.services?.workflow?.port ?? 4432
+  }
+
+  /**
+   * Get the effective port for Trading service.
+   */
+  getTradingPort(): number {
+    return this.config.services?.trading?.port ?? 4434
+  }
+
+  /**
+   * Get the CodeCoder service endpoint URL.
+   */
+  getCodeCoderEndpoint(): string {
+    return `http://${this.getBindAddress()}:${this.getCodeCoderPort()}`
+  }
+
+  /**
+   * Get the Gateway service endpoint URL.
+   */
+  getGatewayEndpoint(): string {
+    return `http://${this.getBindAddress()}:${this.getGatewayPort()}`
+  }
+
+  /**
+   * Get the Channels service endpoint URL.
+   */
+  getChannelsEndpoint(): string {
+    return `http://${this.getBindAddress()}:${this.getChannelsPort()}`
+  }
+
+  /**
+   * Get the Workflow service endpoint URL.
+   */
+  getWorkflowEndpoint(): string {
+    return `http://${this.getBindAddress()}:${this.getWorkflowPort()}`
+  }
+
+  /**
+   * Get the Trading service endpoint URL.
+   */
+  getTradingEndpoint(): string {
+    return `http://${this.getBindAddress()}:${this.getTradingPort()}`
+  }
+
   /**
    * Start watching for configuration changes.
    * Calls handlers when config file changes on disk.
@@ -713,61 +773,94 @@ export class ConfigManager {
   private applyEnvOverrides(config: Config): Config {
     const result = { ...config }
 
-    // Gateway overrides
-    if (process.env.CODECODER_GATEWAY_PORT) {
-      result.gateway = {
-        ...result.gateway,
-        port: parseInt(process.env.CODECODER_GATEWAY_PORT, 10),
-      }
-    }
+    // Ensure nested objects exist
+    if (!result.services) result.services = {}
+    if (!result.network) result.network = {}
+    if (!result.auth) result.auth = {}
+    if (!result.secrets) result.secrets = {}
+    if (!result.secrets.channels) result.secrets.channels = {}
+    if (!result.channels) result.channels = {}
+
+    // Network bind override
     if (process.env.CODECODER_GATEWAY_HOST) {
-      result.gateway = { ...result.gateway, host: process.env.CODECODER_GATEWAY_HOST }
+      result.network = { ...result.network, bind: process.env.CODECODER_GATEWAY_HOST }
     }
+
+    // Gateway port override
+    if (process.env.CODECODER_GATEWAY_PORT) {
+      result.services = {
+        ...result.services,
+        gateway: {
+          ...result.services.gateway,
+          port: parseInt(process.env.CODECODER_GATEWAY_PORT, 10),
+        },
+      }
+    }
+
+    // JWT secret override
     if (process.env.CODECODER_JWT_SECRET) {
-      result.gateway = { ...result.gateway, jwt_secret: process.env.CODECODER_JWT_SECRET }
+      result.auth = { ...result.auth, jwt_secret: process.env.CODECODER_JWT_SECRET }
     }
 
-    // Channels overrides
+    // Channels port override
     if (process.env.CODECODER_CHANNELS_PORT) {
-      result.channels = {
-        ...result.channels,
-        port: parseInt(process.env.CODECODER_CHANNELS_PORT, 10),
+      result.services = {
+        ...result.services,
+        channels: {
+          ...result.services.channels,
+          port: parseInt(process.env.CODECODER_CHANNELS_PORT, 10),
+        },
       }
     }
+
+    // Telegram bot token override
     if (process.env.TELEGRAM_BOT_TOKEN) {
-      result.channels = {
-        ...result.channels,
-        telegram: {
-          ...result.channels?.telegram,
-          enabled: true,
-          bot_token: process.env.TELEGRAM_BOT_TOKEN,
+      result.secrets = {
+        ...result.secrets,
+        channels: {
+          ...result.secrets.channels,
+          telegram_bot_token: process.env.TELEGRAM_BOT_TOKEN,
         },
       }
+      result.channels = {
+        ...result.channels,
+        telegram: { ...result.channels.telegram, enabled: true },
+      }
     }
+
+    // Discord bot token override
     if (process.env.DISCORD_BOT_TOKEN) {
+      result.secrets = {
+        ...result.secrets,
+        channels: {
+          ...result.secrets.channels,
+          discord_bot_token: process.env.DISCORD_BOT_TOKEN,
+        },
+      }
       result.channels = {
         ...result.channels,
-        discord: {
-          ...result.channels?.discord,
-          enabled: true,
-          bot_token: process.env.DISCORD_BOT_TOKEN,
-        },
+        discord: { ...result.channels.discord, enabled: true },
       }
     }
 
-    // CodeCoder overrides
+    // CodeCoder endpoint override (parse URL to extract port)
     if (process.env.CODECODER_ENDPOINT) {
-      result.codecoder = { ...result.codecoder, endpoint: process.env.CODECODER_ENDPOINT }
-    }
-
-    // Observability overrides
-    if (process.env.CODECODER_LOG_LEVEL) {
-      const level = process.env.CODECODER_LOG_LEVEL.toLowerCase()
-      if (["trace", "debug", "info", "warn", "error"].includes(level)) {
-        result.observability = {
-          ...result.observability,
-          log_level: level as "trace" | "debug" | "info" | "warn" | "error",
+      try {
+        const url = new URL(process.env.CODECODER_ENDPOINT)
+        if (url.hostname) {
+          result.network = { ...result.network, bind: url.hostname }
         }
+        if (url.port) {
+          result.services = {
+            ...result.services,
+            codecoder: {
+              ...result.services.codecoder,
+              port: parseInt(url.port, 10),
+            },
+          }
+        }
+      } catch {
+        // Ignore invalid URL
       }
     }
 
@@ -779,12 +872,20 @@ export class ConfigManager {
    */
   private mergeWithDefaults(config: Partial<Config>): Config {
     return {
-      gateway: { ...DEFAULT_CONFIG.gateway, ...config.gateway },
-      channels: { ...DEFAULT_CONFIG.channels, ...config.channels },
-      workflow: { ...DEFAULT_CONFIG.workflow, ...config.workflow },
-      codecoder: { ...DEFAULT_CONFIG.codecoder, ...config.codecoder },
-      observability: { ...DEFAULT_CONFIG.observability, ...config.observability },
-      memory: { ...DEFAULT_CONFIG.memory, ...config.memory },
+      network: { ...DEFAULT_CONFIG.network, ...config.network },
+      services: {
+        codecoder: { ...DEFAULT_CONFIG.services?.codecoder, ...config.services?.codecoder },
+        gateway: { ...DEFAULT_CONFIG.services?.gateway, ...config.services?.gateway },
+        channels: { ...DEFAULT_CONFIG.services?.channels, ...config.services?.channels },
+        workflow: { ...DEFAULT_CONFIG.services?.workflow, ...config.services?.workflow },
+        trading: { ...DEFAULT_CONFIG.services?.trading, ...config.services?.trading },
+      },
+      auth: { ...DEFAULT_CONFIG.auth, ...config.auth },
+      secrets: config.secrets,
+      llm: config.llm,
+      voice: { ...DEFAULT_CONFIG.voice, ...config.voice },
+      tunnel: config.tunnel,
+      channels: config.channels,
     }
   }
 

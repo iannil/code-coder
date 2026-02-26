@@ -345,11 +345,13 @@ impl MacroFilter {
 
 /// Add Neutral variant for EconomicCyclePhase when PMI is unknown
 impl EconomicCyclePhase {
+    #[allow(non_upper_case_globals)] // Semantic constant, not a flag
     const Neutral: Self = Self::EarlyRecovery; // Use EarlyRecovery as neutral default
 }
 
 /// Response from workflow service
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // API response struct - fields reserved for future use
 struct MacroDataResponse {
     #[serde(default)]
     pmi: Option<f64>,

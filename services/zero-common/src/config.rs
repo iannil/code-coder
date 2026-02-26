@@ -38,9 +38,373 @@ pub fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
+// ============================================================================
+// Network Configuration (Global bind address)
+// ============================================================================
+
+/// Global network configuration.
+///
+/// Controls the bind address for all services. Default is `127.0.0.1` (local only).
+/// Set to `0.0.0.0` to allow remote access.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkConfig {
+    /// Bind address for all services.
+    /// Default: "127.0.0.1" (conservative, local only)
+    /// Set to "0.0.0.0" for remote access
+    #[serde(default = "default_bind_address")]
+    pub bind: String,
+
+    /// Public URL for callbacks (optional).
+    /// Used when the service is behind a reverse proxy or tunnel.
+    #[serde(default)]
+    pub public_url: Option<String>,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            bind: default_bind_address(),
+            public_url: None,
+        }
+    }
+}
+
+fn default_bind_address() -> String {
+    "127.0.0.1".into()
+}
+
+// ============================================================================
+// Services Port Configuration (Simplified)
+// ============================================================================
+
+/// Simplified service port configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ServicesConfig {
+    /// CodeCoder API service
+    #[serde(default)]
+    pub codecoder: ServicePortConfig,
+
+    /// Gateway service
+    #[serde(default)]
+    pub gateway: ServicePortConfig,
+
+    /// Channels service
+    #[serde(default)]
+    pub channels: ServicePortConfig,
+
+    /// Workflow service
+    #[serde(default)]
+    pub workflow: ServicePortConfig,
+
+    /// Trading service
+    #[serde(default)]
+    pub trading: ServicePortConfig,
+}
+
+/// Individual service port configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServicePortConfig {
+    /// Port number for the service
+    #[serde(default)]
+    pub port: Option<u16>,
+}
+
+impl Default for ServicePortConfig {
+    fn default() -> Self {
+        Self { port: None }
+    }
+}
+
+// ============================================================================
+// Secrets Configuration (Grouped API keys)
+// ============================================================================
+
+/// Grouped secrets configuration.
+///
+/// All sensitive credentials organized by category for better security management.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SecretsConfig {
+    /// LLM provider API keys
+    #[serde(default)]
+    pub llm: LlmSecretsConfig,
+
+    /// IM channel credentials
+    #[serde(default)]
+    pub channels: ChannelSecretsConfig,
+
+    /// External service credentials
+    #[serde(default)]
+    pub external: ExternalSecretsConfig,
+}
+
+/// LLM provider API keys.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LlmSecretsConfig {
+    #[serde(default)]
+    pub anthropic: Option<String>,
+    #[serde(default)]
+    pub openai: Option<String>,
+    #[serde(default)]
+    pub deepseek: Option<String>,
+    #[serde(default)]
+    pub google: Option<String>,
+    #[serde(default)]
+    pub openrouter: Option<String>,
+    #[serde(default)]
+    pub groq: Option<String>,
+    #[serde(default)]
+    pub mistral: Option<String>,
+    #[serde(default)]
+    pub xai: Option<String>,
+    #[serde(default)]
+    pub together: Option<String>,
+    #[serde(default)]
+    pub fireworks: Option<String>,
+    #[serde(default)]
+    pub perplexity: Option<String>,
+    #[serde(default)]
+    pub cohere: Option<String>,
+    #[serde(default)]
+    pub cloudflare: Option<String>,
+    #[serde(default)]
+    pub venice: Option<String>,
+    #[serde(default)]
+    pub moonshot: Option<String>,
+    #[serde(default)]
+    pub glm: Option<String>,
+    #[serde(default)]
+    pub minimax: Option<String>,
+    #[serde(default)]
+    pub qianfan: Option<String>,
+}
+
+/// IM channel credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChannelSecretsConfig {
+    #[serde(default)]
+    pub telegram_bot_token: Option<String>,
+    #[serde(default)]
+    pub discord_bot_token: Option<String>,
+    #[serde(default)]
+    pub slack_bot_token: Option<String>,
+    #[serde(default)]
+    pub slack_app_token: Option<String>,
+    #[serde(default)]
+    pub feishu_app_id: Option<String>,
+    #[serde(default)]
+    pub feishu_app_secret: Option<String>,
+}
+
+/// External service credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExternalSecretsConfig {
+    #[serde(default)]
+    pub tushare: Option<String>,
+    #[serde(default)]
+    pub lixin: Option<String>,
+    #[serde(default)]
+    pub cloudflare_tunnel: Option<String>,
+    #[serde(default)]
+    pub ngrok_auth: Option<String>,
+    #[serde(default)]
+    pub elevenlabs: Option<String>,
+}
+
+// ============================================================================
+// LLM Configuration (Simplified)
+// ============================================================================
+
+/// Simplified LLM configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfig {
+    /// Default model in provider/model format
+    #[serde(default = "default_llm_model")]
+    pub default: String,
+
+    /// Custom provider configurations
+    #[serde(default)]
+    pub providers: HashMap<String, LlmProviderConfig>,
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            default: default_llm_model(),
+            providers: HashMap::new(),
+        }
+    }
+}
+
+fn default_llm_model() -> String {
+    "anthropic/claude-sonnet-4-20250514".into()
+}
+
+/// Custom LLM provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderConfig {
+    /// Base URL for the provider API
+    #[serde(default)]
+    pub base_url: Option<String>,
+
+    /// Available models
+    #[serde(default)]
+    pub models: Vec<String>,
+}
+
+// ============================================================================
+// Auth Configuration (Simplified)
+// ============================================================================
+
+/// Simplified authentication configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    /// Authentication mode: "pairing" | "jwt" | "none"
+    #[serde(default = "default_auth_mode")]
+    pub mode: String,
+
+    /// JWT secret (auto-generated if not set)
+    #[serde(default)]
+    pub jwt_secret: Option<String>,
+
+    /// Token expiry in seconds
+    #[serde(default = "default_token_expiry")]
+    pub token_expiry_secs: u64,
+}
+
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            mode: default_auth_mode(),
+            jwt_secret: None,
+            token_expiry_secs: default_token_expiry(),
+        }
+    }
+}
+
+// ============================================================================
+// Voice Configuration (Simplified)
+// ============================================================================
+
+/// Simplified voice configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceConfig {
+    /// TTS configuration
+    #[serde(default)]
+    pub tts: VoiceTtsConfig,
+
+    /// STT configuration
+    #[serde(default)]
+    pub stt: VoiceSttConfig,
+}
+
+/// TTS provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceTtsConfig {
+    #[serde(default = "default_tts_provider")]
+    pub provider: String,
+    #[serde(default = "default_tts_voice")]
+    pub voice: String,
+}
+
+impl Default for VoiceTtsConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_tts_provider(),
+            voice: default_tts_voice(),
+        }
+    }
+}
+
+fn default_tts_provider() -> String {
+    "compatible".into()
+}
+
+fn default_tts_voice() -> String {
+    "nova".into()
+}
+
+/// STT provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSttConfig {
+    #[serde(default = "default_stt_provider")]
+    pub provider: String,
+    #[serde(default = "default_stt_model")]
+    pub model: String,
+}
+
+impl Default for VoiceSttConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_stt_provider(),
+            model: default_stt_model(),
+        }
+    }
+}
+
+fn default_stt_provider() -> String {
+    "local".into()
+}
+
+fn default_stt_model() -> String {
+    "base".into()
+}
+
+// ============================================================================
+// Simplified Channels Configuration
+// ============================================================================
+
+/// Simplified channel enable/disable configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChannelEnableConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+}
+
 /// Root configuration structure for all Zero services.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
+    /// JSON Schema reference
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+
+    // =========================================================================
+    // New Simplified Configuration (Phase 1)
+    // =========================================================================
+
+    /// Global network configuration (bind address for all services)
+    #[serde(default)]
+    pub network: NetworkConfig,
+
+    /// Simplified service port configuration
+    #[serde(default)]
+    pub services: ServicesConfig,
+
+    /// Authentication configuration
+    #[serde(default)]
+    pub auth: AuthConfig,
+
+    /// Tunnel configuration for external access
+    #[serde(default)]
+    pub tunnel: TunnelConfig,
+
+    /// Grouped secrets (API keys organized by category)
+    #[serde(default)]
+    pub secrets: SecretsConfig,
+
+    /// Simplified LLM configuration
+    #[serde(default)]
+    pub llm: LlmConfig,
+
+    /// Voice configuration (TTS/STT)
+    #[serde(default)]
+    pub voice: VoiceConfig,
+
+    // =========================================================================
+    // Legacy Configuration (backward compatibility, will be migrated)
+    // =========================================================================
+
     /// Gateway configuration
     #[serde(default)]
     pub gateway: GatewayConfig,
@@ -208,48 +572,176 @@ impl Config {
     // Endpoint convenience methods
     // =========================================================================
 
+    /// Get the effective bind address.
+    ///
+    /// Priority:
+    /// 1. New `network.bind` field
+    /// 2. Falls back to default "127.0.0.1"
+    pub fn bind_address(&self) -> &str {
+        &self.network.bind
+    }
+
+    /// Get the effective port for a service.
+    ///
+    /// Uses `services.<service>.port` with default fallback.
+    pub fn codecoder_port(&self) -> u16 {
+        self.services.codecoder.port.unwrap_or(4400)
+    }
+
+    pub fn gateway_port(&self) -> u16 {
+        self.services.gateway.port.unwrap_or(4430)
+    }
+
+    pub fn channels_port(&self) -> u16 {
+        self.services.channels.port.unwrap_or(4431)
+    }
+
+    pub fn workflow_port(&self) -> u16 {
+        self.services.workflow.port.unwrap_or(4432)
+    }
+
+    pub fn trading_port(&self) -> u16 {
+        self.services.trading.port.unwrap_or(4434)
+    }
+
     /// Get the CodeCoder service endpoint URL.
     ///
-    /// Returns the full HTTP URL constructed from codecoder.host and codecoder.port.
+    /// Uses network.bind and services.codecoder.port (with legacy fallbacks).
     /// Example: "http://127.0.0.1:4400"
     pub fn codecoder_endpoint(&self) -> String {
-        self.codecoder.endpoint()
+        format!("http://{}:{}", self.bind_address(), self.codecoder_port())
     }
 
     /// Get the Gateway service endpoint URL.
     ///
-    /// Returns the full HTTP URL constructed from gateway.host and gateway.port.
+    /// Uses network.bind and services.gateway.port (with legacy fallbacks).
     /// Example: "http://127.0.0.1:4430"
     pub fn gateway_endpoint(&self) -> String {
-        format!("http://{}:{}", self.gateway.host, self.gateway.port)
+        format!("http://{}:{}", self.bind_address(), self.gateway_port())
     }
 
     /// Get the Channels service endpoint URL.
     ///
-    /// Returns the full HTTP URL constructed from channels.host and channels.port.
+    /// Uses network.bind and services.channels.port (with legacy fallbacks).
     /// Example: "http://127.0.0.1:4431"
     pub fn channels_endpoint(&self) -> String {
-        format!("http://{}:{}", self.channels.host, self.channels.port)
+        format!("http://{}:{}", self.bind_address(), self.channels_port())
     }
 
     /// Get the Workflow service endpoint URL.
     ///
-    /// Returns the full HTTP URL constructed from workflow.host and workflow.port.
+    /// Uses network.bind and services.workflow.port (with legacy fallbacks).
     /// Example: "http://127.0.0.1:4432"
     pub fn workflow_endpoint(&self) -> String {
-        format!("http://{}:{}", self.workflow.host, self.workflow.port)
+        format!("http://{}:{}", self.bind_address(), self.workflow_port())
     }
 
     /// Get the Trading service endpoint URL.
     ///
-    /// Returns the full HTTP URL constructed from trading.host and trading.port.
-    /// If trading config is not set, returns default endpoint.
+    /// Uses network.bind and services.trading.port (with legacy fallbacks).
     /// Example: "http://127.0.0.1:4434"
     pub fn trading_endpoint(&self) -> String {
-        match &self.trading {
-            Some(t) => format!("http://{}:{}", t.host, t.port),
-            None => format!("http://{}:{}", default_gateway_host(), default_trading_port()),
+        format!("http://{}:{}", self.bind_address(), self.trading_port())
+    }
+
+    // =========================================================================
+    // API Key access methods (supports both new secrets and legacy api_keys)
+    // =========================================================================
+
+    /// Get an API key by provider name.
+    ///
+    /// Reads from `secrets.llm.<provider>` field.
+    /// Use environment variables as fallback at the application level.
+    pub fn get_api_key(&self, provider: &str) -> Option<String> {
+        match provider {
+            "anthropic" => self.secrets.llm.anthropic.clone(),
+            "openai" => self.secrets.llm.openai.clone(),
+            "deepseek" => self.secrets.llm.deepseek.clone(),
+            "google" | "gemini" => self.secrets.llm.google.clone(),
+            "openrouter" => self.secrets.llm.openrouter.clone(),
+            "groq" => self.secrets.llm.groq.clone(),
+            "mistral" => self.secrets.llm.mistral.clone(),
+            "xai" | "grok" => self.secrets.llm.xai.clone(),
+            "together" | "together-ai" => self.secrets.llm.together.clone(),
+            "fireworks" | "fireworks-ai" => self.secrets.llm.fireworks.clone(),
+            "perplexity" => self.secrets.llm.perplexity.clone(),
+            "cohere" => self.secrets.llm.cohere.clone(),
+            "cloudflare" | "cloudflare-ai" => self.secrets.llm.cloudflare.clone(),
+            "venice" => self.secrets.llm.venice.clone(),
+            "moonshot" | "kimi" => self.secrets.llm.moonshot.clone(),
+            "glm" | "zhipu" => self.secrets.llm.glm.clone(),
+            "minimax" => self.secrets.llm.minimax.clone(),
+            "qianfan" | "baidu" => self.secrets.llm.qianfan.clone(),
+            _ => None,
         }
+    }
+
+    /// Check if using new config format (has network or services or secrets populated).
+    pub fn is_new_format(&self) -> bool {
+        // Check if any new-format fields are populated
+        self.services.codecoder.port.is_some()
+            || self.services.gateway.port.is_some()
+            || self.secrets.llm.anthropic.is_some()
+            || self.secrets.llm.openai.is_some()
+            || self.secrets.llm.deepseek.is_some()
+    }
+
+    // =========================================================================
+    // Channel credential accessors (from secrets.channels)
+    // =========================================================================
+
+    /// Get Telegram bot token from secrets.channels.
+    pub fn telegram_bot_token(&self) -> Option<String> {
+        self.secrets.channels.telegram_bot_token.clone()
+    }
+
+    /// Get Discord bot token from secrets.channels.
+    pub fn discord_bot_token(&self) -> Option<String> {
+        self.secrets.channels.discord_bot_token.clone()
+    }
+
+    /// Get Slack bot token from secrets.channels.
+    pub fn slack_bot_token(&self) -> Option<String> {
+        self.secrets.channels.slack_bot_token.clone()
+    }
+
+    /// Get Slack app token from secrets.channels.
+    pub fn slack_app_token(&self) -> Option<String> {
+        self.secrets.channels.slack_app_token.clone()
+    }
+
+    /// Get Feishu app ID from secrets.channels.
+    pub fn feishu_app_id(&self) -> Option<String> {
+        self.secrets.channels.feishu_app_id.clone()
+    }
+
+    /// Get Feishu app secret from secrets.channels.
+    pub fn feishu_app_secret(&self) -> Option<String> {
+        self.secrets.channels.feishu_app_secret.clone()
+    }
+
+    /// Check if Telegram channel is enabled and has credentials.
+    pub fn telegram_enabled(&self) -> bool {
+        self.channels.telegram.as_ref().map(|t| t.enabled).unwrap_or(false)
+            && self.telegram_bot_token().is_some()
+    }
+
+    /// Check if Discord channel is enabled and has credentials.
+    pub fn discord_enabled(&self) -> bool {
+        self.channels.discord.as_ref().map(|d| d.enabled).unwrap_or(false)
+            && self.discord_bot_token().is_some()
+    }
+
+    /// Check if Slack channel is enabled and has credentials.
+    pub fn slack_enabled(&self) -> bool {
+        self.channels.slack.as_ref().map(|s| s.enabled).unwrap_or(false)
+            && self.slack_bot_token().is_some()
+    }
+
+    /// Check if Feishu channel is enabled and has credentials.
+    pub fn feishu_enabled(&self) -> bool {
+        self.channels.feishu.as_ref().map(|f| f.enabled).unwrap_or(false)
+            && self.feishu_app_id().is_some()
     }
 }
 
@@ -433,7 +925,9 @@ impl Default for ChannelsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TelegramConfig {
     pub enabled: bool,
-    pub bot_token: String,
+    /// Bot token (legacy field, prefer secrets.channels.telegram_bot_token)
+    #[serde(default)]
+    pub bot_token: Option<String>,
     #[serde(default)]
     pub allowed_users: Vec<String>,
     #[serde(default)]
@@ -999,16 +1493,32 @@ impl CodeCoderConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservabilityConfig {
     /// Log level (trace, debug, info, warn, error)
-    #[serde(default = "default_log_level")]
+    /// Aliases: "level" for backward compatibility with existing config files
+    #[serde(default = "default_log_level", alias = "level")]
     pub log_level: String,
 
     /// Log format (json, pretty)
-    #[serde(default = "default_log_format")]
+    /// Aliases: "format" for backward compatibility with existing config files
+    #[serde(default = "default_log_format", alias = "format")]
     pub log_format: String,
 
     /// Enable request tracing
     #[serde(default = "default_true")]
     pub tracing: bool,
+
+    /// Show trace_id in pretty format logs (default: true)
+    ///
+    /// When enabled, trace IDs are included in log output for request tracking.
+    #[serde(default = "default_true")]
+    pub show_trace_id: bool,
+
+    /// Additional module targets to exclude from logging.
+    ///
+    /// These modules will be set to `warn` level to reduce noise.
+    /// Built-in noisy modules (hyper, reqwest, h2, rustls, tokio_util) are
+    /// always filtered; this list allows adding custom modules.
+    #[serde(default)]
+    pub excluded_targets: Vec<String>,
 }
 
 impl Default for ObservabilityConfig {
@@ -1017,6 +1527,8 @@ impl Default for ObservabilityConfig {
             log_level: default_log_level(),
             log_format: default_log_format(),
             tracing: true,
+            show_trace_id: true,
+            excluded_targets: Vec::new(),
         }
     }
 }
@@ -1911,7 +2423,8 @@ pub struct TradingConfig {
     pub macro_cache_secs: Option<u64>,
 
     /// Telegram notification settings
-    #[serde(default)]
+    /// Aliases: "notification" for backward compatibility with existing config files
+    #[serde(default, alias = "notification")]
     pub telegram_notification: Option<TradingNotificationConfig>,
 
     /// Macro agent configuration for intelligent analysis
@@ -1919,7 +2432,8 @@ pub struct TradingConfig {
     pub macro_agent: Option<MacroAgentConfig>,
 
     /// Trading loop configuration
-    #[serde(default)]
+    /// Aliases: "loop" for backward compatibility with existing config files
+    #[serde(default, alias = "loop")]
     pub loop_config: Option<TradingLoopConfig>,
 
     /// Session schedule configuration

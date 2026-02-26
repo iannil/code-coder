@@ -10,5 +10,3 @@ pub mod compactor;
 pub mod store;
 pub mod types;
 
-pub use compactor::SessionCompactor;
-pub use store::SessionStore;

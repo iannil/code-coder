@@ -6,10 +6,9 @@
 pub mod crystallize;
 pub mod hygiene;
 
-pub use crystallize::{CrystallizedKnowledge, Crystallizer};
 
 // Re-export memory types from zero-memory
-pub use zero_memory::{MarkdownMemory, Memory, MemoryCategory, MemoryEntry, SqliteMemory};
+pub use zero_memory::{MarkdownMemory, Memory, MemoryCategory, SqliteMemory};
 
 use crate::config::MemoryConfig;
 use std::path::Path;

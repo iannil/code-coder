@@ -315,16 +315,34 @@ pub struct TaskContext {
     pub user_id: String,
     /// Platform source (telegram, discord, etc.)
     pub platform: String,
+    /// Conversation identifier for session continuity (e.g., "telegram:765318302")
+    #[serde(rename = "conversationId", skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
     /// Marker for remote calls
     pub source: &'static str,
 }
 
 impl TaskContext {
     /// Create a new remote task context.
-    pub fn new(user_id: impl Into<String>, platform: impl Into<String>) -> Self {
+    ///
+    /// # Arguments
+    /// * `user_id` - User identifier from the IM platform
+    /// * `channel_id` - Channel/chat identifier (may differ from user_id in group chats)
+    /// * `platform` - Platform name (telegram, discord, slack, etc.)
+    pub fn new(
+        user_id: impl Into<String>,
+        channel_id: impl Into<String>,
+        platform: impl Into<String>,
+    ) -> Self {
+        let plat = platform.into();
+        let chan = channel_id.into();
+        // Generate conversation_id from platform and channel_id for session continuity
+        // Format: "platform:channel_id" (e.g., "telegram:765318302")
+        let conversation_id = format!("{}:{}", plat, chan);
         Self {
             user_id: user_id.into(),
-            platform: platform.into(),
+            platform: plat,
+            conversation_id: Some(conversation_id),
             source: "remote",
         }
     }

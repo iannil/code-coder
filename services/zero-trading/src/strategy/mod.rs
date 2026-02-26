@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use zero_common::config::Config;
 
-use crate::data::{Candle, MarketDataAggregator, SmtPair, Timeframe};
+use crate::data::{MarketDataAggregator, SmtPair, Timeframe};
 
 /// Multi-timeframe PO3+SMT strategy engine
 pub struct StrategyEngine {

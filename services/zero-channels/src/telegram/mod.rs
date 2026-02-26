@@ -962,13 +962,13 @@ impl Channel for TelegramChannel {
                         parent_span_id: None,
                     };
 
+                    // Log message received with business context for traceability
                     tracing::info!(
                         trace_id = %msg.trace_id,
-                        span_id = %msg.span_id,
-                        message_id = %msg.id,
-                        channel_id = %msg.channel_id,
                         user_id = %msg.user_id,
-                        "Telegram message received - initiating trace"
+                        channel_id = %msg.channel_id,
+                        message_id = %msg.id,
+                        "Telegram message received"
                     );
 
                     callback(msg);

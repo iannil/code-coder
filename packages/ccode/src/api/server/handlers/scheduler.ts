@@ -14,12 +14,17 @@
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { z } from "zod"
+import { ConfigManager } from "@codecoder-ai/util/config"
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-const WORKFLOW_SERVICE_URL = process.env.ZERO_WORKFLOW_URL || "http://127.0.0.1:4412"
+// Use config manager for endpoint, fallback to env var for override
+const configManager = new ConfigManager()
+const getWorkflowServiceUrl = (): string => {
+  return process.env.ZERO_WORKFLOW_URL || configManager.getWorkflowEndpoint()
+}
 const REQUEST_TIMEOUT = 10000
 
 // ============================================================================
@@ -140,7 +145,7 @@ async function fetchWorkflowService<T>(
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
   try {
-    const response = await fetch(`${WORKFLOW_SERVICE_URL}${path}`, {
+    const response = await fetch(`${getWorkflowServiceUrl()}${path}`, {
       ...options,
       signal: controller.signal,
       headers: {
@@ -586,7 +591,7 @@ export async function runSchedulerTask(_req: HttpRequest, params: RouteParams): 
 
         case "agent": {
           // Call agent via CodeCoder API
-          const agentResponse = await fetch("http://127.0.0.1:4400/api/agent/invoke", {
+          const agentResponse = await fetch(`${configManager.getCodeCoderEndpoint()}/api/agent/invoke`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

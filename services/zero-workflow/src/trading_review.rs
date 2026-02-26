@@ -506,6 +506,7 @@ pub struct TradingReviewSystem {
     /// CodeCoder endpoint (for LLM analysis)
     codecoder_endpoint: String,
     /// Storage path for trading data
+    #[allow(dead_code)] // Reserved for file-based persistence
     storage_path: PathBuf,
     /// Trades in memory
     trades: Arc<tokio::sync::RwLock<Vec<TradeEntry>>>,

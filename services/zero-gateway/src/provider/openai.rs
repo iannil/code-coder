@@ -9,6 +9,7 @@ use std::time::Instant;
 /// OpenAI API provider.
 pub struct OpenAIProvider {
     client: reqwest::Client,
+    #[allow(dead_code)] // Stored for potential debugging/introspection
     api_key: String,
     base_url: String,
 }

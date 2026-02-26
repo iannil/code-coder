@@ -182,6 +182,7 @@ pub struct EconomicDataBridge {
     /// HTTP client
     client: reqwest::Client,
     /// CodeCoder API endpoint (for LLM analysis)
+    #[allow(dead_code)] // Reserved for future LLM integration
     codecoder_endpoint: String,
     /// API keys for different sources
     api_keys: HashMap<String, String>,

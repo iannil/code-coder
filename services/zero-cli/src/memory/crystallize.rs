@@ -85,7 +85,7 @@ impl Crystallizer {
         &self,
         problem: &str,
         attempts: &[ExecutionAttempt],
-        final_result: &ExecutionResult,
+        _final_result: &ExecutionResult,
     ) -> Result<CrystallizedKnowledge> {
         // Extract errors from failed attempts
         let errors: Vec<String> = attempts

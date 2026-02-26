@@ -23,6 +23,7 @@ static H1_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^# (.+)$").un
 static H2_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^## (.+)$").unwrap());
 static H3_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^### (.+)$").unwrap());
 static H4_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^#### (.+)$").unwrap());
+#[allow(dead_code)] // Reserved for future quote handling improvements
 static MULTILINE_QUOTE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?m)^> (.+)$").unwrap());
 
@@ -148,7 +149,6 @@ pub fn split_message(text: &str) -> Vec<String> {
         if current_chunk.len() + line_with_newline.len() > MAX_MESSAGE_LENGTH {
             if !current_chunk.is_empty() {
                 chunks.push(current_chunk);
-                current_chunk = String::new();
             }
 
             // If a single line is too long, split it

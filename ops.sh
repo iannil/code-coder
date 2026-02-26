@@ -60,6 +60,10 @@ ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
 # Rust 微服务 (由 daemon spawn，日志文件独立)
 RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow zero-browser zero-trading"
 
+# 噪音过滤模式 (用于 tail 命令)
+# 这些模式匹配连接池、HTTP/2 帧等底层库日志，通常不含业务上下文
+NOISE_FILTER_PATTERN='hyper_util::client::legacy::pool|pooling idle connection|reuse idle connection|h2::codec|h2::proto|rustls::conn|tokio_util::codec'
+
 # 服务配置函数
 get_service_port() {
     case "$1" in
@@ -147,6 +151,26 @@ log_debug() {
     if [ "${DEBUG:-}" = "1" ]; then
         echo -e "${CYAN}[DEBUG]${NC} $1"
     fi
+}
+
+# 打印分割线
+print_separator() {
+    echo ""
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# 往日志文件写入分割线
+log_separator() {
+    local log_file="$1"
+    local action="$2"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "" >> "${log_file}"
+    echo "════════════════════════════════════════════════════════════════════════════" >> "${log_file}"
+    echo "[${timestamp}] ═══ ${action} ═══" >> "${log_file}"
+    echo "════════════════════════════════════════════════════════════════════════════" >> "${log_file}"
+    echo "" >> "${log_file}"
 }
 
 # 获取服务 PID 文件路径
@@ -323,6 +347,11 @@ start_service() {
         return 1
     fi
 
+    # 往日志文件写入启动分割线
+    if [ "${service_type}" != "docker" ]; then
+        log_separator "${log_file}" "SERVICE START: ${service_name}"
+    fi
+
     # 根据服务类型启动
     case "${service}" in
         api)
@@ -465,6 +494,8 @@ stop_service() {
     service_name=$(get_service_name "${service}")
     local pid_file
     pid_file=$(get_pid_file "${service}")
+    local log_file
+    log_file=$(get_log_file "${service}")
     local service_type
     service_type=$(get_service_type "${service}")
 
@@ -491,6 +522,11 @@ stop_service() {
         log_warn "${service_name} 未在运行"
         rm -f "${pid_file}"
         return 0
+    fi
+
+    # 往日志文件写入停止分割线
+    if [ -f "${log_file}" ]; then
+        log_separator "${log_file}" "SERVICE STOP: ${service_name}"
     fi
 
     local pid
@@ -526,6 +562,7 @@ restart_service() {
 
 # 启动核心服务
 start_core() {
+    print_separator
     log_info "启动核心服务..."
     echo ""
 
@@ -551,10 +588,13 @@ start_core() {
     for service in ${CORE_SERVICES}; do
         start_service "${service}"
     done
+
+    print_separator
 }
 
 # 启动所有服务
 start_all() {
+    print_separator
     log_info "启动所有服务..."
     echo ""
 
@@ -564,10 +604,13 @@ start_all() {
     for service in ${ALL_SERVICES}; do
         start_service "${service}"
     done
+
+    print_separator
 }
 
 # 停止所有服务
 stop_all() {
+    print_separator
     log_info "停止所有服务..."
     echo ""
     # 反向停止
@@ -578,6 +621,8 @@ stop_all() {
     for service in ${reversed}; do
         stop_service "${service}"
     done
+
+    print_separator
 }
 
 # 重启所有服务
@@ -814,12 +859,23 @@ get_service_color() {
 }
 
 # 同时监控所有服务日志
+# 用法: tail_all_logs <target> <raw>
+#   target: running | all | core
+#   raw: true 显示全部日志（含噪音），false 过滤噪音
 tail_all_logs() {
     local target="${1:-running}"  # running | all | core
+    local raw="${2:-false}"       # true | false
     local services_to_tail=""
     local pids=()
 
     log_info "收集服务日志..."
+
+    # 显示过滤状态
+    if [ "${raw}" = "true" ]; then
+        log_info "模式: 显示全部日志 (--raw)"
+    else
+        log_info "模式: 过滤底层库噪音日志 (使用 --raw 显示全部)"
+    fi
 
     # 根据目标确定要监控的服务列表
     local service_list
@@ -883,6 +939,10 @@ tail_all_logs() {
         color=$(get_service_color "${service}")
         printf "║   ${color}■${NC} %-20s                                               ║\n" "${service_name}"
     done
+    if [ "${raw}" != "true" ]; then
+        echo "╠────────────────────────────────────────────────────────────────────────╣"
+        echo "║ 💡 噪音过滤已启用 (hyper/h2/rustls 等底层日志已隐藏)                   ║"
+    fi
     echo "╚════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
@@ -915,17 +975,29 @@ tail_all_logs() {
 
         if [ "${service_type}" = "docker" ]; then
             # Docker 容器日志 - 使用进程替换避免管道信号问题
-            while IFS= read -r line; do
-                echo -e "${color}${prefix}${NC} ${line}"
-            done < <(docker logs -f "${WHISPER_CONTAINER}" 2>&1) &
+            if [ "${raw}" = "true" ]; then
+                while IFS= read -r line; do
+                    echo -e "${color}${prefix}${NC} ${line}"
+                done < <(docker logs -f "${WHISPER_CONTAINER}" 2>&1) &
+            else
+                while IFS= read -r line; do
+                    echo -e "${color}${prefix}${NC} ${line}"
+                done < <(docker logs -f "${WHISPER_CONTAINER}" 2>&1 | grep -vE "${NOISE_FILTER_PATTERN}") &
+            fi
             pids+=($!)
         else
             # 文件日志 - 使用进程替换避免管道信号问题
             local log_file
             log_file=$(get_log_file "${service}")
-            while IFS= read -r line; do
-                echo -e "${color}${prefix}${NC} ${line}"
-            done < <(tail -f "${log_file}" 2>/dev/null) &
+            if [ "${raw}" = "true" ]; then
+                while IFS= read -r line; do
+                    echo -e "${color}${prefix}${NC} ${line}"
+                done < <(tail -f "${log_file}" 2>/dev/null) &
+            else
+                while IFS= read -r line; do
+                    echo -e "${color}${prefix}${NC} ${line}"
+                done < <(tail -f "${log_file}" 2>/dev/null | grep -vE "${NOISE_FILTER_PATTERN}") &
+            fi
             pids+=($!)
         fi
     done
@@ -1154,12 +1226,16 @@ show_help() {
     echo "  logs all [n]       查看所有服务日志 (最后 n 行，默认 20)"
     echo "  logs trace <id>    按 trace_id 搜索并聚合所有服务日志"
     echo "  tail <service>     实时跟踪服务日志"
-    echo "  tail all           实时聚合监控所有服务日志 (含 Rust 微服务)"
+    echo "  tail all [--raw]   实时聚合监控所有服务日志 (含 Rust 微服务)"
     echo "  tail running       实时监控运行中服务日志 (默认)"
     echo "  tail core          实时监控核心服务日志"
     echo "  build [target]     构建服务 (rust|all)"
     echo "  clean [target]     清理临时文件 (pids|logs|all)"
     echo "  help               显示此帮助信息"
+    echo ""
+    echo "tail 命令选项:"
+    echo "  --raw              显示全部日志 (不过滤 hyper/h2/rustls 等底层库噪音)"
+    echo "                     默认行为: 过滤连接池、HTTP/2 帧等底层日志"
     echo ""
     echo "基础设施服务 (所有服务的依赖):"
     echo "  redis              Redis Server (端口 ${REDIS_PORT}, Docker) - 会话存储"
@@ -1203,7 +1279,8 @@ show_help() {
     echo "  ./ops.sh logs all               # 查看所有服务日志快照"
     echo "  ./ops.sh logs trace <trace_id>  # 按 trace_id 搜索日志"
     echo "  ./ops.sh tail api               # 实时跟踪 API 日志"
-    echo "  ./ops.sh tail all               # 实时聚合监控所有服务"
+    echo "  ./ops.sh tail all               # 实时聚合监控所有服务 (已过滤噪音)"
+    echo "  ./ops.sh tail all --raw         # 实时监控 (显示全部日志含噪音)"
     echo "  ./ops.sh clean all              # 清理临时文件"
     echo ""
     echo "架构说明:"
@@ -1232,7 +1309,9 @@ main() {
             elif [ "${service}" = "core" ]; then
                 start_core
             elif is_valid_service "${service}"; then
+                print_separator
                 start_service "${service}"
+                print_separator
             else
                 log_error "未知服务: ${service}"
                 show_help
@@ -1243,7 +1322,9 @@ main() {
             if [ "${service}" = "all" ] || [ "${service}" = "core" ]; then
                 stop_all
             elif is_valid_service "${service}"; then
+                print_separator
                 stop_service "${service}"
+                print_separator
             else
                 log_error "未知服务: ${service}"
                 show_help
@@ -1258,7 +1339,9 @@ main() {
                 echo ""
                 start_core
             elif is_valid_service "${service}"; then
+                print_separator
                 restart_service "${service}"
+                print_separator
             else
                 log_error "未知服务: ${service}"
                 show_help
@@ -1289,17 +1372,31 @@ main() {
             fi
             ;;
         tail)
-            if [ "${service}" = "all" ]; then
-                tail_all_logs "all"
-            elif [ "${service}" = "core" ]; then
-                tail_all_logs "core"
-            elif [ "${service}" = "running" ] || [ -z "${2:-}" ]; then
+            # 检查 --raw 选项
+            local raw_mode="false"
+            local target="${service}"
+            for arg in "${@:2}"; do
+                if [ "${arg}" = "--raw" ]; then
+                    raw_mode="true"
+                elif [ "${arg}" != "${service}" ]; then
+                    # 如果不是 service 参数且不是 --raw，可能是 target
+                    if [ "${arg}" = "all" ] || [ "${arg}" = "core" ] || [ "${arg}" = "running" ]; then
+                        target="${arg}"
+                    fi
+                fi
+            done
+
+            if [ "${target}" = "all" ]; then
+                tail_all_logs "all" "${raw_mode}"
+            elif [ "${target}" = "core" ]; then
+                tail_all_logs "core" "${raw_mode}"
+            elif [ "${target}" = "running" ] || [ -z "${2:-}" ]; then
                 # 默认监控运行中的服务
-                tail_all_logs "running"
-            elif is_valid_service "${service}"; then
-                tail_logs "${service}"
+                tail_all_logs "running" "${raw_mode}"
+            elif is_valid_service "${target}"; then
+                tail_logs "${target}"
             else
-                log_error "未知服务: ${service}"
+                log_error "未知服务: ${target}"
                 exit 1
             fi
             ;;

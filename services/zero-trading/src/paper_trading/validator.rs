@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::strategy::{TradingSignal, SignalDirection, SignalStrength};
+use crate::strategy::{TradingSignal, SignalStrength};
 
 /// Signal validation result
 #[derive(Debug, Clone, Serialize, Deserialize)]

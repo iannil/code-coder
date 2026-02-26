@@ -1,12 +1,11 @@
 //! Backtest engine for strategy simulation.
 
 use anyhow::Result;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use std::collections::HashMap;
 
-use crate::data::{Candle, Timeframe};
-use crate::execution::{Position, OrderStatus};
-use crate::strategy::{Po3Detector, SmtDetector, SignalDirection, SignalStrength, TradingSignal};
+use crate::data::Candle;
+use crate::strategy::{Po3Detector, SmtDetector, SignalDirection, SignalStrength};
 use super::metrics::{BacktestMetrics, TradeRecord};
 use super::report::BacktestReport;
 
@@ -77,10 +76,12 @@ struct VirtualPosition {
 }
 
 impl VirtualPosition {
+    #[allow(dead_code)] // Reserved for future PnL reporting
     fn unrealized_pnl(&self) -> f64 {
         (self.current_price - self.entry_price) * self.quantity
     }
 
+    #[allow(dead_code)] // Reserved for future PnL reporting
     fn pnl_percent(&self) -> f64 {
         ((self.current_price - self.entry_price) / self.entry_price) * 100.0
     }
@@ -137,7 +138,7 @@ impl BacktestEngine {
 
         // Group data by date
         let daily_data = self.group_by_date(primary_data);
-        let ref_daily_data = self.group_by_date(reference_data);
+        let _ref_daily_data = self.group_by_date(reference_data); // Reserved for SMT analysis
 
         // Iterate through each day
         for (date, day_candles) in &daily_data {

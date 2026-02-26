@@ -22,6 +22,7 @@ struct SendRequest {
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum SendContent {
+    #[allow(dead_code)] // Reserved for plain text messages
     Text { text: String },
     Markdown { text: String },
 }

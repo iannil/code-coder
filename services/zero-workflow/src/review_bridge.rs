@@ -762,6 +762,7 @@ struct CodeCoderRequest {
 
 /// Response from CodeCoder chat API.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // API response struct - field reserved for future use
 struct CodeCoderResponse {
     message: String,
     #[serde(default)]

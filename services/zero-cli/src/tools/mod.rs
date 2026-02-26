@@ -16,7 +16,7 @@ pub use skill_search::SkillSearchTool;
 // Re-export tool types from zero-tools
 pub use zero_tools::{
     BrowserTool, CodeCoderTool, FileReadTool, FileWriteTool, MemoryForgetTool, MemoryRecallTool,
-    MemoryStoreTool, ShellTool, Tool, ToolResult, ToolSpec,
+    MemoryStoreTool, ShellTool, Tool, ToolResult,
 };
 
 // Re-export SecurityPolicy from zero-tools for direct use

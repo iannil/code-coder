@@ -10,7 +10,7 @@
 pub mod traits;
 
 // Re-export local traits and adapters for use within zero-cli
-pub use traits::{Channel, ChannelMessage, CliChannelAdapter, MessageSource};
+pub use traits::{Channel, CliChannelAdapter};
 
 // Alias for convenience: use CliChannel to mean the adapted version
 pub type CliChannel = CliChannelAdapter;
@@ -559,7 +559,7 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
     if let Some(ref tg) = config.channels_config.telegram {
         common_cfg.channels.telegram = Some(common::TelegramConfig {
             enabled: true,
-            bot_token: tg.bot_token.clone(),
+            bot_token: Some(tg.bot_token.clone()),
             allowed_users: tg.allowed_users.clone(),
             allowed_chats: vec![],
             trading_chat_id: None,

@@ -188,7 +188,7 @@ impl Validate for ChannelsConfig {
 
         // Validate Telegram if enabled
         if let Some(ref telegram) = self.telegram {
-            if telegram.enabled && telegram.bot_token.is_empty() {
+            if telegram.enabled && telegram.bot_token.as_ref().map_or(true, |t| t.is_empty()) {
                 return Err(ValidationError::MissingField {
                     field: "channels.telegram.bot_token".into(),
                 });
@@ -450,7 +450,7 @@ mod tests {
         let mut config = Config::default();
         config.channels.telegram = Some(TelegramConfig {
             enabled: true,
-            bot_token: "".into(),
+            bot_token: Some("".into()),
             allowed_users: vec![],
             allowed_chats: vec![],
             trading_chat_id: None,

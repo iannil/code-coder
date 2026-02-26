@@ -549,6 +549,7 @@ struct MeetingListResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)] // API response struct - fields reserved for future use
 struct MeetingListData {
     items: Option<Vec<MeetingItem>>,
     page_token: Option<String>,
@@ -573,12 +574,14 @@ struct TimeInfo {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)] // API response struct - fields reserved for future use
 struct Organizer {
     user_id: Option<String>,
     display_name: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[allow(dead_code)] // API response struct - fields reserved for future use
 struct Attendee {
     user_id: Option<String>,
     display_name: Option<String>,

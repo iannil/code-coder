@@ -6,7 +6,6 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info};

@@ -106,12 +106,17 @@ pub fn build_channels_router(
         .allow_headers(Any);
 
     // Create Telegram channel if configured
+    // Priority: secrets.channels.telegram_bot_token > channels.telegram.bot_token
     let telegram = config
         .channels
         .telegram
         .as_ref()
         .filter(|t| t.enabled)
-        .map(|t| Arc::new(TelegramChannel::new(t.bot_token.clone(), t.allowed_users.clone())));
+        .and_then(|t| {
+            // First try secrets, then fall back to legacy field
+            let token = config.telegram_bot_token().or_else(|| t.bot_token.clone());
+            token.map(|tok| Arc::new(TelegramChannel::new(tok, t.allowed_users.clone())))
+        });
 
     // Create Feishu channel if configured
     let feishu = config
@@ -241,8 +246,8 @@ pub fn build_channels_router(
 /// Start the channels HTTP server with bidirectional messaging.
 pub async fn start_server(config: &Config) -> anyhow::Result<()> {
     let addr = SocketAddr::from((
-        config.channels.host.parse::<std::net::IpAddr>()?,
-        config.channels.port,
+        config.bind_address().parse::<std::net::IpAddr>()?,
+        config.channels_port(),
     ));
 
     let (router, rx, outbound, email, telegram, tx) = build_channels_router(config);

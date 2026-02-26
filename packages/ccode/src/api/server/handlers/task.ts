@@ -18,6 +18,7 @@ import { PermissionNext } from "@/permission/next"
 import { Bus } from "@/bus"
 import { Log } from "@/util/log"
 import { shouldRequireApproval, allowForUser, loadAllowlists } from "@/security/remote-policy"
+import { ConversationStore } from "../store/conversation"
 
 const log = Log.create({ service: "task-handler" })
 
@@ -78,15 +79,56 @@ export async function createTask(req: HttpRequest, _params: RouteParams): Promis
       )
     }
 
-    // Create or reuse session
+    // Create or reuse session (with ConversationStore integration for context continuity)
     const { LocalSession } = await import("@/api")
 
     let sessionID = input.sessionID
+    const conversationId = input.context.conversationId
+
+    // Try to look up existing session from ConversationStore
+    if (!sessionID && conversationId && ConversationStore.isInitialized()) {
+      try {
+        const existingSessionId = await ConversationStore.get(conversationId)
+        if (existingSessionId) {
+          // Verify session still exists
+          try {
+            await LocalSession.get(existingSessionId)
+            sessionID = existingSessionId
+            log.info("reusing existing session from ConversationStore", {
+              conversationId,
+              sessionID,
+            })
+          } catch {
+            // Session doesn't exist anymore, delete stale mapping
+            await ConversationStore.delete_(conversationId)
+            log.info("deleted stale session mapping", { conversationId, existingSessionId })
+          }
+        }
+      } catch (redisError) {
+        log.error("redis error in getOrCreateSession", {
+          error: redisError instanceof Error ? redisError.message : String(redisError),
+        })
+      }
+    }
+
+    // Create new session if not found
     if (!sessionID) {
       const session = await LocalSession.create({
         title: `[Remote] ${input.agent}: ${input.prompt.slice(0, 50)}...`,
       })
       sessionID = session.id
+
+      // Save mapping to ConversationStore
+      if (conversationId && ConversationStore.isInitialized()) {
+        try {
+          await ConversationStore.set(conversationId, sessionID)
+          log.info("saved session mapping to ConversationStore", { conversationId, sessionID })
+        } catch (redisError) {
+          log.error("redis error saving session mapping", {
+            error: redisError instanceof Error ? redisError.message : String(redisError),
+          })
+        }
+      }
     }
 
     // Create task

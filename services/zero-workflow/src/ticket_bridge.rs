@@ -572,6 +572,7 @@ struct ClassifyResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // API response struct - field reserved for future use
 struct KnowledgeSearchResponse {
     success: bool,
     data: Option<KnowledgeData>,

@@ -8,4 +8,3 @@ pub mod loop_;
 pub use loop_::run;
 
 // Re-export agent types from zero-agent
-pub use zero_agent::{AgentExecutor, ConfirmationResponse, ToolContext};

@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 use super::{SessionState, StateStore, StoredPosition, StoredSession};
 use crate::data::MarketDataAggregator;
 use crate::execution::ExecutionEngine;
-use crate::r#loop::{LoopConfig, LoopEvent, MonitoredPosition, TradingLoop, TradingMode};
+use crate::r#loop::{LoopConfig, LoopEvent, TradingLoop, TradingMode};
 use crate::strategy::StrategyEngine;
 
 /// Session configuration

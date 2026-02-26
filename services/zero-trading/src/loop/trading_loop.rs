@@ -5,7 +5,7 @@
 //! conditions and scan for new entry signals.
 
 use anyhow::Result;
-use chrono::{Local, NaiveTime, Timelike};
+use chrono::{Local, NaiveTime};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -166,8 +166,10 @@ pub struct TradingLoop {
     /// Configuration
     config: LoopConfig,
     /// Market data source
+    #[allow(dead_code)] // Reserved for multi-timeframe analysis
     data: Arc<MarketDataAggregator>,
     /// Strategy engine
+    #[allow(dead_code)] // Reserved for signal detection
     strategy: Arc<StrategyEngine>,
     /// Execution engine
     execution: Arc<RwLock<ExecutionEngine>>,

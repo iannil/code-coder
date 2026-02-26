@@ -56,6 +56,7 @@ pub struct SmtDetector {
     /// Lookback period for finding swing highs/lows
     lookback_period: usize,
     /// Minimum bars between swings
+    #[allow(dead_code)] // Reserved for swing validation logic
     min_swing_separation: usize,
 }
 
@@ -254,7 +255,7 @@ impl SmtDetector {
         &self,
         swings: &[SwingPoint],
         target_index: usize,
-        max_len: usize,
+        _max_len: usize, // Reserved for bounds checking
     ) -> Option<SwingPoint> {
         let tolerance = self.lookback_period / 2;
 
@@ -311,6 +312,7 @@ struct Swings {
 
 /// A swing high or low point
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields reserved for future time-based analysis
 struct SwingPoint {
     index: usize,
     price: f64,

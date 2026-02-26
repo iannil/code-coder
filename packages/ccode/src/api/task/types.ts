@@ -23,6 +23,8 @@ export const TaskContext = z
     userID: z.string(),
     /** Platform source: telegram, discord, slack, etc. */
     platform: z.string(),
+    /** Conversation identifier for session continuity (e.g., "telegram:765318302") */
+    conversationId: z.string().optional(),
     /** Recent chat history for context */
     chatHistory: z.array(z.any()).optional(),
     /** Marker for remote calls - always "remote" for ZeroBot */

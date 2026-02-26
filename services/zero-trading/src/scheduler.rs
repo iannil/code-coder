@@ -36,7 +36,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 use crate::session::{SessionConfig, TradingSessionManager};
 use crate::r#loop::TradingMode;
@@ -396,7 +396,7 @@ impl TradingScheduler {
 
     /// Get next scheduled times for each task
     pub fn get_next_schedules(&self) -> Vec<(ScheduledTask, DateTime<Utc>)> {
-        let now = Utc::now();
+        let _now = Utc::now(); // Reserved for filtering past schedules
         let mut next_times = Vec::new();
 
         for parsed in &self.schedules {

@@ -12,8 +12,10 @@
 import type { ServerWebSocket } from "bun"
 import { exec } from "child_process"
 import { promisify } from "util"
+import { ConfigManager } from "@codecoder-ai/util/config"
 
 const execAsync = promisify(exec)
+const configManager = new ConfigManager()
 
 // ============================================================================
 // Types
@@ -183,7 +185,7 @@ class ExecutiveWebSocketManager {
   private async fetchCurrentMetrics(): Promise<unknown> {
     try {
       // Try to fetch from metering API
-      const response = await fetch("http://localhost:4400/api/v1/metering/usage")
+      const response = await fetch(`${configManager.getCodeCoderEndpoint()}/api/v1/metering/usage`)
       if (response.ok) {
         return await response.json()
       }

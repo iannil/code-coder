@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use super::provider::{DataCapabilities, DataProvider, ProviderError};
 use super::{Candle, Timeframe};

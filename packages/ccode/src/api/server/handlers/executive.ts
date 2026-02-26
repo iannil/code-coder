@@ -15,6 +15,10 @@ import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { spawn } from "child_process"
 import path from "path"
+import { ConfigManager } from "@codecoder-ai/util/config"
+
+// Use config manager for endpoint
+const configManager = new ConfigManager()
 
 // ============================================================================
 // Types
@@ -122,7 +126,7 @@ interface MeteringUserReport {
  */
 async function fetchMeteringUsage(): Promise<MeteringUsageData> {
   try {
-    const response = await fetch("http://localhost:4400/api/v1/metering/usage")
+    const response = await fetch(`${configManager.getCodeCoderEndpoint()}/api/v1/metering/usage`)
     if (response.ok) {
       const data = await response.json()
       if (data.success && data.data) {
@@ -150,7 +154,7 @@ async function fetchMeteringUsage(): Promise<MeteringUsageData> {
  */
 async function fetchMeteringUsers(): Promise<MeteringUserReport[]> {
   try {
-    const response = await fetch("http://localhost:4400/api/v1/metering/users")
+    const response = await fetch(`${configManager.getCodeCoderEndpoint()}/api/v1/metering/users`)
     if (response.ok) {
       const data = await response.json()
       if (data.success && data.data) {

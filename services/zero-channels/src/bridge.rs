@@ -968,8 +968,8 @@ impl CodeCoderBridge {
         let progress_handler = ImProgressHandler::new(self.router.clone(), self.telegram.clone())
             .with_throttle(Duration::from_millis(self.progress_throttle_ms));
 
-        // Create task context
-        let context = TaskContext::new(&message.user_id, message.channel_type.as_str());
+        // Create task context with conversation_id for session continuity
+        let context = TaskContext::new(&message.user_id, &message.channel_id, message.channel_type.as_str());
 
         // Determine agent to use
         let agent_name = agent
@@ -1425,12 +1425,14 @@ impl CodeCoderBridge {
             }),
         );
 
-        tracing::debug!(
+        // Use info level for business context visibility
+        tracing::info!(
             trace_id = %ctx.trace_id,
-            span_id = %http_ctx.span_id,
-            endpoint = %url,
             user_id = %request.user_id,
-            "Calling CodeCoder API"
+            channel = %request.channel,
+            endpoint = "/api/v1/chat",
+            agent = ?request.agent,
+            "→ Calling CodeCoder API"
         );
 
         // Build headers with tracing context
@@ -1520,11 +1522,14 @@ impl CodeCoderBridge {
             }),
         );
 
-        tracing::debug!(
-            conversation_id = ?chat_response.conversation_id,
+        // Log success with business context at info level
+        let tokens_used = chat_response.usage.as_ref().map_or(0, |u| u.total_tokens);
+        tracing::info!(
+            trace_id = %ctx.trace_id,
+            duration_ms = %duration_ms,
             agent = ?chat_response.agent,
-            usage = ?chat_response.usage,
-            "CodeCoder response received"
+            tokens = %tokens_used,
+            "← API response received"
         );
 
         Ok(chat_response)
