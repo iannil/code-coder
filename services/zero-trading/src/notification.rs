@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use zero_common::config::Config;
 
-use crate::macro_filter::{CompositeIndicators, MacroEnvironment, PolicyCycle, TradingBias};
+use crate::macro_filter::{MacroEnvironment, TradingBias};
 use crate::strategy::{SignalStrength, TradingSignal};
 
 /// Request to send a message via zero-channels

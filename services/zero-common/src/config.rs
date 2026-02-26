@@ -332,6 +332,170 @@ pub struct LlmProviderConfig {
 }
 
 // ============================================================================
+// Provider Settings (global LLM settings within provider._settings)
+// ============================================================================
+
+/// Global LLM settings stored in `provider._settings`.
+///
+/// This replaces the top-level `llm` field for global settings while keeping
+/// provider-specific configuration in `provider.<name>`.
+///
+/// Example JSON:
+/// ```json
+/// {
+///   "provider": {
+///     "_settings": {
+///       "default": "deepseek/deepseek-chat",
+///       "retries": 2,
+///       "backoff_ms": 1000,
+///       "fallbacks": []
+///     },
+///     "deepseek": {
+///       "options": { "apiKey": "sk-xxx" }
+///     }
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProviderSettings {
+    /// Default model in provider/model format
+    #[serde(default)]
+    pub default: Option<String>,
+
+    /// Number of retries before switching to fallback provider
+    #[serde(default)]
+    pub retries: Option<u32>,
+
+    /// Backoff time between retries in milliseconds
+    #[serde(default)]
+    pub backoff_ms: Option<u64>,
+
+    /// Fallback provider chain (tried in order when primary fails)
+    #[serde(default)]
+    pub fallbacks: Vec<String>,
+}
+
+// ============================================================================
+// Unified Provider Configuration (Shared with TypeScript ccode)
+// ============================================================================
+
+/// Provider configuration compatible with TypeScript format.
+///
+/// This is the unified provider configuration that both Rust and TypeScript services read.
+/// TypeScript uses camelCase field names, so we use serde aliases for compatibility.
+///
+/// Example JSON:
+/// ```json
+/// {
+///   "provider": {
+///     "deepseek": {
+///       "api": "https://api.deepseek.com/v1",
+///       "name": "DeepSeek",
+///       "npm": "@ai-sdk/openai-compatible",
+///       "models": {
+///         "deepseek-chat": {
+///           "id": "deepseek-chat",
+///           "name": "DeepSeek Chat",
+///           "tool_call": true,
+///           "limit": { "context": 64000, "output": 8192 }
+///         }
+///       },
+///       "options": {
+///         "apiKey": "sk-xxx",
+///         "baseURL": "https://api.deepseek.com"
+///       }
+///     }
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnifiedProviderConfig {
+    /// Provider API base URL (maps from "api" field in TS format)
+    #[serde(default, alias = "api")]
+    pub base_url: Option<String>,
+
+    /// Provider display name
+    #[serde(default)]
+    pub name: Option<String>,
+
+    /// NPM package for the provider SDK (used by TypeScript)
+    #[serde(default)]
+    pub npm: Option<String>,
+
+    /// Model definitions (TypeScript uses object format, Rust extracts model IDs)
+    #[serde(default)]
+    pub models: HashMap<String, UnifiedModelConfig>,
+
+    /// Provider options including API key and base URL
+    #[serde(default)]
+    pub options: Option<UnifiedProviderOptions>,
+
+    // =========================================================================
+    // Settings fields (used by _settings entry, ignored by regular providers)
+    // =========================================================================
+
+    /// Default model in provider/model format (only used in _settings)
+    #[serde(default)]
+    pub default: Option<String>,
+
+    /// Number of retries for failed requests (only used in _settings)
+    #[serde(default)]
+    pub retries: Option<u32>,
+
+    /// Backoff time between retries in milliseconds (only used in _settings)
+    #[serde(default)]
+    pub backoff_ms: Option<u64>,
+
+    /// Fallback provider chain (only used in _settings)
+    #[serde(default)]
+    pub fallbacks: Vec<String>,
+}
+
+/// Provider options including credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnifiedProviderOptions {
+    /// API key for this provider
+    #[serde(rename = "apiKey", default)]
+    pub api_key: Option<String>,
+
+    /// Base URL override (may differ from top-level base_url)
+    #[serde(rename = "baseURL", default)]
+    pub base_url: Option<String>,
+}
+
+/// Model configuration within a provider.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnifiedModelConfig {
+    /// Model ID
+    #[serde(default)]
+    pub id: Option<String>,
+
+    /// Display name
+    #[serde(default)]
+    pub name: Option<String>,
+
+    /// Whether this model supports tool calling
+    #[serde(default)]
+    pub tool_call: bool,
+
+    /// Token limits
+    #[serde(default)]
+    pub limit: Option<UnifiedModelLimits>,
+}
+
+/// Token limits for a model.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UnifiedModelLimits {
+    /// Context window size (input tokens)
+    #[serde(default)]
+    pub context: Option<u64>,
+
+    /// Maximum output tokens
+    #[serde(default)]
+    pub output: Option<u64>,
+}
+
+// ============================================================================
 // Auth Configuration (Simplified)
 // ============================================================================
 
@@ -476,6 +640,13 @@ pub struct Config {
     /// Simplified LLM configuration
     #[serde(default)]
     pub llm: LlmConfig,
+
+    /// Unified provider configuration (shared with TypeScript ccode)
+    ///
+    /// Contains custom LLM provider definitions including API keys.
+    /// Both Rust services and TypeScript ccode read this field.
+    #[serde(default)]
+    pub provider: HashMap<String, UnifiedProviderConfig>,
 
     /// Voice configuration (TTS/STT)
     #[serde(default)]
@@ -771,10 +942,47 @@ impl Config {
 
     /// Get an API key by provider name.
     ///
-    /// Reads from `secrets.llm.<provider>` field.
-    /// Use environment variables as fallback at the application level.
-    pub fn get_api_key(&self, provider: &str) -> Option<String> {
-        match provider {
+    /// Priority:
+    /// 1. Unified provider config in `provider.<name>.options.apiKey`
+    /// 2. Legacy secrets in `secrets.llm.<provider>` (backwards compatibility)
+    pub fn get_api_key(&self, provider_name: &str) -> Option<String> {
+        // Normalize provider name for lookup (handle aliases)
+        let canonical_name = match provider_name {
+            "gemini" => "google",
+            "grok" => "xai",
+            "together-ai" => "together",
+            "fireworks-ai" => "fireworks",
+            "cloudflare-ai" => "cloudflare",
+            "kimi" => "moonshot",
+            "zhipu" => "glm",
+            "baidu" => "qianfan",
+            other => other,
+        };
+
+        // 1. First check unified provider config (new preferred location)
+        if let Some(key) = self
+            .provider
+            .get(canonical_name)
+            .and_then(|p| p.options.as_ref())
+            .and_then(|o| o.api_key.clone())
+        {
+            return Some(key);
+        }
+
+        // Also check with original name if different from canonical
+        if canonical_name != provider_name {
+            if let Some(key) = self
+                .provider
+                .get(provider_name)
+                .and_then(|p| p.options.as_ref())
+                .and_then(|o| o.api_key.clone())
+            {
+                return Some(key);
+            }
+        }
+
+        // 2. Backwards compatibility: check secrets.llm (to be deprecated)
+        match provider_name {
             "anthropic" => self.secrets.llm.anthropic.clone(),
             "openai" => self.secrets.llm.openai.clone(),
             "deepseek" => self.secrets.llm.deepseek.clone(),
@@ -795,6 +1003,71 @@ impl Config {
             "qianfan" | "baidu" => self.secrets.llm.qianfan.clone(),
             _ => None,
         }
+    }
+
+    /// Get the base URL for a provider.
+    ///
+    /// Priority:
+    /// 1. `provider.<name>.options.baseURL`
+    /// 2. `provider.<name>.api` (alias for base_url)
+    /// 3. `llm.providers.<name>.base_url`
+    pub fn get_provider_base_url(&self, provider_name: &str) -> Option<String> {
+        // First check unified provider config
+        if let Some(p) = self.provider.get(provider_name) {
+            // Prefer options.baseURL over top-level base_url/api
+            if let Some(opts) = &p.options {
+                if opts.base_url.is_some() {
+                    return opts.base_url.clone();
+                }
+            }
+            if p.base_url.is_some() {
+                return p.base_url.clone();
+            }
+        }
+
+        // Fall back to legacy llm.providers config
+        self.llm
+            .providers
+            .get(provider_name)
+            .and_then(|p| p.base_url.clone())
+    }
+
+    /// Get the global LLM settings.
+    ///
+    /// Priority:
+    /// 1. `provider._settings` (new unified location)
+    /// 2. `llm` top-level config (backwards compatibility)
+    ///
+    /// Returns a ProviderSettings struct with resolved values.
+    pub fn get_llm_settings(&self) -> ProviderSettings {
+        // Check provider._settings first
+        if let Some(settings) = self.provider.get("_settings") {
+            return ProviderSettings {
+                default: settings.default.clone(),
+                retries: settings.retries,
+                backoff_ms: settings.backoff_ms,
+                fallbacks: settings.fallbacks.clone(),
+            };
+        }
+
+        // Backwards compatibility: use llm config
+        ProviderSettings {
+            default: Some(self.llm.default.clone()),
+            retries: Some(self.llm.retries),
+            backoff_ms: Some(self.llm.backoff_ms),
+            fallbacks: self.llm.fallbacks.clone(),
+        }
+    }
+
+    /// Get the default model string (provider/model format).
+    ///
+    /// Priority:
+    /// 1. `provider._settings.default`
+    /// 2. `llm.default`
+    pub fn get_default_model(&self) -> String {
+        self.get_llm_settings()
+            .default
+            .unwrap_or_else(|| self.llm.default.clone())
     }
 
     /// Check if using new config format (has network or services or secrets populated).
@@ -3132,5 +3405,87 @@ mod tests {
         assert!(!parsed.hitl.enabled);
         assert_eq!(parsed.hitl.default_approvers, vec!["approver1"]);
         assert_eq!(parsed.hitl.callback_base_url, "https://callback.example.com");
+    }
+
+    #[test]
+    fn test_get_api_key_provider_priority() {
+        // Test that provider field takes priority over secrets.llm
+        let mut config = Config::default();
+
+        // Set key in both places
+        config.secrets.llm.deepseek = Some("secret-key".into());
+        config.provider.insert(
+            "deepseek".into(),
+            UnifiedProviderConfig {
+                options: Some(UnifiedProviderOptions {
+                    api_key: Some("provider-key".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+
+        // Provider field should take priority
+        assert_eq!(
+            config.get_api_key("deepseek"),
+            Some("provider-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_api_key_fallback_to_secrets() {
+        // Test backwards compatibility: falls back to secrets.llm if provider not set
+        let mut config = Config::default();
+        config.secrets.llm.anthropic = Some("secret-ant-key".into());
+
+        // No provider config for anthropic
+        assert_eq!(
+            config.get_api_key("anthropic"),
+            Some("secret-ant-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_api_key_provider_with_alias() {
+        // Test that aliases work with provider field
+        let mut config = Config::default();
+        config.provider.insert(
+            "google".into(),
+            UnifiedProviderConfig {
+                options: Some(UnifiedProviderOptions {
+                    api_key: Some("google-provider-key".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+        );
+
+        // "gemini" alias should find "google" in provider
+        assert_eq!(
+            config.get_api_key("gemini"),
+            Some("google-provider-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_api_key_custom_provider() {
+        // Test custom providers that only exist in provider field
+        let mut config = Config::default();
+        config.provider.insert(
+            "zhipu-ai".into(),
+            UnifiedProviderConfig {
+                name: Some("Zhipu AI".into()),
+                options: Some(UnifiedProviderOptions {
+                    api_key: Some("zhipu-custom-key".into()),
+                    base_url: Some("https://open.bigmodel.cn/api".into()),
+                }),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            config.get_api_key("zhipu-ai"),
+            Some("zhipu-custom-key".to_string())
+        );
     }
 }

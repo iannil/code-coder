@@ -99,6 +99,12 @@ pub struct TradingScheduler {
     schedules: Vec<ParsedSchedule>,
     /// Last execution times for each task
     last_executions: Arc<RwLock<std::collections::HashMap<ScheduledTask, DateTime<Utc>>>>,
+    /// Consecutive failure counts for each task
+    failure_counts: Arc<RwLock<std::collections::HashMap<ScheduledTask, u32>>>,
+    /// Maximum retries for a failed task
+    max_retries: u32,
+    /// Failure threshold before alerting
+    alert_threshold: u32,
 }
 
 impl TradingScheduler {
@@ -156,6 +162,9 @@ impl TradingScheduler {
             state: Arc::new(RwLock::new(SchedulerState::Stopped)),
             schedules,
             last_executions: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            failure_counts: Arc::new(RwLock::new(std::collections::HashMap::new())),
+            max_retries: 3,
+            alert_threshold: 5,
         })
     }
 
@@ -271,7 +280,7 @@ impl TradingScheduler {
         false
     }
 
-    /// Execute a scheduled task
+    /// Execute a scheduled task with retry logic
     async fn execute_task(&self, task: ScheduledTask) {
         info!(task = task.name(), "Executing scheduled task");
 
@@ -281,16 +290,74 @@ impl TradingScheduler {
             executions.insert(task, Utc::now());
         }
 
-        let result = match task {
-            ScheduledTask::SessionStart => self.handle_session_start().await,
-            ScheduledTask::SessionPause => self.handle_session_pause().await,
-            ScheduledTask::SessionResume => self.handle_session_resume().await,
-            ScheduledTask::SessionStop => self.handle_session_stop().await,
-            ScheduledTask::DailyReview => self.handle_daily_review().await,
+        // Execute with retries
+        let mut last_error = None;
+        for attempt in 1..=self.max_retries {
+            let result = match task {
+                ScheduledTask::SessionStart => self.handle_session_start().await,
+                ScheduledTask::SessionPause => self.handle_session_pause().await,
+                ScheduledTask::SessionResume => self.handle_session_resume().await,
+                ScheduledTask::SessionStop => self.handle_session_stop().await,
+                ScheduledTask::DailyReview => self.handle_daily_review().await,
+            };
+
+            match result {
+                Ok(()) => {
+                    // Reset failure count on success
+                    let mut failures = self.failure_counts.write().await;
+                    failures.insert(task, 0);
+                    return;
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < self.max_retries {
+                        let backoff_ms = 1000 * (1 << (attempt - 1)); // Exponential backoff
+                        debug!(
+                            task = task.name(),
+                            attempt,
+                            backoff_ms,
+                            "Task failed, retrying..."
+                        );
+                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                    }
+                }
+            }
+        }
+
+        // All retries failed
+        if let Some(e) = last_error {
+            error!(
+                task = task.name(),
+                error = %e,
+                max_retries = self.max_retries,
+                "Task execution failed after all retries"
+            );
+
+            // Track failures and check threshold
+            self.track_failure(task).await;
+        }
+    }
+
+    /// Track task failure and alert if threshold exceeded
+    async fn track_failure(&self, task: ScheduledTask) {
+        let failure_count = {
+            let mut failures = self.failure_counts.write().await;
+            let count = failures.entry(task).or_insert(0);
+            *count += 1;
+            *count
         };
 
-        if let Err(e) = result {
-            error!(task = task.name(), error = %e, "Task execution failed");
+        if failure_count >= self.alert_threshold {
+            error!(
+                task = task.name(),
+                failure_count,
+                threshold = self.alert_threshold,
+                "ALERT: Task failure threshold exceeded! System may need attention."
+            );
+
+            // Reset count after alert to avoid spam
+            let mut failures = self.failure_counts.write().await;
+            failures.insert(task, 0);
         }
     }
 

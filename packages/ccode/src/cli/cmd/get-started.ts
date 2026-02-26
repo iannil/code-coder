@@ -465,21 +465,28 @@ export const GetStartedCommand = cmd({
               // Create custom provider
               const customProvider = await createCustomProvider()
               if (customProvider) {
-                // Save custom provider to config
-                const providerConfig: Record<string, Config.Provider> = {}
-                providerConfig[customProvider.id] = {
-                  name: customProvider.name,
-                  api: customProvider.api,
-                  npm: customProvider.npm,
-                  options: customProvider.apiKey
-                    ? {
-                        apiKey: customProvider.apiKey,
-                      }
-                    : undefined,
-                  models: customProvider.models,
+                // Save custom provider to config using unified format
+                const updates: Record<string, unknown> = {
+                  llm: {
+                    providers: {
+                      [customProvider.id]: {
+                        base_url: customProvider.api,
+                        models: customProvider.models,
+                      },
+                    },
+                  },
                 }
 
-                await Config.updateGlobal({ provider: providerConfig })
+                // Save API key to secrets if provided
+                if (customProvider.apiKey) {
+                  updates.secrets = {
+                    llm: {
+                      [customProvider.id]: customProvider.apiKey,
+                    },
+                  }
+                }
+
+                await Config.updateGlobal(updates)
 
                 configuredProviders.push(customProvider.id)
                 customProviders.push({

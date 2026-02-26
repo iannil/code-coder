@@ -299,7 +299,11 @@ impl LixinAdapter {
                 .map_err(|e| ProviderError::Internal(format!("Failed to parse date: {}", e)))?;
 
             // Use 15:00 (market close) as timestamp
-            let timestamp = date.and_hms_opt(15, 0, 0).unwrap().and_utc();
+            // SAFETY: 15:00:00 is always a valid time, so and_hms_opt cannot return None
+            let timestamp = date
+                .and_hms_opt(15, 0, 0)
+                .expect("15:00:00 is a valid time")
+                .and_utc();
 
             candles.push(Candle {
                 symbol: symbol.to_string(),

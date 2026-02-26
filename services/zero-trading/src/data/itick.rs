@@ -416,15 +416,16 @@ impl DataProvider for ITickAdapter {
         limit: Option<usize>,
     ) -> Result<Vec<Candle>, ProviderError> {
         // Convert dates to timestamps
+        // SAFETY: 00:00:00 and 23:59:59 are always valid times
         let start_ts = start_date.map(|d| {
             d.and_hms_opt(0, 0, 0)
-                .unwrap()
+                .expect("00:00:00 is a valid time")
                 .and_utc()
                 .timestamp_millis()
         });
         let end_ts = end_date.map(|d| {
             d.and_hms_opt(23, 59, 59)
-                .unwrap()
+                .expect("23:59:59 is a valid time")
                 .and_utc()
                 .timestamp_millis()
         });

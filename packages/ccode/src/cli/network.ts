@@ -39,12 +39,20 @@ export async function resolveNetworkOptions(args: NetworkOptions) {
   const corsExplicitlySet = process.argv.includes("--cors")
 
   const mdns = mdnsExplicitlySet ? args.mdns : (config?.server?.mdns ?? args.mdns)
-  const port = portExplicitlySet ? args.port : (config?.server?.port ?? args.port)
+
+  // Port resolution: CLI flag > server.port > services.codecoder.port > default
+  const port = portExplicitlySet
+    ? args.port
+    : (config?.server?.port ?? config?.services?.codecoder?.port ?? args.port)
+
+  // Hostname resolution: CLI flag > (mdns override) > server.hostname > network.bind > default
+  // Note: network.bind from Rust is a bind address, while server.hostname is the full hostname
   const hostname = hostnameExplicitlySet
     ? args.hostname
     : mdns && !config?.server?.hostname
       ? "0.0.0.0"
-      : (config?.server?.hostname ?? args.hostname)
+      : (config?.server?.hostname ?? config?.network?.bind ?? args.hostname)
+
   const configCors = config?.server?.cors ?? []
   const argsCors = Array.isArray(args.cors) ? args.cors : args.cors ? [args.cors] : []
   const cors = [...configCors, ...argsCors]

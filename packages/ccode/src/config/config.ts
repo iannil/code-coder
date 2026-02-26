@@ -992,6 +992,43 @@ export namespace Config {
       ref: "ServerConfig",
     })
 
+  // ══════════════════════════════════════════════════════════════════════
+  // Network Configuration (Unified with Rust zero-* services)
+  // ══════════════════════════════════════════════════════════════════════
+
+  export const Network = z
+    .object({
+      bind: z.string().optional().describe("Bind address for all services (default: 127.0.0.1)"),
+      public_url: z.string().nullable().optional().describe("Public URL for callbacks (optional)"),
+    })
+    .strict()
+    .meta({ ref: "NetworkConfig" })
+  export type Network = z.infer<typeof Network>
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Services Port Configuration (Unified with Rust zero-* services)
+  // ══════════════════════════════════════════════════════════════════════
+
+  export const ServicePortConfig = z
+    .object({
+      port: z.number().int().positive().optional().describe("Port number for the service"),
+    })
+    .strict()
+    .meta({ ref: "ServicePortConfig" })
+  export type ServicePortConfig = z.infer<typeof ServicePortConfig>
+
+  export const Services = z
+    .object({
+      codecoder: ServicePortConfig.optional().describe("CodeCoder API service (default port: 4400)"),
+      gateway: ServicePortConfig.optional().describe("Gateway service (default port: 4430)"),
+      channels: ServicePortConfig.optional().describe("Channels service (default port: 4431)"),
+      workflow: ServicePortConfig.optional().describe("Workflow service (default port: 4432)"),
+      trading: ServicePortConfig.optional().describe("Trading service (default port: 4434)"),
+    })
+    .strict()
+    .meta({ ref: "ServicesConfig" })
+  export type Services = z.infer<typeof Services>
+
   export const Vault = z
     .object({
       enabled: z.boolean().optional().describe("Enable the credential vault (default: true)"),
@@ -1006,6 +1043,87 @@ export namespace Config {
     ref: "LayoutConfig",
   })
   export type Layout = z.infer<typeof Layout>
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Provider Settings (global LLM settings within provider._settings)
+  // ══════════════════════════════════════════════════════════════════════
+
+  export const ProviderSettings = z
+    .object({
+      default: z.string().optional().describe("Default model in provider/model format (e.g., deepseek/deepseek-chat)"),
+      retries: z.number().int().min(0).optional().describe("Number of retries for failed requests"),
+      backoff_ms: z.number().int().positive().optional().describe("Base backoff in milliseconds"),
+      fallbacks: z.array(z.string()).optional().describe("Fallback model chain"),
+    })
+    .strict()
+    .meta({ ref: "ProviderSettingsConfig" })
+  export type ProviderSettings = z.infer<typeof ProviderSettings>
+
+  // ══════════════════════════════════════════════════════════════════════
+  // LLM Configuration (shared format with Rust services)
+  // @deprecated Use provider._settings instead
+  // ══════════════════════════════════════════════════════════════════════
+
+  export const LlmProviderConfig = z
+    .object({
+      base_url: z.string().optional().describe("Base URL for the provider API"),
+      models: z.array(z.string()).optional().describe("List of available model IDs"),
+      whitelist: z.array(z.string()).optional().describe("Only enable these models"),
+      blacklist: z.array(z.string()).optional().describe("Disable these models"),
+      region: z.string().optional().describe("AWS region for Bedrock"),
+      profile: z.string().optional().describe("AWS profile for Bedrock"),
+      endpoint: z.string().optional().describe("Custom API endpoint"),
+      variants: z
+        .record(
+          z.string(),
+          z.record(z.string(), z.any()),
+        )
+        .optional()
+        .describe("Model variant configurations"),
+    })
+    .catchall(z.any())
+    .meta({ ref: "LlmProviderConfig" })
+  export type LlmProviderConfig = z.infer<typeof LlmProviderConfig>
+
+  export const Llm = z
+    .object({
+      default: z.string().optional().describe("Default model in provider/model format (e.g., deepseek/deepseek-chat)"),
+      retries: z.number().int().min(0).optional().describe("Number of retries for failed requests"),
+      backoff_ms: z.number().int().positive().optional().describe("Base backoff in milliseconds"),
+      fallbacks: z.array(z.string()).optional().describe("Fallback model chain"),
+      providers: z
+        .record(z.string(), LlmProviderConfig)
+        .optional()
+        .describe("Provider-specific configuration"),
+      ollama: z
+        .object({
+          base_url: z.string().optional(),
+          default_model: z.string().optional(),
+          timeout_secs: z.number().int().positive().optional(),
+        })
+        .optional()
+        .describe("Ollama local model configuration"),
+    })
+    .strict()
+    .meta({ ref: "LlmConfig" })
+  export type Llm = z.infer<typeof Llm>
+
+  export const Secrets = z
+    .object({
+      llm: z
+        .record(z.string(), z.string().nullable())
+        .optional()
+        .describe("API keys for LLM providers, keyed by provider ID"),
+      channels: z.record(z.string(), z.string().nullable()).optional(),
+      external: z.record(z.string(), z.string().nullable()).optional(),
+    })
+    .strict()
+    .meta({ ref: "SecretsConfig" })
+  export type Secrets = z.infer<typeof Secrets>
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Provider Configuration (original format)
+  // ══════════════════════════════════════════════════════════════════════
 
   export const Provider = ModelsDev.Provider.partial()
     .extend({
@@ -1068,6 +1186,8 @@ export namespace Config {
       logLevel: Log.Level.optional().describe("Log level"),
       tui: TUI.optional().describe("TUI specific settings"),
       server: Server.optional().describe("Server configuration for codecoder serve and web commands"),
+      network: Network.optional().describe("Network configuration (unified with Rust zero-* services)"),
+      services: Services.optional().describe("Services port configuration (unified with Rust zero-* services)"),
       redis: RedisConfig.describe("Redis configuration for conversation store"),
       command: z
         .record(z.string(), Command)
@@ -1129,10 +1249,6 @@ export namespace Config {
         .catchall(Agent)
         .optional()
         .describe("Agent configuration, see https://code-coder.com/docs/agents"),
-      provider: z
-        .record(z.string(), Provider)
-        .optional()
-        .describe("Custom provider configurations and model overrides"),
       mcp: z
         .object({
           server: McpServerConfig.optional().describe("MCP server configuration for 'mcp serve' command"),
@@ -1293,6 +1409,8 @@ export namespace Config {
         .describe("Autonomous Mode autonomous execution configuration"),
       vault: Vault.optional().describe("Credential vault configuration"),
       zerobot: ZeroBot.optional().describe("ZeroBot daemon and channel configuration"),
+      llm: Llm.optional().describe("LLM configuration shared with Rust services"),
+      secrets: Secrets.optional().describe("API secrets for providers and services"),
     })
     .passthrough() // Allow unknown keys for Rust services (gateway, channels, workflow, codecoder)
     .meta({

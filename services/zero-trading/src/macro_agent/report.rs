@@ -4,7 +4,7 @@
 //! with Telegram notification integration.
 
 use anyhow::Result;
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, Utc};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{error, info};
@@ -12,6 +12,18 @@ use tracing::{error, info};
 use super::bridge::{AgentBridge, AgentBridgeConfig};
 use super::types::{MacroReport, ReportType};
 use crate::notification::NotificationClient;
+
+// ============================================================================
+// Timezone Constants
+// ============================================================================
+
+/// Get Beijing timezone (UTC+8).
+///
+/// SAFETY: 8 hours = 28800 seconds is always within valid FixedOffset range
+/// (which supports -23:59:59 to +23:59:59).
+fn beijing_timezone() -> FixedOffset {
+    FixedOffset::east_opt(8 * 3600).expect("UTC+8 is a valid timezone offset")
+}
 
 /// Configuration for the report generator.
 #[derive(Debug, Clone)]
@@ -149,7 +161,7 @@ impl MacroReportGenerator {
         use chrono::{Datelike, Timelike};
 
         // Convert to Beijing time (UTC+8)
-        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+        let beijing = now.with_timezone(&beijing_timezone());
 
         // Check if it's Monday 9:00-9:59 Beijing time
         if beijing.weekday() != chrono::Weekday::Mon {
@@ -176,7 +188,7 @@ impl MacroReportGenerator {
         use chrono::{Datelike, Timelike};
 
         // Convert to Beijing time
-        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+        let beijing = now.with_timezone(&beijing_timezone());
 
         // Check if it's 1st day 9:00-9:59 Beijing time
         if beijing.day() != 1 {
@@ -189,7 +201,7 @@ impl MacroReportGenerator {
         // Check if we already generated this month
         let state = self.state.read().await;
         if let Some(last) = state.last_monthly {
-            let last_beijing = last.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+            let last_beijing = last.with_timezone(&beijing_timezone());
             // Don't generate if we already did this month
             if last_beijing.month() == beijing.month() && last_beijing.year() == beijing.year() {
                 return false;
@@ -206,7 +218,7 @@ impl MacroReportGenerator {
         use chrono::{Datelike, Timelike};
 
         // Convert to Beijing time (UTC+8)
-        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+        let beijing = now.with_timezone(&beijing_timezone());
 
         // Skip weekends (Saturday = 5, Sunday = 6 in chrono's Weekday)
         let weekday = beijing.weekday();
@@ -238,7 +250,7 @@ impl MacroReportGenerator {
         use chrono::{Datelike, Timelike};
 
         // Convert to Beijing time (UTC+8)
-        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+        let beijing = now.with_timezone(&beijing_timezone());
 
         // Skip weekends
         let weekday = beijing.weekday();
@@ -294,7 +306,7 @@ impl MacroReportGenerator {
     /// Get period description for the report.
     fn get_period_description(&self, report_type: ReportType) -> String {
         let now = Utc::now();
-        let beijing = now.with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+        let beijing = now.with_timezone(&beijing_timezone());
 
         match report_type {
             ReportType::Weekly => {
@@ -380,7 +392,7 @@ impl MacroReportGenerator {
 
         // Timestamp
         let beijing = report.generated_at
-            .with_timezone(&chrono::FixedOffset::east_opt(8 * 3600).unwrap());
+            .with_timezone(&beijing_timezone());
         message.push_str(&format!("\n\n_生成时间: {}_", beijing.format("%Y-%m-%d %H:%M")));
 
         message

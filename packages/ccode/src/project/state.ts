@@ -63,4 +63,14 @@ export namespace State {
     disposalFinished = true
     log.info("state disposal completed", { key })
   }
+
+  /**
+   * Reset all state - used for test isolation.
+   * This clears all cached state without calling dispose functions,
+   * which is appropriate for tests that need a clean slate.
+   */
+  export function reset() {
+    recordsByKey.clear()
+    log.debug("state reset - all cached state cleared")
+  }
 }

@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import fs from "fs/promises"
 import fsSync from "fs"
-import { afterAll } from "bun:test"
+import { afterAll, beforeEach } from "bun:test"
 
 const dir = path.join(os.tmpdir(), "codecoder-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
@@ -50,9 +50,19 @@ delete process.env["SAMBANOVA_API_KEY"]
 
 // Now safe to import from src/
 const { Log } = await import("../src/util/log")
+const { State } = await import("../src/project/state")
+const { resetAllLazy } = await import("@codecoder-ai/util/lazy")
 
 Log.init({
   print: true,
   dev: true,
   level: "DEBUG",
+})
+
+// Reset state before each test to ensure test isolation
+// This clears all cached singleton state from Instance.state() calls
+// and lazy() singletons
+beforeEach(() => {
+  State.reset()
+  resetAllLazy()
 })

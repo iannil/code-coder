@@ -38,6 +38,7 @@
 #![allow(clippy::pedantic)]
 
 pub mod backtest;
+pub mod circuit_breaker;
 pub mod data;
 pub mod execution;
 pub mod r#loop;
