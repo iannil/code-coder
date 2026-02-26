@@ -493,6 +493,15 @@ impl MarketDataAggregator {
     pub async fn start_updater(&self) -> Result<()> {
         info!("Starting market data updater");
 
+        // Check if any providers are registered before starting the update loop
+        if !self.is_connected() {
+            warn!(
+                "No data providers registered. Market data updater will not run. \
+                 Configure API keys (secrets.external.itick or secrets.external.lixin) to enable data updates."
+            );
+            return Ok(());
+        }
+
         loop {
             // Update tracked symbols
             let symbols = self.tracked_symbols.read().await.clone();
@@ -643,6 +652,20 @@ mod tests {
         // (iTick requires API key, Lixin requires token)
         assert!(providers.is_empty());
         assert!(!aggregator.is_connected());
+    }
+
+    #[tokio::test]
+    async fn test_updater_exits_without_providers() {
+        let config = Config::default();
+        let aggregator = MarketDataAggregator::new(&config);
+
+        // Initialize without API keys - should have no providers
+        aggregator.initialize(&config).await.unwrap();
+
+        // start_updater should exit immediately when no providers are registered
+        let result = aggregator.start_updater().await;
+        assert!(result.is_ok(), "start_updater should return Ok when no providers");
+        assert!(!aggregator.is_connected(), "should still be disconnected");
     }
 
     #[tokio::test]

@@ -47,7 +47,7 @@ pub struct SkillTool {
     pub args: HashMap<String, String>,
 }
 
-/// Skill manifest parsed from SKILL.toml
+/// Skill manifest parsed from SKILL.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SkillManifest {
     skill: SkillMeta,
@@ -107,12 +107,12 @@ fn load_skills_from_directory(skills_dir: &Path) -> Vec<Skill> {
             continue;
         }
 
-        // Try SKILL.toml first, then SKILL.md
-        let manifest_path = path.join("SKILL.toml");
+        // Try SKILL.json first, then SKILL.md
+        let manifest_path = path.join("SKILL.json");
         let md_path = path.join("SKILL.md");
 
         if manifest_path.exists() {
-            if let Ok(skill) = load_skill_toml(&manifest_path) {
+            if let Ok(skill) = load_skill_json(&manifest_path) {
                 skills.push(skill);
             }
         } else if md_path.exists() {
@@ -291,10 +291,10 @@ fn mark_open_skills_synced(repo_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Load a skill from a SKILL.toml manifest
-fn load_skill_toml(path: &Path) -> Result<Skill> {
+/// Load a skill from a SKILL.json manifest
+fn load_skill_json(path: &Path) -> Result<Skill> {
     let content = std::fs::read_to_string(path)?;
-    let manifest: SkillManifest = toml::from_str(&content)?;
+    let manifest: SkillManifest = serde_json::from_str(&content)?;
 
     Ok(Skill {
         name: manifest.skill.name,
@@ -409,20 +409,24 @@ pub fn init_skills_dir(workspace_dir: &Path) -> Result<()> {
         std::fs::write(
             &readme,
             "# ZeroBot Skills\n\n\
-             Each subdirectory is a skill. Create a `SKILL.toml` or `SKILL.md` file inside.\n\n\
-             ## SKILL.toml format\n\n\
-             ```toml\n\
-             [skill]\n\
-             name = \"my-skill\"\n\
-             description = \"What this skill does\"\n\
-             version = \"0.1.0\"\n\
-             author = \"your-name\"\n\
-             tags = [\"productivity\", \"automation\"]\n\n\
-             [[tools]]\n\
-             name = \"my_tool\"\n\
-             description = \"What this tool does\"\n\
-             kind = \"shell\"\n\
-             command = \"echo hello\"\n\
+             Each subdirectory is a skill. Create a `SKILL.json` or `SKILL.md` file inside.\n\n\
+             ## SKILL.json format\n\n\
+             ```json\n\
+             {\n\
+               \"skill\": {\n\
+                 \"name\": \"my-skill\",\n\
+                 \"description\": \"What this skill does\",\n\
+                 \"version\": \"0.1.0\",\n\
+                 \"author\": \"your-name\",\n\
+                 \"tags\": [\"productivity\", \"automation\"]\n\
+               },\n\
+               \"tools\": [{\n\
+                 \"name\": \"my_tool\",\n\
+                 \"description\": \"What this tool does\",\n\
+                 \"kind\": \"shell\",\n\
+                 \"command\": \"echo hello\"\n\
+               }]\n\
+             }\n\
              ```\n\n\
              ## SKILL.md format (simpler)\n\n\
              Just write a markdown file with instructions for the agent.\n\
@@ -787,19 +791,19 @@ pub fn handle_command(command: crate::SkillCommands, workspace_dir: &Path) -> Re
         }
         crate::SkillCommands::Publish { path } => {
             // Validate skill structure
-            let manifest_path = path.join("SKILL.toml");
+            let manifest_path = path.join("SKILL.json");
             let md_path = path.join("SKILL.md");
 
             if !manifest_path.exists() && !md_path.exists() {
                 anyhow::bail!(
-                    "No SKILL.toml or SKILL.md found in {}",
+                    "No SKILL.json or SKILL.md found in {}",
                     path.display()
                 );
             }
 
             // Load and display skill info
             let skill = if manifest_path.exists() {
-                load_skill_toml(&manifest_path)?
+                load_skill_json(&manifest_path)?
             } else {
                 load_skill_md(&md_path, &path)?
             };
@@ -866,27 +870,28 @@ mod tests {
     }
 
     #[test]
-    fn load_skill_from_toml() {
+    fn load_skill_from_json() {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join("skills");
         let skill_dir = skills_dir.join("test-skill");
         fs::create_dir_all(&skill_dir).unwrap();
 
         fs::write(
-            skill_dir.join("SKILL.toml"),
-            r#"
-[skill]
-name = "test-skill"
-description = "A test skill"
-version = "1.0.0"
-tags = ["test"]
-
-[[tools]]
-name = "hello"
-description = "Says hello"
-kind = "shell"
-command = "echo hello"
-"#,
+            skill_dir.join("SKILL.json"),
+            r#"{
+  "skill": {
+    "name": "test-skill",
+    "description": "A test skill",
+    "version": "1.0.0",
+    "tags": ["test"]
+  },
+  "tools": [{
+    "name": "hello",
+    "description": "Says hello",
+    "kind": "shell",
+    "command": "echo hello"
+  }]
+}"#,
         )
         .unwrap();
 
@@ -979,7 +984,7 @@ command = "echo hello"
         let skills_dir = dir.path().join("skills");
         let empty_skill = skills_dir.join("empty-skill");
         fs::create_dir_all(&empty_skill).unwrap();
-        // Directory exists but no SKILL.toml or SKILL.md
+        // Directory exists but no SKILL.json or SKILL.md
         let skills = load_skills(dir.path());
         assert!(skills.is_empty());
     }
@@ -1004,40 +1009,43 @@ command = "echo hello"
     }
 
     #[test]
-    fn toml_skill_with_multiple_tools() {
+    fn json_skill_with_multiple_tools() {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join("skills");
         let skill_dir = skills_dir.join("multi-tool");
         fs::create_dir_all(&skill_dir).unwrap();
 
         fs::write(
-            skill_dir.join("SKILL.toml"),
-            r#"
-[skill]
-name = "multi-tool"
-description = "Has many tools"
-version = "2.0.0"
-author = "tester"
-tags = ["automation", "devops"]
-
-[[tools]]
-name = "build"
-description = "Build the project"
-kind = "shell"
-command = "cargo build"
-
-[[tools]]
-name = "test"
-description = "Run tests"
-kind = "shell"
-command = "cargo test"
-
-[[tools]]
-name = "deploy"
-description = "Deploy via HTTP"
-kind = "http"
-command = "https://api.example.com/deploy"
-"#,
+            skill_dir.join("SKILL.json"),
+            r#"{
+  "skill": {
+    "name": "multi-tool",
+    "description": "Has many tools",
+    "version": "2.0.0",
+    "author": "tester",
+    "tags": ["automation", "devops"]
+  },
+  "tools": [
+    {
+      "name": "build",
+      "description": "Build the project",
+      "kind": "shell",
+      "command": "cargo build"
+    },
+    {
+      "name": "test",
+      "description": "Run tests",
+      "kind": "shell",
+      "command": "cargo test"
+    },
+    {
+      "name": "deploy",
+      "description": "Deploy via HTTP",
+      "kind": "http",
+      "command": "https://api.example.com/deploy"
+    }
+  ]
+}"#,
         )
         .unwrap();
 
@@ -1055,19 +1063,20 @@ command = "https://api.example.com/deploy"
     }
 
     #[test]
-    fn toml_skill_minimal() {
+    fn json_skill_minimal() {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join("skills");
         let skill_dir = skills_dir.join("minimal");
         fs::create_dir_all(&skill_dir).unwrap();
 
         fs::write(
-            skill_dir.join("SKILL.toml"),
-            r#"
-[skill]
-name = "minimal"
-description = "Bare minimum"
-"#,
+            skill_dir.join("SKILL.json"),
+            r#"{
+  "skill": {
+    "name": "minimal",
+    "description": "Bare minimum"
+  }
+}"#,
         )
         .unwrap();
 
@@ -1080,13 +1089,13 @@ description = "Bare minimum"
     }
 
     #[test]
-    fn toml_skill_invalid_syntax_skipped() {
+    fn json_skill_invalid_syntax_skipped() {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join("skills");
         let skill_dir = skills_dir.join("broken");
         fs::create_dir_all(&skill_dir).unwrap();
 
-        fs::write(skill_dir.join("SKILL.toml"), "this is not valid toml {{{{").unwrap();
+        fs::write(skill_dir.join("SKILL.json"), "this is not valid json {{{{").unwrap();
 
         let skills = load_skills(dir.path());
         assert!(skills.is_empty()); // broken skill is skipped
@@ -1139,22 +1148,22 @@ description = "Bare minimum"
     }
 
     #[test]
-    fn toml_prefers_over_md() {
+    fn json_prefers_over_md() {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join("skills");
         let skill_dir = skills_dir.join("dual");
         fs::create_dir_all(&skill_dir).unwrap();
 
         fs::write(
-            skill_dir.join("SKILL.toml"),
-            "[skill]\nname = \"from-toml\"\ndescription = \"TOML wins\"\n",
+            skill_dir.join("SKILL.json"),
+            r#"{"skill":{"name":"from-json","description":"JSON wins"}}"#,
         )
         .unwrap();
         fs::write(skill_dir.join("SKILL.md"), "# From MD\nMD description\n").unwrap();
 
         let skills = load_skills(dir.path());
         assert_eq!(skills.len(), 1);
-        assert_eq!(skills[0].name, "from-toml"); // TOML takes priority
+        assert_eq!(skills[0].name, "from-json"); // JSON takes priority
     }
 }
 

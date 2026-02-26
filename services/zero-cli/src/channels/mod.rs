@@ -377,7 +377,7 @@ pub fn handle_command(command: crate::ChannelCommands, config: &Config) -> Resul
             );
         }
         crate::ChannelCommands::Remove { name } => {
-            anyhow::bail!("Remove channel '{name}' — edit ~/.codecoder/config.toml directly");
+            anyhow::bail!("Remove channel '{name}' — edit ~/.codecoder/config.json directly");
         }
     }
 }

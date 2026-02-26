@@ -35,7 +35,7 @@ impl BrowserOpenTool {
 
         if self.allowed_domains.is_empty() {
             anyhow::bail!(
-                "Browser tool is enabled but no allowed_domains are configured. Add [browser].allowed_domains in config.toml"
+                "Browser tool is enabled but no allowed_domains are configured. Add browser.allowed_domains in config.json"
             );
         }
 

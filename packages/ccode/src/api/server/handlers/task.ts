@@ -12,7 +12,7 @@
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
-import { TaskStore, TaskEmitter } from "@/api/task"
+import { TaskStore, TaskEmitter, TaskContextRegistry } from "@/api/task"
 import { CreateTaskRequest, InteractTaskRequest, type TaskContext } from "@/api/task/types"
 import { PermissionNext } from "@/permission/next"
 import { Bus } from "@/bus"
@@ -139,11 +139,19 @@ export async function createTask(req: HttpRequest, _params: RouteParams): Promis
       sessionID,
     })
 
+    // Register session -> task mapping for SSE event routing
+    TaskContextRegistry.register(sessionID, task.id)
+
     // Start task execution asynchronously
-    executeTask(task.id, input.agent, input.prompt, sessionID, input.context, input.model).catch((error) => {
-      TaskStore.fail(task.id, error instanceof Error ? error.message : String(error))
-      TaskEmitter.finish(task.id, false, undefined, error instanceof Error ? error.message : String(error))
-    })
+    executeTask(task.id, input.agent, input.prompt, sessionID, input.context, input.model)
+      .finally(() => {
+        // Cleanup registration after task completes
+        TaskContextRegistry.unregister(sessionID)
+      })
+      .catch((error) => {
+        TaskStore.fail(task.id, error instanceof Error ? error.message : String(error))
+        TaskEmitter.finish(task.id, false, undefined, error instanceof Error ? error.message : String(error))
+      })
 
     return jsonResponse(
       {

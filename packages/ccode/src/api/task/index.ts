@@ -7,8 +7,10 @@
  * - Per-task SSE event streaming
  * - HITL (Human-in-the-Loop) approval flow
  * - Remote context injection
+ * - Session -> TaskID context registry
  */
 
 export * from "./types"
 export { TaskStore } from "./store"
 export { TaskEmitter } from "./emitter"
+export { TaskContextRegistry } from "./context"

@@ -18,6 +18,7 @@ use crate::telegram::TelegramChannel;
 use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -34,6 +35,12 @@ pub trait ProgressHandler: Send + Sync {
 
     /// Called for progress updates during processing.
     async fn on_progress(&self, msg: &ChannelMessage, event: &ProgressData) -> Result<()>;
+
+    /// Called when AI is thinking/reasoning.
+    async fn on_thought(&self, msg: &ChannelMessage, thought: &str) -> Result<()>;
+
+    /// Called when AI generates output text.
+    async fn on_output(&self, msg: &ChannelMessage, output: &str) -> Result<()>;
 
     /// Called when a tool is being used.
     async fn on_tool_use(&self, msg: &ChannelMessage, event: &ToolUseData) -> Result<()>;
@@ -55,6 +62,12 @@ struct MessageTracker {
     last_update: Instant,
     /// Current progress text
     current_text: String,
+    /// Task start time for duration tracking
+    task_start: Instant,
+    /// Tool usage counts
+    tools_used: HashMap<String, u64>,
+    /// Last thought text (for deduplication)
+    last_thought: String,
 }
 
 impl MessageTracker {
@@ -63,6 +76,9 @@ impl MessageTracker {
             progress_message_id: None,
             last_update: Instant::now(),
             current_text: String::new(),
+            task_start: Instant::now(),
+            tools_used: HashMap::new(),
+            last_thought: String::new(),
         }
     }
 }
@@ -89,6 +105,8 @@ pub struct ImProgressHandler {
     trackers: DashMap<String, Mutex<MessageTracker>>,
     /// Throttle interval for progress updates
     throttle_interval: Duration,
+    /// Thought throttle interval (thoughts can be frequent)
+    thought_throttle_interval: Duration,
 }
 
 impl ImProgressHandler {
@@ -99,6 +117,7 @@ impl ImProgressHandler {
             telegram,
             trackers: DashMap::new(),
             throttle_interval: Duration::from_millis(1000), // Default 1 second
+            thought_throttle_interval: Duration::from_millis(500), // 500ms for thoughts
         }
     }
 
@@ -106,6 +125,42 @@ impl ImProgressHandler {
     pub fn with_throttle(mut self, interval: Duration) -> Self {
         self.throttle_interval = interval;
         self
+    }
+
+    /// Set the throttle interval for thought updates.
+    pub fn with_thought_throttle(mut self, interval: Duration) -> Self {
+        self.thought_throttle_interval = interval;
+        self
+    }
+
+    /// Generate execution summary for task completion.
+    fn generate_summary(tracker: &MessageTracker) -> String {
+        let duration = tracker.task_start.elapsed().as_secs_f64();
+        let duration_str = if duration < 1.0 {
+            format!("{:.0}ms", duration * 1000.0)
+        } else if duration < 60.0 {
+            format!("{:.1}s", duration)
+        } else {
+            let mins = (duration / 60.0).floor();
+            let secs = duration % 60.0;
+            format!("{}m {:.0}s", mins, secs)
+        };
+
+        let mut summary = format!("📊 执行摘要\n⏱ 耗时: {}", duration_str);
+
+        if !tracker.tools_used.is_empty() {
+            let total: u64 = tracker.tools_used.values().sum();
+            summary.push_str(&format!("\n🔧 工具调用: {} 次", total));
+
+            // Sort by count and show top tools
+            let mut tools: Vec<_> = tracker.tools_used.iter().collect();
+            tools.sort_by(|a, b| b.1.cmp(a.1));
+            for (tool, count) in tools.iter().take(5) {
+                summary.push_str(&format!("\n   • {}: {}", tool, count));
+            }
+        }
+
+        summary
     }
 
     /// Get or create a tracker for the given message.
@@ -212,6 +267,9 @@ impl ProgressHandler for ImProgressHandler {
             "Starting progress tracking"
         );
 
+        // Initialize tracker with fresh state
+        self.trackers.insert(msg.id.clone(), Mutex::new(MessageTracker::new()));
+
         // Send initial message and track it
         if let Ok(Some(progress_msg_id)) = self.send_new_message(msg, text).await {
             let tracker_ref = self.get_tracker(&msg.id);
@@ -264,9 +322,134 @@ impl ProgressHandler for ImProgressHandler {
         Ok(())
     }
 
+    async fn on_thought(&self, msg: &ChannelMessage, thought: &str) -> Result<()> {
+        let tracker_ref = self.get_tracker(&msg.id);
+        let mut tracker = tracker_ref.lock().await;
+
+        // Deduplicate: skip if same as last thought
+        if tracker.last_thought == thought {
+            return Ok(());
+        }
+
+        // Throttle thought updates
+        if tracker.last_update.elapsed() < self.thought_throttle_interval {
+            return Ok(());
+        }
+
+        tracker.last_update = Instant::now();
+        tracker.last_thought = thought.to_string();
+
+        // Truncate thought for display (max 200 chars)
+        let truncated = if thought.len() > 200 {
+            format!("{}...", &thought[..200])
+        } else {
+            thought.to_string()
+        };
+
+        // Format thought with 💭 prefix, filter out start/end markers
+        let display_thought = if truncated.contains("[思考开始]") {
+            "💭 开始思考...".to_string()
+        } else {
+            let trimmed = truncated.trim();
+            if trimmed.is_empty() {
+                return Ok(());
+            }
+            format!("💭 {}", trimmed)
+        };
+
+        // Try to edit existing progress message
+        if msg.channel_type == ChannelType::Telegram {
+            if let Some(progress_msg_id) = tracker.progress_message_id {
+                let combined_text = format!("{}\n\n{}", tracker.current_text, display_thought);
+                self.edit_telegram_message(&msg.channel_id, progress_msg_id, &combined_text)
+                    .await?;
+                tracker.current_text = combined_text;
+                return Ok(());
+            }
+        }
+
+        // Fallback: send new message
+        let _ = self
+            .router
+            .send_direct(
+                msg.channel_type.clone(),
+                msg.channel_id.clone(),
+                OutgoingContent::Text { text: display_thought },
+            )
+            .await;
+
+        Ok(())
+    }
+
+    async fn on_output(&self, msg: &ChannelMessage, output: &str) -> Result<()> {
+        let tracker_ref = self.get_tracker(&msg.id);
+        let mut tracker = tracker_ref.lock().await;
+
+        // Throttle output updates
+        if tracker.last_update.elapsed() < self.throttle_interval {
+            return Ok(());
+        }
+
+        tracker.last_update = Instant::now();
+
+        // Truncate output for display (max 300 chars)
+        let trimmed = output.trim();
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+
+        let truncated = if trimmed.len() > 300 {
+            format!("{}...", &trimmed[..300])
+        } else {
+            trimmed.to_string()
+        };
+
+        let display_output = format!("📝 {}", truncated);
+
+        // Try to edit existing progress message
+        if msg.channel_type == ChannelType::Telegram {
+            if let Some(progress_msg_id) = tracker.progress_message_id {
+                let combined_text = format!("{}\n\n{}", tracker.current_text, display_output);
+                self.edit_telegram_message(&msg.channel_id, progress_msg_id, &combined_text)
+                    .await?;
+                tracker.current_text = combined_text;
+                return Ok(());
+            }
+        }
+
+        // Fallback: send new message
+        let _ = self
+            .router
+            .send_direct(
+                msg.channel_type.clone(),
+                msg.channel_id.clone(),
+                OutgoingContent::Text { text: display_output },
+            )
+            .await;
+
+        Ok(())
+    }
+
     async fn on_tool_use(&self, msg: &ChannelMessage, event: &ToolUseData) -> Result<()> {
+        // Track tool usage for summary
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            *tracker.tools_used.entry(event.tool.clone()).or_insert(0) += 1;
+        }
+
         let tool_display = Self::format_tool_name(&event.tool);
-        let text = format!("{} {}", tool_display, event.tool);
+        let text = if let Some(ref result) = event.result {
+            // Truncate result for display
+            let result_str = if result.to_string().len() > 100 {
+                format!("{}...", &result.to_string()[..100])
+            } else {
+                result.to_string()
+            };
+            format!("{} {}\n└ 結果: {}", tool_display, event.tool, result_str)
+        } else {
+            format!("{} {}", tool_display, event.tool)
+        };
 
         tracing::info!(
             message_id = %msg.id,
@@ -292,25 +475,31 @@ impl ProgressHandler for ImProgressHandler {
             "Task finished"
         );
 
+        // Get tracker data for summary before cleanup
+        let summary = {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let tracker = tracker_ref.lock().await;
+            Self::generate_summary(&tracker)
+        };
+
         // Clean up tracker
         self.remove_tracker(&msg.id);
 
         // Format final response
         let content = if event.success {
             if let Some(ref output) = event.output {
-                // Send the actual output as markdown for proper formatting
-                OutgoingContent::Markdown {
-                    text: output.clone(),
-                }
+                // Append summary to the output
+                let combined = format!("{}\n\n{}", output, summary);
+                OutgoingContent::Markdown { text: combined }
             } else {
                 OutgoingContent::Text {
-                    text: "✅ 处理完成".to_string(),
+                    text: format!("✅ 处理完成\n\n{}", summary),
                 }
             }
         } else {
             let error_msg = event.error.as_deref().unwrap_or("Unknown error");
             OutgoingContent::Text {
-                text: format!("❌ 处理失败: {}", error_msg),
+                text: format!("❌ 处理失败: {}\n\n{}", error_msg, summary),
             }
         };
 
@@ -344,6 +533,14 @@ impl ImProgressHandler {
                 self.on_progress(msg, &data).await?;
                 Ok(false) // Not finished
             }
+            TaskEvent::Thought(data) => {
+                self.on_thought(msg, &data).await?;
+                Ok(false)
+            }
+            TaskEvent::Output(data) => {
+                self.on_output(msg, &data).await?;
+                Ok(false)
+            }
             TaskEvent::ToolUse(data) => {
                 self.on_tool_use(msg, &data).await?;
                 Ok(false)
@@ -351,14 +548,6 @@ impl ImProgressHandler {
             TaskEvent::Finish(data) => {
                 self.on_finish(msg, &data).await?;
                 Ok(true) // Finished
-            }
-            TaskEvent::Thought(_) => {
-                // Thoughts are internal, don't send to user
-                Ok(false)
-            }
-            TaskEvent::Output(_) => {
-                // Outputs are part of the finish response
-                Ok(false)
             }
             TaskEvent::Confirmation(_) => {
                 // TODO: Implement confirmation handling via inline buttons

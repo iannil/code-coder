@@ -1427,21 +1427,6 @@ export namespace Config {
       mergeDeep(await loadFile(path.join(Global.Path.config, "codecoder.jsonc"))),
     )
 
-    await import(path.join(Global.Path.config, "config"), {
-      with: {
-        type: "toml",
-      },
-    })
-      .then(async (mod) => {
-        const { provider, model, ...rest } = mod.default
-        if (provider && model) result.model = `${provider}/${model}`
-        result["$schema"] = "https://code-coder.com/config.json"
-        result = mergeDeep(result, rest)
-        await Bun.write(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
-        await fs.unlink(path.join(Global.Path.config, "config"))
-      })
-      .catch(() => {})
-
     return result
   })
 

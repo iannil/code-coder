@@ -36,6 +36,7 @@ import { SessionSummary } from "./summary"
 import { NamedError } from "@codecoder-ai/util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { TaskContextRegistry } from "@/api/task"
 import { TaskTool } from "@/tool/task"
 import { Tool } from "@/tool/tool"
 import { PermissionNext } from "@/permission/next"
@@ -501,6 +502,9 @@ export namespace SessionPrompt {
         session,
       })
 
+      // Get task ID for SSE event routing (if registered via API)
+      const taskID = TaskContextRegistry.getTaskID(sessionID)
+
       const processor = SessionProcessor.create({
         assistantMessage: (await Session.updateMessage({
           id: Identifier.ascending("message"),
@@ -529,6 +533,7 @@ export namespace SessionPrompt {
         sessionID: sessionID,
         model,
         abort,
+        taskID,
       })
 
       // Check if user explicitly invoked an agent via @ in this turn

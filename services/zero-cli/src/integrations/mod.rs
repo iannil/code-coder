@@ -133,7 +133,7 @@ fn show_integration_info(config: &Config, name: &str) -> Result<()> {
             println!("  Setup:");
             println!("    1. Install: brew install ollama");
             println!("    2. Pull a model: ollama pull llama3");
-            println!("    3. Set provider to 'ollama' in config.toml");
+            println!("    3. Set provider to 'ollama' in config.json");
         }
         "iMessage" => {
             println!("  Setup (macOS only):");

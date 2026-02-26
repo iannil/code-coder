@@ -34,7 +34,6 @@ serde_json = { version = "1.0", default-features = false, features = ["std"] }
 
 # Config
 directories = "5.0"
-toml = "0.8"
 shellexpand = "3.1"
 
 # Logging - minimal

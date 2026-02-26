@@ -707,6 +707,196 @@ pub struct Config {
     /// Trading service configuration
     #[serde(default)]
     pub trading: Option<TradingConfig>,
+
+    // =========================================================================
+    // CLI-specific configuration (used by zero-cli daemon orchestrator)
+    // =========================================================================
+
+    /// Workspace directory for CLI operations
+    #[serde(default)]
+    pub workspace_dir: Option<String>,
+
+    /// Default AI provider (e.g., "anthropic", "openai", "deepseek")
+    #[serde(default)]
+    pub default_provider: Option<String>,
+
+    /// Default AI model (e.g., "claude-sonnet-4-20250514")
+    #[serde(default)]
+    pub default_model: Option<String>,
+
+    /// Default temperature for AI responses (0.0 - 2.0)
+    #[serde(default)]
+    pub default_temperature: Option<f64>,
+
+    /// Autonomy/security configuration
+    #[serde(default)]
+    pub autonomy: Option<CliAutonomyConfig>,
+
+    /// Runtime configuration
+    #[serde(default)]
+    pub runtime: Option<RuntimeConfig>,
+
+    /// Reliability/supervision configuration
+    #[serde(default)]
+    pub reliability: Option<ReliabilityConfig>,
+
+    /// Heartbeat configuration
+    #[serde(default)]
+    pub heartbeat: Option<HeartbeatConfig>,
+
+    /// TTS configuration
+    #[serde(default)]
+    pub tts: Option<CliTtsConfig>,
+
+    /// Voice wake configuration
+    #[serde(default)]
+    pub voice_wake: Option<VoiceWakeConfig>,
+
+    /// Vault configuration
+    #[serde(default)]
+    pub vault: Option<VaultConfig>,
+
+    /// Browser automation configuration
+    #[serde(default)]
+    pub browser: Option<BrowserConfig>,
+
+    /// Identity configuration
+    #[serde(default)]
+    pub identity: Option<IdentityConfig>,
+
+    /// Session configuration
+    #[serde(default)]
+    pub session: Option<SessionConfig>,
+
+    /// Unknown/extra fields from config file (preserved during save)
+    ///
+    /// This field captures any configuration keys that are not explicitly
+    /// defined in the Config struct, ensuring they are preserved when
+    /// the config is serialized back to disk.
+    #[serde(flatten, default)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+// ============================================================================
+// CLI-specific configuration types
+// ============================================================================
+
+/// Autonomy/security configuration for CLI operations
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CliAutonomyConfig {
+    /// Autonomy level (supervised, full, etc.)
+    pub level: Option<String>,
+    /// Restrict operations to workspace directory
+    pub workspace_only: Option<bool>,
+    /// Allowed commands
+    pub allowed_commands: Option<Vec<String>>,
+    /// Forbidden paths
+    pub forbidden_paths: Option<Vec<String>>,
+    /// Max actions per hour
+    pub max_actions_per_hour: Option<u32>,
+    /// Max cost per day in cents
+    pub max_cost_per_day_cents: Option<u32>,
+}
+
+/// Runtime configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RuntimeConfig {
+    /// Runtime kind (native, docker, etc.)
+    pub kind: Option<String>,
+}
+
+/// Reliability/supervision configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ReliabilityConfig {
+    /// Provider retries before failing over
+    pub provider_retries: Option<u32>,
+    /// Provider backoff in milliseconds
+    pub provider_backoff_ms: Option<u64>,
+    /// Fallback providers
+    pub fallback_providers: Option<Vec<String>>,
+    /// Channel initial backoff in seconds
+    pub channel_initial_backoff_secs: Option<u64>,
+    /// Channel max backoff in seconds
+    pub channel_max_backoff_secs: Option<u64>,
+    /// Scheduler poll seconds
+    pub scheduler_poll_secs: Option<u64>,
+    /// Scheduler retries
+    pub scheduler_retries: Option<u32>,
+}
+
+/// Heartbeat configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HeartbeatConfig {
+    /// Enable heartbeat
+    pub enabled: Option<bool>,
+    /// Heartbeat interval in minutes
+    pub interval_minutes: Option<u32>,
+}
+
+/// TTS configuration for CLI voice responses
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CliTtsConfig {
+    /// Enable TTS
+    pub enabled: Option<bool>,
+    /// TTS provider
+    pub provider: Option<String>,
+    /// API key for TTS
+    pub api_key: Option<String>,
+    /// Model name
+    pub model: Option<String>,
+    /// Voice ID
+    pub voice: Option<String>,
+    /// Base URL for OpenAI-compatible providers
+    pub base_url: Option<String>,
+}
+
+/// Voice wake configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceWakeConfig {
+    /// Enable voice wake
+    pub enabled: Option<bool>,
+    /// Wake phrases
+    pub wake_phrases: Option<Vec<String>>,
+    /// Sensitivity
+    pub sensitivity: Option<f32>,
+}
+
+/// Vault configuration for credential storage
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VaultConfig {
+    /// Enable vault
+    pub enabled: Option<bool>,
+    /// Auto-inject credentials
+    pub auto_inject: Option<bool>,
+}
+
+/// Browser automation configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BrowserConfig {
+    /// Enable browser
+    pub enabled: Option<bool>,
+    /// Allowed domains
+    pub allowed_domains: Option<Vec<String>>,
+}
+
+/// Identity configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct IdentityConfig {
+    /// Identity format (openclaw, etc.)
+    pub format: Option<String>,
+}
+
+/// Session configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SessionConfig {
+    /// Enable session
+    pub enabled: Option<bool>,
+    /// Context window size
+    pub context_window: Option<usize>,
+    /// Compact threshold (0-1)
+    pub compact_threshold: Option<f64>,
+    /// Keep recent messages count
+    pub keep_recent: Option<usize>,
 }
 
 impl Config {
@@ -2955,6 +3145,30 @@ mod tests {
         assert_eq!(parsed.gateway_port(), config.gateway_port());
         assert_eq!(parsed.channels_port(), config.channels_port());
         assert_eq!(parsed.llm.default, config.llm.default);
+    }
+
+    #[test]
+    fn test_config_preserves_unknown_fields() {
+        let json_with_extra = r#"{
+          "$schema": "https://code-coder.com/config.json",
+          "network": {"bind": "127.0.0.1"},
+          "services": {},
+          "mcp": {
+            "chrome-devtools": {
+              "type": "local",
+              "enabled": true
+            }
+          }
+        }"#;
+
+        // Deserialize - should capture "mcp" in extra
+        let config: Config = serde_json::from_str(json_with_extra).unwrap();
+        assert!(config.extra.contains_key("mcp"), "extra should contain 'mcp'");
+
+        // Serialize back - "mcp" should still be there
+        let json = serde_json::to_string_pretty(&config).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed.get("mcp").is_some(), "Serialized config should preserve 'mcp'");
     }
 
     #[test]

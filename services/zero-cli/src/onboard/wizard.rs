@@ -245,7 +245,7 @@ pub fn run_quick_setup(
         .context("Could not find home directory")?;
     let zerobot_dir = home.join(".codecoder");
     let workspace_dir = zerobot_dir.join("workspace");
-    let config_path = zerobot_dir.join("config.toml");
+    let config_path = zerobot_dir.join("config.json");
 
     fs::create_dir_all(&workspace_dir).context("Failed to create workspace directory")?;
 
@@ -347,7 +347,7 @@ pub fn run_quick_setup(
         if api_key.is_some() {
             style("set").green()
         } else {
-            style("not set (use --api-key or edit config.toml)").yellow()
+            style("not set (use --api-key or edit config.json)").yellow()
         }
     );
     println!(
@@ -390,7 +390,7 @@ pub fn run_quick_setup(
     println!("  {}", style("Next steps:").white().bold());
     if api_key.is_none() {
         println!("    1. Set your API key:  export OPENROUTER_API_KEY=\"sk-...\"");
-        println!("    2. Or edit:           ~/.codecoder/config.toml");
+        println!("    2. Or edit:           ~/.codecoder/config.json");
         println!("    3. Chat:              zero-bot agent -m \"Hello!\"");
         println!("    4. Gateway:           zero-bot gateway");
     } else {
@@ -461,7 +461,7 @@ fn setup_workspace() -> Result<(PathBuf, PathBuf)> {
     };
 
     let workspace_dir = zerobot_dir.join("workspace");
-    let config_path = zerobot_dir.join("config.toml");
+    let config_path = zerobot_dir.join("config.json");
 
     fs::create_dir_all(&workspace_dir).context("Failed to create workspace directory")?;
 
@@ -681,7 +681,7 @@ fn setup_provider() -> Result<(String, String, String)> {
         if key.is_empty() {
             let env_var = provider_env_var(provider_name);
             print_bullet(&format!(
-                "Skipped. Set {} or edit config.toml later.",
+                "Skipped. Set {} or edit config.json later.",
                 style(env_var).yellow()
             ));
         }
@@ -867,7 +867,7 @@ fn provider_env_var(name: &str) -> &'static str {
 
 fn setup_security() -> Result<SecretsConfig> {
     // ── Encrypted secrets ──
-    print_bullet("ZeroBot can encrypt API keys stored in config.toml.");
+    print_bullet("ZeroBot can encrypt API keys stored in config.json.");
     print_bullet("A local key file protects against plaintext exposure and accidental leaks.");
 
     let encrypt = Confirm::new()
@@ -996,7 +996,7 @@ fn setup_project_context() -> Result<ProjectContext> {
 
 fn setup_memory() -> Result<MemoryConfig> {
     print_bullet("Choose how ZeroBot stores and searches memories.");
-    print_bullet("You can always change this later in config.toml.");
+    print_bullet("You can always change this later in config.json.");
     println!();
 
     let options = vec![

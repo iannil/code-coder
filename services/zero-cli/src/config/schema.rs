@@ -1233,7 +1233,8 @@ impl Default for Config {
 
         Self {
             workspace_dir: zerobot_dir.join("workspace"),
-            config_path: zerobot_dir.join("config.toml"),
+            // zero-cli uses its own config file, separate from shared config.json
+            config_path: zerobot_dir.join("zero-cli.json"),
             api_key: None,
             default_provider: Some("openrouter".to_string()),
             default_model: Some("anthropic/claude-sonnet-4-20250514".to_string()),
@@ -1666,12 +1667,12 @@ impl Config {
             return Ok(config);
         }
 
-        // 2. Fall back to original TOML config
+        // 2. Fall back to original zero-cli config
         let home = UserDirs::new()
             .map(|u| u.home_dir().to_path_buf())
             .context("Could not find home directory")?;
         let zerobot_dir = home.join(".codecoder");
-        let config_path = zerobot_dir.join("config.toml");
+        let config_path = zerobot_dir.join("zero-cli.json");
 
         if !zerobot_dir.exists() {
             fs::create_dir_all(&zerobot_dir).context("Failed to create .codecoder directory")?;
@@ -1683,10 +1684,24 @@ impl Config {
             let contents =
                 fs::read_to_string(&config_path).context("Failed to read config file")?;
             let mut config: Config =
-                toml::from_str(&contents).context("Failed to parse config file")?;
+                serde_json::from_str(&contents).context("Failed to parse config file")?;
             config.apply_env_overrides();
             Ok(config)
         } else {
+            // Don't create default config if config.json already exists with a different format
+            let json_config_path = zerobot_dir.join("config.json");
+            if json_config_path.exists() {
+                // config.json exists but is in zero-common format
+                // Return default zero-cli config WITHOUT saving
+                tracing::warn!(
+                    "config.json exists in zero-common format. \
+                     zero-cli will use default configuration without overwriting it."
+                );
+                let mut config = Config::default();
+                config.apply_env_overrides();
+                return Ok(config);
+            }
+
             let config = Config::default();
             config.save()?;
             let mut config = config;
@@ -1755,8 +1770,8 @@ impl Config {
     }
 
     pub fn save(&self) -> Result<()> {
-        let toml_str = toml::to_string_pretty(self).context("Failed to serialize config")?;
-        fs::write(&self.config_path, toml_str).context("Failed to write config file")?;
+        let json_str = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
+        fs::write(&self.config_path, json_str).context("Failed to write config file")?;
         Ok(())
     }
 }

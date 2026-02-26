@@ -15,10 +15,15 @@ import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
 import { branch, point, loop } from "@/observability"
+import { TaskEmitter } from "@/api/task"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
   const log = Log.create({ service: "session.processor" })
+
+  // Throttling constants for SSE events (chars)
+  const THOUGHT_THROTTLE_CHARS = 200
+  const OUTPUT_THROTTLE_CHARS = 100
 
   export type Info = Awaited<ReturnType<typeof create>>
   export type Result = Awaited<ReturnType<Info["process"]>>
@@ -28,12 +33,45 @@ export namespace SessionProcessor {
     sessionID: string
     model: Provider.Model
     abort: AbortSignal
+    /** Optional task ID for SSE event routing */
+    taskID?: string
   }) {
     const toolcalls: Record<string, MessageV2.ToolPart> = {}
     let snapshot: string | undefined
     let blocked = false
     let attempt = 0
     let needsCompaction = false
+
+    // SSE event throttling state
+    let thoughtBuffer = ""
+    let outputBuffer = ""
+    let lastToolCall: { tool: string; args: unknown } | null = null
+
+    // Helper: emit throttled thought events
+    const flushThought = () => {
+      if (thoughtBuffer && input.taskID) {
+        TaskEmitter.thought(input.taskID, thoughtBuffer)
+        thoughtBuffer = ""
+      }
+    }
+
+    // Helper: emit throttled output events
+    const flushOutput = () => {
+      if (outputBuffer && input.taskID) {
+        TaskEmitter.output(input.taskID, outputBuffer)
+        outputBuffer = ""
+      }
+    }
+
+    // Helper: truncate tool args for display
+    const truncateArgs = (args: unknown): unknown => {
+      if (args === null || args === undefined) return args
+      const str = JSON.stringify(args)
+      if (str.length > 200) {
+        return JSON.parse(str.slice(0, 200) + "...")
+      }
+      return args
+    }
 
     const result = {
       get message() {
@@ -79,6 +117,10 @@ export namespace SessionProcessor {
                     },
                     metadata: value.providerMetadata,
                   }
+                  // Emit thought start event
+                  if (input.taskID) {
+                    TaskEmitter.thought(input.taskID, "[思考开始]")
+                  }
                   break
 
                 case "reasoning-delta":
@@ -87,6 +129,14 @@ export namespace SessionProcessor {
                     part.text += value.text
                     if (value.providerMetadata) part.metadata = value.providerMetadata
                     if (part.text) await Session.updatePart({ part, delta: value.text })
+
+                    // Buffer for SSE emission (throttled)
+                    if (input.taskID) {
+                      thoughtBuffer += value.text
+                      if (thoughtBuffer.length >= THOUGHT_THROTTLE_CHARS) {
+                        flushThought()
+                      }
+                    }
                   }
                   break
 
@@ -102,6 +152,9 @@ export namespace SessionProcessor {
                     if (value.providerMetadata) part.metadata = value.providerMetadata
                     await Session.updatePart(part)
                     delete reasoningMap[value.id]
+
+                    // Flush any remaining thought content
+                    flushThought()
                   }
                   break
 
@@ -144,6 +197,12 @@ export namespace SessionProcessor {
                       metadata: value.providerMetadata,
                     })
                     toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+
+                    // Emit tool use event (call start, no result yet)
+                    if (input.taskID) {
+                      lastToolCall = { tool: value.toolName, args: value.input }
+                      TaskEmitter.toolUse(input.taskID, value.toolName, truncateArgs(value.input), null)
+                    }
 
                     const parts = await MessageV2.parts(input.assistantMessage.id)
                     const lastThree = parts.slice(-DOOM_LOOP_THRESHOLD)
@@ -192,6 +251,19 @@ export namespace SessionProcessor {
                         attachments: value.output.attachments,
                       },
                     })
+
+                    // Emit tool result event
+                    if (input.taskID) {
+                      const toolName = lastToolCall?.tool ?? match.tool
+                      const toolArgs = lastToolCall?.args ?? match.state.input
+                      TaskEmitter.toolUse(
+                        input.taskID,
+                        toolName,
+                        truncateArgs(toolArgs),
+                        truncateArgs(value.output.output),
+                      )
+                      lastToolCall = null
+                    }
 
                     delete toolcalls[value.toolCallId]
                   }
@@ -319,6 +391,14 @@ export namespace SessionProcessor {
                         part: currentText,
                         delta: value.text,
                       })
+
+                    // Buffer for SSE emission (throttled)
+                    if (input.taskID) {
+                      outputBuffer += value.text
+                      if (outputBuffer.length >= OUTPUT_THROTTLE_CHARS) {
+                        flushOutput()
+                      }
+                    }
                   }
                   break
 
@@ -331,6 +411,9 @@ export namespace SessionProcessor {
                     }
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     await Session.updatePart(currentText)
+
+                    // Flush any remaining output content
+                    flushOutput()
                   }
                   currentText = undefined
                   break

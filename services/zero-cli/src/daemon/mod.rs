@@ -478,7 +478,7 @@ mod tests {
     fn test_config(tmp: &TempDir) -> Config {
         let config = Config {
             workspace_dir: tmp.path().join("workspace"),
-            config_path: tmp.path().join("config.toml"),
+            config_path: tmp.path().join("config.json"),
             ..Config::default()
         };
         std::fs::create_dir_all(&config.workspace_dir).unwrap();
