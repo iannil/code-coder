@@ -11,6 +11,15 @@ use std::fmt;
 
 use super::{Candle, Timeframe};
 
+// Import and re-export valuation types from lixin for convenience
+pub use super::lixin::{
+    ValuationMetrics,
+    ValuationMetricName,
+    StatisticsGranularity,
+    ValuationStatistics,
+    ValuationStatisticsSet,
+};
+
 // ============================================================================
 // Provider Capabilities
 // ============================================================================
@@ -385,6 +394,82 @@ pub trait DataProvider: Send + Sync {
             }
         }
         Ok(results)
+    }
+
+    // ========================================================================
+    // Valuation Metrics Methods
+    // ========================================================================
+
+    /// Get valuation metrics for a single stock.
+    ///
+    /// Returns current valuation metrics like PE, PB, PS, dividend yield,
+    /// market cap, and margin trading data.
+    ///
+    /// # Arguments
+    /// * `symbol` - Stock symbol (e.g., "000001.SZ")
+    /// * `date` - Optional specific date. If None, returns latest.
+    ///
+    /// Default implementation returns "not supported" error.
+    async fn get_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationMetrics, ProviderError> {
+        let _ = (symbol, date);
+        Err(ProviderError::DataNotAvailable(format!(
+            "{} does not support valuation metrics",
+            self.name()
+        )))
+    }
+
+    /// Batch get valuation metrics for multiple stocks.
+    ///
+    /// More efficient than calling get_valuation_metrics() in a loop.
+    /// Default implementation falls back to sequential calls.
+    ///
+    /// # Arguments
+    /// * `symbols` - List of stock symbols
+    /// * `date` - Optional specific date
+    async fn batch_get_valuation_metrics(
+        &self,
+        symbols: &[String],
+        date: Option<NaiveDate>,
+    ) -> Result<Vec<ValuationMetrics>, ProviderError> {
+        let mut results = Vec::with_capacity(symbols.len());
+        for symbol in symbols {
+            match self.get_valuation_metrics(symbol, date).await {
+                Ok(data) => results.push(data),
+                Err(ProviderError::DataNotAvailable(_)) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(results)
+    }
+
+    /// Get valuation statistics with historical percentiles.
+    ///
+    /// Returns historical percentile data for valuation metrics,
+    /// useful for determining if a stock is historically cheap or expensive.
+    ///
+    /// # Arguments
+    /// * `symbol` - Stock symbol (e.g., "000001.SZ")
+    /// * `metrics` - List of metrics to get statistics for
+    /// * `granularities` - List of time granularities (e.g., 3Y, 5Y, since listing)
+    /// * `date` - Optional specific date. If None, returns latest.
+    ///
+    /// Default implementation returns "not supported" error.
+    async fn get_valuation_statistics(
+        &self,
+        symbol: &str,
+        metrics: &[ValuationMetricName],
+        granularities: &[StatisticsGranularity],
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatisticsSet, ProviderError> {
+        let _ = (symbol, metrics, granularities, date);
+        Err(ProviderError::DataNotAvailable(format!(
+            "{} does not support valuation statistics",
+            self.name()
+        )))
     }
 }
 

@@ -11,6 +11,7 @@ use tracing::{debug, info, warn};
 
 use super::health::{HealthMonitor, HealthMonitorConfig};
 use super::provider::{DataCapabilities, DataProvider, ProviderError, ProviderInfo};
+use super::provider::{ValuationMetrics, ValuationMetricName, StatisticsGranularity, ValuationStatisticsSet};
 use super::{Candle, Timeframe};
 
 // ============================================================================
@@ -517,6 +518,67 @@ impl DataProviderRouter {
             async move {
                 provider
                     .get_index_daily(&symbol, start_date, end_date)
+                    .await
+            }
+        })
+        .await
+    }
+
+    /// Fetch valuation metrics with automatic failover.
+    pub async fn get_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationMetrics, ProviderError> {
+        let symbol = symbol.to_string();
+        self.execute_with_failover(move |provider| {
+            let symbol = symbol.clone();
+            async move {
+                provider
+                    .get_valuation_metrics(&symbol, date)
+                    .await
+            }
+        })
+        .await
+    }
+
+    /// Batch fetch valuation metrics with automatic failover.
+    pub async fn batch_get_valuation_metrics(
+        &self,
+        symbols: &[String],
+        date: Option<NaiveDate>,
+    ) -> Result<Vec<ValuationMetrics>, ProviderError> {
+        let symbols = symbols.to_vec();
+        let date = date;
+        self.execute_with_failover(move |provider| {
+            let symbols = symbols.clone();
+            async move {
+                provider
+                    .batch_get_valuation_metrics(&symbols, date)
+                    .await
+            }
+        })
+        .await
+    }
+
+    /// Fetch valuation statistics with automatic failover.
+    pub async fn get_valuation_statistics(
+        &self,
+        symbol: &str,
+        metrics: &[ValuationMetricName],
+        granularities: &[StatisticsGranularity],
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatisticsSet, ProviderError> {
+        let symbol = symbol.to_string();
+        let metrics = metrics.to_vec();
+        let granularities = granularities.to_vec();
+        self.execute_with_failover(move |provider| {
+            let symbol = symbol.clone();
+            let metrics = metrics.clone();
+            let granularities = granularities.clone();
+            async move {
+                provider
+                    .get_valuation_statistics(&symbol, &metrics, &granularities, date)
                     .await
             }
         })

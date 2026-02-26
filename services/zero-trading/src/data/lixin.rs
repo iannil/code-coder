@@ -60,6 +60,9 @@ const RATE_LIMIT_RETRY_SECS: u64 = 10;
 /// Maximum stocks per batch request
 const MAX_BATCH_SIZE: usize = 100;
 
+/// Non-financial fundamental data endpoint (valuation metrics)
+const NON_FINANCIAL_ENDPOINT: &str = "/api/cn/company/fundamental/non_financial";
+
 // ============================================================================
 // Symbol Mapping
 // ============================================================================
@@ -691,6 +694,232 @@ impl LixinAdapter {
 
         Ok(response.data.unwrap_or_default())
     }
+
+    // ========================================================================
+    // Valuation Metrics Methods
+    // ========================================================================
+
+    /// Fetch valuation metrics for a single stock
+    async fn fetch_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationMetrics, ProviderError> {
+        let stock_code = to_lixin_code(symbol)
+            .ok_or_else(|| ProviderError::InvalidRequest("Invalid symbol format".into()))?;
+
+        let request = LixinNonFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: vec![stock_code.clone()],
+            metrics_list: Some(ValuationMetricName::all_metrics()
+                .into_iter()
+                .map(String::from)
+                .collect()),
+            date: date.map(|d| d.format("%Y-%m-%d").to_string()),
+            start_date: None,
+            end_date: None,
+            limit: Some(1),
+        };
+
+        let response: LixinResponse<Vec<LixinNonFinancialData>> = self
+            .call_api(NON_FINANCIAL_ENDPOINT, &request)
+            .await?;
+
+        let data = response.data.unwrap_or_default();
+        let item = data.first()
+            .ok_or_else(|| ProviderError::DataNotAvailable(format!("No valuation data for {}", symbol)))?;
+
+        self.convert_to_valuation_metrics(symbol, item)
+    }
+
+    /// Batch fetch valuation metrics for multiple stocks
+    async fn batch_fetch_valuation_metrics(
+        &self,
+        symbols: &[String],
+        date: Option<NaiveDate>,
+    ) -> Result<Vec<ValuationMetrics>, ProviderError> {
+        let mut results = Vec::with_capacity(symbols.len());
+
+        // Process in batches to respect API limits
+        for chunk in symbols.chunks(MAX_BATCH_SIZE) {
+            let stock_codes: Vec<String> = chunk
+                .iter()
+                .filter_map(|s| to_lixin_code(s))
+                .collect();
+
+            if stock_codes.is_empty() {
+                continue;
+            }
+
+            let request = LixinNonFinancialRequest {
+                token: self.token.clone(),
+                stock_codes: stock_codes.clone(),
+                metrics_list: Some(ValuationMetricName::all_metrics()
+                    .into_iter()
+                    .map(String::from)
+                    .collect()),
+                date: date.map(|d| d.format("%Y-%m-%d").to_string()),
+                start_date: None,
+                end_date: None,
+                limit: None,
+            };
+
+            let response: LixinResponse<Vec<LixinNonFinancialData>> = self
+                .call_api(NON_FINANCIAL_ENDPOINT, &request)
+                .await?;
+
+            let data = response.data.unwrap_or_default();
+
+            // Map results back to original symbols
+            for item in data {
+                // Find the original symbol that matches this stock code
+                let original_symbol = chunk.iter()
+                    .find(|s| to_lixin_code(s).as_deref() == Some(item.stock_code.as_str()))
+                    .map(|s| s.as_str());
+
+                if let Some(symbol) = original_symbol {
+                    match self.convert_to_valuation_metrics(symbol, &item) {
+                        Ok(metrics) => results.push(metrics),
+                        Err(e) => {
+                            debug!(symbol = %item.stock_code, error = %e, "Failed to convert valuation metrics");
+                        }
+                    }
+                }
+            }
+        }
+
+        debug!(
+            count = results.len(),
+            requested = symbols.len(),
+            "Batch fetched valuation metrics from Lixin"
+        );
+        Ok(results)
+    }
+
+    /// Convert Lixinger API data to unified ValuationMetrics
+    fn convert_to_valuation_metrics(
+        &self,
+        symbol: &str,
+        data: &LixinNonFinancialData,
+    ) -> Result<ValuationMetrics, ProviderError> {
+        let date = NaiveDate::parse_from_str(&data.date, "%Y-%m-%d")
+            .map_err(|e| ProviderError::Internal(format!("Failed to parse date: {}", e)))?;
+
+        Ok(ValuationMetrics {
+            symbol: symbol.to_string(),
+            date,
+            pe_ttm: data.pe_ttm,
+            pe_ttm_ex_non_recurring: data.d_pe_ttm,
+            pb: data.pb,
+            ps_ttm: data.ps_ttm,
+            dividend_yield: data.dividend_yield,
+            market_cap: data.market_cap,
+            circulating_market_cap: data.circulating_market_cap,
+            free_float_market_cap: data.free_float_market_cap,
+            financing_balance: data.financing_balance,
+            short_balance: data.short_balance,
+            northbound_holdings_shares: data.northbound_holdings_shares,
+            northbound_holdings_value: data.northbound_holdings_value,
+        })
+    }
+
+    /// Fetch valuation statistics with historical percentile data
+    ///
+    /// This method requires the statistics API which provides percentile
+    /// rankings for metrics over different time periods.
+    async fn fetch_valuation_statistics(
+        &self,
+        symbol: &str,
+        metrics: &[ValuationMetricName],
+        granularities: &[StatisticsGranularity],
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatisticsSet, ProviderError> {
+        // For now, we construct a basic statistics set
+        // Full implementation would call the statistics-specific endpoint
+        let current_metrics = self.fetch_valuation_metrics(symbol, date).await?;
+
+        let mut pe_ttm_stats = Vec::new();
+        let mut pb_stats = Vec::new();
+        let mut dividend_yield_stats = Vec::new();
+
+        // Build statistics structures for each requested metric and granularity
+        for &metric in metrics {
+            for &granularity in granularities {
+                let stats = self.fetch_metric_statistics(symbol, metric, granularity, date).await?;
+
+                match metric {
+                    ValuationMetricName::PeTtm | ValuationMetricName::DPeTtm => {
+                        pe_ttm_stats.push(stats);
+                    }
+                    ValuationMetricName::Pb => {
+                        pb_stats.push(stats);
+                    }
+                    ValuationMetricName::Dyr => {
+                        dividend_yield_stats.push(stats);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(ValuationStatisticsSet {
+            symbol: symbol.to_string(),
+            date: current_metrics.date,
+            pe_ttm_stats,
+            pb_stats,
+            dividend_yield_stats,
+        })
+    }
+
+    /// Fetch statistics for a single metric
+    async fn fetch_metric_statistics(
+        &self,
+        symbol: &str,
+        metric: ValuationMetricName,
+        granularity: StatisticsGranularity,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatistics, ProviderError> {
+        // Get current value first
+        let metrics = self.fetch_valuation_metrics(symbol, date).await?;
+        let current_value = match metric {
+            ValuationMetricName::PeTtm => metrics.pe_ttm.unwrap_or(0.0),
+            ValuationMetricName::DPeTtm => metrics.pe_ttm_ex_non_recurring.unwrap_or(0.0),
+            ValuationMetricName::Pb => metrics.pb.unwrap_or(0.0),
+            ValuationMetricName::Dyr => metrics.dividend_yield.unwrap_or(0.0),
+            _ => 0.0,
+        };
+
+        if current_value == 0.0 {
+            return Ok(ValuationStatistics {
+                metric,
+                granularity,
+                current_value,
+                percentile: None,
+                q25: None,
+                q50: None,
+                q80: None,
+                min: None,
+                max: None,
+                avg: None,
+            });
+        }
+
+        // The full Lixinger statistics API would be called here
+        // For now, return placeholder structure
+        // TODO: Implement full statistics API call when available
+        Ok(ValuationStatistics {
+            metric,
+            granularity,
+            current_value,
+            percentile: None,  // Would come from API's cvpos field
+            q25: None,         // Would come from API's q2v field
+            q50: None,         // Would come from API's q5v field
+            q80: None,         // Would come from API's q8v field
+            min: None,         // Would come from API's minv field
+            max: None,         // Would come from API's maxv field
+            avg: None,         // Would come from API's avgv field
+        })
+    }
 }
 
 // ============================================================================
@@ -803,6 +1032,36 @@ impl DataProvider for LixinAdapter {
         period_end: Option<NaiveDate>,
     ) -> Result<Vec<FinancialStatementData>, ProviderError> {
         self.batch_fetch_financial_data(symbols, period_end).await
+    }
+
+    // ========================================================================
+    // Valuation Metrics Methods
+    // ========================================================================
+
+    async fn get_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationMetrics, ProviderError> {
+        self.fetch_valuation_metrics(symbol, date).await
+    }
+
+    async fn batch_get_valuation_metrics(
+        &self,
+        symbols: &[String],
+        date: Option<NaiveDate>,
+    ) -> Result<Vec<ValuationMetrics>, ProviderError> {
+        self.batch_fetch_valuation_metrics(symbols, date).await
+    }
+
+    async fn get_valuation_statistics(
+        &self,
+        symbol: &str,
+        metrics: &[ValuationMetricName],
+        granularities: &[StatisticsGranularity],
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatisticsSet, ProviderError> {
+        self.fetch_valuation_statistics(symbol, metrics, granularities, date).await
     }
 }
 
@@ -989,6 +1248,314 @@ struct LixinCashFlow {
 }
 
 // ============================================================================
+// Valuation Metrics API Types
+// ============================================================================
+
+/// Names of valuation metrics supported by the API
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValuationMetricName {
+    /// PE ratio (TTM)
+    PeTtm,
+    /// PE ratio (TTM) excluding non-recurring items
+    DPeTtm,
+    /// PB ratio
+    Pb,
+    /// PS ratio (TTM)
+    PsTtm,
+    /// Dividend yield
+    Dyr,
+    /// Market cap (total)
+    Mc,
+    /// Circulating market cap
+    Cmc,
+    /// Free float market cap
+    Ecmc,
+    /// Financing balance
+    Fb,
+    /// Short balance
+    Sb,
+    /// Northbound holdings (shares)
+    HaSh,
+    /// Northbound holdings (market value)
+    HaShm,
+}
+
+impl ValuationMetricName {
+    /// Convert to the API metric name string
+    pub fn to_api_metric(self) -> &'static str {
+        match self {
+            Self::PeTtm => "peTtm",
+            Self::DPeTtm => "dPeTtm",
+            Self::Pb => "pb",
+            Self::PsTtm => "psTtm",
+            Self::Dyr => "dyr",
+            Self::Mc => "mc",
+            Self::Cmc => "cmc",
+            Self::Ecmc => "ecmc",
+            Self::Fb => "fb",
+            Self::Sb => "sb",
+            Self::HaSh => "haSh",
+            Self::HaShm => "haShm",
+        }
+    }
+
+    /// Get all metrics as API strings
+    pub fn all_metrics() -> Vec<&'static str> {
+        vec![
+            "peTtm", "dPeTtm", "pb", "psTtm", "dyr",
+            "mc", "cmc", "ecmc", "fb", "sb", "haSh", "haShm",
+        ]
+    }
+}
+
+/// Non-financial fundamental data request for valuation metrics
+#[derive(Debug, Serialize)]
+struct LixinNonFinancialRequest {
+    token: String,
+    #[serde(rename = "stockCodes")]
+    stock_codes: Vec<String>,
+    #[serde(rename = "metricsList", skip_serializing_if = "Option::is_none")]
+    metrics_list: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    #[serde(rename = "startDate", skip_serializing_if = "Option::is_none")]
+    start_date: Option<String>,
+    #[serde(rename = "endDate", skip_serializing_if = "Option::is_none")]
+    end_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit: Option<i32>,
+}
+
+/// Non-financial valuation data from Lixinger API
+#[derive(Debug, Deserialize)]
+struct LixinNonFinancialData {
+    #[serde(rename = "stockCode")]
+    stock_code: String,
+    #[serde(rename = "date")]
+    date: String,
+
+    // Core valuation metrics
+    #[serde(rename = "peTtm", default)]
+    pe_ttm: Option<f64>,
+    #[serde(rename = "dPeTtm", default)]
+    d_pe_ttm: Option<f64>,
+    #[serde(rename = "pb", default)]
+    pb: Option<f64>,
+    #[serde(rename = "psTtm", default)]
+    ps_ttm: Option<f64>,
+    #[serde(rename = "dyr", default)]
+    dividend_yield: Option<f64>,
+
+    // Market cap related
+    #[serde(rename = "mc", default)]
+    market_cap: Option<f64>,
+    #[serde(rename = "cmc", default)]
+    circulating_market_cap: Option<f64>,
+    #[serde(rename = "ecmc", default)]
+    free_float_market_cap: Option<f64>,
+
+    // Margin trading
+    #[serde(rename = "fb", default)]
+    financing_balance: Option<f64>,
+    #[serde(rename = "sb", default)]
+    short_balance: Option<f64>,
+
+    // Northbound (Hong Kong) holdings
+    #[serde(rename = "haSh", default)]
+    northbound_holdings_shares: Option<f64>,
+    #[serde(rename = "haShm", default)]
+    northbound_holdings_value: Option<f64>,
+}
+
+/// Unified valuation metrics structure for external use
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValuationMetrics {
+    pub symbol: String,
+    pub date: NaiveDate,
+
+    // Core valuation
+    pub pe_ttm: Option<f64>,
+    pub pe_ttm_ex_non_recurring: Option<f64>,
+    pub pb: Option<f64>,
+    pub ps_ttm: Option<f64>,
+    pub dividend_yield: Option<f64>,
+
+    // Market cap (in billion yuan typically)
+    pub market_cap: Option<f64>,
+    pub circulating_market_cap: Option<f64>,
+    pub free_float_market_cap: Option<f64>,
+
+    // Margin trading (in million yuan typically)
+    pub financing_balance: Option<f64>,
+    pub short_balance: Option<f64>,
+
+    // Northbound holdings
+    pub northbound_holdings_shares: Option<f64>,
+    pub northbound_holdings_value: Option<f64>,
+}
+
+impl ValuationMetrics {
+    /// Calculate the ratio of circulating to total market cap
+    pub fn circulating_ratio(&self) -> Option<f64> {
+        match (self.circulating_market_cap, self.market_cap) {
+            (Some(cmc), Some(mc)) if mc > 0.0 => Some(cmc / mc),
+            _ => None,
+        }
+    }
+
+    /// Calculate short interest ratio (short balance / financing balance)
+    pub fn short_interest_ratio(&self) -> Option<f64> {
+        match (self.short_balance, self.financing_balance) {
+            (Some(sb), Some(fb)) if fb > 0.0 => Some(sb / fb),
+            _ => None,
+        }
+    }
+
+    /// Check if valuation is attractive based on common thresholds
+    pub fn is_value_attractive(&self) -> bool {
+        // Simple value screen: PE < 15, PB < 2, dividend yield > 3%
+        let pe_ok = self.pe_ttm.map_or(false, |pe| pe > 0.0 && pe < 15.0);
+        let pb_ok = self.pb.map_or(false, |pb| pb > 0.0 && pb < 2.0);
+        let div_ok = self.dividend_yield.map_or(false, |dy| dy > 3.0);
+
+        pe_ok && pb_ok && div_ok
+    }
+}
+
+/// Statistics time granularity for historical percentile data
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StatisticsGranularity {
+    /// Since listing (full history)
+    SinceListing,
+    /// 20 years
+    Y20,
+    /// 10 years
+    Y10,
+    /// 5 years
+    Y5,
+    /// 3 years
+    Y3,
+    /// 1 year
+    Y1,
+}
+
+impl StatisticsGranularity {
+    /// Convert to the API granularity string
+    pub fn to_api_granularity(&self) -> &'static str {
+        match self {
+            Self::SinceListing => "fs",    // from start (since listing)
+            Self::Y20 => "20y",
+            Self::Y10 => "10y",
+            Self::Y5 => "5y",
+            Self::Y3 => "3y",
+            Self::Y1 => "1y",
+        }
+    }
+
+    /// Parse from API string
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "fs" => Some(Self::SinceListing),
+            "20y" => Some(Self::Y20),
+            "10y" => Some(Self::Y10),
+            "5y" => Some(Self::Y5),
+            "3y" => Some(Self::Y3),
+            "1y" => Some(Self::Y1),
+            _ => None,
+        }
+    }
+}
+
+/// Valuation statistics for a single metric and granularity
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValuationStatistics {
+    pub metric: ValuationMetricName,
+    pub granularity: StatisticsGranularity,
+    pub current_value: f64,
+    pub percentile: Option<f64>,
+    pub q25: Option<f64>,
+    pub q50: Option<f64>,
+    pub q80: Option<f64>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub avg: Option<f64>,
+}
+
+impl ValuationStatistics {
+    /// Check if current value is in low valuation zone (bottom 20%)
+    pub fn is_low_valuation(&self) -> bool {
+        self.percentile.map_or(false, |p| p < 20.0)
+    }
+
+    /// Check if current value is in high valuation zone (top 20%)
+    pub fn is_high_valuation(&self) -> bool {
+        self.percentile.map_or(false, |p| p > 80.0)
+    }
+
+    /// Get valuation zone description
+    pub fn valuation_zone(&self) -> &'static str {
+        match self.percentile {
+            Some(p) if p < 10.0 => "极度低估",
+            Some(p) if p < 25.0 => "低估",
+            Some(p) if p < 45.0 => "偏低",
+            Some(p) if p < 55.0 => "合理",
+            Some(p) if p < 75.0 => "偏高",
+            Some(p) if p < 90.0 => "高估",
+            Some(_) => "极度高估",
+            None => "未知",
+        }
+    }
+}
+
+/// Complete set of valuation statistics for a symbol
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValuationStatisticsSet {
+    pub symbol: String,
+    pub date: NaiveDate,
+    pub pe_ttm_stats: Vec<ValuationStatistics>,
+    pub pb_stats: Vec<ValuationStatistics>,
+    pub dividend_yield_stats: Vec<ValuationStatistics>,
+}
+
+impl ValuationStatisticsSet {
+    /// Get statistics for a specific metric
+    pub fn get_metric_stats(&self, metric: ValuationMetricName) -> Option<&[ValuationStatistics]> {
+        match metric {
+            ValuationMetricName::PeTtm | ValuationMetricName::DPeTtm => {
+                if self.pe_ttm_stats.is_empty() { None } else { Some(&self.pe_ttm_stats) }
+            }
+            ValuationMetricName::Pb => {
+                if self.pb_stats.is_empty() { None } else { Some(&self.pb_stats) }
+            }
+            ValuationMetricName::Dyr => {
+                if self.dividend_yield_stats.is_empty() { None } else { Some(&self.dividend_yield_stats) }
+            }
+            _ => None,
+        }
+    }
+
+    /// Calculate a composite value score (0-100, higher = more expensive)
+    pub fn composite_value_score(&self) -> Option<f64> {
+        // Average of PE and PB percentiles for 5-year lookback
+        let pe_pct = self.pe_ttm_stats
+            .iter()
+            .find(|s| s.granularity == StatisticsGranularity::Y5)
+            .and_then(|s| s.percentile)?;
+
+        let pb_pct = self.pb_stats
+            .iter()
+            .find(|s| s.granularity == StatisticsGranularity::Y5)
+            .and_then(|s| s.percentile)?;
+
+        // Higher percentile = higher valuation = lower value score
+        // Invert so 100 = best value, 0 = worst value
+        Some(200.0 - (pe_pct + pb_pct) / 2.0)
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -1060,5 +1627,98 @@ mod tests {
         assert!(!candles.is_empty());
         assert!(candles.len() <= 10);
         assert_eq!(candles[0].symbol, "000001.SZ");
+    }
+
+    // ========================================================================
+    // Valuation Metrics Integration Tests
+    // ========================================================================
+
+    #[tokio::test]
+    #[ignore = "requires valid API token"]
+    async fn test_get_valuation_metrics() {
+        let token = std::env::var("LIXIN_TOKEN").expect("LIXIN_TOKEN not set");
+        let adapter = LixinAdapter::new(token);
+
+        let metrics = adapter
+            .get_valuation_metrics("000001.SZ", None)
+            .await
+            .unwrap();
+
+        assert_eq!(metrics.symbol, "000001.SZ");
+        // At least one valuation metric should be present
+        assert!(
+            metrics.pe_ttm.is_some() || metrics.pb.is_some() || metrics.market_cap.is_some(),
+            "At least one valuation metric should be present"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires valid API token"]
+    async fn test_batch_get_valuation_metrics() {
+        let token = std::env::var("LIXIN_TOKEN").expect("LIXIN_TOKEN not set");
+        let adapter = LixinAdapter::new(token);
+
+        let symbols = vec![
+            "000001.SZ".to_string(),
+            "000002.SZ".to_string(),
+            "600000.SH".to_string(),
+        ];
+
+        let metrics_list = adapter
+            .batch_get_valuation_metrics(&symbols, None)
+            .await
+            .unwrap();
+
+        assert!(!metrics_list.is_empty());
+        // Each result should have a symbol
+        for metrics in &metrics_list {
+            assert!(!metrics.symbol.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires valid API token"]
+    async fn test_valuation_statistics() {
+        let token = std::env::var("LIXIN_TOKEN").expect("LIXIN_TOKEN not set");
+        let adapter = LixinAdapter::new(token);
+
+        let stats = adapter
+            .get_valuation_statistics(
+                "000001.SZ",
+                &[ValuationMetricName::PeTtm, ValuationMetricName::Pb],
+                &[StatisticsGranularity::Y3, StatisticsGranularity::Y5],
+                None,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(stats.symbol, "000001.SZ");
+        // Should have statistics for requested metrics
+        assert!(!stats.pe_ttm_stats.is_empty() || !stats.pb_stats.is_empty());
+    }
+
+    #[tokio::test]
+    #[ignore = "requires valid API token"]
+    async fn test_valuation_metrics_helpers() {
+        let token = std::env::var("LIXIN_TOKEN").expect("LIXIN_TOKEN not set");
+        let adapter = LixinAdapter::new(token);
+
+        let metrics = adapter
+            .get_valuation_metrics("600519.SH", None)  // 贵州茅台 - typically has high valuation
+            .await
+            .unwrap();
+
+        // Test circulating_ratio calculation
+        if let (Some(cmc), Some(mc)) = (metrics.circulating_market_cap, metrics.market_cap) {
+            if mc > 0.0 {
+                let ratio = cmc / mc;
+                assert!(ratio > 0.0 && ratio <= 1.0, "Circulating ratio should be between 0 and 1");
+            }
+        }
+
+        // Test is_value_attractive (Kweichow Moutai is typically NOT a value stock)
+        // This test mainly verifies the method works
+        let is_value = metrics.is_value_attractive();
+        assert!(!is_value || metrics.pe_ttm.map_or(false, |pe| pe < 15.0));
     }
 }

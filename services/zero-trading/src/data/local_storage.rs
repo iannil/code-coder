@@ -20,6 +20,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 
 use super::{Candle, Timeframe, StockInfo, FinancialStatementData};
+use super::lixin::{ValuationMetrics, ValuationMetricName, StatisticsGranularity, ValuationStatistics, ValuationStatisticsSet};
 use crate::valuation::types::ValuationInput;
 use crate::value::types::FinancialData;
 
@@ -208,6 +209,69 @@ ON financial_statements(roe);
 
 CREATE INDEX IF NOT EXISTS idx_fs_gross_margin
 ON financial_statements(gross_margin);
+
+-- Valuation metrics table
+CREATE TABLE IF NOT EXISTS valuation_metrics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    date TEXT NOT NULL,
+    pe_ttm REAL,
+    pe_ttm_ex_non_recurring REAL,
+    pb REAL,
+    ps_ttm REAL,
+    dividend_yield REAL,
+    market_cap REAL,
+    circulating_market_cap REAL,
+    free_float_market_cap REAL,
+    financing_balance REAL,
+    short_balance REAL,
+    northbound_holdings_shares REAL,
+    northbound_holdings_value REAL,
+    source TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_metrics_symbol_date
+ON valuation_metrics(symbol, date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_metrics_pe_ttm
+ON valuation_metrics(pe_ttm);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_metrics_pb
+ON valuation_metrics(pb);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_metrics_market_cap
+ON valuation_metrics(market_cap);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_metrics_dividend_yield
+ON valuation_metrics(dividend_yield);
+
+-- Valuation statistics table
+CREATE TABLE IF NOT EXISTS valuation_statistics (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol TEXT NOT NULL,
+    metric TEXT NOT NULL,
+    granularity TEXT NOT NULL,
+    date TEXT NOT NULL,
+    current_value REAL NOT NULL,
+    percentile REAL,
+    q25 REAL,
+    q50 REAL,
+    q80 REAL,
+    min_val REAL,
+    max_val REAL,
+    avg_val REAL,
+    source TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol, metric, granularity, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_stats_symbol_date
+ON valuation_statistics(symbol, date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_valuation_stats_metric
+ON valuation_statistics(metric, granularity);
 
 -- Sync metadata table
 CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -1445,6 +1509,445 @@ impl LocalStorage {
         )?;
 
         Ok(count > 0)
+    }
+
+    // ========================================================================
+    // Valuation Metrics Operations
+    // ========================================================================
+
+    /// Save valuation metrics to local storage
+    pub async fn save_valuation_metrics(
+        &self,
+        data: &ValuationMetrics,
+        source: &str,
+    ) -> Result<()> {
+        let db = self.db.lock().await;
+
+        db.execute(
+            r#"
+            INSERT OR REPLACE INTO valuation_metrics
+            (symbol, date, pe_ttm, pe_ttm_ex_non_recurring, pb, ps_ttm, dividend_yield,
+             market_cap, circulating_market_cap, free_float_market_cap,
+             financing_balance, short_balance, northbound_holdings_shares, northbound_holdings_value, source)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
+            "#,
+            params![
+                data.symbol,
+                data.date.to_string(),
+                data.pe_ttm,
+                data.pe_ttm_ex_non_recurring,
+                data.pb,
+                data.ps_ttm,
+                data.dividend_yield,
+                data.market_cap,
+                data.circulating_market_cap,
+                data.free_float_market_cap,
+                data.financing_balance,
+                data.short_balance,
+                data.northbound_holdings_shares,
+                data.northbound_holdings_value,
+                source,
+            ],
+        )?;
+
+        debug!(symbol = %data.symbol, "Saved valuation metrics to local storage");
+        Ok(())
+    }
+
+    /// Batch save valuation metrics
+    pub async fn save_valuation_metrics_batch(
+        &self,
+        data: &[ValuationMetrics],
+        source: &str,
+    ) -> Result<usize> {
+        let mut count = 0;
+        for item in data {
+            if self.save_valuation_metrics(item, source).await.is_ok() {
+                count += 1;
+            }
+        }
+        debug!(count, "Saved valuation metrics batch to local storage");
+        Ok(count)
+    }
+
+    /// Get valuation metrics for a symbol
+    pub async fn get_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<Option<ValuationMetrics>> {
+        let db = self.db.lock().await;
+
+        let sql = if date.is_some() {
+            "SELECT * FROM valuation_metrics WHERE symbol = ?1 AND date = ?2"
+        } else {
+            "SELECT * FROM valuation_metrics WHERE symbol = ?1 ORDER BY date DESC LIMIT 1"
+        };
+
+        let result = if let Some(d) = date {
+            db.query_row(sql, params![symbol, d.to_string()], Self::row_to_valuation_metrics)
+        } else {
+            db.query_row(sql, params![symbol], Self::row_to_valuation_metrics)
+        };
+
+        match result {
+            Ok(data) => Ok(Some(data)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn row_to_valuation_metrics(row: &rusqlite::Row) -> rusqlite::Result<ValuationMetrics> {
+        let symbol: String = row.get(1)?;
+        let date_str: String = row.get(2)?;
+        let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Local::now().date_naive());
+
+        Ok(ValuationMetrics {
+            symbol,
+            date,
+            pe_ttm: row.get(3)?,
+            pe_ttm_ex_non_recurring: row.get(4)?,
+            pb: row.get(5)?,
+            ps_ttm: row.get(6)?,
+            dividend_yield: row.get(7)?,
+            market_cap: row.get(8)?,
+            circulating_market_cap: row.get(9)?,
+            free_float_market_cap: row.get(10)?,
+            financing_balance: row.get(11)?,
+            short_balance: row.get(12)?,
+            northbound_holdings_shares: row.get(13)?,
+            northbound_holdings_value: row.get(14)?,
+        })
+    }
+
+    /// Get valuation metrics by filter criteria (for screening)
+    ///
+    /// # Arguments
+    /// * `min_pe` - Minimum PE ratio
+    /// * `max_pe` - Maximum PE ratio
+    /// * `min_pb` - Minimum PB ratio
+    /// * `max_pb` - Maximum PB ratio
+    /// * `min_market_cap` - Minimum market cap (in billion yuan)
+    /// * `max_market_cap` - Maximum market cap (in billion yuan)
+    /// * `min_dividend_yield` - Minimum dividend yield percentage
+    pub async fn get_valuation_metrics_by_filter(
+        &self,
+        min_pe: Option<f64>,
+        max_pe: Option<f64>,
+        min_pb: Option<f64>,
+        max_pb: Option<f64>,
+        min_market_cap: Option<f64>,
+        max_market_cap: Option<f64>,
+        min_dividend_yield: Option<f64>,
+    ) -> Result<Vec<ValuationMetrics>> {
+        let db = self.db.lock().await;
+
+        // Get only the latest valuation metrics for each symbol
+        let mut sql = String::from(
+            "SELECT * FROM valuation_metrics vm
+             WHERE vm.date = (
+                 SELECT MAX(date) FROM valuation_metrics
+                 WHERE symbol = vm.symbol
+             )",
+        );
+
+        if let Some(min) = min_pe {
+            sql.push_str(&format!(" AND pe_ttm >= {}", min));
+        }
+        if let Some(max) = max_pe {
+            sql.push_str(&format!(" AND pe_ttm <= {}", max));
+        }
+        if let Some(min) = min_pb {
+            sql.push_str(&format!(" AND pb >= {}", min));
+        }
+        if let Some(max) = max_pb {
+            sql.push_str(&format!(" AND pb <= {}", max));
+        }
+        if let Some(min) = min_market_cap {
+            sql.push_str(&format!(" AND market_cap >= {}", min));
+        }
+        if let Some(max) = max_market_cap {
+            sql.push_str(&format!(" AND market_cap <= {}", max));
+        }
+        if let Some(min) = min_dividend_yield {
+            sql.push_str(&format!(" AND dividend_yield >= {}", min));
+        }
+
+        sql.push_str(" ORDER BY pe_ttm ASC");
+
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map([], Self::row_to_valuation_metrics)?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            if let Ok(data) = row {
+                results.push(data);
+            }
+        }
+        Ok(results)
+    }
+
+    /// Get stock symbols with valuation metrics in local storage
+    pub async fn get_symbols_with_valuation_metrics(&self) -> Result<Vec<String>> {
+        let db = self.db.lock().await;
+
+        let mut stmt = db.prepare(
+            "SELECT DISTINCT symbol FROM valuation_metrics ORDER BY symbol",
+        )?;
+
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        let mut symbols: Vec<String> = Vec::new();
+        for row in rows {
+            if let Ok(symbol) = row {
+                symbols.push(symbol);
+            }
+        }
+        Ok(symbols)
+    }
+
+    // ========================================================================
+    // Valuation Statistics Operations
+    // ========================================================================
+
+    /// Save valuation statistics to local storage
+    pub async fn save_valuation_statistics(
+        &self,
+        data: &ValuationStatisticsSet,
+        source: &str,
+    ) -> Result<()> {
+        let db = self.db.lock().await;
+
+        // Save all statistics
+        for stats in &data.pe_ttm_stats {
+            self.save_single_valuation_stat(
+                &db,
+                &data.symbol,
+                &data.date,
+                stats.metric,
+                stats.granularity,
+                stats.current_value,
+                stats.percentile,
+                stats.q25,
+                stats.q50,
+                stats.q80,
+                stats.min,
+                stats.max,
+                stats.avg,
+                source,
+            )?;
+        }
+
+        for stats in &data.pb_stats {
+            self.save_single_valuation_stat(
+                &db,
+                &data.symbol,
+                &data.date,
+                stats.metric,
+                stats.granularity,
+                stats.current_value,
+                stats.percentile,
+                stats.q25,
+                stats.q50,
+                stats.q80,
+                stats.min,
+                stats.max,
+                stats.avg,
+                source,
+            )?;
+        }
+
+        for stats in &data.dividend_yield_stats {
+            self.save_single_valuation_stat(
+                &db,
+                &data.symbol,
+                &data.date,
+                stats.metric,
+                stats.granularity,
+                stats.current_value,
+                stats.percentile,
+                stats.q25,
+                stats.q50,
+                stats.q80,
+                stats.min,
+                stats.max,
+                stats.avg,
+                source,
+            )?;
+        }
+
+        debug!(symbol = %data.symbol, "Saved valuation statistics to local storage");
+        Ok(())
+    }
+
+    fn save_single_valuation_stat(
+        &self,
+        db: &Connection,
+        symbol: &str,
+        date: &NaiveDate,
+        metric: ValuationMetricName,
+        granularity: StatisticsGranularity,
+        current_value: f64,
+        percentile: Option<f64>,
+        q25: Option<f64>,
+        q50: Option<f64>,
+        q80: Option<f64>,
+        min: Option<f64>,
+        max: Option<f64>,
+        avg: Option<f64>,
+        source: &str,
+    ) -> rusqlite::Result<()> {
+        db.execute(
+            r#"
+            INSERT OR REPLACE INTO valuation_statistics
+            (symbol, metric, granularity, date, current_value, percentile, q25, q50, q80, min_val, max_val, avg_val, source)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "#,
+            params![
+                symbol,
+                format!("{:?}", metric).to_lowercase(),
+                format!("{:?}", granularity).to_lowercase(),
+                date.to_string(),
+                current_value,
+                percentile,
+                q25,
+                q50,
+                q80,
+                min,
+                max,
+                avg,
+                source,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get valuation statistics for a symbol
+    pub async fn get_valuation_statistics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<Option<ValuationStatisticsSet>> {
+        let db = self.db.lock().await;
+
+        let date_filter = if let Some(d) = date {
+            format!("AND date = '{}'", d.to_string())
+        } else {
+            String::new()
+        };
+
+        // Query PE stats
+        let pe_ttm_stats = self.get_statistics_for_metric(
+            &db,
+            symbol,
+            &date_filter,
+            ValuationMetricName::PeTtm,
+        )?;
+
+        // Query PB stats
+        let pb_stats = self.get_statistics_for_metric(
+            &db,
+            symbol,
+            &date_filter,
+            ValuationMetricName::Pb,
+        )?;
+
+        // Query dividend yield stats
+        let dividend_yield_stats = self.get_statistics_for_metric(
+            &db,
+            symbol,
+            &date_filter,
+            ValuationMetricName::Dyr,
+        )?;
+
+        if pe_ttm_stats.is_empty() && pb_stats.is_empty() && dividend_yield_stats.is_empty() {
+            return Ok(None);
+        }
+
+        let data_date = if let Some(d) = date {
+            d
+        } else {
+            // Get the latest date from the data
+            let latest_date: Option<String> = db.query_row(
+                "SELECT MAX(date) FROM valuation_statistics WHERE symbol = ?1",
+                params![symbol],
+                |row| row.get(0),
+            ).ok();
+            latest_date
+                .and_then(|d| NaiveDate::parse_from_str(&d, "%Y-%m-%d").ok())
+                .unwrap_or_else(|| chrono::Local::now().date_naive())
+        };
+
+        Ok(Some(ValuationStatisticsSet {
+            symbol: symbol.to_string(),
+            date: data_date,
+            pe_ttm_stats,
+            pb_stats,
+            dividend_yield_stats,
+        }))
+    }
+
+    fn get_statistics_for_metric(
+        &self,
+        db: &Connection,
+        symbol: &str,
+        date_filter: &str,
+        metric: ValuationMetricName,
+    ) -> Result<Vec<ValuationStatistics>> {
+        let metric_str = format!("{:?}", metric).to_lowercase();
+
+        let sql = format!(
+            "SELECT * FROM valuation_statistics WHERE symbol = ?1 AND metric = '{}' {}",
+            metric_str, date_filter
+        );
+
+        let mut stmt = db.prepare(&sql)?;
+        let rows = stmt.query_map(params![symbol], Self::row_to_valuation_statistics)?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            if let Ok(stats) = row {
+                results.push(stats);
+            }
+        }
+        Ok(results)
+    }
+
+    fn row_to_valuation_statistics(row: &rusqlite::Row) -> rusqlite::Result<ValuationStatistics> {
+        let metric_str: String = row.get(2)?;
+        let granularity_str: String = row.get(3)?;
+
+        let metric = match metric_str.to_lowercase().as_str() {
+            "pe_ttm" => ValuationMetricName::PeTtm,
+            "d_pe_ttm" => ValuationMetricName::DPeTtm,
+            "pb" => ValuationMetricName::Pb,
+            "ps_ttm" => ValuationMetricName::PsTtm,
+            "dyr" => ValuationMetricName::Dyr,
+            _ => ValuationMetricName::PeTtm,
+        };
+
+        let granularity = match granularity_str.to_lowercase().as_str() {
+            "fs" => StatisticsGranularity::SinceListing,
+            "y20" => StatisticsGranularity::Y20,
+            "y10" => StatisticsGranularity::Y10,
+            "y5" => StatisticsGranularity::Y5,
+            "y3" => StatisticsGranularity::Y3,
+            "y1" => StatisticsGranularity::Y1,
+            _ => StatisticsGranularity::Y5,
+        };
+
+        Ok(ValuationStatistics {
+            metric,
+            granularity,
+            current_value: row.get(5)?,
+            percentile: row.get(6)?,
+            q25: row.get(7)?,
+            q50: row.get(8)?,
+            q80: row.get(9)?,
+            min: row.get(10)?,
+            max: row.get(11)?,
+            avg: row.get(12)?,
+        })
     }
 }
 

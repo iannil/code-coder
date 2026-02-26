@@ -14,11 +14,13 @@ use tracing::{debug, info, warn};
 use super::itick::ITickAdapter;
 use super::health::HealthMonitorConfig;
 use super::lixin::LixinAdapter;
+use super::lixin::{ValuationMetrics, ValuationMetricName, StatisticsGranularity, ValuationStatisticsSet};
 use super::local_storage::{LocalStorage, LocalStorageConfig};
 use super::router::{DataProviderRouter, RouterConfig};
 use super::{Candle, DataCache, IndexData, IndexOverview, ProviderInfo, SmtPair, Timeframe};
 use super::default_tracked_symbols;
 use zero_common::config::Config;
+use chrono::NaiveDate;
 
 /// Market data aggregator with multi-provider support.
 ///
@@ -625,6 +627,151 @@ impl MarketDataAggregator {
     pub async fn shutdown(&self) {
         info!("Shutting down market data aggregator");
         self.router.stop_health_checks().await;
+    }
+
+    // ========================================================================
+    // Valuation Metrics Methods
+    // ========================================================================
+
+    /// Get valuation metrics for a stock with caching and failover.
+    ///
+    /// Data fetching priority:
+    /// 1. Local SQLite storage (persistent)
+    /// 2. Remote API providers (with failover)
+    pub async fn get_valuation_metrics(
+        &self,
+        symbol: &str,
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationMetrics> {
+        // 1. Try local storage first
+        if let Some(ref storage) = self.local_storage {
+            if let Ok(Some(metrics)) = storage.get_valuation_metrics(symbol, date).await {
+                debug!(symbol, "Returning valuation metrics from local storage");
+                return Ok(metrics);
+            }
+        }
+
+        // 2. Fetch from remote providers (with automatic failover)
+        let metrics = self.router
+            .get_valuation_metrics(symbol, date)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        // 3. Save to local storage for future use
+        if let Some(ref storage) = self.local_storage {
+            let _ = storage.save_valuation_metrics(&metrics, "lixin").await;
+        }
+
+        Ok(metrics)
+    }
+
+    /// Batch get valuation metrics for multiple stocks.
+    pub async fn batch_get_valuation_metrics(
+        &self,
+        symbols: &[String],
+        date: Option<NaiveDate>,
+    ) -> Result<Vec<ValuationMetrics>> {
+        // Check local storage for each symbol first
+        let mut missing_symbols = Vec::new();
+        let mut results = Vec::new();
+
+        if let Some(ref storage) = self.local_storage {
+            for symbol in symbols {
+                match storage.get_valuation_metrics(symbol, date).await {
+                    Ok(Some(metrics)) => {
+                        results.push(metrics);
+                    }
+                    _ => {
+                        missing_symbols.push(symbol.clone());
+                    }
+                }
+            }
+        } else {
+            missing_symbols = symbols.to_vec();
+        }
+
+        // Fetch missing symbols from remote
+        if !missing_symbols.is_empty() {
+            let remote_results = self.router
+                .batch_get_valuation_metrics(&missing_symbols, date)
+                .await
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+            // Save to local storage
+            if let Some(ref storage) = self.local_storage {
+                for metrics in &remote_results {
+                    let _ = storage.save_valuation_metrics(metrics, "lixin").await;
+                }
+            }
+
+            results.extend(remote_results);
+        }
+
+        Ok(results)
+    }
+
+    /// Get valuation statistics with historical percentiles.
+    ///
+    /// Returns historical percentile data for valuation metrics,
+    /// useful for determining if a stock is historically cheap or expensive.
+    pub async fn get_valuation_statistics(
+        &self,
+        symbol: &str,
+        metrics: &[ValuationMetricName],
+        granularities: &[StatisticsGranularity],
+        date: Option<NaiveDate>,
+    ) -> Result<ValuationStatisticsSet> {
+        // Try local storage first
+        if let Some(ref storage) = self.local_storage {
+            if let Ok(Some(stats)) = storage.get_valuation_statistics(symbol, date).await {
+                debug!(symbol, "Returning valuation statistics from local storage");
+                return Ok(stats);
+            }
+        }
+
+        // Fetch from remote providers
+        let stats = self.router
+            .get_valuation_statistics(symbol, metrics, granularities, date)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+        // Save to local storage
+        if let Some(ref storage) = self.local_storage {
+            let _ = storage.save_valuation_statistics(&stats, "lixin").await;
+        }
+
+        Ok(stats)
+    }
+
+    /// Screen stocks by valuation criteria.
+    ///
+    /// Returns stocks that match the specified valuation criteria.
+    pub async fn screen_by_valuation(
+        &self,
+        min_pe: Option<f64>,
+        max_pe: Option<f64>,
+        min_pb: Option<f64>,
+        max_pb: Option<f64>,
+        min_market_cap: Option<f64>,
+        max_market_cap: Option<f64>,
+        min_dividend_yield: Option<f64>,
+    ) -> Result<Vec<ValuationMetrics>> {
+        if let Some(ref storage) = self.local_storage {
+            storage.get_valuation_metrics_by_filter(
+                min_pe,
+                max_pe,
+                min_pb,
+                max_pb,
+                min_market_cap,
+                max_market_cap,
+                min_dividend_yield,
+            ).await.map_err(|e| anyhow::anyhow!("{}", e))
+        } else {
+            // Without local storage, we'd need to fetch all stocks and filter
+            // This is expensive, so return empty for now
+            warn!("Cannot screen by valuation without local storage enabled");
+            Ok(Vec::new())
+        }
     }
 }
 

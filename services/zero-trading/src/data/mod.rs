@@ -27,6 +27,7 @@ pub mod sync;
 pub use cache::DataCache;
 pub use aggregator::MarketDataAggregator;
 pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo, StockInfo, FinancialStatementData};
+pub use provider::{ValuationMetrics, ValuationMetricName, StatisticsGranularity, ValuationStatistics, ValuationStatisticsSet};
 pub use health::{HealthMonitor, HealthMonitorConfig, ProviderHealth};
 pub use router::{DataProviderRouter, RouterConfig};
 pub use rate_limiter::{RateLimiter, SharedRateLimiter, shared_limiter};
