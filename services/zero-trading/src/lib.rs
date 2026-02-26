@@ -45,10 +45,13 @@ pub mod macro_agent;
 pub mod macro_filter;
 pub mod notification;
 pub mod paper_trading;
+pub mod portfolio;
 pub mod routes;
 pub mod scheduler;
 pub mod session;
 pub mod strategy;
+pub mod valuation;
+pub mod value;
 
 use anyhow::Result;
 use axum::{routing::get, Router};
@@ -63,7 +66,10 @@ use crate::macro_agent::{MacroOrchestrator, MacroReportGenerator};
 use crate::macro_filter::MacroFilter;
 use crate::notification::NotificationClient;
 use crate::paper_trading::PaperTradingManager;
+use crate::portfolio::{DipAnalyzer, PoolsConfig, PoolsManager, SignalAnalyzer};
 use crate::strategy::StrategyEngine;
+use crate::valuation::ValuationAnalyzer;
+use crate::value::ValueAnalyzer;
 
 /// Trading service state
 pub struct TradingState {
@@ -85,6 +91,16 @@ pub struct TradingState {
     pub report_generator: Arc<MacroReportGenerator>,
     /// Paper trading manager
     pub paper_manager: Arc<PaperTradingManager>,
+    /// Value analyzer (printing machine checklist, cash flow DNA)
+    pub value_analyzer: Arc<ValueAnalyzer>,
+    /// Valuation analyzer (PE/PB/DY three-dimensional)
+    pub valuation_analyzer: Arc<ValuationAnalyzer>,
+    /// Portfolio pools manager
+    pub portfolio_manager: Arc<PoolsManager>,
+    /// Signal analyzer (red/yellow light system)
+    pub signal_analyzer: Arc<SignalAnalyzer>,
+    /// Dip analyzer (golden pit vs value trap)
+    pub dip_analyzer: Arc<DipAnalyzer>,
 }
 
 impl TradingState {
@@ -111,6 +127,16 @@ impl TradingState {
         // Create paper trading manager
         let paper_manager = Arc::new(PaperTradingManager::new(&config));
 
+        // Create value analysis components
+        let value_analyzer = Arc::new(ValueAnalyzer::new(&config));
+        let valuation_analyzer = Arc::new(ValuationAnalyzer::new());
+
+        // Create portfolio management components
+        let portfolio_config = PoolsConfig::default();
+        let portfolio_manager = Arc::new(PoolsManager::new(portfolio_config));
+        let signal_analyzer = Arc::new(SignalAnalyzer::default());
+        let dip_analyzer = Arc::new(DipAnalyzer::default());
+
         Self {
             config,
             data,
@@ -121,6 +147,11 @@ impl TradingState {
             notification,
             report_generator,
             paper_manager,
+            value_analyzer,
+            valuation_analyzer,
+            portfolio_manager,
+            signal_analyzer,
+            dip_analyzer,
         }
     }
 }
@@ -173,6 +204,14 @@ impl TradingService {
             .route("/api/v1/paper/status", get(routes::paper_status))
             .route("/api/v1/paper/trades", get(routes::paper_trades))
             .route("/api/v1/paper/report", get(routes::paper_report))
+            // Value analysis routes
+            .route("/api/v1/value/analyze", axum::routing::post(routes::value_analyze))
+            .route("/api/v1/valuation/analyze", axum::routing::post(routes::valuation_analyze))
+            // Portfolio management routes
+            .route("/api/v1/portfolio/summary", get(routes::portfolio_summary))
+            .route("/api/v1/portfolio/positions", get(routes::portfolio_positions))
+            .route("/api/v1/portfolio/signals", get(routes::portfolio_signals))
+            .route("/api/v1/portfolio/dip-assessment", axum::routing::post(routes::dip_assessment))
             .with_state(self.state.clone());
 
         // Initialize market data aggregator (register providers)

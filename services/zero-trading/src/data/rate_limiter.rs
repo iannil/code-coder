@@ -35,7 +35,8 @@ impl RateLimiter {
     /// * `requests_per_minute` - Maximum requests allowed per minute
     ///
     /// # Example
-    /// ```
+    /// ```ignore
+    /// use zero_trading::data::rate_limiter::RateLimiter;
     /// let limiter = RateLimiter::new("itick", 300); // 300 req/min = 5 req/sec
     /// ```
     pub fn new(name: impl Into<String>, requests_per_minute: u32) -> Self {

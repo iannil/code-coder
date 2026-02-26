@@ -381,7 +381,7 @@ impl MacroOrchestrator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::macro_filter::EconomicCyclePhase;
+    use crate::macro_filter::{CompositeIndicators, EconomicCyclePhase, PolicyCycle};
 
     #[test]
     fn test_orchestrator_config_default() {
@@ -438,6 +438,8 @@ mod tests {
             position_multiplier: 0.6,
             trading_bias: TradingBias::Bearish,
             notes: String::new(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         let triggers = orchestrator.check_triggers(&result);
@@ -462,6 +464,8 @@ mod tests {
             position_multiplier: 0.6,
             trading_bias: TradingBias::AvoidTrading,
             notes: String::new(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         let triggers = orchestrator.check_triggers(&result);
@@ -486,6 +490,8 @@ mod tests {
             position_multiplier: 0.4, // Below threshold
             trading_bias: TradingBias::Neutral,
             notes: String::new(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         let triggers = orchestrator.check_triggers(&result);
@@ -511,6 +517,8 @@ mod tests {
             position_multiplier: 0.7,
             trading_bias: TradingBias::Neutral,
             notes: String::new(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         let triggers = orchestrator.check_triggers(&result);
@@ -545,6 +553,8 @@ mod tests {
             position_multiplier: 1.0,
             trading_bias: TradingBias::Neutral,
             notes: String::new(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         assert!(orchestrator.check_indicator_divergence(&result));
@@ -577,6 +587,8 @@ mod tests {
             position_multiplier: 1.2,
             trading_bias: TradingBias::Bullish,
             notes: "测试".to_string(),
+            composite_indicators: CompositeIndicators::default(),
+            policy_cycle: PolicyCycle::Neutral,
         };
 
         let decision = orchestrator.rule_to_decision(env, DecisionSource::RuleEngine);

@@ -361,11 +361,16 @@ impl DataProvider for LixinAdapter {
             limit: Some(1),
         };
 
-        let _: LixinResponse<Vec<LixinCandlestick>> = self
-            .call_api(STOCK_DAILY_ENDPOINT, &request)
-            .await?;
-
-        Ok(())
+        match self.call_api::<Vec<LixinCandlestick>>(STOCK_DAILY_ENDPOINT, &request).await {
+            Ok(_) => Ok(()),
+            // Rate limited means the API is working, just temporarily throttled
+            // This should not be considered unhealthy
+            Err(ProviderError::RateLimited { .. }) => {
+                debug!("Lixin health check: rate limited but API is responsive");
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn get_daily_candles(

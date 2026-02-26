@@ -186,14 +186,16 @@ test("handles file inclusion substitution", async () => {
   })
 })
 
-test("validates config schema and throws on invalid fields", async () => {
+test("allows unknown fields for Rust service compatibility (passthrough mode)", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
         path.join(dir, "codecoder.json"),
         JSON.stringify({
           $schema: "https://code-coder.com/config.json",
-          invalid_field: "should cause error",
+          // Unknown fields are allowed for Rust services (gateway, channels, workflow, etc.)
+          gateway: { port: 4430 },
+          custom_service_config: "allowed",
         }),
       )
     },
@@ -201,8 +203,12 @@ test("validates config schema and throws on invalid fields", async () => {
   await Instance.provide({
     directory: tmp.path,
     fn: async () => {
-      // Strict schema should throw an error for invalid fields
-      await expect(Config.get()).rejects.toThrow()
+      // Config should load successfully with unknown fields (passthrough mode)
+      const config = await Config.get()
+      expect(config).toBeDefined()
+      // Unknown fields should be preserved
+      expect((config as any).gateway).toEqual({ port: 4430 })
+      expect((config as any).custom_service_config).toBe("allowed")
     },
   })
 })

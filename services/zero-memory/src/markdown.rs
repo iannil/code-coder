@@ -7,7 +7,6 @@
 use crate::traits::{Memory, MemoryCategory, MemoryEntry};
 use async_trait::async_trait;
 use chrono::{Local, NaiveDate};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -16,12 +15,15 @@ use tokio::sync::RwLock;
 /// Markdown-based memory backend.
 ///
 /// Layout:
-/// - `{workspace}/MEMORY.md` - Core, long-term memories
+/// - `{workspace}/MEMORY.md` - Core, long-term memories (append-only)
 /// - `{workspace}/memory/{YYYY-MM-DD}.md` - Daily memories (append-only)
+///
+/// Note: This backend is append-only by design. Storing the same key twice
+/// will create two entries. Use SQLite backend if you need upsert semantics.
 pub struct MarkdownMemory {
     workspace: PathBuf,
-    // In-memory index for search
-    index: Arc<RwLock<HashMap<String, MemoryEntry>>>,
+    // In-memory index for search - stores ALL entries including duplicates
+    index: Arc<RwLock<Vec<MemoryEntry>>>,
 }
 
 impl MarkdownMemory {
@@ -32,7 +34,7 @@ impl MarkdownMemory {
 
         let mem = Self {
             workspace: workspace.to_path_buf(),
-            index: Arc::new(RwLock::new(HashMap::new())),
+            index: Arc::new(RwLock::new(Vec::new())),
         };
 
         // Load existing memories into index (best effort)
@@ -83,28 +85,22 @@ impl MarkdownMemory {
         Ok(())
     }
 
-    /// Update or append to core memory.
-    fn update_core_memory(&self, key: &str, content: &str, category: &MemoryCategory) -> anyhow::Result<()> {
+    /// Append content to the core memory file (append-only, no replacement).
+    fn append_to_core(&self, key: &str, content: &str, category: &MemoryCategory) -> anyhow::Result<()> {
         let path = self.core_memory_path();
-        let mut file_content = fs::read_to_string(&path).unwrap_or_else(|_| "# Core Memory\n\n".to_string());
+        let now = Local::now().format("%H:%M:%S");
+        let entry = format!(
+            "\n## [{now}] {key}\n**Category:** {category}\n\n{content}\n",
+            now = now,
+            key = key,
+            category = category,
+            content = content
+        );
 
-        // Look for existing section
-        let section_header = format!("## {key}");
-        if let Some(start) = file_content.find(&section_header) {
-            // Find the end of this section (next ## or end of file)
-            let rest = &file_content[start + section_header.len()..];
-            let end = rest.find("\n## ").map(|i| start + section_header.len() + i).unwrap_or(file_content.len());
-
-            // Replace the section
-            let new_section = format!("## {key}\n**Category:** {category}\n\n{content}\n");
-            file_content.replace_range(start..end, &new_section);
-        } else {
-            // Append new section
-            let new_section = format!("\n## {key}\n**Category:** {category}\n\n{content}\n");
-            file_content.push_str(&new_section);
-        }
-
+        let mut file_content = fs::read_to_string(&path).unwrap_or_else(|_| "# Core Memory\n".to_string());
+        file_content.push_str(&entry);
         fs::write(&path, file_content)?;
+
         Ok(())
     }
 
@@ -116,7 +112,7 @@ impl MarkdownMemory {
         // Parse core memory
         if let Ok(content) = fs::read_to_string(self.core_memory_path()) {
             for entry in parse_markdown_sections(&content) {
-                index.insert(entry.key.clone(), entry);
+                index.push(entry);
             }
         }
 
@@ -128,7 +124,7 @@ impl MarkdownMemory {
                 if path.extension().and_then(|e| e.to_str()) == Some("md") {
                     if let Ok(content) = fs::read_to_string(&path) {
                         for mem_entry in parse_markdown_sections(&content) {
-                            index.insert(mem_entry.key.clone(), mem_entry);
+                            index.push(mem_entry);
                         }
                     }
                 }
@@ -191,19 +187,19 @@ impl Memory for MarkdownMemory {
     }
 
     async fn store(&self, key: &str, content: &str, category: MemoryCategory) -> anyhow::Result<()> {
-        // Update core memory for Core category, otherwise append to daily
+        // Append to appropriate file based on category (always append, never replace)
         match category {
             MemoryCategory::Core | MemoryCategory::Project => {
-                self.update_core_memory(key, content, &category)?;
+                self.append_to_core(key, content, &category)?;
             }
             _ => {
                 self.append_to_daily(key, content, &category)?;
             }
         }
 
-        // Update index
+        // Update index - push new entry (append-only)
         let mut index = self.index.write().await;
-        index.insert(key.to_string(), MemoryEntry::new(key, content, category));
+        index.push(MemoryEntry::new(key, content, category));
 
         Ok(())
     }
@@ -219,7 +215,7 @@ impl Memory for MarkdownMemory {
         let query_words: Vec<&str> = query_lower.split_whitespace().collect();
 
         let mut scored: Vec<(f32, MemoryEntry)> = index
-            .values()
+            .iter()
             .filter_map(|entry| {
                 let content_lower = entry.content.to_lowercase();
                 let key_lower = entry.key.to_lowercase();
@@ -257,7 +253,9 @@ impl Memory for MarkdownMemory {
             self.build_index().await?;
         }
 
-        Ok(self.index.read().await.get(key).cloned())
+        // Return the most recent entry with this key (last in Vec)
+        let index = self.index.read().await;
+        Ok(index.iter().rev().find(|e| e.key == key).cloned())
     }
 
     async fn list(&self, category: Option<&MemoryCategory>) -> anyhow::Result<Vec<MemoryEntry>> {
@@ -268,22 +266,18 @@ impl Memory for MarkdownMemory {
 
         let index = self.index.read().await;
         let entries: Vec<MemoryEntry> = match category {
-            Some(cat) => index.values().filter(|e| &e.category == cat).cloned().collect(),
-            None => index.values().cloned().collect(),
+            Some(cat) => index.iter().filter(|e| &e.category == cat).cloned().collect(),
+            None => index.iter().cloned().collect(),
         };
 
         Ok(entries)
     }
 
-    async fn forget(&self, key: &str) -> anyhow::Result<bool> {
-        let mut index = self.index.write().await;
-        let existed = index.remove(key).is_some();
-
-        // Note: We don't actually delete from markdown files
-        // This is intentional for audit trail purposes
-        // The in-memory index just no longer returns this entry
-
-        Ok(existed)
+    async fn forget(&self, _key: &str) -> anyhow::Result<bool> {
+        // Markdown backend cannot delete entries - this is intentional for audit trail.
+        // Unlike SQLite which can truly delete, markdown files are append-only.
+        // Returns false to indicate deletion is not supported.
+        Ok(false)
     }
 
     async fn count(&self, category: Option<&MemoryCategory>) -> anyhow::Result<usize> {
@@ -293,7 +287,7 @@ impl Memory for MarkdownMemory {
 
         let index = self.index.read().await;
         let count = match category {
-            Some(cat) => index.values().filter(|e| &e.category == cat).count(),
+            Some(cat) => index.iter().filter(|e| &e.category == cat).count(),
             None => index.len(),
         };
 
@@ -406,25 +400,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forget_removes_from_index() {
+    async fn forget_returns_false_append_only() {
         let (_tmp, mem) = setup();
 
         mem.store("key1", "content", MemoryCategory::Core)
             .await
             .unwrap();
 
-        // Add another entry to keep index non-empty
-        mem.store("key2", "content2", MemoryCategory::Core)
-            .await
-            .unwrap();
-
+        // Markdown is append-only, so forget always returns false
         let deleted = mem.forget("key1").await.unwrap();
-        assert!(deleted);
+        assert!(!deleted, "Markdown backend cannot delete (append-only)");
 
-        // Entry should be removed from the active index
-        // Note: Files are preserved for audit trail, but index marks entry as forgotten
+        // Entry should still be accessible
         let entry = mem.get("key1").await.unwrap();
-        assert!(entry.is_none());
+        assert!(entry.is_some(), "Entry should still exist in append-only backend");
     }
 
     #[tokio::test]

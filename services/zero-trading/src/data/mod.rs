@@ -6,6 +6,10 @@
 //! # Data Sources
 //! - **iTick** (Primary): REST API with minute-level data, 15 years history
 //! - **Lixin** (Backup): 理杏仁 API, requires token, high-quality daily data
+//!
+//! # High-Frequency Economic Data
+//! - **high_frequency**: Collection and storage of high-frequency macro indicators
+//!   for predicting and validating official data releases
 
 mod cache;
 mod aggregator;
@@ -15,6 +19,8 @@ mod router;
 mod rate_limiter;
 mod itick;
 mod lixin;
+pub mod high_frequency;
+mod hf_scheduler;
 
 pub use cache::DataCache;
 pub use aggregator::MarketDataAggregator;
@@ -24,6 +30,18 @@ pub use router::{DataProviderRouter, RouterConfig};
 pub use rate_limiter::{RateLimiter, SharedRateLimiter, shared_limiter};
 pub use itick::ITickAdapter;
 pub use lixin::LixinAdapter;
+pub use high_frequency::{
+    CollectorConfig as HighFrequencyConfig,
+    CollectionReport,
+    HighFrequencyCollector,
+    HighFrequencyDataSource,
+    MockDataSource as MockHighFrequencySource,
+};
+pub use hf_scheduler::{
+    HighFrequencyScheduler,
+    HfScheduledTask,
+    HfSchedulerState,
+};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};

@@ -29,6 +29,7 @@ import PROMPT_PICKER from "./prompt/picker.txt"
 import PROMPT_MINIPRODUCT from "./prompt/miniproduct.txt"
 import PROMPT_SYNTON_ASSISTANT from "./prompt/synton-assistant.txt"
 import PROMPT_AI_ENGINEER from "./prompt/ai-engineer.txt"
+import PROMPT_VALUE_ANALYST from "./prompt/value-analyst.txt"
 import PROMPT_AUTONOMOUS from "./prompt/autonomous.txt"
 import PROMPT_VERIFIER from "./prompt/verifier.txt"
 import PROMPT_EXPANDER from "./prompt/expander.txt"
@@ -457,6 +458,17 @@ export namespace Agent {
         mode: "subagent",
         native: true,
         prompt: PROMPT_AI_ENGINEER,
+        permission: PermissionNext.merge(defaults, user),
+        options: {},
+        temperature: 0.5,
+      },
+      "value-analyst": {
+        name: "value-analyst",
+        description:
+          "价值分析师，基于《价值逻辑》的'观察者建构论'框架，分析国家共识、商业评估权和财务硬实在，识别核心资产",
+        mode: "subagent",
+        native: true,
+        prompt: PROMPT_VALUE_ANALYST,
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.5,

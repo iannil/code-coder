@@ -315,6 +315,14 @@ impl MacroReportGenerator {
             ReportType::DailyAfternoon => {
                 format!("{} 收盘", beijing.format("%Y-%m-%d"))
             }
+            ReportType::Quarterly => {
+                // Determine current quarter
+                let quarter = (beijing.month() - 1) / 3 + 1;
+                format!("{}年Q{}", beijing.year(), quarter)
+            }
+            ReportType::DataRelease => {
+                format!("{} 数据发布", beijing.format("%Y-%m-%d %H:%M"))
+            }
             ReportType::AdHoc => beijing.format("%Y-%m-%d %H:%M").to_string(),
         }
     }
@@ -388,7 +396,7 @@ impl MacroReportGenerator {
             ReportType::Monthly => state.last_monthly = Some(now),
             ReportType::DailyMorning => state.last_daily_morning = Some(now),
             ReportType::DailyAfternoon => state.last_daily_afternoon = Some(now),
-            ReportType::AdHoc => {}
+            ReportType::Quarterly | ReportType::DataRelease | ReportType::AdHoc => {}
         }
     }
 
@@ -451,6 +459,8 @@ mod tests {
         assert_eq!(ReportType::Monthly.to_string(), "月度");
         assert_eq!(ReportType::DailyMorning.to_string(), "早间");
         assert_eq!(ReportType::DailyAfternoon.to_string(), "午后");
+        assert_eq!(ReportType::Quarterly.to_string(), "季度");
+        assert_eq!(ReportType::DataRelease.to_string(), "数据解读");
         assert_eq!(ReportType::AdHoc.to_string(), "即时");
     }
 
@@ -499,6 +509,12 @@ mod tests {
 
         let daily_afternoon = generator.get_period_description(ReportType::DailyAfternoon);
         assert!(daily_afternoon.contains("收盘"));
+
+        let quarterly = generator.get_period_description(ReportType::Quarterly);
+        assert!(quarterly.contains("Q"));
+
+        let data_release = generator.get_period_description(ReportType::DataRelease);
+        assert!(data_release.contains("数据发布"));
     }
 
     #[test]

@@ -388,17 +388,24 @@ impl DataProvider for ITickAdapter {
 
     async fn health_check(&self) -> Result<(), ProviderError> {
         // Simple health check: fetch 1 daily candle for a well-known stock
-        let candles = self
-            .fetch_kline("000001.SZ", 8, Some(1), None, None)
-            .await?;
-
-        if candles.is_empty() {
-            return Err(ProviderError::Unavailable(
-                "Health check returned no data".into(),
-            ));
+        match self.fetch_kline("000001.SZ", 8, Some(1), None, None).await {
+            Ok(candles) => {
+                if candles.is_empty() {
+                    Err(ProviderError::Unavailable(
+                        "Health check returned no data".into(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            // Rate limited means the API is working, just temporarily throttled
+            // This should not be considered unhealthy
+            Err(ProviderError::RateLimited { .. }) => {
+                tracing::debug!("iTick health check: rate limited but API is responsive");
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
-
-        Ok(())
     }
 
     async fn get_daily_candles(

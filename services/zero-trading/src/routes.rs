@@ -405,3 +405,488 @@ pub async fn paper_report(
         None => Err(StatusCode::NOT_FOUND),
     }
 }
+
+// ============================================================================
+// Value Analysis Routes
+// ============================================================================
+
+/// Value analysis request
+#[derive(Debug, Deserialize)]
+pub struct ValueAnalyzeRequest {
+    pub symbol: String,
+    pub revenue: f64,
+    pub gross_profit: f64,
+    pub operating_income: f64,
+    pub net_income: f64,
+    pub interest_expense: f64,
+    pub total_assets: f64,
+    pub total_equity: f64,
+    pub total_liabilities: f64,
+    pub cash: f64,
+    pub total_debt: f64,
+    pub operating_cash_flow: f64,
+    pub investing_cash_flow: f64,
+    pub financing_cash_flow: f64,
+    pub capex: f64,
+    pub free_cash_flow: f64,
+    // Qualitative inputs
+    #[serde(default)]
+    pub has_evaluation_power: bool,
+    #[serde(default)]
+    pub is_simple_and_understandable: bool,
+    #[serde(default)]
+    pub has_demand_stickiness: bool,
+    #[serde(default)]
+    pub has_supply_stability: bool,
+    #[serde(default)]
+    pub is_market_leader: bool,
+}
+
+/// Value analysis response
+#[derive(Debug, Serialize)]
+pub struct ValueAnalyzeResponse {
+    pub symbol: String,
+    pub cash_flow_dna: String,
+    pub roe_driver: String,
+    pub is_printing_machine: bool,
+    pub qualitative_score: f64,
+    pub quantitative_score: f64,
+    pub overall_score: f64,
+    pub reasoning: String,
+}
+
+/// POST /api/v1/value/analyze - Analyze company using printing machine checklist
+pub async fn value_analyze(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<ValueAnalyzeRequest>,
+) -> Result<Json<ValueAnalyzeResponse>, StatusCode> {
+    use crate::value::{FinancialData, QualitativeInputs};
+    use chrono::Utc;
+
+    let financial_data = FinancialData {
+        symbol: req.symbol.clone(),
+        period_end: Utc::now(),
+        revenue: req.revenue,
+        gross_profit: req.gross_profit,
+        operating_income: req.operating_income,
+        net_income: req.net_income,
+        interest_expense: req.interest_expense,
+        total_assets: req.total_assets,
+        total_equity: req.total_equity,
+        total_liabilities: req.total_liabilities,
+        cash: req.cash,
+        total_debt: req.total_debt,
+        operating_cash_flow: req.operating_cash_flow,
+        investing_cash_flow: req.investing_cash_flow,
+        financing_cash_flow: req.financing_cash_flow,
+        capex: req.capex,
+        free_cash_flow: req.free_cash_flow,
+        avg_roe_5y: None,
+        avg_gross_margin_5y: None,
+        avg_net_margin_5y: None,
+    };
+
+    let qualitative = QualitativeInputs {
+        has_evaluation_power: req.has_evaluation_power,
+        is_simple_and_understandable: req.is_simple_and_understandable,
+        has_demand_stickiness: req.has_demand_stickiness,
+        has_supply_stability: req.has_supply_stability,
+        is_market_leader: req.is_market_leader,
+    };
+
+    match state.value_analyzer.analyze_printing_machine(&financial_data, qualitative) {
+        Ok(checklist) => Ok(Json(ValueAnalyzeResponse {
+            symbol: checklist.symbol.clone(),
+            cash_flow_dna: format!("{}", checklist.cash_flow_dna),
+            roe_driver: format!("{}", checklist.roe_driver),
+            is_printing_machine: checklist.is_printing_machine(),
+            qualitative_score: checklist.qualitative_score,
+            quantitative_score: checklist.quantitative_score,
+            overall_score: checklist.overall_score,
+            reasoning: checklist.reasoning,
+        })),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to analyze value");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+// ============================================================================
+// Valuation Routes
+// ============================================================================
+
+/// Valuation analysis request
+#[derive(Debug, Deserialize)]
+pub struct ValuationAnalyzeRequest {
+    pub symbol: String,
+    pub price: f64,
+    pub eps_ttm: f64,
+    pub eps_forward: Option<f64>,
+    pub eps_growth_rate: Option<f64>,
+    pub book_value_per_share: f64,
+    pub roe: f64,
+    pub dividend_per_share: f64,
+    pub payout_ratio: f64,
+    pub dividend_growth_5y: Option<f64>,
+    pub consecutive_dividend_years: Option<u32>,
+    #[serde(default = "default_risk_free_rate")]
+    pub risk_free_rate: f64,
+}
+
+fn default_risk_free_rate() -> f64 {
+    3.0
+}
+
+/// Valuation analysis response
+#[derive(Debug, Serialize)]
+pub struct ValuationAnalyzeResponse {
+    pub symbol: String,
+    pub pe_ttm: f64,
+    pub pe_position: String,
+    pub pb: f64,
+    pub pb_fair_value: f64,
+    pub pb_premium_discount: f64,
+    pub dividend_yield: f64,
+    pub overall_score: f64,
+    pub valuation_zone: String,
+    pub investor_type_fit: String,
+    pub margin_of_safety: f64,
+    pub highlights: Vec<String>,
+}
+
+/// POST /api/v1/valuation/analyze - Three-dimensional valuation analysis
+pub async fn valuation_analyze(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<ValuationAnalyzeRequest>,
+) -> Result<Json<ValuationAnalyzeResponse>, StatusCode> {
+    use crate::valuation::ValuationInput;
+
+    let input = ValuationInput {
+        symbol: req.symbol,
+        price: req.price,
+        eps_ttm: req.eps_ttm,
+        eps_forward: req.eps_forward,
+        eps_growth_rate: req.eps_growth_rate,
+        book_value_per_share: req.book_value_per_share,
+        roe: req.roe,
+        dividend_per_share: req.dividend_per_share,
+        payout_ratio: req.payout_ratio,
+        dividend_growth_5y: req.dividend_growth_5y,
+        consecutive_dividend_years: req.consecutive_dividend_years,
+        historical_pe: vec![], // Would need historical data in production
+        risk_free_rate: req.risk_free_rate,
+    };
+
+    match state.valuation_analyzer.analyze(&input) {
+        Ok(result) => Ok(Json(ValuationAnalyzeResponse {
+            symbol: result.symbol,
+            pe_ttm: result.pe_analysis.pe_ttm,
+            pe_position: format!("{}", result.pe_analysis.position),
+            pb: result.pb_analysis.pb,
+            pb_fair_value: result.pb_analysis.fair_pb,
+            pb_premium_discount: result.pb_analysis.premium_discount,
+            dividend_yield: result.dy_analysis.dividend_yield,
+            overall_score: result.overall_score,
+            valuation_zone: format!("{}", result.valuation_zone),
+            investor_type_fit: format!("{}", result.investor_type_fit),
+            margin_of_safety: result.margin_of_safety,
+            highlights: result.highlights,
+        })),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to analyze valuation");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+// ============================================================================
+// Portfolio Management Routes
+// ============================================================================
+
+/// Portfolio summary response
+#[derive(Debug, Serialize)]
+pub struct PortfolioSummaryResponse {
+    pub total_positions: usize,
+    pub core_positions: usize,
+    pub satellite_positions: usize,
+    pub watchlist_count: usize,
+    pub total_value: f64,
+    pub total_pnl: f64,
+    pub total_pnl_pct: f64,
+    pub winners: usize,
+    pub losers: usize,
+    pub core_allocation_pct: f64,
+    pub satellite_allocation_pct: f64,
+    pub cash_allocation_pct: f64,
+}
+
+/// GET /api/v1/portfolio/summary - Get portfolio summary
+pub async fn portfolio_summary(
+    State(state): State<Arc<TradingState>>,
+) -> Json<PortfolioSummaryResponse> {
+    let summary = state.portfolio_manager.get_summary().await;
+
+    Json(PortfolioSummaryResponse {
+        total_positions: summary.total_positions,
+        core_positions: summary.core_positions,
+        satellite_positions: summary.satellite_positions,
+        watchlist_count: summary.watchlist_count,
+        total_value: summary.total_value,
+        total_pnl: summary.total_pnl,
+        total_pnl_pct: summary.total_pnl_pct,
+        winners: summary.winners,
+        losers: summary.losers,
+        core_allocation_pct: summary.core_allocation_pct,
+        satellite_allocation_pct: summary.satellite_allocation_pct,
+        cash_allocation_pct: summary.cash_allocation_pct,
+    })
+}
+
+/// GET /api/v1/portfolio/positions - Get all portfolio positions
+pub async fn portfolio_positions(
+    State(state): State<Arc<TradingState>>,
+) -> Json<serde_json::Value> {
+    let pools = state.portfolio_manager.get_state().await;
+
+    Json(serde_json::json!({
+        "core": pools.core,
+        "satellite": pools.satellite,
+        "watchlist": pools.watchlist
+    }))
+}
+
+/// Signal assessment response
+#[derive(Debug, Serialize)]
+pub struct SignalAssessmentResponse {
+    pub symbol: String,
+    pub level: String,
+    pub recommended_action: String,
+    pub triggers: Vec<String>,
+    pub reasoning: String,
+}
+
+/// GET /api/v1/portfolio/signals - Get signal assessments for all positions
+pub async fn portfolio_signals(
+    State(state): State<Arc<TradingState>>,
+) -> Json<Vec<SignalAssessmentResponse>> {
+    use crate::portfolio::SignalContext;
+
+    let pools = state.portfolio_manager.get_state().await;
+    let mut assessments = Vec::new();
+
+    // Analyze all positions
+    for position in pools.core.iter().chain(pools.satellite.iter()) {
+        let context = SignalContext::default(); // Would need real market data
+        let assessment = state.signal_analyzer.analyze(position, &context);
+
+        assessments.push(SignalAssessmentResponse {
+            symbol: assessment.symbol,
+            level: format!("{}", assessment.level),
+            recommended_action: format!("{}", assessment.recommended_action),
+            triggers: assessment.triggers.iter().map(|t| t.description()).collect(),
+            reasoning: assessment.reasoning,
+        });
+    }
+
+    Json(assessments)
+}
+
+/// Dip assessment request
+#[derive(Debug, Deserialize)]
+pub struct DipAssessmentRequest {
+    pub symbol: String,
+    pub decline_driver: String,
+    pub decline_reasons: Vec<String>,
+    pub moat_status: String,
+    pub moat_notes: String,
+    pub balance_sheet_health: String,
+    #[serde(default = "default_true")]
+    pub cash_runway_adequate: bool,
+    #[serde(default = "default_true")]
+    pub debt_manageable: bool,
+    pub insider_activity: String,
+    pub insider_notes: String,
+    #[serde(default)]
+    pub valuation_attractive: bool,
+    #[serde(default)]
+    pub margin_of_safety: f64,
+    pub valuation_notes: String,
+    pub recovery_catalyst: Option<String>,
+    #[serde(default)]
+    pub red_flags: Vec<String>,
+}
+
+/// Dip assessment response
+#[derive(Debug, Serialize)]
+pub struct DipAssessmentResponse {
+    pub symbol: String,
+    pub is_golden_pit: bool,
+    pub score: f64,
+    pub confidence: f64,
+    pub recommended_strategy: String,
+    pub suggested_sizing: String,
+    pub reasoning: String,
+}
+
+/// POST /api/v1/portfolio/dip-assessment - Assess dip buying opportunity
+pub async fn dip_assessment(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<DipAssessmentRequest>,
+) -> Result<Json<DipAssessmentResponse>, StatusCode> {
+    use crate::portfolio::{
+        BalanceSheetHealth, DeclineDriver, DipChecklist, InsiderActivity, MoatStatus,
+    };
+
+    // Parse enums from strings
+    let decline_driver = match req.decline_driver.to_lowercase().as_str() {
+        "external" => DeclineDriver::External,
+        "internal" => DeclineDriver::Internal,
+        "mixed" => DeclineDriver::Mixed,
+        _ => DeclineDriver::Unknown,
+    };
+
+    let moat_status = match req.moat_status.to_lowercase().as_str() {
+        "intact" => MoatStatus::Intact,
+        "strengthened" => MoatStatus::Strengthened,
+        "under_pressure" | "underpressure" => MoatStatus::UnderPressure,
+        "breached" => MoatStatus::Breached,
+        _ => MoatStatus::Intact,
+    };
+
+    let balance_sheet_health = match req.balance_sheet_health.to_lowercase().as_str() {
+        "fortress" => BalanceSheetHealth::Fortress,
+        "healthy" => BalanceSheetHealth::Healthy,
+        "adequate" => BalanceSheetHealth::Adequate,
+        "stressed" => BalanceSheetHealth::Stressed,
+        "distressed" => BalanceSheetHealth::Distressed,
+        _ => BalanceSheetHealth::Adequate,
+    };
+
+    let insider_activity = match req.insider_activity.to_lowercase().as_str() {
+        "buying" => InsiderActivity::Buying,
+        "buyback" => InsiderActivity::Buyback,
+        "selling" => InsiderActivity::Selling,
+        _ => InsiderActivity::Neutral,
+    };
+
+    let checklist = DipChecklist {
+        decline_driver,
+        decline_reasons: req.decline_reasons,
+        moat_status,
+        moat_notes: req.moat_notes,
+        balance_sheet_health,
+        cash_runway_adequate: req.cash_runway_adequate,
+        debt_manageable: req.debt_manageable,
+        insider_activity,
+        insider_notes: req.insider_notes,
+        valuation_attractive: req.valuation_attractive,
+        margin_of_safety: req.margin_of_safety,
+        valuation_notes: req.valuation_notes,
+        industry_cycle_position: None,
+        recovery_catalyst: req.recovery_catalyst,
+        red_flags: req.red_flags,
+    };
+
+    let assessment = state.dip_analyzer.assess(&req.symbol, checklist);
+
+    Ok(Json(DipAssessmentResponse {
+        symbol: assessment.symbol.clone(),
+        is_golden_pit: assessment.is_golden_pit,
+        score: assessment.score,
+        confidence: assessment.confidence,
+        recommended_strategy: format!("{}", assessment.recommended_strategy),
+        suggested_sizing: assessment.suggested_sizing().to_string(),
+        reasoning: assessment.reasoning,
+    }))
+}
+
+// ============================================================================
+// Consensus Analysis Routes
+// ============================================================================
+
+/// Consensus analysis request
+#[derive(Debug, Deserialize)]
+pub struct ConsensusAnalyzeRequest {
+    pub title: String,
+    pub document_type: String,
+    pub content: String,
+    pub source_url: Option<String>,
+}
+
+/// Consensus analysis response
+#[derive(Debug, Serialize)]
+pub struct ConsensusAnalyzeResponse {
+    pub document_title: String,
+    pub analyzed_at: String,
+    pub priority_ranking: Vec<String>,
+    pub policy_tone: String,
+    pub highlights: Vec<String>,
+    pub confidence: f64,
+    pub theme_strengths: Vec<ThemeStrengthResponse>,
+}
+
+/// Theme strength in response
+#[derive(Debug, Serialize)]
+pub struct ThemeStrengthResponse {
+    pub theme: String,
+    pub strength: f64,
+    pub key_phrases: Vec<String>,
+    pub change_type: String,
+    pub reasoning: String,
+}
+
+/// POST /api/v1/value/consensus - Analyze policy document for national consensus
+pub async fn consensus_analyze(
+    State(_state): State<Arc<TradingState>>,
+    Json(req): Json<ConsensusAnalyzeRequest>,
+) -> Result<Json<ConsensusAnalyzeResponse>, StatusCode> {
+    use crate::value::consensus::{ConsensusAnalyzer, PolicyDocument};
+    use chrono::Utc;
+
+    let document = PolicyDocument {
+        title: req.title,
+        document_type: req.document_type,
+        published_at: Utc::now(),
+        content: req.content,
+        source_url: req.source_url,
+    };
+
+    let mut analyzer = ConsensusAnalyzer::default();
+
+    match analyzer.analyze(&document).await {
+        Ok(analysis) => {
+            let theme_strengths: Vec<ThemeStrengthResponse> = analysis
+                .theme_strengths
+                .iter()
+                .map(|ts| ThemeStrengthResponse {
+                    theme: format!("{}", ts.theme),
+                    strength: ts.strength,
+                    key_phrases: ts.key_phrases.clone(),
+                    change_type: format!("{}", ts.change_type),
+                    reasoning: ts.reasoning.clone(),
+                })
+                .collect();
+
+            Ok(Json(ConsensusAnalyzeResponse {
+                document_title: analysis.document_title,
+                analyzed_at: analysis.analyzed_at.to_rfc3339(),
+                priority_ranking: analysis
+                    .priority_ranking
+                    .iter()
+                    .map(|t| format!("{}", t))
+                    .collect(),
+                policy_tone: analysis.policy_tone,
+                highlights: analysis.highlights,
+                confidence: analysis.confidence,
+                theme_strengths,
+            }))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to analyze consensus");
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+

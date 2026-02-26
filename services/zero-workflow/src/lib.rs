@@ -34,7 +34,7 @@ use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
 use zero_common::config::Config;
 
-pub use routes::{build_router, create_state, create_state_with_channels, WorkflowState};
+pub use routes::{build_router, create_state, create_state_with_channels, create_isolated_test_state, WorkflowState};
 pub use scheduler::{Scheduler, TaskInfo};
 pub use webhook::{webhook_routes, WebhookEvent, WebhookState};
 pub use workflow::{ExecutionStatus, Step, StepType, Trigger, Workflow, WorkflowExecutor, WorkflowResult};

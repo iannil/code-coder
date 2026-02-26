@@ -650,6 +650,28 @@ pub fn create_state_with_channels(
     })
 }
 
+/// Create an isolated test state with a temporary database.
+/// Each call creates a completely independent state for test isolation.
+/// This function is always available for integration testing.
+pub fn create_isolated_test_state(codecoder_endpoint: String) -> Arc<WorkflowState> {
+    let tmp = tempfile::TempDir::new().expect("Failed to create temp dir");
+    let scheduler = Scheduler::with_data_dir(tmp.path().to_path_buf());
+    let monitor_bridge = MonitorBridge::new(&codecoder_endpoint);
+
+    // Keep tmp alive by leaking it (tests are short-lived)
+    std::mem::forget(tmp);
+
+    Arc::new(WorkflowState {
+        scheduler: Arc::new(scheduler),
+        executor: Arc::new(WorkflowExecutor::new()),
+        workflows: Arc::new(RwLock::new(HashMap::new())),
+        executions: Arc::new(RwLock::new(Vec::new())),
+        codecoder_endpoint,
+        monitor_bridge: Arc::new(monitor_bridge),
+        monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

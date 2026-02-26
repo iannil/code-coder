@@ -12,14 +12,14 @@ use sha2::Sha256;
 use std::sync::Arc;
 use tower::ServiceExt;
 use zero_workflow::{
-    build_router, create_state, webhook_routes, WebhookState,
+    build_router, create_isolated_test_state, webhook_routes, WebhookState,
 };
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Create a test app with workflow routes.
+/// Create a test app with workflow routes using isolated state.
 fn create_test_app() -> axum::Router {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     build_router(state)
 }
 
@@ -107,7 +107,7 @@ async fn test_list_tasks_initially_empty() {
 
 #[tokio::test]
 async fn test_create_and_list_task() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     // Create a task
@@ -134,7 +134,7 @@ async fn test_create_and_list_task() {
 
 #[tokio::test]
 async fn test_delete_task() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     // Create a task
@@ -185,7 +185,7 @@ async fn test_list_workflows_initially_empty() {
 
 #[tokio::test]
 async fn test_create_and_get_workflow() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     // Create workflow
@@ -216,7 +216,7 @@ async fn test_create_and_get_workflow() {
 
 #[tokio::test]
 async fn test_create_duplicate_workflow() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     let payload = json!({
@@ -238,7 +238,7 @@ async fn test_create_duplicate_workflow() {
 
 #[tokio::test]
 async fn test_update_workflow() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     // Create workflow
@@ -270,7 +270,7 @@ async fn test_update_workflow() {
 
 #[tokio::test]
 async fn test_delete_workflow() {
-    let state = create_state("http://localhost:4400".to_string());
+    let state = create_isolated_test_state("http://localhost:4400".to_string());
     let app = build_router(state);
 
     // Create workflow

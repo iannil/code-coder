@@ -67,6 +67,11 @@ rss = "2.0"
 # Async utilities
 futures = "0.3"
 
+# Temp directories (for test state isolation)
+tempfile = "3.14"
+
+[features]
+default = []
+
 [dev-dependencies]
 tokio-test = "0.4"
-tempfile = "3.14"

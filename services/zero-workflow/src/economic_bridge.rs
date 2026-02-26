@@ -38,6 +38,16 @@ pub enum IndicatorType {
     M2,
     /// Social Financing
     SocialFinancing,
+    /// Fixed Asset Investment (new)
+    FixedAssetInvestment,
+    /// Export Year-over-Year (new)
+    ExportYoy,
+    /// Import Year-over-Year (new)
+    ImportYoy,
+    /// Loan Prime Rate (new)
+    Lpr,
+    /// Medium-term Lending Facility Rate (new)
+    MlfRate,
     /// Custom indicator
     Custom,
 }
@@ -55,6 +65,11 @@ impl std::fmt::Display for IndicatorType {
             Self::RetailSales => write!(f, "Retail Sales"),
             Self::M2 => write!(f, "M2"),
             Self::SocialFinancing => write!(f, "Social Financing"),
+            Self::FixedAssetInvestment => write!(f, "Fixed Asset Investment"),
+            Self::ExportYoy => write!(f, "Export YoY"),
+            Self::ImportYoy => write!(f, "Import YoY"),
+            Self::Lpr => write!(f, "LPR"),
+            Self::MlfRate => write!(f, "MLF Rate"),
             Self::Custom => write!(f, "Custom"),
         }
     }
@@ -406,6 +421,11 @@ impl EconomicDataBridge {
             IndicatorType::RetailSales => ("A0801_cs", "%"),
             IndicatorType::M2 => ("A0L01_cs", "%"),
             IndicatorType::SocialFinancing => ("A0L0101_cs", "Trillion CNY"),
+            IndicatorType::FixedAssetInvestment => ("A0501_cs", "%"),
+            IndicatorType::ExportYoy => ("A0601_cs", "%"),
+            IndicatorType::ImportYoy => ("A0601_cs", "%"),
+            IndicatorType::Lpr => ("A0B01_cs", "%"),
+            IndicatorType::MlfRate => ("A0B02_cs", "%"),
             _ => return Err(anyhow::anyhow!("Indicator not supported by NBS China")),
         };
 
@@ -540,6 +560,36 @@ impl EconomicDataBridge {
                 let yoy = (value - prev) / prev * 100.0;
                 (value, prev, yoy, yoy * 0.3)
             }
+            IndicatorType::FixedAssetInvestment => {
+                // Fixed asset investment growth typically 3-8%
+                let value = 5.5 + (rand_variation() * 2.0);
+                let prev = value - (rand_variation() * 0.5);
+                (value, prev, value, (value - prev) / prev.abs().max(0.1) * 100.0)
+            }
+            IndicatorType::ExportYoy => {
+                // Export YoY typically -5% to 15%
+                let value = 5.0 + (rand_variation() * 5.0);
+                let prev = value - (rand_variation() * 2.0);
+                (value, prev, value, (value - prev) / prev.abs().max(0.1) * 100.0)
+            }
+            IndicatorType::ImportYoy => {
+                // Import YoY typically -5% to 15%
+                let value = 4.0 + (rand_variation() * 5.0);
+                let prev = value - (rand_variation() * 2.0);
+                (value, prev, value, (value - prev) / prev.abs().max(0.1) * 100.0)
+            }
+            IndicatorType::Lpr => {
+                // LPR (1Y) typically 3.0-4.0%
+                let value = 3.45 + (rand_variation() * 0.2);
+                let prev = value + (rand_variation() * 0.05);
+                (value, prev, 0.0, (value - prev) / prev * 100.0)
+            }
+            IndicatorType::MlfRate => {
+                // MLF rate typically 2.5-3.0%
+                let value = 2.5 + (rand_variation() * 0.2);
+                let prev = value + (rand_variation() * 0.05);
+                (value, prev, 0.0, (value - prev) / prev * 100.0)
+            }
             _ => {
                 // Default reasonable values
                 let value = 5.0 + (rand_variation() * 2.0);
@@ -667,7 +717,7 @@ impl EconomicDataBridge {
             d if d > 50.0 => 5,
             d if d > 30.0 => 4,
             d if d > 15.0 => 3,
-            d if d > 5.0 => 2,
+            d if d >= 5.0 => 2,
             _ => 1,
         }
     }

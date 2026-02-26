@@ -97,6 +97,7 @@ mod tests {
     use super::*;
     use crate::config::{BrowserConfig, CodeCoderConfig, MemoryConfig};
     use tempfile::TempDir;
+    use zero_tools::ToolSpec;
 
     #[test]
     fn default_tools_has_three() {
