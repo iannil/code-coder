@@ -10,6 +10,8 @@ use crate::macro_filter::{EconomicCyclePhase, TradingBias};
 /// Request to the CodeCoder API chat endpoint.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentRequest {
+    /// User ID for the request (required by CodeCoder API)
+    pub user_id: String,
     /// Agent to use (e.g., "macro")
     pub agent: String,
     /// Message/prompt for the agent
@@ -208,6 +210,7 @@ mod tests {
     #[test]
     fn test_agent_request_serialization() {
         let request = AgentRequest {
+            user_id: "test-user".to_string(),
             agent: "macro".to_string(),
             message: "分析当前宏观环境".to_string(),
             stream: false,
@@ -215,6 +218,7 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         assert!(json.contains("macro"));
         assert!(json.contains("分析当前宏观环境"));
+        assert!(json.contains("test-user"));
     }
 
     #[test]

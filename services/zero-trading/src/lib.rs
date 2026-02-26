@@ -175,6 +175,11 @@ impl TradingService {
             .route("/api/v1/paper/report", get(routes::paper_report))
             .with_state(self.state.clone());
 
+        // Initialize market data aggregator (register providers)
+        if let Err(e) = self.state.data.initialize(&self.state.config).await {
+            tracing::error!(error = %e, "Failed to initialize market data aggregator");
+        }
+
         // Start the market data updater
         let data_state = self.state.clone();
         tokio::spawn(async move {

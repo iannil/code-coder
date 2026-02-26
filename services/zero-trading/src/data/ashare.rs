@@ -33,6 +33,7 @@ use super::{Candle, Timeframe};
 const EASTMONEY_KLINE_URL: &str = "https://push2his.eastmoney.com/api/qt/stock/kline/get";
 
 /// Eastmoney real-time API
+#[allow(dead_code)] // Reserved for real-time quote fetching
 const EASTMONEY_QUOTE_URL: &str = "https://push2.eastmoney.com/api/qt/stock/get";
 
 // ============================================================================
@@ -67,6 +68,7 @@ fn to_secid(symbol: &str) -> Option<String> {
 }
 
 /// Convert eastmoney market code back to exchange suffix
+#[allow(dead_code)] // Reserved for symbol parsing
 fn market_to_exchange(market: &str) -> &'static str {
     match market {
         "0" => "SZ",
@@ -151,20 +153,21 @@ impl AshareAdapter {
         let secid =
             to_secid(symbol).ok_or_else(|| ProviderError::InvalidRequest("Invalid symbol format".into()))?;
 
-        let limit_str = limit.unwrap_or(1000).to_string();
-        let start_str = start_date.map(|d| d.format("%Y%m%d").to_string());
-        let end_str = end_date.map(|d| d.format("%Y%m%d").to_string());
+        let limit_val = limit.unwrap_or(1000);
+        let beg_str = start_date.map(|d| d.format("%Y%m%d").to_string()).unwrap_or_else(|| "0".to_string());
+        let end_str = end_date.map(|d| d.format("%Y%m%d").to_string()).unwrap_or_else(|| "20500101".to_string());
 
         // Build URL with query params
+        // Note: ut (user token) is required for the API to work
         let url = format!(
-            "{}?secid={}&klt={}&fqt={}&lmt={}&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61{}{}",
+            "{}?secid={}&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61&klt={}&fqt={}&beg={}&end={}&lmt={}",
             EASTMONEY_KLINE_URL,
             secid,
             klt,
             fqt,
-            limit_str,
-            start_str.as_ref().map(|s| format!("&beg={}", s)).unwrap_or_default(),
-            end_str.as_ref().map(|s| format!("&end={}", s)).unwrap_or_default(),
+            beg_str,
+            end_str,
+            limit_val,
         );
 
         debug!(url = %url, symbol = symbol, "Fetching kline from eastmoney");
@@ -275,7 +278,7 @@ impl AshareAdapter {
 /// Parse eastmoney datetime string to UTC DateTime
 fn parse_eastmoney_datetime(
     s: &str,
-    timeframe: Timeframe,
+    _timeframe: Timeframe, // Reserved for timeframe-specific parsing
 ) -> Result<DateTime<Utc>, ProviderError> {
     // Daily format: "2024-01-02"
     // Minute format: "2024-01-02 09:30"

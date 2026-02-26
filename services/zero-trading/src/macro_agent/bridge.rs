@@ -61,6 +61,7 @@ impl AgentBridge {
         let prompt = self.build_analysis_prompt(context);
 
         let request = AgentRequest {
+            user_id: "zero-trading".to_string(),
             agent: "macro".to_string(),
             message: prompt,
             stream: false,
@@ -75,6 +76,7 @@ impl AgentBridge {
         let prompt = self.build_report_prompt(report_type);
 
         let request = AgentRequest {
+            user_id: "zero-trading".to_string(),
             agent: "macro".to_string(),
             message: prompt,
             stream: false,
