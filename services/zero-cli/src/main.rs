@@ -129,6 +129,10 @@ enum Commands {
         #[arg(long, default_value = "4432")]
         workflow_port: u16,
 
+        /// Trading port (zero-trading service)
+        #[arg(long, default_value = "4434")]
+        trading_port: u16,
+
         /// Directory for child service logs (default: ../.logs relative to working dir)
         #[arg(long)]
         log_dir: Option<std::path::PathBuf>,
@@ -408,6 +412,7 @@ async fn main() -> Result<()> {
             gateway_port,
             channels_port,
             workflow_port,
+            trading_port,
             log_dir,
         } => {
             info!("🧠 Starting Zero CLI Daemon (process orchestrator)");
@@ -415,7 +420,8 @@ async fn main() -> Result<()> {
             info!("   Gateway:  http://{host}:{gateway_port}");
             info!("   Channels: http://{host}:{channels_port}");
             info!("   Workflow: http://{host}:{workflow_port}");
-            daemon::run_orchestrator(config, host, gateway_port, channels_port, workflow_port, log_dir).await
+            info!("   Trading:  http://{host}:{trading_port}");
+            daemon::run_orchestrator(config, host, gateway_port, channels_port, workflow_port, trading_port, log_dir).await
         }
 
         Commands::Status => {

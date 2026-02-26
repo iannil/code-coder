@@ -26,7 +26,7 @@ pub fn get_tool_registry() -> Option<&'static Arc<RwLock<ToolRegistry>>> {
 
 /// Run the daemon in process orchestrator mode.
 ///
-/// This mode spawns zero-gateway, zero-channels, and zero-workflow as separate
+/// This mode spawns zero-gateway, zero-channels, zero-workflow, and zero-trading as separate
 /// child processes and monitors them via health checks. It also provides:
 /// - MCP tool registry integration
 /// - Heartbeat worker for autonomous tasks
@@ -38,6 +38,7 @@ pub async fn run_orchestrator(
     gateway_port: u16,
     channels_port: u16,
     workflow_port: u16,
+    trading_port: u16,
     log_dir: Option<PathBuf>,
 ) -> Result<()> {
     let initial_backoff = config.reliability.channel_initial_backoff_secs.max(1);
@@ -172,6 +173,16 @@ pub async fn run_orchestrator(
         host: host.clone(),
         args: vec![],
         log_file: Some(resolved_log_dir.join("zero-workflow.log")),
+    });
+
+    // Add zero-trading service
+    manager.add_service(ServiceConfig {
+        name: "zero-trading".into(),
+        binary: "zero-trading".into(),
+        port: trading_port,
+        host: host.clone(),
+        args: vec![],
+        log_file: Some(resolved_log_dir.join("zero-trading.log")),
     });
 
     // Start all services
