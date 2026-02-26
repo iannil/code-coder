@@ -1,9 +1,12 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test"
 import { ConversationStore } from "@/api/server/store/conversation"
 
-describe("Chat Redis Integration", () => {
-  const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? "redis://localhost:6379"
+const TEST_REDIS_URL = process.env.TEST_REDIS_URL ?? "redis://localhost:6379"
 
+// Skip in CI or when explicitly disabled
+const SKIP_REDIS = process.env.CI === "true" || process.env.SKIP_REDIS_TESTS === "true"
+
+describe.skipIf(SKIP_REDIS)("Chat Redis Integration", () => {
   beforeAll(async () => {
     await ConversationStore.init(TEST_REDIS_URL)
   })

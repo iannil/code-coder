@@ -17,8 +17,19 @@ const TEST_PORT = 14420
 const BASE_URL = `http://localhost:${TEST_PORT}/mcp`
 const TEST_API_KEY = "test-integration-key"
 
-// Skip integration tests in CI or when server can't start
-const SKIP_INTEGRATION = process.env.CI === "true" || process.env.SKIP_MCP_INTEGRATION === "true"
+// Detect if transport module was mocked by another test file
+const isMocked = (() => {
+  try {
+    const transport = new StreamableHTTPClientTransport(new URL("http://test"))
+    // If this throws with "Mock transport cannot connect", we're mocked
+    return transport.constructor.name === "MockStreamableHTTP"
+  } catch {
+    return true
+  }
+})()
+
+// Skip integration tests in CI or when server can't start or when mocked
+const SKIP_INTEGRATION = process.env.CI === "true" || process.env.SKIP_MCP_INTEGRATION === "true" || isMocked
 
 // MCP server startup can take 15+ seconds
 setDefaultTimeout(30000)

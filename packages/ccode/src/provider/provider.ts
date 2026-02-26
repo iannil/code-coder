@@ -99,7 +99,7 @@ export namespace Provider {
         const env = Env.all()
         if (input.env.some((item) => env[item])) return true
         const config = await Config.get()
-        if (config.provider?.["ccode"]?.options?.apiKey) return true
+        if (config.secrets?.llm?.["ccode"]) return true
         return false
       })()
 
@@ -173,15 +173,15 @@ export namespace Provider {
     },
     "amazon-bedrock": async () => {
       const config = await Config.get()
-      const providerConfig = config.provider?.["amazon-bedrock"]
+      const providerConfig = config.llm?.providers?.["amazon-bedrock"]
 
       // Region precedence: 1) config file, 2) env var, 3) default
-      const configRegion = providerConfig?.options?.region
+      const configRegion = providerConfig?.region
       const envRegion = Env.get("AWS_REGION")
       const defaultRegion = configRegion ?? envRegion ?? "us-east-1"
 
       // Profile: config file takes precedence over env var
-      const configProfile = providerConfig?.options?.profile
+      const configProfile = providerConfig?.profile
       const envProfile = Env.get("AWS_PROFILE")
       const profile = configProfile ?? envProfile
 
@@ -208,8 +208,8 @@ export namespace Provider {
         providerOptions.credentialProvider = fromNodeProviderChain(credentialProviderOptions)
       }
 
-      // Add custom endpoint if specified (endpoint takes precedence over baseURL)
-      const endpoint = providerConfig?.options?.endpoint ?? providerConfig?.options?.baseURL
+      // Add custom endpoint if specified (endpoint takes precedence over base_url)
+      const endpoint = providerConfig?.endpoint ?? providerConfig?.base_url
       if (endpoint) {
         providerOptions.baseURL = endpoint
       }
@@ -683,7 +683,69 @@ export namespace Provider {
 
     log.info("init")
 
-    const configProviders = Object.entries(config.provider ?? {})
+    // ══════════════════════════════════════════════════════════════════════
+    // Load providers from config.provider (primary source)
+    // Supports provider._settings for global LLM settings
+    // ══════════════════════════════════════════════════════════════════════
+    const providerConfig = (config as Record<string, any>).provider as Record<string, Config.Provider> | undefined
+    const configProviders: Array<[string, Config.Provider]> = []
+
+    // Read global LLM settings from provider._settings (primary) or llm (backward compat)
+    const providerSettings = providerConfig?.["_settings"] as Config.ProviderSettings | undefined
+    const globalSettings = {
+      default: providerSettings?.default ?? config.llm?.default,
+      retries: providerSettings?.retries ?? config.llm?.retries,
+      backoff_ms: providerSettings?.backoff_ms ?? config.llm?.backoff_ms,
+      fallbacks: providerSettings?.fallbacks ?? config.llm?.fallbacks,
+    }
+
+    // Apply default model from settings
+    if (globalSettings.default) {
+      ;(config as Record<string, unknown>).model = globalSettings.default
+      log.info("using provider._settings.default as model", { model: globalSettings.default })
+    }
+
+    // Load providers from config.provider
+    if (providerConfig) {
+      for (const [providerID, provider] of Object.entries(providerConfig)) {
+        // Skip _settings - it's not a provider, it's global settings
+        if (providerID === "_settings") continue
+        configProviders.push([providerID, provider])
+        log.info("loaded provider from config.provider", { providerID })
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Backward compatibility: Load from llm.providers and secrets.llm
+    // These are deprecated - use provider.<name>.options.apiKey instead
+    // ══════════════════════════════════════════════════════════════════════
+    const llmProviders = config.llm?.providers ?? {}
+    const llmSecrets = config.secrets?.llm ?? {}
+
+    // Collect provider IDs from legacy sources not already in configProviders
+    const existingProviderIds = new Set(configProviders.map(([id]) => id))
+    const legacyProviderIds = new Set([...Object.keys(llmProviders), ...Object.keys(llmSecrets)])
+
+    for (const providerID of legacyProviderIds) {
+      if (existingProviderIds.has(providerID)) continue
+
+      const llmConfig = llmProviders[providerID]
+      const apiKey = llmSecrets[providerID]
+
+      // Skip if no API key (required to connect)
+      if (!apiKey) continue
+
+      const legacyProvider: Config.Provider = {
+        options: {
+          apiKey,
+          ...(llmConfig?.base_url ? { baseURL: llmConfig.base_url } : {}),
+        },
+      }
+
+      configProviders.push([providerID, legacyProvider])
+      log.info("loaded provider from legacy llm/secrets config (deprecated)", { providerID })
+    }
+    // ══════════════════════════════════════════════════════════════════════
 
     // Add GitHub Copilot Enterprise provider that inherits from GitHub Copilot
     if (database["github-copilot"]) {
@@ -877,7 +939,9 @@ export namespace Provider {
         continue
       }
 
-      const configProvider = config.provider?.[providerID]
+      // Provider config paths with priority: provider.<name> (primary) > llm.providers (deprecated)
+      const primaryProvider = (config as Record<string, any>).provider?.[providerID] as Config.Provider | undefined
+      const legacyLlmProvider = config.llm?.providers?.[providerID]
 
       for (const [modelID, model] of Object.entries(provider.models)) {
         model.api.id = model.api.id ?? model.id ?? modelID
@@ -885,14 +949,14 @@ export namespace Provider {
           delete provider.models[modelID]
         if (model.status === "alpha" && !Flag.CCODE_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
         if (model.status === "deprecated") delete provider.models[modelID]
-        if (
-          (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
-          (configProvider?.whitelist && !configProvider.whitelist.includes(modelID))
-        )
+        // Filter by blacklist/whitelist: provider.<name> config takes precedence over llm.providers
+        const whitelist = primaryProvider?.whitelist ?? legacyLlmProvider?.whitelist
+        const blacklist = primaryProvider?.blacklist ?? legacyLlmProvider?.blacklist
+        if ((blacklist && blacklist.includes(modelID)) || (whitelist && !whitelist.includes(modelID)))
           delete provider.models[modelID]
 
         // Filter out disabled variants from config
-        const configVariants = configProvider?.models?.[modelID]?.variants
+        const configVariants = primaryProvider?.models?.[modelID]?.variants ?? legacyLlmProvider?.variants?.[modelID]
         if (configVariants && model.variants) {
           const merged = mergeDeep(model.variants, configVariants)
           model.variants = mapValues(
@@ -1231,9 +1295,10 @@ export namespace Provider {
     const cfg = await Config.get()
     if (cfg.model) return parseModel(cfg.model)
 
+    const llmProviders = cfg.llm?.providers
     const provider = await list()
       .then((val) => Object.values(val))
-      .then((x) => x.find((p) => !cfg.provider || Object.keys(cfg.provider).includes(p.id)))
+      .then((x) => x.find((p) => !llmProviders || Object.keys(llmProviders).includes(p.id)))
     if (!provider) throw new Error("no providers found")
     const [model] = sort(Object.values(provider.models))
     if (!model) throw new Error("no models found")
