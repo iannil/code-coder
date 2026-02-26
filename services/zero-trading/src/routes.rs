@@ -889,4 +889,131 @@ pub async fn consensus_analyze(
     }
 }
 
+// ============================================================================
+// Screener Routes
+// ============================================================================
+
+/// Screener status response
+#[derive(Debug, Serialize)]
+pub struct ScreenerStatusResponse {
+    pub state: String,
+    pub last_scan_at: Option<String>,
+    pub last_sync_at: Option<String>,
+    pub last_scan_id: Option<String>,
+    pub last_scan_stock_count: Option<usize>,
+    pub error_message: Option<String>,
+}
+
+/// Screener result response
+#[derive(Debug, Serialize)]
+pub struct ScreenerResultResponse {
+    pub id: String,
+    pub stocks: Vec<ScreenedStockResponse>,
+    pub total_scanned: usize,
+    pub passed_count: usize,
+    pub config_summary: String,
+    pub started_at: String,
+    pub completed_at: String,
+    pub duration_secs: f64,
+}
+
+/// Screened stock in response
+#[derive(Debug, Serialize)]
+pub struct ScreenedStockResponse {
+    pub symbol: String,
+    pub name: String,
+    pub exchange: String,
+    pub industry: Option<String>,
+    pub quant_score: f64,
+    pub roe: Option<f64>,
+    pub gross_margin: Option<f64>,
+    pub pe_ttm: Option<f64>,
+    pub pb: Option<f64>,
+    pub dividend_yield: Option<f64>,
+    pub is_printing_machine: Option<bool>,
+}
+
+/// Screener history entry response
+#[derive(Debug, Serialize)]
+pub struct ScreenerHistoryResponse {
+    pub entries: Vec<ScreenerHistoryEntryResponse>,
+}
+
+/// History entry
+#[derive(Debug, Serialize)]
+pub struct ScreenerHistoryEntryResponse {
+    pub id: String,
+    pub completed_at: String,
+    pub duration_secs: f64,
+    pub total_scanned: usize,
+    pub passed_count: usize,
+}
+
+/// Screener run request
+#[derive(Debug, Deserialize)]
+pub struct ScreenerRunRequest {
+    /// Whether to run a quick scan (no deep analysis)
+    #[serde(default)]
+    pub quick: bool,
+}
+
+/// GET /api/v1/screener/status - Get screener status
+pub async fn screener_status(
+    State(_state): State<Arc<TradingState>>,
+) -> Json<ScreenerStatusResponse> {
+    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    Json(ScreenerStatusResponse {
+        state: "idle".to_string(),
+        last_scan_at: None,
+        last_sync_at: None,
+        last_scan_id: None,
+        last_scan_stock_count: None,
+        error_message: None,
+    })
+}
+
+/// POST /api/v1/screener/run - Trigger a scan
+pub async fn screener_run(
+    State(_state): State<Arc<TradingState>>,
+    Json(req): Json<ScreenerRunRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    let scan_type = if req.quick { "quick" } else { "full" };
+    tracing::info!(scan_type, "Screener run requested");
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: format!("Screener {} scan triggered", scan_type),
+    }))
+}
+
+/// GET /api/v1/screener/results - Get latest results
+pub async fn screener_results(
+    State(_state): State<Arc<TradingState>>,
+) -> Result<Json<ScreenerResultResponse>, StatusCode> {
+    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    Err(StatusCode::NOT_FOUND)
+}
+
+/// GET /api/v1/screener/history - Get scan history
+pub async fn screener_history(
+    State(_state): State<Arc<TradingState>>,
+) -> Json<ScreenerHistoryResponse> {
+    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    Json(ScreenerHistoryResponse { entries: vec![] })
+}
+
+/// POST /api/v1/screener/sync - Trigger data sync
+pub async fn screener_sync(
+    State(_state): State<Arc<TradingState>>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    tracing::info!("Screener data sync requested");
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Data sync triggered".to_string(),
+    }))
+}
+
 

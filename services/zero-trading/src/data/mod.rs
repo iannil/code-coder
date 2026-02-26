@@ -21,10 +21,12 @@ mod itick;
 mod lixin;
 pub mod high_frequency;
 mod hf_scheduler;
+pub mod local_storage;
+pub mod sync;
 
 pub use cache::DataCache;
 pub use aggregator::MarketDataAggregator;
-pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo};
+pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo, StockInfo, FinancialStatementData};
 pub use health::{HealthMonitor, HealthMonitorConfig, ProviderHealth};
 pub use router::{DataProviderRouter, RouterConfig};
 pub use rate_limiter::{RateLimiter, SharedRateLimiter, shared_limiter};
@@ -42,6 +44,14 @@ pub use hf_scheduler::{
     HfScheduledTask,
     HfSchedulerState,
 };
+pub use local_storage::{
+    LocalStorage,
+    LocalStorageConfig,
+    LocalStorageStats,
+    SyncMetadata,
+    SyncStatus,
+};
+pub use sync::{DataSynchronizer, SyncConfig, SyncReport};
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};

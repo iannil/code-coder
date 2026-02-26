@@ -797,7 +797,7 @@ impl NotificationClient {
 mod tests {
     use super::*;
     use crate::data::Timeframe;
-    use crate::macro_filter::EconomicCyclePhase;
+    use crate::macro_filter::{CompositeIndicators, EconomicCyclePhase, PolicyCycle};
     use crate::strategy::SignalDirection;
     use chrono::Utc;
 

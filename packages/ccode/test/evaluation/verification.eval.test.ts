@@ -99,8 +99,10 @@ describe("Verification Loop Evaluation", () => {
 
   describe("V2: Verification Execution", () => {
     let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+    let originalTestHome: string | undefined
 
     beforeEach(async () => {
+      originalTestHome = process.env.CCODE_TEST_HOME
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
     })
@@ -109,7 +111,11 @@ describe("Verification Loop Evaluation", () => {
       if (tempDir) {
         await tempDir[Symbol.asyncDispose]()
       }
-      delete process.env.CCODE_TEST_HOME
+      if (originalTestHome !== undefined) {
+        process.env.CCODE_TEST_HOME = originalTestHome
+      } else {
+        delete process.env.CCODE_TEST_HOME
+      }
     })
 
     test("verify returns structured result", async () => {
@@ -192,8 +198,10 @@ describe("Verification Loop Evaluation", () => {
 
   describe("V3: Self-Correction", () => {
     let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+    let originalTestHome: string | undefined
 
     beforeEach(async () => {
+      originalTestHome = process.env.CCODE_TEST_HOME
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
     })
@@ -202,7 +210,11 @@ describe("Verification Loop Evaluation", () => {
       if (tempDir) {
         await tempDir[Symbol.asyncDispose]()
       }
-      delete process.env.CCODE_TEST_HOME
+      if (originalTestHome !== undefined) {
+        process.env.CCODE_TEST_HOME = originalTestHome
+      } else {
+        delete process.env.CCODE_TEST_HOME
+      }
     })
 
     test("selfCorrect returns null when max attempts reached", async () => {
@@ -311,8 +323,10 @@ describe("Verification Loop Evaluation", () => {
 
   describe("V4: Loop Termination", () => {
     let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+    let originalTestHome: string | undefined
 
     beforeEach(async () => {
+      originalTestHome = process.env.CCODE_TEST_HOME
       tempDir = await tmpdir()
       process.env.CCODE_TEST_HOME = tempDir.path
     })
@@ -321,7 +335,11 @@ describe("Verification Loop Evaluation", () => {
       if (tempDir) {
         await tempDir[Symbol.asyncDispose]()
       }
-      delete process.env.CCODE_TEST_HOME
+      if (originalTestHome !== undefined) {
+        process.env.CCODE_TEST_HOME = originalTestHome
+      } else {
+        delete process.env.CCODE_TEST_HOME
+      }
     })
 
     test("runVerificationLoop returns result", async () => {
@@ -477,8 +495,10 @@ describe("Verification Metrics", () => {
 
 describe("Verification Integration with Confidence", () => {
   let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+  let originalTestHome: string | undefined
 
   beforeEach(async () => {
+    originalTestHome = process.env.CCODE_TEST_HOME
     tempDir = await tmpdir()
     process.env.CCODE_TEST_HOME = tempDir.path
   })
@@ -487,7 +507,11 @@ describe("Verification Integration with Confidence", () => {
     if (tempDir) {
       await tempDir[Symbol.asyncDispose]()
     }
-    delete process.env.CCODE_TEST_HOME
+    if (originalTestHome !== undefined) {
+      process.env.CCODE_TEST_HOME = originalTestHome
+    } else {
+      delete process.env.CCODE_TEST_HOME
+    }
   })
 
   test("successful verification increases candidate confidence", async () => {

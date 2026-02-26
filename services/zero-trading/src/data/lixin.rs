@@ -22,7 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
 
-use super::provider::{DataCapabilities, DataProvider, ProviderError};
+use super::provider::{DataCapabilities, DataProvider, ProviderError, StockInfo, FinancialStatementData};
 use super::rate_limiter::{RateLimiter, SharedRateLimiter};
 use super::{Candle, Timeframe};
 
@@ -39,11 +39,26 @@ const STOCK_DAILY_ENDPOINT: &str = "/a/stock/fs/daily-candlestick";
 /// Index daily candlestick endpoint
 const INDEX_DAILY_ENDPOINT: &str = "/a/index/fs/daily-candlestick";
 
+/// Stock list endpoint
+const STOCK_LIST_ENDPOINT: &str = "/a/stock";
+
+/// Balance sheet endpoint
+const BALANCE_SHEET_ENDPOINT: &str = "/a/stock/fs/balance-sheet";
+
+/// Income statement endpoint
+const INCOME_STATEMENT_ENDPOINT: &str = "/a/stock/fs/income-statement";
+
+/// Cash flow statement endpoint
+const CASH_FLOW_ENDPOINT: &str = "/a/stock/fs/cash-flow-statement";
+
 /// Default rate limit: 100 requests per minute (conservative)
 const DEFAULT_RATE_LIMIT_RPM: u32 = 100;
 
 /// Retry delay after rate limit error (seconds)
 const RATE_LIMIT_RETRY_SECS: u64 = 10;
+
+/// Maximum stocks per batch request
+const MAX_BATCH_SIZE: usize = 100;
 
 // ============================================================================
 // Symbol Mapping
@@ -159,12 +174,12 @@ impl LixinAdapter {
         Some(Self::with_rate_limit(token, priority, rate_limit_rpm))
     }
 
-    /// Call the Lixinger API
-    async fn call_api<T: for<'de> Deserialize<'de>>(
-        &self,
-        endpoint: &str,
-        request: &LixinRequest,
-    ) -> Result<LixinResponse<T>, ProviderError> {
+    /// Call the Lixinger API with a generic request type
+    async fn call_api<R, T>(&self, endpoint: &str, request: &R) -> Result<LixinResponse<T>, ProviderError>
+    where
+        R: Serialize,
+        T: for<'de> Deserialize<'de>,
+    {
         let url = format!("{}{}", LIXIN_API_BASE, endpoint);
 
         // Acquire rate limit token before making request
@@ -323,6 +338,352 @@ impl LixinAdapter {
 
         Ok(candles)
     }
+
+    // ========================================================================
+    // Stock Screener Methods
+    // ========================================================================
+
+    /// Fetch all stocks from Lixin API
+    async fn fetch_stock_list(&self) -> Result<Vec<StockInfo>, ProviderError> {
+        let request = LixinStockListRequest {
+            token: self.token.clone(),
+        };
+
+        let response: LixinResponse<Vec<LixinStockItem>> = self
+            .call_api(STOCK_LIST_ENDPOINT, &request)
+            .await?;
+
+        let data = response.data.unwrap_or_default();
+        let mut stocks = Vec::with_capacity(data.len());
+
+        for item in data {
+            let exchange = if item.stock_code.starts_with("6") {
+                "SH"
+            } else if item.stock_code.starts_with("0") || item.stock_code.starts_with("3") {
+                "SZ"
+            } else if item.stock_code.starts_with("8") || item.stock_code.starts_with("4") {
+                "BJ"
+            } else {
+                "UNKNOWN"
+            };
+
+            let list_date = item.list_date
+                .as_ref()
+                .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
+
+            let is_st = item.name.contains("ST") || item.name.contains("*ST");
+
+            stocks.push(StockInfo {
+                code: item.stock_code,
+                name: item.name,
+                exchange: exchange.to_string(),
+                industry: item.industry,
+                list_date,
+                is_suspended: item.is_suspended.unwrap_or(false),
+                is_st,
+                market_cap: item.market_cap,
+            });
+        }
+
+        debug!(count = stocks.len(), "Fetched stock list from Lixin");
+        Ok(stocks)
+    }
+
+    /// Fetch financial data for a single stock
+    async fn fetch_financial_data(
+        &self,
+        symbol: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<FinancialStatementData, ProviderError> {
+        let stock_code = to_lixin_code(symbol)
+            .ok_or_else(|| ProviderError::InvalidRequest("Invalid symbol format".into()))?;
+
+        // Fetch all three financial statements
+        let balance_sheet = self.fetch_balance_sheet(&stock_code, period_end).await?;
+        let income_statement = self.fetch_income_statement(&stock_code, period_end).await?;
+        let cash_flow = self.fetch_cash_flow(&stock_code, period_end).await?;
+
+        // Combine into FinancialStatementData
+        let period = period_end.unwrap_or_else(|| {
+            balance_sheet.first()
+                .and_then(|b| NaiveDate::parse_from_str(&b.report_date, "%Y-%m-%d").ok())
+                .unwrap_or_else(|| chrono::Local::now().date_naive())
+        });
+
+        let bs = balance_sheet.first().ok_or_else(|| {
+            ProviderError::DataNotAvailable(format!("No balance sheet data for {}", symbol))
+        })?;
+        let is = income_statement.first().ok_or_else(|| {
+            ProviderError::DataNotAvailable(format!("No income statement data for {}", symbol))
+        })?;
+        let cf = cash_flow.first().ok_or_else(|| {
+            ProviderError::DataNotAvailable(format!("No cash flow data for {}", symbol))
+        })?;
+
+        Ok(FinancialStatementData {
+            symbol: symbol.to_string(),
+            period_end: period,
+            report_type: "annual".to_string(),
+
+            // Income Statement
+            revenue: is.revenue,
+            gross_profit: is.gross_profit,
+            operating_income: is.operating_income,
+            net_income: is.net_income,
+            interest_expense: is.interest_expense,
+
+            // Balance Sheet
+            total_assets: bs.total_assets,
+            total_equity: bs.total_equity,
+            total_liabilities: bs.total_liabilities,
+            cash: bs.cash_and_equivalents,
+            total_debt: bs.total_debt,
+            shares_outstanding: bs.shares_outstanding,
+
+            // Cash Flow
+            operating_cash_flow: cf.operating_cash_flow,
+            investing_cash_flow: cf.investing_cash_flow,
+            financing_cash_flow: cf.financing_cash_flow,
+            capex: cf.capex,
+
+            // Derived metrics
+            roe: bs.roe,
+            roa: bs.roa,
+            gross_margin: is.gross_margin,
+            net_margin: is.net_margin,
+            debt_to_equity: bs.debt_to_equity,
+            current_ratio: bs.current_ratio,
+            pe_ttm: bs.pe_ttm,
+            pb: bs.pb,
+            dividend_yield: bs.dividend_yield,
+        })
+    }
+
+    /// Fetch balance sheet data
+    async fn fetch_balance_sheet(
+        &self,
+        stock_code: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinBalanceSheet>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: vec![stock_code.to_string()],
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: Some(vec![
+                "total_assets".to_string(),
+                "total_equity".to_string(),
+                "total_liabilities".to_string(),
+                "cash_and_equivalents".to_string(),
+                "total_debt".to_string(),
+                "shares_outstanding".to_string(),
+                "roe".to_string(),
+                "roa".to_string(),
+                "debt_to_equity".to_string(),
+                "current_ratio".to_string(),
+                "pe_ttm".to_string(),
+                "pb".to_string(),
+                "dividend_yield".to_string(),
+            ]),
+        };
+
+        let response: LixinResponse<Vec<LixinBalanceSheet>> = self
+            .call_api(BALANCE_SHEET_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
+
+    /// Fetch income statement data
+    async fn fetch_income_statement(
+        &self,
+        stock_code: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinIncomeStatement>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: vec![stock_code.to_string()],
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: Some(vec![
+                "revenue".to_string(),
+                "gross_profit".to_string(),
+                "operating_income".to_string(),
+                "net_income".to_string(),
+                "interest_expense".to_string(),
+                "gross_margin".to_string(),
+                "net_margin".to_string(),
+            ]),
+        };
+
+        let response: LixinResponse<Vec<LixinIncomeStatement>> = self
+            .call_api(INCOME_STATEMENT_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
+
+    /// Fetch cash flow statement data
+    async fn fetch_cash_flow(
+        &self,
+        stock_code: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinCashFlow>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: vec![stock_code.to_string()],
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: Some(vec![
+                "operating_cash_flow".to_string(),
+                "investing_cash_flow".to_string(),
+                "financing_cash_flow".to_string(),
+                "capex".to_string(),
+            ]),
+        };
+
+        let response: LixinResponse<Vec<LixinCashFlow>> = self
+            .call_api(CASH_FLOW_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
+
+    /// Batch fetch financial data for multiple stocks
+    async fn batch_fetch_financial_data(
+        &self,
+        symbols: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<FinancialStatementData>, ProviderError> {
+        let mut results = Vec::with_capacity(symbols.len());
+
+        // Process in batches to respect API limits
+        for chunk in symbols.chunks(MAX_BATCH_SIZE) {
+            let stock_codes: Vec<String> = chunk
+                .iter()
+                .filter_map(|s| to_lixin_code(s))
+                .collect();
+
+            if stock_codes.is_empty() {
+                continue;
+            }
+
+            // Fetch all financial data for this batch
+            let balance_sheets = self.batch_fetch_balance_sheets(&stock_codes, period_end).await?;
+            let income_statements = self.batch_fetch_income_statements(&stock_codes, period_end).await?;
+            let cash_flows = self.batch_fetch_cash_flows(&stock_codes, period_end).await?;
+
+            // Combine data by stock code
+            for symbol in chunk.iter() {
+                let code = match to_lixin_code(symbol) {
+                    Some(c) => c,
+                    None => continue,
+                };
+
+                let bs = balance_sheets.iter().find(|b| b.stock_code == code);
+                let is = income_statements.iter().find(|i| i.stock_code == code);
+                let cf = cash_flows.iter().find(|c| c.stock_code == code);
+
+                if let (Some(bs), Some(is), Some(cf)) = (bs, is, cf) {
+                    let period = period_end.unwrap_or_else(|| {
+                        NaiveDate::parse_from_str(&bs.report_date, "%Y-%m-%d")
+                            .unwrap_or_else(|_| chrono::Local::now().date_naive())
+                    });
+
+                    results.push(FinancialStatementData {
+                        symbol: symbol.clone(),
+                        period_end: period,
+                        report_type: "annual".to_string(),
+                        revenue: is.revenue,
+                        gross_profit: is.gross_profit,
+                        operating_income: is.operating_income,
+                        net_income: is.net_income,
+                        interest_expense: is.interest_expense,
+                        total_assets: bs.total_assets,
+                        total_equity: bs.total_equity,
+                        total_liabilities: bs.total_liabilities,
+                        cash: bs.cash_and_equivalents,
+                        total_debt: bs.total_debt,
+                        shares_outstanding: bs.shares_outstanding,
+                        operating_cash_flow: cf.operating_cash_flow,
+                        investing_cash_flow: cf.investing_cash_flow,
+                        financing_cash_flow: cf.financing_cash_flow,
+                        capex: cf.capex,
+                        roe: bs.roe,
+                        roa: bs.roa,
+                        gross_margin: is.gross_margin,
+                        net_margin: is.net_margin,
+                        debt_to_equity: bs.debt_to_equity,
+                        current_ratio: bs.current_ratio,
+                        pe_ttm: bs.pe_ttm,
+                        pb: bs.pb,
+                        dividend_yield: bs.dividend_yield,
+                    });
+                }
+            }
+        }
+
+        debug!(
+            count = results.len(),
+            requested = symbols.len(),
+            "Batch fetched financial data from Lixin"
+        );
+        Ok(results)
+    }
+
+    async fn batch_fetch_balance_sheets(
+        &self,
+        stock_codes: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinBalanceSheet>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: stock_codes.to_vec(),
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: None,
+        };
+
+        let response: LixinResponse<Vec<LixinBalanceSheet>> = self
+            .call_api(BALANCE_SHEET_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
+
+    async fn batch_fetch_income_statements(
+        &self,
+        stock_codes: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinIncomeStatement>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: stock_codes.to_vec(),
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: None,
+        };
+
+        let response: LixinResponse<Vec<LixinIncomeStatement>> = self
+            .call_api(INCOME_STATEMENT_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
+
+    async fn batch_fetch_cash_flows(
+        &self,
+        stock_codes: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<LixinCashFlow>, ProviderError> {
+        let request = LixinFinancialRequest {
+            token: self.token.clone(),
+            stock_codes: stock_codes.to_vec(),
+            date: period_end.map(|d| d.format("%Y-%m-%d").to_string()),
+            metrics: None,
+        };
+
+        let response: LixinResponse<Vec<LixinCashFlow>> = self
+            .call_api(CASH_FLOW_ENDPOINT, &request)
+            .await?;
+
+        Ok(response.data.unwrap_or_default())
+    }
 }
 
 // ============================================================================
@@ -365,7 +726,7 @@ impl DataProvider for LixinAdapter {
             limit: Some(1),
         };
 
-        match self.call_api::<Vec<LixinCandlestick>>(STOCK_DAILY_ENDPOINT, &request).await {
+        match self.call_api::<_, Vec<LixinCandlestick>>(STOCK_DAILY_ENDPOINT, &request).await {
             Ok(_) => Ok(()),
             // Rate limited means the API is working, just temporarily throttled
             // This should not be considered unhealthy
@@ -411,6 +772,30 @@ impl DataProvider for LixinAdapter {
         end_date: Option<NaiveDate>,
     ) -> Result<Vec<Candle>, ProviderError> {
         self.fetch_index_daily(symbol, start_date, end_date).await
+    }
+
+    // ========================================================================
+    // Stock Screener Methods
+    // ========================================================================
+
+    async fn list_all_stocks(&self) -> Result<Vec<StockInfo>, ProviderError> {
+        self.fetch_stock_list().await
+    }
+
+    async fn get_financial_data(
+        &self,
+        symbol: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<FinancialStatementData, ProviderError> {
+        self.fetch_financial_data(symbol, period_end).await
+    }
+
+    async fn batch_get_financial_data(
+        &self,
+        symbols: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<FinancialStatementData>, ProviderError> {
+        self.batch_fetch_financial_data(symbols, period_end).await
     }
 }
 
@@ -470,6 +855,130 @@ struct LixinCandlestick {
     /// Trading amount
     #[serde(default)]
     amount: Option<f64>,
+}
+
+// ============================================================================
+// Stock List API Types
+// ============================================================================
+
+/// Stock list request
+#[derive(Debug, Serialize)]
+struct LixinStockListRequest {
+    token: String,
+}
+
+/// Stock item from list response
+#[derive(Debug, Deserialize)]
+struct LixinStockItem {
+    /// Stock code (e.g., "000001")
+    #[serde(rename = "stockCode")]
+    stock_code: String,
+    /// Stock name (e.g., "平安银行")
+    #[serde(rename = "name", default)]
+    name: String,
+    /// Industry classification
+    #[serde(rename = "industry", default)]
+    industry: Option<String>,
+    /// Listing date (YYYY-MM-DD)
+    #[serde(rename = "listDate", default)]
+    list_date: Option<String>,
+    /// Whether trading is suspended
+    #[serde(rename = "isSuspended", default)]
+    is_suspended: Option<bool>,
+    /// Market cap in billion yuan
+    #[serde(rename = "marketCap", default)]
+    market_cap: Option<f64>,
+}
+
+// ============================================================================
+// Financial Statement API Types
+// ============================================================================
+
+/// Financial data request
+#[derive(Debug, Serialize)]
+struct LixinFinancialRequest {
+    token: String,
+    #[serde(rename = "stockCodes")]
+    stock_codes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metrics: Option<Vec<String>>,
+}
+
+/// Balance sheet data
+#[derive(Debug, Deserialize)]
+struct LixinBalanceSheet {
+    #[serde(rename = "stockCode")]
+    stock_code: String,
+    #[serde(rename = "date", default)]
+    report_date: String,
+    #[serde(rename = "totalAssets", default)]
+    total_assets: Option<f64>,
+    #[serde(rename = "totalEquity", default)]
+    total_equity: Option<f64>,
+    #[serde(rename = "totalLiabilities", default)]
+    total_liabilities: Option<f64>,
+    #[serde(rename = "cashAndEquivalents", default)]
+    cash_and_equivalents: Option<f64>,
+    #[serde(rename = "totalDebt", default)]
+    total_debt: Option<f64>,
+    #[serde(rename = "sharesOutstanding", default)]
+    shares_outstanding: Option<f64>,
+    #[serde(rename = "roe", default)]
+    roe: Option<f64>,
+    #[serde(rename = "roa", default)]
+    roa: Option<f64>,
+    #[serde(rename = "debtToEquity", default)]
+    debt_to_equity: Option<f64>,
+    #[serde(rename = "currentRatio", default)]
+    current_ratio: Option<f64>,
+    #[serde(rename = "peTtm", default)]
+    pe_ttm: Option<f64>,
+    #[serde(rename = "pb", default)]
+    pb: Option<f64>,
+    #[serde(rename = "dividendYield", default)]
+    dividend_yield: Option<f64>,
+}
+
+/// Income statement data
+#[derive(Debug, Deserialize)]
+struct LixinIncomeStatement {
+    #[serde(rename = "stockCode")]
+    stock_code: String,
+    #[serde(rename = "date", default)]
+    report_date: String,
+    #[serde(rename = "revenue", default)]
+    revenue: Option<f64>,
+    #[serde(rename = "grossProfit", default)]
+    gross_profit: Option<f64>,
+    #[serde(rename = "operatingIncome", default)]
+    operating_income: Option<f64>,
+    #[serde(rename = "netIncome", default)]
+    net_income: Option<f64>,
+    #[serde(rename = "interestExpense", default)]
+    interest_expense: Option<f64>,
+    #[serde(rename = "grossMargin", default)]
+    gross_margin: Option<f64>,
+    #[serde(rename = "netMargin", default)]
+    net_margin: Option<f64>,
+}
+
+/// Cash flow statement data
+#[derive(Debug, Deserialize)]
+struct LixinCashFlow {
+    #[serde(rename = "stockCode")]
+    stock_code: String,
+    #[serde(rename = "date", default)]
+    report_date: String,
+    #[serde(rename = "operatingCashFlow", default)]
+    operating_cash_flow: Option<f64>,
+    #[serde(rename = "investingCashFlow", default)]
+    investing_cash_flow: Option<f64>,
+    #[serde(rename = "financingCashFlow", default)]
+    financing_cash_flow: Option<f64>,
+    #[serde(rename = "capex", default)]
+    capex: Option<f64>,
 }
 
 // ============================================================================

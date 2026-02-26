@@ -14,6 +14,7 @@ use tracing::{debug, info, warn};
 use super::itick::ITickAdapter;
 use super::health::HealthMonitorConfig;
 use super::lixin::LixinAdapter;
+use super::local_storage::{LocalStorage, LocalStorageConfig};
 use super::router::{DataProviderRouter, RouterConfig};
 use super::{Candle, DataCache, IndexData, IndexOverview, ProviderInfo, SmtPair, Timeframe};
 use zero_common::config::Config;
@@ -25,8 +26,10 @@ use zero_common::config::Config;
 pub struct MarketDataAggregator {
     /// Data provider router for failover
     router: Arc<DataProviderRouter>,
-    /// Data cache
+    /// Data cache (in-memory TTL cache)
     cache: Arc<DataCache>,
+    /// Local storage for persistent data (SQLite)
+    local_storage: Option<Arc<LocalStorage>>,
     /// Whether we're connected to any data source
     connected: AtomicBool,
     /// SMT pairs to track
@@ -63,13 +66,51 @@ impl MarketDataAggregator {
             })
             .unwrap_or_else(super::default_smt_pairs);
 
+        // Initialize local storage if enabled in config
+        let local_storage = Self::create_local_storage(config);
+
         Self {
             router,
             cache: Arc::new(DataCache::with_ttl(60)),
+            local_storage,
             connected: AtomicBool::new(true), // Will be updated by health checks
             smt_pairs,
             tracked_symbols: RwLock::new(Vec::new()),
             last_update: RwLock::new(None),
+        }
+    }
+
+    /// Create local storage from config
+    fn create_local_storage(config: &Config) -> Option<Arc<LocalStorage>> {
+        // Check if local storage is enabled in config
+        let ls_config = config
+            .trading
+            .as_ref()
+            .and_then(|t| t.local_storage.as_ref())
+            .map(|ls| LocalStorageConfig {
+                enabled: ls.enabled,
+                db_path: ls.db_path.clone().map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| LocalStorageConfig::default().db_path),
+                candle_retention_days: ls.candle_retention_days.unwrap_or(365),
+                financial_retention_years: ls.financial_retention_years.unwrap_or(5),
+                auto_sync_on_startup: ls.auto_sync_on_startup.unwrap_or(true),
+            })
+            .unwrap_or_default();
+
+        if !ls_config.enabled {
+            info!("Local storage is disabled in config");
+            return None;
+        }
+
+        match LocalStorage::new(ls_config) {
+            Ok(storage) => {
+                info!("Local storage initialized successfully");
+                Some(Arc::new(storage))
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to initialize local storage, continuing without it");
+                None
+            }
         }
     }
 
@@ -181,6 +222,11 @@ impl MarketDataAggregator {
         self.connected.load(Ordering::Relaxed)
     }
 
+    /// Get the local storage instance (if enabled)
+    pub fn local_storage(&self) -> Option<Arc<LocalStorage>> {
+        self.local_storage.clone()
+    }
+
     /// Get information about all registered providers
     pub async fn get_providers_info(&self) -> Vec<ProviderInfo> {
         self.router.get_providers_info().await
@@ -206,23 +252,61 @@ impl MarketDataAggregator {
     }
 
     /// Get candles for a symbol and timeframe
+    ///
+    /// Data fetching priority:
+    /// 1. In-memory TTL cache (fastest)
+    /// 2. Local SQLite storage (persistent)
+    /// 3. Remote API providers (with failover)
     pub async fn get_candles(
         &self,
         symbol: &str,
         timeframe: Timeframe,
         limit: usize,
     ) -> Result<Vec<Candle>> {
-        // Check cache first
+        // 1. Check in-memory cache first (fastest)
         if let Some(candles) = self.cache.get_candles(symbol, timeframe) {
             if candles.len() >= limit {
+                debug!(symbol, ?timeframe, source = "cache", "Returning candles from in-memory cache");
                 return Ok(candles.into_iter().rev().take(limit).rev().collect());
             }
         }
 
-        // Fetch from router (with automatic failover)
+        // 2. Check local storage (persistent)
+        if let Some(ref storage) = self.local_storage {
+            match storage.get_candles(symbol, timeframe, None, None, Some(limit)).await {
+                Ok(candles) if candles.len() >= limit => {
+                    debug!(symbol, ?timeframe, source = "local_storage", "Returning candles from local storage");
+                    // Update in-memory cache
+                    self.cache.set_candles(symbol, timeframe, candles.clone());
+                    return Ok(candles);
+                }
+                Ok(candles) if !candles.is_empty() => {
+                    // Have some data but not enough, will fetch more from remote
+                    debug!(
+                        symbol, ?timeframe,
+                        local_count = candles.len(),
+                        needed = limit,
+                        "Local storage has partial data, fetching from remote"
+                    );
+                }
+                Err(e) => {
+                    warn!(symbol, ?timeframe, error = %e, "Failed to read from local storage");
+                }
+                _ => {}
+            }
+        }
+
+        // 3. Fetch from remote providers (with automatic failover)
         let candles = self.fetch_candles(symbol, timeframe, limit).await?;
 
-        // Cache the result
+        // Save to local storage for future use
+        if let Some(ref storage) = self.local_storage {
+            if let Err(e) = storage.save_candles(&candles, "remote").await {
+                warn!(symbol, ?timeframe, error = %e, "Failed to save candles to local storage");
+            }
+        }
+
+        // Cache the result in memory
         self.cache.set_candles(symbol, timeframe, candles.clone());
 
         Ok(candles)

@@ -15,9 +15,13 @@ pub use hf_integration::{
 };
 
 use anyhow::Result;
+use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
 use zero_common::config::Config;
+
+use crate::data::LocalStorage;
 
 /// Economic cycle phase
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,11 +216,18 @@ pub struct MacroFilter {
     client: reqwest::Client,
     /// Cached environment
     cached_env: tokio::sync::RwLock<Option<(MacroEnvironment, std::time::Instant)>>,
+    /// Local storage for persistent macro data
+    local_storage: Option<Arc<LocalStorage>>,
 }
 
 impl MacroFilter {
     /// Create a new macro filter
     pub fn new(config: &Config) -> Self {
+        Self::with_local_storage(config, None)
+    }
+
+    /// Create a new macro filter with local storage
+    pub fn with_local_storage(config: &Config, local_storage: Option<Arc<LocalStorage>>) -> Self {
         let filter_config = config
             .trading
             .as_ref()
@@ -241,6 +252,7 @@ impl MacroFilter {
             config: filter_config,
             client,
             cached_env: tokio::sync::RwLock::new(None),
+            local_storage,
         }
     }
 
@@ -276,6 +288,15 @@ impl MacroFilter {
 
     /// Fetch macro data from workflow service
     async fn fetch_macro_data(&self) -> Result<MacroEnvironment> {
+        // Try local storage first
+        if let Some(ref storage) = self.local_storage {
+            if let Ok(Some(local_data)) = self.load_macro_from_local(storage).await {
+                tracing::debug!("Using macro data from local storage");
+                return Ok(self.analyze_macro_data(&local_data));
+            }
+        }
+
+        // Fetch from remote
         let url = format!("{}/api/v1/economic/china", self.config.workflow_endpoint);
 
         let response = self
@@ -289,7 +310,120 @@ impl MacroFilter {
         }
 
         let data: MacroDataResponse = response.json().await?;
+
+        // Save to local storage
+        if let Some(ref storage) = self.local_storage {
+            if let Err(e) = self.save_macro_to_local(storage, &data).await {
+                tracing::warn!(error = %e, "Failed to save macro data to local storage");
+            }
+        }
+
         Ok(self.analyze_macro_data(&data))
+    }
+
+    /// Load macro data from local storage
+    async fn load_macro_from_local(&self, storage: &LocalStorage) -> Result<Option<MacroDataResponse>> {
+        let today = Local::now().date_naive();
+
+        // Load each indicator from local storage
+        let pmi = self.load_indicator(storage, "PMI", today).await?;
+        let m2_yoy = self.load_indicator(storage, "M2_YOY", today).await?;
+        let social_financing = self.load_indicator(storage, "SOCIAL_FINANCING", today).await?;
+        let cpi_yoy = self.load_indicator(storage, "CPI_YOY", today).await?;
+        let ppi_yoy = self.load_indicator(storage, "PPI_YOY", today).await?;
+        let gdp_yoy = self.load_indicator(storage, "GDP_YOY", today).await?;
+        let industrial_value_added = self.load_indicator(storage, "INDUSTRIAL_VA", today).await?;
+        let fixed_asset_investment = self.load_indicator(storage, "FAI_YOY", today).await?;
+        let retail_sales = self.load_indicator(storage, "RETAIL_SALES", today).await?;
+        let export_yoy = self.load_indicator(storage, "EXPORT_YOY", today).await?;
+        let import_yoy = self.load_indicator(storage, "IMPORT_YOY", today).await?;
+        let lpr_1y = self.load_indicator(storage, "LPR_1Y", today).await?;
+        let mlf_rate = self.load_indicator(storage, "MLF_RATE", today).await?;
+
+        // Check if we have at least the essential indicators
+        if pmi.is_none() && m2_yoy.is_none() && cpi_yoy.is_none() {
+            return Ok(None);
+        }
+
+        Ok(Some(MacroDataResponse {
+            pmi,
+            m2_yoy,
+            social_financing,
+            cpi_yoy,
+            ppi_yoy,
+            gdp_yoy,
+            industrial_value_added,
+            fixed_asset_investment,
+            retail_sales,
+            export_yoy,
+            import_yoy,
+            lpr_1y,
+            mlf_rate,
+        }))
+    }
+
+    /// Load a single indicator from local storage
+    async fn load_indicator(
+        &self,
+        storage: &LocalStorage,
+        code: &str,
+        _date: NaiveDate,
+    ) -> Result<Option<f64>> {
+        // Get the most recent value (date parameter is for future use)
+        match storage.get_macro_indicator(code, None).await? {
+            Some((value, _, _)) => Ok(Some(value)),
+            None => Ok(None),
+        }
+    }
+
+    /// Save macro data to local storage
+    async fn save_macro_to_local(&self, storage: &LocalStorage, data: &MacroDataResponse) -> Result<()> {
+        let today = Local::now().date_naive();
+        let source = "workflow_api";
+
+        // Save each indicator
+        if let Some(pmi) = data.pmi {
+            storage.save_macro_indicator("PMI", today, pmi, None, None, source).await?;
+        }
+        if let Some(m2) = data.m2_yoy {
+            storage.save_macro_indicator("M2_YOY", today, m2, None, None, source).await?;
+        }
+        if let Some(sf) = data.social_financing {
+            storage.save_macro_indicator("SOCIAL_FINANCING", today, sf, None, None, source).await?;
+        }
+        if let Some(cpi) = data.cpi_yoy {
+            storage.save_macro_indicator("CPI_YOY", today, cpi, None, None, source).await?;
+        }
+        if let Some(ppi) = data.ppi_yoy {
+            storage.save_macro_indicator("PPI_YOY", today, ppi, None, None, source).await?;
+        }
+        if let Some(gdp) = data.gdp_yoy {
+            storage.save_macro_indicator("GDP_YOY", today, gdp, None, None, source).await?;
+        }
+        if let Some(iva) = data.industrial_value_added {
+            storage.save_macro_indicator("INDUSTRIAL_VA", today, iva, None, None, source).await?;
+        }
+        if let Some(fai) = data.fixed_asset_investment {
+            storage.save_macro_indicator("FAI_YOY", today, fai, None, None, source).await?;
+        }
+        if let Some(retail) = data.retail_sales {
+            storage.save_macro_indicator("RETAIL_SALES", today, retail, None, None, source).await?;
+        }
+        if let Some(exp) = data.export_yoy {
+            storage.save_macro_indicator("EXPORT_YOY", today, exp, None, None, source).await?;
+        }
+        if let Some(imp) = data.import_yoy {
+            storage.save_macro_indicator("IMPORT_YOY", today, imp, None, None, source).await?;
+        }
+        if let Some(lpr) = data.lpr_1y {
+            storage.save_macro_indicator("LPR_1Y", today, lpr, None, None, source).await?;
+        }
+        if let Some(mlf) = data.mlf_rate {
+            storage.save_macro_indicator("MLF_RATE", today, mlf, None, None, source).await?;
+        }
+
+        tracing::debug!("Saved macro indicators to local storage");
+        Ok(())
     }
 
     /// Analyze raw macro data and produce environment assessment

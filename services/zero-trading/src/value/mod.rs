@@ -68,8 +68,11 @@ pub use report::{
 };
 
 use anyhow::Result;
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 use zero_common::config::Config;
+
+use crate::data::LocalStorage;
 
 /// Value analysis engine that combines all layers of analysis.
 pub struct ValueAnalyzer {
@@ -79,15 +82,23 @@ pub struct ValueAnalyzer {
     pub cash_flow_analyzer: Arc<CashFlowAnalyzer>,
     /// Evaluation power analyzer for supply chain position analysis
     pub evaluation_power_analyzer: Arc<EvaluationPowerAnalyzer>,
+    /// Local storage for caching analysis results
+    local_storage: Option<Arc<LocalStorage>>,
 }
 
 impl ValueAnalyzer {
     /// Create a new value analyzer.
     pub fn new(_config: &Config) -> Self {
+        Self::with_local_storage(_config, None)
+    }
+
+    /// Create a new value analyzer with local storage.
+    pub fn with_local_storage(_config: &Config, local_storage: Option<Arc<LocalStorage>>) -> Self {
         Self {
             financial_verifier: Arc::new(FinancialVerifier::new()),
             cash_flow_analyzer: Arc::new(CashFlowAnalyzer::new()),
             evaluation_power_analyzer: Arc::new(EvaluationPowerAnalyzer::new()),
+            local_storage,
         }
     }
 
@@ -99,6 +110,44 @@ impl ValueAnalyzer {
     ) -> Result<PrintingMachineChecklist> {
         self.financial_verifier
             .analyze(data, qualitative_inputs)
+    }
+
+    /// Analyze a company with caching support.
+    /// Uses local storage to cache results for 24 hours.
+    pub async fn analyze_printing_machine_cached(
+        &self,
+        data: &FinancialData,
+        qualitative_inputs: QualitativeInputs,
+    ) -> Result<PrintingMachineChecklist> {
+        const ANALYSIS_TYPE: &str = "printing_machine";
+        const CACHE_HOURS: i64 = 24;
+
+        // Try cache first
+        if let Some(ref storage) = self.local_storage {
+            if let Ok(Some(cached)) = storage
+                .get_analysis_cache::<PrintingMachineChecklist>(&data.symbol, ANALYSIS_TYPE)
+                .await
+            {
+                tracing::debug!(symbol = %data.symbol, "Using cached printing machine analysis");
+                return Ok(cached);
+            }
+        }
+
+        // Compute analysis
+        let result = self.analyze_printing_machine(data, qualitative_inputs)?;
+
+        // Cache result
+        if let Some(ref storage) = self.local_storage {
+            let expires_at = Utc::now() + Duration::hours(CACHE_HOURS);
+            if let Err(e) = storage
+                .save_analysis_cache(&data.symbol, ANALYSIS_TYPE, &result, Some(expires_at))
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to cache printing machine analysis");
+            }
+        }
+
+        Ok(result)
     }
 
     /// Classify cash flow DNA pattern.

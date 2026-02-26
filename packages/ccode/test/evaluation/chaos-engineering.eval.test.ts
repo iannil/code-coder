@@ -29,8 +29,10 @@ import { calculateChaosMetrics, type ChaosEvent } from "./utils/metrics-complex"
 
 describe("Chaos Engineering Evaluation", () => {
   let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+  let originalTestHome: string | undefined
 
   beforeEach(async () => {
+    originalTestHome = process.env.CCODE_TEST_HOME
     tempDir = await tmpdir()
     process.env.CCODE_TEST_HOME = tempDir.path
   })
@@ -39,7 +41,11 @@ describe("Chaos Engineering Evaluation", () => {
     if (tempDir) {
       await tempDir[Symbol.asyncDispose]()
     }
-    delete process.env.CCODE_TEST_HOME
+    if (originalTestHome !== undefined) {
+      process.env.CCODE_TEST_HOME = originalTestHome
+    } else {
+      delete process.env.CCODE_TEST_HOME
+    }
   })
 
   describe("Network Failures", () => {
@@ -207,8 +213,9 @@ describe("Chaos Engineering Evaluation", () => {
         networkSim.setCondition(condition)
         networkSim.resetStats()
 
-        // Run just 3 requests per condition with reasonable timeout
-        for (let i = 0; i < 3; i++) {
+        // Run 20 requests per condition for statistically meaningful results
+        // (with 30% drop rate on unstable, 0.7^20 ≈ 0.08% chance of all succeeding)
+        for (let i = 0; i < 20; i++) {
           try {
             await networkSim.simulateRequest(async () => "ok", { timeout: 100 })
           } catch {
@@ -226,8 +233,8 @@ describe("Chaos Engineering Evaluation", () => {
       // Healthy conditions should have high success rate
       expect(results.find((r) => r.condition === "healthy")?.successRate).toBeGreaterThanOrEqual(0.9)
 
-      // Unstable should have lower success rate
-      expect(results.find((r) => r.condition === "unstable")?.successRate).toBeLessThan(0.9)
+      // Unstable should have lower success rate (with 30% drop rate over 20 samples)
+      expect(results.find((r) => r.condition === "unstable")?.successRate).toBeLessThan(0.95)
     })
   })
 

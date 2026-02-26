@@ -138,6 +138,135 @@ impl ProviderError {
 // Data Provider Trait
 // ============================================================================
 
+// ============================================================================
+// Stock Info for Screener
+// ============================================================================
+
+/// Basic stock information for screener.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StockInfo {
+    /// Stock code (e.g., "000001")
+    pub code: String,
+    /// Stock name (e.g., "平安银行")
+    pub name: String,
+    /// Exchange (SZ, SH, BJ)
+    pub exchange: String,
+    /// Industry classification
+    pub industry: Option<String>,
+    /// Listing date
+    pub list_date: Option<NaiveDate>,
+    /// Whether trading is suspended
+    pub is_suspended: bool,
+    /// Whether it's a ST stock
+    pub is_st: bool,
+    /// Market cap in billion yuan
+    pub market_cap: Option<f64>,
+}
+
+impl StockInfo {
+    /// Get full symbol with exchange suffix (e.g., "000001.SZ")
+    pub fn symbol(&self) -> String {
+        format!("{}.{}", self.code, self.exchange)
+    }
+
+    /// Calculate days since listing
+    pub fn listing_days(&self) -> Option<i64> {
+        self.list_date.map(|d| {
+            let today = chrono::Local::now().date_naive();
+            (today - d).num_days()
+        })
+    }
+}
+
+/// Financial statement data from provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinancialStatementData {
+    /// Stock symbol
+    pub symbol: String,
+    /// Report period end date (e.g., "2024-12-31")
+    pub period_end: NaiveDate,
+    /// Report type (annual, semi-annual, quarterly)
+    pub report_type: String,
+
+    // === Income Statement ===
+    /// Total revenue
+    pub revenue: Option<f64>,
+    /// Gross profit
+    pub gross_profit: Option<f64>,
+    /// Operating income
+    pub operating_income: Option<f64>,
+    /// Net income attributable to parent
+    pub net_income: Option<f64>,
+    /// Interest expense
+    pub interest_expense: Option<f64>,
+
+    // === Balance Sheet ===
+    /// Total assets
+    pub total_assets: Option<f64>,
+    /// Total equity attributable to parent
+    pub total_equity: Option<f64>,
+    /// Total liabilities
+    pub total_liabilities: Option<f64>,
+    /// Cash and cash equivalents
+    pub cash: Option<f64>,
+    /// Total debt (short + long term)
+    pub total_debt: Option<f64>,
+    /// Total shares outstanding
+    pub shares_outstanding: Option<f64>,
+
+    // === Cash Flow Statement ===
+    /// Operating cash flow
+    pub operating_cash_flow: Option<f64>,
+    /// Investing cash flow
+    pub investing_cash_flow: Option<f64>,
+    /// Financing cash flow
+    pub financing_cash_flow: Option<f64>,
+    /// Capital expenditure (usually negative)
+    pub capex: Option<f64>,
+
+    // === Derived Metrics (pre-calculated by provider) ===
+    /// ROE (Return on Equity) %
+    pub roe: Option<f64>,
+    /// ROA (Return on Assets) %
+    pub roa: Option<f64>,
+    /// Gross margin %
+    pub gross_margin: Option<f64>,
+    /// Net margin %
+    pub net_margin: Option<f64>,
+    /// Debt to equity ratio
+    pub debt_to_equity: Option<f64>,
+    /// Current ratio
+    pub current_ratio: Option<f64>,
+    /// PE ratio (TTM)
+    pub pe_ttm: Option<f64>,
+    /// PB ratio
+    pub pb: Option<f64>,
+    /// Dividend yield %
+    pub dividend_yield: Option<f64>,
+}
+
+impl FinancialStatementData {
+    /// Calculate free cash flow if not provided
+    pub fn free_cash_flow(&self) -> Option<f64> {
+        match (self.operating_cash_flow, self.capex) {
+            (Some(ocf), Some(capex)) => Some(ocf + capex), // capex is usually negative
+            _ => None,
+        }
+    }
+
+    /// Check if this is a healthy cash flow pattern (OCF+, ICF-, FCF-)
+    pub fn is_cash_cow_pattern(&self) -> bool {
+        match (
+            self.operating_cash_flow,
+            self.investing_cash_flow,
+            self.financing_cash_flow,
+        ) {
+            (Some(ocf), Some(icf), Some(fcf)) => ocf > 0.0 && icf < 0.0 && fcf < 0.0,
+            _ => false,
+        }
+    }
+}
+
 /// Trait for market data providers.
 ///
 /// All data sources (iTick, Lixin, etc.) implement this trait
@@ -200,6 +329,62 @@ pub trait DataProvider: Send + Sync {
     ) -> Result<Vec<Candle>, ProviderError> {
         self.get_daily_candles(symbol, start_date, end_date, None)
             .await
+    }
+
+    // ========================================================================
+    // Stock Screener Methods (Optional - for full market scanning)
+    // ========================================================================
+
+    /// List all stocks in the market.
+    ///
+    /// Returns basic information for all stocks. Used for full market scanning.
+    /// Default implementation returns "not supported" error.
+    async fn list_all_stocks(&self) -> Result<Vec<StockInfo>, ProviderError> {
+        Err(ProviderError::DataNotAvailable(format!(
+            "{} does not support stock listing",
+            self.name()
+        )))
+    }
+
+    /// Get financial statement data for a single stock.
+    ///
+    /// # Arguments
+    /// * `symbol` - Stock symbol (e.g., "000001.SZ")
+    /// * `period_end` - Optional specific period end date. If None, returns latest.
+    async fn get_financial_data(
+        &self,
+        symbol: &str,
+        period_end: Option<NaiveDate>,
+    ) -> Result<FinancialStatementData, ProviderError> {
+        let _ = (symbol, period_end);
+        Err(ProviderError::DataNotAvailable(format!(
+            "{} does not support financial data",
+            self.name()
+        )))
+    }
+
+    /// Batch get financial data for multiple stocks.
+    ///
+    /// More efficient than calling get_financial_data() in a loop.
+    /// Default implementation falls back to sequential calls.
+    ///
+    /// # Arguments
+    /// * `symbols` - List of stock symbols
+    /// * `period_end` - Optional specific period end date
+    async fn batch_get_financial_data(
+        &self,
+        symbols: &[String],
+        period_end: Option<NaiveDate>,
+    ) -> Result<Vec<FinancialStatementData>, ProviderError> {
+        let mut results = Vec::with_capacity(symbols.len());
+        for symbol in symbols {
+            match self.get_financial_data(symbol, period_end).await {
+                Ok(data) => results.push(data),
+                Err(ProviderError::DataNotAvailable(_)) => continue,
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(results)
     }
 }
 

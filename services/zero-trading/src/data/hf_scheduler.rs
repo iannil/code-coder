@@ -389,7 +389,7 @@ mod tests {
     fn create_test_collector() -> HighFrequencyCollector {
         let dir = tempdir().unwrap();
         let config = CollectorConfig {
-            db_path: dir.into_path().join("test_hf.db"),
+            db_path: dir.keep().join("test_hf.db"),
             enabled: true,
             daily_schedule: "0 0 18 * * 1-5".to_string(),
             weekly_schedule: "0 0 9 * * 1".to_string(),

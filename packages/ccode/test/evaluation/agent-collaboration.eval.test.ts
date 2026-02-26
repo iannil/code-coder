@@ -29,8 +29,11 @@ import { Statistics } from "./utils/metrics"
 
 describe("Agent Collaboration Evaluation", () => {
   let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+  let originalTestHome: string | undefined
 
   beforeEach(async () => {
+    // Save original value to restore later
+    originalTestHome = process.env.CCODE_TEST_HOME
     tempDir = await tmpdir()
     process.env.CCODE_TEST_HOME = tempDir.path
   })
@@ -39,7 +42,12 @@ describe("Agent Collaboration Evaluation", () => {
     if (tempDir) {
       await tempDir[Symbol.asyncDispose]()
     }
-    delete process.env.CCODE_TEST_HOME
+    // Restore original value instead of deleting
+    if (originalTestHome !== undefined) {
+      process.env.CCODE_TEST_HOME = originalTestHome
+    } else {
+      delete process.env.CCODE_TEST_HOME
+    }
   })
 
   describe("4-Agent Chain Execution", () => {

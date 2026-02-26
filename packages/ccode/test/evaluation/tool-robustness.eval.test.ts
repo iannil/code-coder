@@ -15,8 +15,10 @@ import { runBenchmark } from "./utils/metrics-complex"
 
 describe("Tool Robustness Evaluation", () => {
   let tempDir: Awaited<ReturnType<typeof tmpdir>> | undefined
+  let originalTestHome: string | undefined
 
   beforeEach(async () => {
+    originalTestHome = process.env.CCODE_TEST_HOME
     tempDir = await tmpdir()
     process.env.CCODE_TEST_HOME = tempDir.path
   })
@@ -25,7 +27,11 @@ describe("Tool Robustness Evaluation", () => {
     if (tempDir) {
       await tempDir[Symbol.asyncDispose]()
     }
-    delete process.env.CCODE_TEST_HOME
+    if (originalTestHome !== undefined) {
+      process.env.CCODE_TEST_HOME = originalTestHome
+    } else {
+      delete process.env.CCODE_TEST_HOME
+    }
   })
 
   describe("Large File Operations", () => {

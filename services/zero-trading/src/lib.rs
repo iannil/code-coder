@@ -49,6 +49,7 @@ pub mod paper_trading;
 pub mod portfolio;
 pub mod routes;
 pub mod scheduler;
+pub mod screener;
 pub mod session;
 pub mod strategy;
 pub mod valuation;
@@ -110,7 +111,10 @@ impl TradingState {
         let data = Arc::new(MarketDataAggregator::new(&config));
         let strategy = Arc::new(StrategyEngine::new(&config));
         let execution = Arc::new(RwLock::new(ExecutionEngine::new(&config)));
-        let macro_filter = Arc::new(MacroFilter::new(&config));
+
+        // Share local storage between data aggregator and macro filter
+        let local_storage = data.local_storage();
+        let macro_filter = Arc::new(MacroFilter::with_local_storage(&config, local_storage.clone()));
         let notification = Arc::new(NotificationClient::new(&config));
 
         // Create macro orchestrator (coordinates rule engine + agent)
@@ -128,9 +132,9 @@ impl TradingState {
         // Create paper trading manager
         let paper_manager = Arc::new(PaperTradingManager::new(&config));
 
-        // Create value analysis components
-        let value_analyzer = Arc::new(ValueAnalyzer::new(&config));
-        let valuation_analyzer = Arc::new(ValuationAnalyzer::new());
+        // Create value analysis components (with shared local storage for caching)
+        let value_analyzer = Arc::new(ValueAnalyzer::with_local_storage(&config, local_storage.clone()));
+        let valuation_analyzer = Arc::new(ValuationAnalyzer::with_local_storage(local_storage));
 
         // Create portfolio management components
         let portfolio_config = PoolsConfig::default();

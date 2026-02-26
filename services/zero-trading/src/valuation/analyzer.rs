@@ -3,9 +3,11 @@
 //! Implements the three-dimensional valuation analysis combining PE, PB, and DY metrics.
 
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{Duration, Utc};
+use std::sync::Arc;
 
 use super::types::*;
+use crate::data::LocalStorage;
 
 /// Valuation analyzer configuration.
 #[derive(Debug, Clone)]
@@ -43,6 +45,8 @@ impl Default for ValuationConfig {
 /// Three-dimensional valuation analyzer.
 pub struct ValuationAnalyzer {
     config: ValuationConfig,
+    /// Local storage for caching analysis results
+    local_storage: Option<Arc<LocalStorage>>,
 }
 
 impl ValuationAnalyzer {
@@ -50,12 +54,35 @@ impl ValuationAnalyzer {
     pub fn new() -> Self {
         Self {
             config: ValuationConfig::default(),
+            local_storage: None,
+        }
+    }
+
+    /// Create with local storage.
+    pub fn with_local_storage(local_storage: Option<Arc<LocalStorage>>) -> Self {
+        Self {
+            config: ValuationConfig::default(),
+            local_storage,
         }
     }
 
     /// Create with custom config.
     pub fn with_config(config: ValuationConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            local_storage: None,
+        }
+    }
+
+    /// Create with custom config and local storage.
+    pub fn with_config_and_storage(
+        config: ValuationConfig,
+        local_storage: Option<Arc<LocalStorage>>,
+    ) -> Self {
+        Self {
+            config,
+            local_storage,
+        }
     }
 
     /// Perform comprehensive valuation analysis.
@@ -84,6 +111,40 @@ impl ValuationAnalyzer {
             highlights,
             analyzed_at: Utc::now(),
         })
+    }
+
+    /// Perform valuation analysis with caching support.
+    /// Uses local storage to cache results for 1 hour.
+    pub async fn analyze_cached(&self, input: &ValuationInput) -> Result<ValuationCoordinates> {
+        const ANALYSIS_TYPE: &str = "valuation_coordinates";
+        const CACHE_HOURS: i64 = 1; // Valuation changes with price, cache shorter
+
+        // Try cache first
+        if let Some(ref storage) = self.local_storage {
+            if let Ok(Some(cached)) = storage
+                .get_analysis_cache::<ValuationCoordinates>(&input.symbol, ANALYSIS_TYPE)
+                .await
+            {
+                tracing::debug!(symbol = %input.symbol, "Using cached valuation analysis");
+                return Ok(cached);
+            }
+        }
+
+        // Compute analysis
+        let result = self.analyze(input)?;
+
+        // Cache result
+        if let Some(ref storage) = self.local_storage {
+            let expires_at = Utc::now() + Duration::hours(CACHE_HOURS);
+            if let Err(e) = storage
+                .save_analysis_cache(&input.symbol, ANALYSIS_TYPE, &result, Some(expires_at))
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to cache valuation analysis");
+            }
+        }
+
+        Ok(result)
     }
 
     /// Analyze PE-Band.

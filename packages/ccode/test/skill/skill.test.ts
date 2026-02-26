@@ -203,7 +203,12 @@ test("discovers global skills from ~/.claude/skills/ directory", async () => {
       },
     })
   } finally {
-    process.env.CCODE_TEST_HOME = originalHome
+    // Properly restore: if undefined, delete the env var instead of setting to "undefined"
+    if (originalHome !== undefined) {
+      process.env.CCODE_TEST_HOME = originalHome
+    } else {
+      delete process.env.CCODE_TEST_HOME
+    }
   }
 })
 

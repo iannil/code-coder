@@ -2448,6 +2448,15 @@ pub struct TradingConfig {
     #[serde(default)]
     pub data_sources: Option<DataSourcesConfig>,
 
+    /// Local storage configuration for persistent financial data
+    #[serde(default)]
+    pub local_storage: Option<LocalStorageConfig>,
+
+    /// Full market screener configuration (as JSON value to avoid circular dependency)
+    /// The zero-trading service will parse this into ScreenerConfig
+    #[serde(default)]
+    pub screener: Option<serde_json::Value>,
+
     /// DEPRECATED: Legacy workflow_endpoint field for backward compatibility.
     /// Use Config::workflow_endpoint() instead. This field is ignored.
     #[serde(default, skip_serializing)]
@@ -2482,6 +2491,8 @@ impl Default for TradingConfig {
             loop_config: None,
             schedule: None,
             data_sources: None,
+            local_storage: None,
+            screener: None,
             workflow_endpoint: None,
         }
     }
@@ -2585,6 +2596,58 @@ fn default_health_check_timeout() -> u64 {
 
 fn default_data_source_priority() -> u8 {
     10
+}
+
+// ============================================================================
+// Local Storage Configuration
+// ============================================================================
+
+/// Configuration for local SQLite storage of financial data.
+///
+/// Enables persistent storage of K-line data, financial statements,
+/// valuation inputs, and macro economic indicators for:
+/// - Offline access and analysis
+/// - Reduced API calls and costs
+/// - Service restart resilience
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocalStorageConfig {
+    /// Whether local storage is enabled (default: true)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Path to SQLite database file
+    /// Default: ~/.codecoder/financial.db
+    #[serde(default)]
+    pub db_path: Option<String>,
+
+    /// Candle data retention in days (default: 365)
+    #[serde(default)]
+    pub candle_retention_days: Option<u32>,
+
+    /// Financial data retention in years (default: 5)
+    #[serde(default)]
+    pub financial_retention_years: Option<u32>,
+
+    /// Auto sync on startup (default: true)
+    #[serde(default)]
+    pub auto_sync_on_startup: Option<bool>,
+
+    /// Sync interval in minutes (default: 60)
+    #[serde(default)]
+    pub sync_interval_minutes: Option<u32>,
+}
+
+impl Default for LocalStorageConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            db_path: None,
+            candle_retention_days: Some(365),
+            financial_retention_years: Some(5),
+            auto_sync_on_startup: Some(true),
+            sync_interval_minutes: Some(60),
+        }
+    }
 }
 
 /// SMT pair configuration
