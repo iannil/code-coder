@@ -310,6 +310,8 @@ impl SignalValidator {
 mod tests {
     use super::*;
     use crate::data::Timeframe;
+    use crate::strategy::{SignalDirection, SignalStrength};
+    use chrono::Utc;
 
     fn make_test_signal() -> TradingSignal {
         TradingSignal {

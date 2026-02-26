@@ -251,6 +251,7 @@ impl RecoveryManager {
 mod tests {
     use super::*;
     use crate::r#loop::TradingMode;
+    use chrono::Utc;
 
     #[test]
     fn test_recovery_status_serialization() {
