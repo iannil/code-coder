@@ -94,11 +94,15 @@ impl MacroFilter {
             .as_ref()
             .map(|t| MacroFilterConfig {
                 enabled: t.macro_filter_enabled.unwrap_or(true),
-                workflow_endpoint: t.workflow_endpoint.clone()
-                    .unwrap_or_else(|| "http://127.0.0.1:4432".to_string()),
+                // Use centralized workflow_endpoint from Config
+                workflow_endpoint: config.workflow_endpoint(),
                 cache_duration_secs: t.macro_cache_secs.unwrap_or(3600),
             })
-            .unwrap_or_default();
+            .unwrap_or_else(|| MacroFilterConfig {
+                enabled: true,
+                workflow_endpoint: config.workflow_endpoint(),
+                cache_duration_secs: 3600,
+            });
 
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))

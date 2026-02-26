@@ -1,24 +1,33 @@
 //! Market data aggregator for multi-timeframe analysis.
 //!
 //! Provides a unified interface to fetch and aggregate data across timeframes.
+//! Uses DataProviderRouter for automatic failover between providers.
 
 use anyhow::Result;
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::{debug, info, warn};
 
-use super::{Candle, DataCache, SmtPair, Timeframe, TushareAdapter};
+use super::ashare::AshareAdapter;
+use super::health::HealthMonitorConfig;
+use super::lixin::LixinAdapter;
+use super::router::{DataProviderRouter, RouterConfig};
+use super::{Candle, DataCache, ProviderInfo, SmtPair, Timeframe};
 use zero_common::config::Config;
 
-/// Market data aggregator
+/// Market data aggregator with multi-provider support.
+///
+/// Manages multiple data providers (Ashare, Lixin) with automatic
+/// failover based on health status and priority.
 pub struct MarketDataAggregator {
-    /// Tushare adapter
-    tushare: Option<TushareAdapter>,
+    /// Data provider router for failover
+    router: Arc<DataProviderRouter>,
     /// Data cache
     cache: Arc<DataCache>,
-    /// Whether we're connected to data source
+    /// Whether we're connected to any data source
     connected: AtomicBool,
     /// SMT pairs to track
     smt_pairs: Vec<SmtPair>,
@@ -29,39 +38,141 @@ pub struct MarketDataAggregator {
 }
 
 impl MarketDataAggregator {
-    /// Create a new aggregator
+    /// Create a new aggregator from config
     pub fn new(config: &Config) -> Self {
-        let tushare = TushareAdapter::from_config(config);
-        let connected = tushare.is_some();
+        Self::with_router(Self::create_router(config), config)
+    }
 
+    /// Create with an existing router (for testing)
+    pub fn with_router(router: Arc<DataProviderRouter>, config: &Config) -> Self {
         // Convert SmtPairConfig to SmtPair if configured, else use defaults
         let smt_pairs = config
             .trading
             .as_ref()
             .and_then(|t| t.smt_pairs.as_ref())
             .map(|pairs| {
-                pairs.iter().map(|p| SmtPair {
-                    primary: p.primary.clone(),
-                    reference: p.reference.clone(),
-                    name: p.name.clone(),
-                    description: p.description.clone(),
-                }).collect()
+                pairs
+                    .iter()
+                    .map(|p| SmtPair {
+                        primary: p.primary.clone(),
+                        reference: p.reference.clone(),
+                        name: p.name.clone(),
+                        description: p.description.clone(),
+                    })
+                    .collect()
             })
             .unwrap_or_else(super::default_smt_pairs);
 
         Self {
-            tushare,
+            router,
             cache: Arc::new(DataCache::with_ttl(60)),
-            connected: AtomicBool::new(connected),
+            connected: AtomicBool::new(true), // Will be updated by health checks
             smt_pairs,
             tracked_symbols: RwLock::new(Vec::new()),
             last_update: RwLock::new(None),
         }
     }
 
-    /// Check if connected to data source
+    /// Create a DataProviderRouter from config
+    fn create_router(config: &Config) -> Arc<DataProviderRouter> {
+        let trading_config = config.trading.as_ref();
+
+        // Build router config from data_sources config
+        let router_config = trading_config
+            .and_then(|t| t.data_sources.as_ref())
+            .map(|ds| RouterConfig {
+                max_retries: ds.max_retries,
+                health_config: HealthMonitorConfig {
+                    check_interval_secs: ds.health_check_interval_secs,
+                    unhealthy_threshold: ds.unhealthy_threshold,
+                    check_timeout_secs: ds.health_check_timeout_secs,
+                },
+                auto_health_check: true,
+            })
+            .unwrap_or_default();
+
+        let router = Arc::new(DataProviderRouter::with_config(router_config));
+
+        // We need to register providers asynchronously
+        // This is handled in the async initialization
+
+        router
+    }
+
+    /// Initialize the aggregator (register providers and start health checks).
+    ///
+    /// This must be called after `new()` to complete async initialization.
+    pub async fn initialize(&self, config: &Config) -> Result<()> {
+        let trading_config = config.trading.as_ref();
+
+        // Get enabled providers from config
+        let data_sources = trading_config.and_then(|t| t.data_sources.as_ref());
+
+        let mut has_provider = false;
+
+        if let Some(ds) = data_sources {
+            for entry in &ds.sources {
+                if !entry.enabled {
+                    continue;
+                }
+
+                match entry.provider.as_str() {
+                    "ashare" => {
+                        let adapter = AshareAdapter::with_priority(entry.priority);
+                        self.router.register(Arc::new(adapter)).await;
+                        info!(provider = "ashare", priority = entry.priority, "Registered Ashare provider");
+                        has_provider = true;
+                    }
+                    "lixin" => {
+                        if let Some(token) = trading_config.and_then(|t| t.lixin_token.as_ref()) {
+                            let adapter = LixinAdapter::with_priority(token.clone(), entry.priority);
+                            self.router.register(Arc::new(adapter)).await;
+                            info!(provider = "lixin", priority = entry.priority, "Registered Lixin provider");
+                            has_provider = true;
+                        } else {
+                            warn!("Lixin enabled but no token configured");
+                        }
+                    }
+                    other => {
+                        warn!(provider = other, "Unknown data provider");
+                    }
+                }
+            }
+        } else {
+            // Default: use Ashare if no explicit config
+            let adapter = AshareAdapter::new();
+            self.router.register(Arc::new(adapter)).await;
+            info!(provider = "ashare", "Registered default Ashare provider");
+            has_provider = true;
+
+            // Also register Lixin if token is available (as backup)
+            if let Some(token) = trading_config.and_then(|t| t.lixin_token.as_ref()) {
+                let adapter = LixinAdapter::new(token.clone());
+                self.router.register(Arc::new(adapter)).await;
+                info!(provider = "lixin", "Registered Lixin provider as backup");
+                has_provider = true;
+            }
+        }
+
+        // Start background health checks
+        if has_provider {
+            self.router.start_health_checks().await;
+            self.connected.store(true, Ordering::Relaxed);
+        } else {
+            self.connected.store(false, Ordering::Relaxed);
+        }
+
+        Ok(())
+    }
+
+    /// Check if connected to any data source
     pub fn is_connected(&self) -> bool {
         self.connected.load(Ordering::Relaxed)
+    }
+
+    /// Get information about all registered providers
+    pub async fn get_providers_info(&self) -> Vec<ProviderInfo> {
+        self.router.get_providers_info().await
     }
 
     /// Add a symbol to track
@@ -97,7 +208,7 @@ impl MarketDataAggregator {
             }
         }
 
-        // Fetch from API
+        // Fetch from router (with automatic failover)
         let candles = self.fetch_candles(symbol, timeframe, limit).await?;
 
         // Cache the result
@@ -106,40 +217,46 @@ impl MarketDataAggregator {
         Ok(candles)
     }
 
-    /// Fetch candles from the data source
+    /// Fetch candles from the data provider router
     async fn fetch_candles(
         &self,
         symbol: &str,
         timeframe: Timeframe,
         limit: usize,
     ) -> Result<Vec<Candle>> {
-        let tushare = self
-            .tushare
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Tushare not configured"))?;
+        debug!(symbol, ?timeframe, limit, "Fetching candles via router");
 
         match timeframe {
             Timeframe::Daily | Timeframe::Weekly => {
-                // Use daily or index_daily API
+                // Check if this is an index symbol
                 let is_index = symbol.starts_with("000") && symbol.ends_with(".SH");
                 if is_index {
-                    tushare.get_index_daily(symbol, None, None).await
+                    self.router
+                        .get_index_daily(symbol, None, None)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{}", e))
                 } else {
-                    tushare.get_daily_candles(symbol, None, None, Some(limit)).await
+                    self.router
+                        .get_daily_candles(symbol, None, None, Some(limit))
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{}", e))
                 }
             }
             Timeframe::H4 => {
                 // Aggregate from hourly candles
-                let h1_candles = tushare
+                let h1_candles = self
+                    .router
                     .get_minute_candles(symbol, Timeframe::H1, None, None)
-                    .await?;
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
                 Ok(aggregate_candles(&h1_candles, 4))
             }
             _ => {
                 // Direct minute candles
-                tushare
+                self.router
                     .get_minute_candles(symbol, timeframe, None, None)
                     .await
+                    .map_err(|e| anyhow::anyhow!("{}", e))
             }
         }
     }
@@ -159,7 +276,7 @@ impl MarketDataAggregator {
                     result.insert(*tf, candles);
                 }
                 Err(e) => {
-                    tracing::warn!(symbol, timeframe = ?tf, error = %e, "Failed to fetch candles");
+                    warn!(symbol, timeframe = ?tf, error = %e, "Failed to fetch candles");
                 }
             }
         }
@@ -187,7 +304,7 @@ impl MarketDataAggregator {
 
     /// Start the background data updater
     pub async fn start_updater(&self) -> Result<()> {
-        tracing::info!("Starting market data updater");
+        info!("Starting market data updater");
 
         loop {
             // Update tracked symbols
@@ -197,7 +314,7 @@ impl MarketDataAggregator {
                 // Fetch common timeframes
                 for tf in &[Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
                     if let Err(e) = self.get_candles(symbol, *tf, 100).await {
-                        tracing::warn!(symbol, timeframe = ?tf, error = %e, "Failed to update candles");
+                        warn!(symbol, timeframe = ?tf, error = %e, "Failed to update candles");
                     }
                 }
             }
@@ -206,7 +323,7 @@ impl MarketDataAggregator {
             for pair in &self.smt_pairs {
                 for tf in &[Timeframe::Daily, Timeframe::H4] {
                     if let Err(e) = self.get_smt_pair_data(pair, *tf, 50).await {
-                        tracing::warn!(pair = %pair.name, timeframe = ?tf, error = %e, "Failed to update SMT data");
+                        warn!(pair = %pair.name, timeframe = ?tf, error = %e, "Failed to update SMT data");
                     }
                 }
             }
@@ -216,6 +333,11 @@ impl MarketDataAggregator {
 
             // Clear expired cache entries
             self.cache.clear_expired();
+
+            // Check provider health and update connected status
+            let healthy_providers = self.router.health_monitor().healthy_providers().await;
+            self.connected
+                .store(!healthy_providers.is_empty(), Ordering::Relaxed);
 
             // Sleep for 1 minute
             tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -235,6 +357,17 @@ impl MarketDataAggregator {
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No quote available for {}", symbol))
+    }
+
+    /// Get the underlying router for direct access
+    pub fn router(&self) -> Arc<DataProviderRouter> {
+        Arc::clone(&self.router)
+    }
+
+    /// Stop background health checks
+    pub async fn shutdown(&self) {
+        info!("Shutting down market data aggregator");
+        self.router.stop_health_checks().await;
     }
 }
 
@@ -256,7 +389,10 @@ fn aggregate_candles(candles: &[Candle], ratio: usize) -> Vec<Candle> {
                 timeframe: Timeframe::H4, // Assuming H4 for now
                 timestamp: last.timestamp,
                 open: first.open,
-                high: chunk.iter().map(|c| c.high).fold(f64::NEG_INFINITY, f64::max),
+                high: chunk
+                    .iter()
+                    .map(|c| c.high)
+                    .fold(f64::NEG_INFINITY, f64::max),
                 low: chunk.iter().map(|c| c.low).fold(f64::INFINITY, f64::min),
                 close: last.close,
                 volume: chunk.iter().map(|c| c.volume).sum(),
@@ -305,5 +441,19 @@ mod tests {
         let candles: Vec<Candle> = vec![];
         let aggregated = aggregate_candles(&candles, 4);
         assert!(aggregated.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_aggregator_creation() {
+        let config = Config::default();
+        let aggregator = MarketDataAggregator::new(&config);
+
+        // Initially not connected until initialized
+        // After initialization, should have at least Ashare registered
+        aggregator.initialize(&config).await.unwrap();
+
+        let providers = aggregator.get_providers_info().await;
+        assert!(!providers.is_empty());
+        assert!(providers.iter().any(|p| p.name == "ashare"));
     }
 }

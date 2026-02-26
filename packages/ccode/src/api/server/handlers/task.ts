@@ -281,6 +281,9 @@ export async function getTask(_req: HttpRequest, params: RouteParams): Promise<H
   }
 }
 
+/** SSE heartbeat interval in milliseconds (15 seconds) */
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000
+
 /**
  * GET /api/v1/tasks/:id/events
  * SSE event stream for a specific task
@@ -335,27 +338,70 @@ export async function streamTaskEvents(_req: HttpRequest, params: RouteParams): 
     const eventStream = TaskEmitter.subscribe(id)
     const encoder = new TextEncoder()
     let eventCounter = 0
+    let heartbeatInterval: ReturnType<typeof setInterval> | null = null
+    let streamClosed = false
 
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        try {
-          eventCounter++
-          const data = JSON.stringify(chunk)
-          const sseEvent = formatSSEEvent("message", data, String(eventCounter))
-          controller.enqueue(encoder.encode(sseEvent))
-        } catch (error) {
-          const errorMsg = formatSSEEvent(
-            "error",
-            JSON.stringify({
-              message: error instanceof Error ? error.message : String(error),
-            }),
-          )
-          controller.enqueue(encoder.encode(errorMsg))
+    // Create a readable stream that merges task events with heartbeats
+    const readable = new ReadableStream({
+      start(controller) {
+        // Start heartbeat interval to keep connection alive
+        heartbeatInterval = setInterval(() => {
+          if (streamClosed) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval)
+            return
+          }
+          try {
+            // SSE comment line for keep-alive (clients ignore these)
+            controller.enqueue(encoder.encode(": heartbeat\n\n"))
+          } catch {
+            // Stream may have been closed
+            if (heartbeatInterval) clearInterval(heartbeatInterval)
+          }
+        }, SSE_HEARTBEAT_INTERVAL_MS)
+
+        // Pipe task events to the stream
+        const reader = eventStream.getReader()
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done || streamClosed) {
+                break
+              }
+              try {
+                eventCounter++
+                const data = JSON.stringify(value)
+                const sseEvent = formatSSEEvent("message", data, String(eventCounter))
+                controller.enqueue(encoder.encode(sseEvent))
+
+                // Check if this is a finish event
+                if (value && typeof value === "object" && "type" in value && value.type === "finish") {
+                  break
+                }
+              } catch (error) {
+                const errorMsg = formatSSEEvent(
+                  "error",
+                  JSON.stringify({
+                    message: error instanceof Error ? error.message : String(error),
+                  }),
+                )
+                controller.enqueue(encoder.encode(errorMsg))
+              }
+            }
+          } finally {
+            streamClosed = true
+            if (heartbeatInterval) clearInterval(heartbeatInterval)
+            reader.releaseLock()
+            controller.close()
+          }
         }
+        pump()
+      },
+      cancel() {
+        streamClosed = true
+        if (heartbeatInterval) clearInterval(heartbeatInterval)
       },
     })
-
-    const readable = eventStream.pipeThrough(transformStream)
 
     return {
       status: 200,

@@ -83,7 +83,7 @@ pub fn build_router(config: &Config) -> Router {
     };
 
     // Add webhook routes
-    let webhook_state = WebhookState::new(&config.gateway.codecoder_endpoint);
+    let webhook_state = WebhookState::new(&config.codecoder_endpoint());
     let router = router.merge(webhook_routes(webhook_state));
 
     router.layer(cors)

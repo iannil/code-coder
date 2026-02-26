@@ -36,8 +36,10 @@ pub mod imessage;
 pub mod matrix;
 pub mod message;
 pub mod outbound;
+pub mod progress;
 pub mod routes;
 pub mod slack;
+pub mod sse;
 pub mod stt;
 pub mod telegram;
 pub mod traits;
@@ -74,6 +76,13 @@ pub use tts::{
 };
 pub use wecom::WeComChannel;
 pub use whatsapp::WhatsAppChannel;
+
+// SSE and Progress modules
+pub use progress::{ImProgressHandler, ProgressHandler};
+pub use sse::{
+    CreateTaskRequest, CreateTaskResponse, FinishData, ProgressData, SseClientConfig,
+    SseTaskClient, TaskContext, TaskData, TaskEvent, ToolUseData,
+};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -208,7 +217,7 @@ pub fn build_channels_router(
     }
     let outbound = Arc::new(outbound);
 
-    let codecoder_endpoint = config.codecoder.endpoint.clone();
+    let codecoder_endpoint = config.codecoder_endpoint();
 
     // Create state with all channels including WhatsApp
     let (tx, rx) = tokio::sync::mpsc::channel(100);
@@ -238,11 +247,21 @@ pub async fn start_server(config: &Config) -> anyhow::Result<()> {
 
     let (router, rx, outbound, email, telegram, tx) = build_channels_router(config);
 
-    // Create the bridge
-    let bridge = Arc::new(CodeCoderBridge::new(
-        config.codecoder.endpoint.clone(),
+    // Create the bridge with streaming configuration
+    let mut bridge = CodeCoderBridge::new(
+        config.codecoder_endpoint(),
         outbound.clone(),
-    ));
+    )
+    .with_timeout(std::time::Duration::from_secs(config.codecoder.timeout_secs))
+    .with_streaming(config.channels.streaming_enabled)
+    .with_progress_throttle(config.channels.progress_throttle_ms);
+
+    // Add Telegram channel for message editing support
+    if let Some(ref tg) = telegram {
+        bridge = bridge.with_telegram(tg.clone());
+    }
+
+    let bridge = Arc::new(bridge);
 
     // Spawn the message processor
     let processor_handle = CodeCoderBridge::spawn_processor(bridge, rx);
@@ -292,7 +311,11 @@ pub async fn start_server(config: &Config) -> anyhow::Result<()> {
         }
     });
 
-    tracing::info!("Starting Zero Channels on {}", addr);
+    tracing::info!(
+        "Starting Zero Channels on {} (streaming={})",
+        addr,
+        config.channels.streaming_enabled
+    );
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, router).await?;

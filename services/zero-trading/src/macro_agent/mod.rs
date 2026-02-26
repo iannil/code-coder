@@ -110,10 +110,8 @@ fn create_agent_config(config: &Config) -> AgentBridgeConfig {
     let trading = config.trading.as_ref();
 
     AgentBridgeConfig {
-        codecoder_endpoint: trading
-            .and_then(|t| t.macro_agent.as_ref())
-            .map(|m| m.codecoder_endpoint.clone())
-            .unwrap_or_else(|| config.codecoder.endpoint.clone()),
+        // Use centralized codecoder_endpoint from Config
+        codecoder_endpoint: config.codecoder_endpoint(),
         timeout: std::time::Duration::from_secs(
             trading
                 .and_then(|t| t.macro_agent.as_ref())
@@ -178,7 +176,7 @@ mod tests {
         let config = Config::default();
         let agent_config = create_agent_config(&config);
 
-        assert_eq!(agent_config.codecoder_endpoint, config.codecoder.endpoint);
+        assert_eq!(agent_config.codecoder_endpoint, config.codecoder_endpoint());
         assert_eq!(agent_config.timeout, std::time::Duration::from_secs(30));
     }
 

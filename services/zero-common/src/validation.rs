@@ -93,10 +93,18 @@ impl Config {
         let mut ports: Vec<(u16, &str)> = vec![
             (self.gateway.port, "gateway.port"),
             (self.channels.port, "channels.port"),
+            (self.workflow.port, "workflow.port"),
+            (self.codecoder.port, "codecoder.port"),
         ];
 
+        // Add workflow webhook port if specified
         if let Some(port) = self.workflow.webhook.port {
             ports.push((port, "workflow.webhook.port"));
+        }
+
+        // Add trading port if trading config exists
+        if let Some(ref trading) = self.trading {
+            ports.push((trading.port, "trading.port"));
         }
 
         // Check for duplicates
@@ -154,13 +162,6 @@ impl Validate for GatewayConfig {
             return Err(ValidationError::InvalidValue {
                 field: "gateway.rate_limit_rpm".into(),
                 reason: "must be greater than 0 when rate limiting is enabled".into(),
-            });
-        }
-
-        // CodeCoder endpoint validation
-        if self.codecoder_endpoint.is_empty() {
-            return Err(ValidationError::MissingField {
-                field: "gateway.codecoder_endpoint".into(),
             });
         }
 
@@ -320,9 +321,10 @@ impl Validate for WorkflowConfig {
 
 impl Validate for CodeCoderConfig {
     fn validate(&self) -> ValidationResult<()> {
-        if self.enabled && self.endpoint.is_empty() {
+        // Validate host is not empty when enabled
+        if self.enabled && self.host.is_empty() {
             return Err(ValidationError::MissingField {
-                field: "codecoder.endpoint".into(),
+                field: "codecoder.host".into(),
             });
         }
 
@@ -333,11 +335,11 @@ impl Validate for CodeCoderConfig {
             });
         }
 
-        // Validate endpoint URL format
-        if self.enabled && !self.endpoint.starts_with("http://") && !self.endpoint.starts_with("https://") {
+        // Validate port is valid
+        if self.enabled && self.port == 0 {
             return Err(ValidationError::InvalidValue {
-                field: "codecoder.endpoint".into(),
-                reason: "must start with http:// or https://".into(),
+                field: "codecoder.port".into(),
+                reason: "must be greater than 0".into(),
             });
         }
 
@@ -451,6 +453,7 @@ mod tests {
             bot_token: "".into(),
             allowed_users: vec![],
             allowed_chats: vec![],
+            trading_chat_id: None,
         });
         let result = config.validate();
         assert!(result.is_err());
@@ -466,9 +469,17 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_codecoder_endpoint() {
+    fn test_invalid_codecoder_host() {
         let mut config = Config::default();
-        config.codecoder.endpoint = "not-a-url".into();
+        config.codecoder.host = "".into();
+        let result = config.validate();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_invalid_codecoder_port() {
+        let mut config = Config::default();
+        config.codecoder.port = 0;
         let result = config.validate();
         assert!(result.is_err());
     }

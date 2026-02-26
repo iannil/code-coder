@@ -70,11 +70,8 @@ impl WorkflowService {
             .allow_methods(Any)
             .allow_headers(Any);
 
-        let codecoder_endpoint = self.config.codecoder.endpoint.clone();
-        let channels_endpoint = format!(
-            "http://{}:{}",
-            self.config.channels.host, self.config.channels.port
-        );
+        let codecoder_endpoint = self.config.codecoder_endpoint();
+        let channels_endpoint = self.config.channels_endpoint();
 
         // Create state with channels endpoint for monitor IM notifications
         let state = create_state_with_channels(codecoder_endpoint.clone(), channels_endpoint.clone());
@@ -170,11 +167,8 @@ impl WorkflowService {
     pub async fn start(&self) -> anyhow::Result<()> {
         tracing::info!("Starting Zero Workflow service");
 
-        let codecoder_endpoint = self.config.codecoder.endpoint.clone();
-        let channels_endpoint = format!(
-            "http://{}:{}",
-            self.config.channels.host, self.config.channels.port
-        );
+        let codecoder_endpoint = self.config.codecoder_endpoint();
+        let channels_endpoint = self.config.channels_endpoint();
 
         let state = create_state_with_channels(codecoder_endpoint, channels_endpoint);
 

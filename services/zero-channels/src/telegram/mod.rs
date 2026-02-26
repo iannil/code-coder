@@ -840,6 +840,14 @@ impl Channel for TelegramChannel {
                     // Handle text message
                     let (content, attachments) =
                         if let Some(text) = message.get("text").and_then(|v| v.as_str()) {
+                            tracing::info!(
+                                channel = "telegram",
+                                user_id = %user_id_str.as_deref().unwrap_or(username),
+                                chat_id = %chat_id,
+                                message_type = "text",
+                                text = %text,
+                                "IM message received"
+                            );
                             (
                                 MessageContent::Text {
                                     text: text.to_string(),
@@ -867,18 +875,29 @@ impl Channel for TelegramChannel {
                             };
 
                             match stt.transcribe(&audio_bytes, "ogg").await {
-                                Ok(transcription) => (
-                                    MessageContent::Text {
-                                        text: transcription,
-                                    },
-                                    vec![Attachment {
-                                        attachment_type: AttachmentType::Audio,
-                                        url: format!("telegram://file/{file_id}"),
-                                        filename: Some("voice.ogg".to_string()),
-                                        mime_type: Some("audio/ogg".to_string()),
-                                        size_bytes: Some(audio_bytes.len() as u64),
-                                    }],
-                                ),
+                                Ok(transcription) => {
+                                    tracing::info!(
+                                        channel = "telegram",
+                                        user_id = %user_id_str.as_deref().unwrap_or(username),
+                                        chat_id = %chat_id,
+                                        message_type = "voice",
+                                        text = %transcription,
+                                        audio_size_bytes = %audio_bytes.len(),
+                                        "Voice message transcribed"
+                                    );
+                                    (
+                                        MessageContent::Text {
+                                            text: transcription,
+                                        },
+                                        vec![Attachment {
+                                            attachment_type: AttachmentType::Audio,
+                                            url: format!("telegram://file/{file_id}"),
+                                            filename: Some("voice.ogg".to_string()),
+                                            mime_type: Some("audio/ogg".to_string()),
+                                            size_bytes: Some(audio_bytes.len() as u64),
+                                        }],
+                                    )
+                                }
                                 Err(e) => {
                                     tracing::error!("Voice transcription failed: {e}");
                                     continue;

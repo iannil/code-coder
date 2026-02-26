@@ -38,14 +38,16 @@
 #![allow(clippy::pedantic)]
 
 pub mod backtest;
-pub mod broker;
 pub mod data;
 pub mod execution;
+pub mod r#loop;
 pub mod macro_agent;
 pub mod macro_filter;
 pub mod notification;
 pub mod paper_trading;
 pub mod routes;
+pub mod scheduler;
+pub mod session;
 pub mod strategy;
 
 use anyhow::Result;
@@ -232,9 +234,16 @@ async fn run_strategy_scanner(state: Arc<TradingState>) -> Result<()> {
                 // Scan for signals
                 match state.strategy.scan_for_signals(&state.data).await {
                     Ok(signals) => {
-                        // Send notifications for new signals
+                        // Fetch macro environment for enhanced notifications
+                        let macro_env = state.macro_filter.get_environment().await.ok();
+
+                        // Send enhanced notifications for new signals
                         for signal in &signals {
-                            if let Err(e) = state.notification.send_signal(signal).await {
+                            if let Err(e) = state
+                                .notification
+                                .send_trading_signal_with_recommendation(signal, macro_env.as_ref())
+                                .await
+                            {
                                 tracing::warn!(
                                     signal_id = %signal.id,
                                     error = %e,

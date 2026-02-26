@@ -190,7 +190,7 @@ pub async fn get_status(
 
     Ok(Json(StatusResponse {
         market_connected,
-        broker_connected: execution.is_connected(),
+        broker_connected: false, // Broker integration removed - signals sent via IM for manual execution
         last_scan: state.strategy.last_scan_time().map(|t| t.to_rfc3339()),
         active_signals: signals.len(),
         open_positions: positions.iter().filter(|p| p.is_open()).count(),
@@ -301,7 +301,7 @@ pub async fn check_agent_status(
     Json(serde_json::json!({
         "agent_available": agent_available,
         "report_generator_available": report_available,
-        "codecoder_endpoint": state.config.codecoder.endpoint
+        "codecoder_endpoint": state.config.codecoder_endpoint()
     }))
 }
 

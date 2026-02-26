@@ -15,9 +15,9 @@ use serde::{Deserialize, Serialize};
 
 /// Default endpoints for Zero Services.
 pub mod endpoints {
-    pub const GATEWAY: &str = "http://localhost:4410";
-    pub const CHANNELS: &str = "http://localhost:4411";
-    pub const WORKFLOW: &str = "http://localhost:4412";
+    pub const GATEWAY: &str = "http://localhost:4430";
+    pub const CHANNELS: &str = "http://localhost:4431";
+    pub const WORKFLOW: &str = "http://localhost:4432";
 }
 
 /// Client configuration.
@@ -351,9 +351,9 @@ mod tests {
     #[test]
     fn client_config_defaults() {
         let config = ClientConfig::default();
-        assert_eq!(config.gateway_endpoint, "http://localhost:4410");
-        assert_eq!(config.channels_endpoint, "http://localhost:4411");
-        assert_eq!(config.workflow_endpoint, "http://localhost:4412");
+        assert_eq!(config.gateway_endpoint, "http://localhost:4430");
+        assert_eq!(config.channels_endpoint, "http://localhost:4431");
+        assert_eq!(config.workflow_endpoint, "http://localhost:4432");
         assert_eq!(config.timeout_secs, 30);
         assert!(config.api_key.is_none());
     }

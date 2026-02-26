@@ -255,9 +255,11 @@ export async function start(options: StartOptions = {}): Promise<void> {
   }
 
   // Start server with WebSocket support
+  // idleTimeout: 0 disables idle timeout for SSE connections that may be idle for long periods
   server = Bun.serve({
     port,
     hostname,
+    idleTimeout: 0,
     fetch: createRequestHandler(),
     websocket: {
       open: wsOpen,

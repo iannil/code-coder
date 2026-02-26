@@ -9,6 +9,9 @@
 use crate::capture_bridge::CaptureBridge;
 use crate::message::{ChannelMessage, MessageContent, OutgoingContent};
 use crate::outbound::OutboundRouter;
+use crate::progress::{ImProgressHandler, ProgressHandler};
+use crate::sse::{CreateTaskRequest, CreateTaskResponse, SseClientConfig, SseTaskClient, TaskContext};
+use crate::telegram::TelegramChannel;
 use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -303,6 +306,12 @@ pub struct CodeCoderBridge {
     timeout: Duration,
     /// Asset capture bridge (optional)
     capture_bridge: Option<Arc<CaptureBridge>>,
+    /// Telegram channel instance (for message editing in streaming mode)
+    telegram: Option<Arc<TelegramChannel>>,
+    /// Enable streaming progress feedback
+    streaming_enabled: bool,
+    /// Throttle interval for progress updates in milliseconds
+    progress_throttle_ms: u64,
 }
 
 // ============================================================================
@@ -331,7 +340,7 @@ impl CodeCoderBridge {
     /// Create a new bridge.
     pub fn new(endpoint: impl Into<String>, router: Arc<OutboundRouter>) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(300)) // LLM calls can be slow
+            .timeout(Duration::from_secs(1800)) // LLM calls can run long (30 min default)
             .connect_timeout(Duration::from_secs(10))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -340,8 +349,11 @@ impl CodeCoderBridge {
             client,
             endpoint: endpoint.into(),
             router,
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_secs(1800),
             capture_bridge: None,
+            telegram: None,
+            streaming_enabled: true, // Enabled by default
+            progress_throttle_ms: 1000, // 1 second default
         }
     }
 
@@ -357,6 +369,24 @@ impl CodeCoderBridge {
             let endpoint = self.endpoint.clone();
             self.capture_bridge = Some(Arc::new(CaptureBridge::new(config, endpoint)));
         }
+        self
+    }
+
+    /// Set the Telegram channel for message editing support.
+    pub fn with_telegram(mut self, telegram: Arc<TelegramChannel>) -> Self {
+        self.telegram = Some(telegram);
+        self
+    }
+
+    /// Enable or disable streaming progress feedback.
+    pub fn with_streaming(mut self, enabled: bool) -> Self {
+        self.streaming_enabled = enabled;
+        self
+    }
+
+    /// Set the throttle interval for progress updates.
+    pub fn with_progress_throttle(mut self, ms: u64) -> Self {
+        self.progress_throttle_ms = ms;
         self
     }
 
@@ -476,6 +506,18 @@ impl CodeCoderBridge {
             );
 
             return self.handle_session_command(message, &command).await;
+        }
+
+        // Check if this is a trading binding command (/bind_trading)
+        if Self::is_bind_trading_command(text) {
+            tracing::info!(
+                message_id = %message.id,
+                chat_id = %message.channel_id,
+                user_id = %message.user_id,
+                "Detected /bind_trading command"
+            );
+
+            return self.handle_bind_trading(message).await;
         }
 
         // Check if this is a capture request (highest priority for capture-related messages)
@@ -677,11 +719,22 @@ impl CodeCoderBridge {
                 "Detected agent command, routing to specific agent"
             );
 
-            return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+            // Use streaming for agent commands that are likely to be slow
+            if self.should_use_streaming(&message, Some(&agent)) {
+                return self.process_streaming_chat(&message, &prompt, Some(agent)).await;
+            } else {
+                return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+            }
         }
 
         // Regular chat processing
-        self.process_chat_with_agent(&message, &text, None).await
+        // Check if streaming should be used
+        let agent_from_meta = message.metadata.get("agent").map(|s| s.as_str());
+        if self.should_use_streaming(&message, agent_from_meta) {
+            self.process_streaming_chat(&message, &text, None).await
+        } else {
+            self.process_chat_with_agent(&message, &text, None).await
+        }
     }
 
     /// Check if this is a request for agent help.
@@ -880,6 +933,174 @@ impl CodeCoderBridge {
     }
 
     // ========================================================================
+    // Streaming Processing (Real-time Progress Feedback)
+    // ========================================================================
+
+    /// Process a chat message using the streaming task API.
+    ///
+    /// This method:
+    /// 1. Creates a task via POST /api/v1/tasks
+    /// 2. Subscribes to SSE events via GET /api/v1/tasks/{id}/events
+    /// 3. Sends progress updates to the IM channel
+    /// 4. Sends the final response when complete
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The incoming channel message
+    /// * `text` - The message text content
+    /// * `agent` - Optional agent name to invoke
+    async fn process_streaming_chat(
+        &self,
+        message: &ChannelMessage,
+        text: &str,
+        agent: Option<String>,
+    ) -> Result<()> {
+        let start = Instant::now();
+
+        tracing::info!(
+            message_id = %message.id,
+            agent = ?agent,
+            streaming = true,
+            "Processing message via streaming task API"
+        );
+
+        // Create the progress handler
+        let progress_handler = ImProgressHandler::new(self.router.clone(), self.telegram.clone())
+            .with_throttle(Duration::from_millis(self.progress_throttle_ms));
+
+        // Create task context
+        let context = TaskContext::new(&message.user_id, message.channel_type.as_str());
+
+        // Determine agent to use
+        let agent_name = agent
+            .or_else(|| message.metadata.get("agent").cloned())
+            .unwrap_or_else(|| "general".to_string());
+
+        // Create task request
+        let create_request = CreateTaskRequest {
+            agent: agent_name.clone(),
+            prompt: text.to_string(),
+            context,
+            session_id: message.metadata.get("session_id").cloned(),
+            model: message.metadata.get("model").cloned(),
+        };
+
+        // Step 1: Create the task
+        let task_response = self.create_task(&create_request).await?;
+
+        let task_data = task_response.data.ok_or_else(|| {
+            anyhow::anyhow!("Task creation succeeded but no task data returned")
+        })?;
+
+        let task_id = task_data.id;
+
+        tracing::info!(
+            message_id = %message.id,
+            task_id = %task_id,
+            agent = %agent_name,
+            "Task created, subscribing to events"
+        );
+
+        // Step 2: Send start notification
+        progress_handler.on_start(message, &task_id).await?;
+
+        // Step 3: Subscribe to SSE events
+        let sse_client = SseTaskClient::new(SseClientConfig {
+            endpoint: self.endpoint.clone(),
+            ..Default::default()
+        });
+
+        let (mut rx, handle) = sse_client.subscribe(&task_id).await?;
+
+        // Step 4: Process events
+        while let Some(event) = rx.recv().await {
+            let finished = progress_handler.handle_event(message, event).await?;
+            if finished {
+                break;
+            }
+        }
+
+        // Wait for the SSE task to complete
+        if let Err(e) = handle.await {
+            tracing::warn!(
+                task_id = %task_id,
+                error = ?e,
+                "SSE subscription task panicked"
+            );
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        tracing::info!(
+            message_id = %message.id,
+            task_id = %task_id,
+            duration_ms = duration_ms,
+            "Streaming chat processing completed"
+        );
+
+        Ok(())
+    }
+
+    /// Create a task via the async task API.
+    async fn create_task(&self, request: &CreateTaskRequest) -> Result<CreateTaskResponse> {
+        let url = format!("{}/api/v1/tasks", self.endpoint);
+
+        tracing::debug!(
+            endpoint = %url,
+            agent = %request.agent,
+            "Creating task via async API"
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .json(request)
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(anyhow::anyhow!(
+                "Task creation failed with status {}: {}",
+                status,
+                error_text
+            ));
+        }
+
+        let task_response: CreateTaskResponse = response.json().await?;
+
+        if !task_response.success {
+            let error_msg = task_response.error.unwrap_or_else(|| "Unknown error".to_string());
+            return Err(anyhow::anyhow!("Task creation API error: {}", error_msg));
+        }
+
+        Ok(task_response)
+    }
+
+    /// Check if streaming mode should be used for this message.
+    ///
+    /// Streaming is preferred for:
+    /// - Complex agent requests (macro, decision, etc.)
+    /// - Messages without special handling (not captures, feasibility, A/B tests)
+    fn should_use_streaming(&self, _message: &ChannelMessage, agent: Option<&str>) -> bool {
+        if !self.streaming_enabled {
+            return false;
+        }
+
+        // Always use streaming for agent commands that are likely to be slow
+        match agent {
+            Some("macro") | Some("decision") | Some("trader") | Some("observer") |
+            Some("picker") | Some("miniproduct") | Some("ai-engineer") |
+            Some("architect") | Some("code-reviewer") | Some("security-reviewer") |
+            Some("writer") | Some("proofreader") => true,
+            // For other agents, use streaming by default
+            _ => true,
+        }
+    }
+
+    // ========================================================================
     // Session Control Commands (/new, /compact)
     // ========================================================================
 
@@ -901,6 +1122,75 @@ impl CodeCoderBridge {
         }
 
         None
+    }
+
+    /// Check if message is a /bind_trading command.
+    fn is_bind_trading_command(content: &str) -> bool {
+        let trimmed = content.trim().to_lowercase();
+        trimmed == "/bind_trading" || trimmed.starts_with("/bind_trading ")
+    }
+
+    /// Handle the /bind_trading command - save chat_id to config.
+    async fn handle_bind_trading(&self, message: &ChannelMessage) -> Result<()> {
+        use zero_common::config::Config;
+
+        let chat_id = &message.channel_id;
+        let user_id = &message.user_id;
+
+        // Load config, update, and save
+        match Config::load() {
+            Ok(mut config) => {
+                // Ensure telegram config exists
+                if let Some(ref mut telegram) = config.channels.telegram {
+                    telegram.trading_chat_id = Some(chat_id.clone());
+
+                    // Save the config
+                    if let Err(e) = config.save() {
+                        tracing::error!(error = %e, "Failed to save config with trading_chat_id");
+
+                        let error_content = OutgoingContent::Markdown {
+                            text: format!("❌ 配置保存失败: {}", e),
+                        };
+                        let _ = self.router.respond(&message.id, error_content).await;
+                        return Err(anyhow::anyhow!("Failed to save config: {}", e));
+                    }
+
+                    tracing::info!(
+                        chat_id = %chat_id,
+                        user_id = %user_id,
+                        "Trading chat_id bound successfully"
+                    );
+
+                    let success_content = OutgoingContent::Markdown {
+                        text: format!(
+                            "✅ *交易通知绑定成功*\n\n\
+                            Chat ID: `{}`\n\
+                            用户: `{}`\n\n\
+                            现在 zero-trading 的交易信号将推送到此对话。",
+                            chat_id, user_id
+                        ),
+                    };
+                    let _ = self.router.respond(&message.id, success_content).await;
+                } else {
+                    let error_content = OutgoingContent::Markdown {
+                        text: "❌ Telegram 未配置，无法绑定交易通知".to_string(),
+                    };
+                    let _ = self.router.respond(&message.id, error_content).await;
+                    return Err(anyhow::anyhow!("Telegram not configured"));
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to load config");
+
+                let error_content = OutgoingContent::Markdown {
+                    text: format!("❌ 配置加载失败: {}", e),
+                };
+                let _ = self.router.respond(&message.id, error_content).await;
+                return Err(anyhow::anyhow!("Failed to load config: {}", e));
+            }
+        }
+
+        Ok(())
     }
 
     /// Handle a session control command.

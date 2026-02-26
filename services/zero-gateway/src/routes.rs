@@ -164,7 +164,7 @@ pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Ro
         metering: metering.clone(),
     };
 
-    let proxy_state = ProxyState::new(&config.gateway.codecoder_endpoint);
+    let proxy_state = ProxyState::new(&config.codecoder_endpoint());
 
     // Build proxy routes with metering middleware
     let proxy_routes = Router::new()
@@ -342,7 +342,7 @@ pub fn auth_routes() -> Router {
 
 /// Build proxy routes (legacy, for backward compatibility).
 pub fn proxy_routes(config: &Config) -> Router {
-    let proxy_state = ProxyState::new(&config.gateway.codecoder_endpoint);
+    let proxy_state = ProxyState::new(&config.codecoder_endpoint());
     let jwt_secret = std::env::var("JWT_SECRET")
         .unwrap_or_else(|_| "zero-gateway-default-secret-change-me!".to_string());
     let auth_state = AuthState::new(jwt_secret, config.gateway.token_expiry_secs);

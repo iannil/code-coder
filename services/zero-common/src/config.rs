@@ -157,8 +157,24 @@ impl Config {
         }
 
         // CodeCoder overrides
+        if let Ok(port) = std::env::var("CODECODER_PORT") {
+            if let Ok(p) = port.parse() {
+                self.codecoder.port = p;
+            }
+        }
+        if let Ok(host) = std::env::var("CODECODER_HOST") {
+            self.codecoder.host = host;
+        }
+        // Legacy endpoint env var support: parse to extract host/port
         if let Ok(endpoint) = std::env::var("CODECODER_ENDPOINT") {
-            self.codecoder.endpoint = endpoint;
+            if let Ok(url) = url::Url::parse(&endpoint) {
+                if let Some(host) = url.host_str() {
+                    self.codecoder.host = host.to_string();
+                }
+                if let Some(port) = url.port() {
+                    self.codecoder.port = port;
+                }
+            }
         }
 
         // Log level override
@@ -168,6 +184,9 @@ impl Config {
 
         // Apply API key env fallbacks
         self.api_keys = self.api_keys.with_env_fallback();
+
+        // Apply legacy endpoint field if present in config
+        self.codecoder.apply_legacy_endpoint();
     }
 
     /// Save configuration to the default path.
@@ -183,6 +202,54 @@ impl Config {
         let content = serde_json::to_string_pretty(self)?;
         fs::write(&path, content)
             .with_context(|| format!("Failed to write config to {}", path.display()))
+    }
+
+    // =========================================================================
+    // Endpoint convenience methods
+    // =========================================================================
+
+    /// Get the CodeCoder service endpoint URL.
+    ///
+    /// Returns the full HTTP URL constructed from codecoder.host and codecoder.port.
+    /// Example: "http://127.0.0.1:4400"
+    pub fn codecoder_endpoint(&self) -> String {
+        self.codecoder.endpoint()
+    }
+
+    /// Get the Gateway service endpoint URL.
+    ///
+    /// Returns the full HTTP URL constructed from gateway.host and gateway.port.
+    /// Example: "http://127.0.0.1:4430"
+    pub fn gateway_endpoint(&self) -> String {
+        format!("http://{}:{}", self.gateway.host, self.gateway.port)
+    }
+
+    /// Get the Channels service endpoint URL.
+    ///
+    /// Returns the full HTTP URL constructed from channels.host and channels.port.
+    /// Example: "http://127.0.0.1:4431"
+    pub fn channels_endpoint(&self) -> String {
+        format!("http://{}:{}", self.channels.host, self.channels.port)
+    }
+
+    /// Get the Workflow service endpoint URL.
+    ///
+    /// Returns the full HTTP URL constructed from workflow.host and workflow.port.
+    /// Example: "http://127.0.0.1:4432"
+    pub fn workflow_endpoint(&self) -> String {
+        format!("http://{}:{}", self.workflow.host, self.workflow.port)
+    }
+
+    /// Get the Trading service endpoint URL.
+    ///
+    /// Returns the full HTTP URL constructed from trading.host and trading.port.
+    /// If trading config is not set, returns default endpoint.
+    /// Example: "http://127.0.0.1:4434"
+    pub fn trading_endpoint(&self) -> String {
+        match &self.trading {
+            Some(t) => format!("http://{}:{}", t.host, t.port),
+            None => format!("http://{}:{}", default_gateway_host(), default_trading_port()),
+        }
     }
 }
 
@@ -229,13 +296,15 @@ pub struct GatewayConfig {
     #[serde(default = "default_rate_limit")]
     pub rate_limit_rpm: u32,
 
-    /// `CodeCoder` API endpoint to proxy to
-    #[serde(default = "default_codecoder_endpoint")]
-    pub codecoder_endpoint: String,
-
     /// Tunnel configuration for external access
     #[serde(default)]
     pub tunnel: TunnelConfig,
+
+    /// DEPRECATED: Legacy codecoder_endpoint field for backward compatibility.
+    /// Use Config::codecoder_endpoint() instead. This field is ignored.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    codecoder_endpoint: Option<String>,
 }
 
 impl Default for GatewayConfig {
@@ -251,8 +320,8 @@ impl Default for GatewayConfig {
             token_expiry_secs: default_token_expiry(),
             rate_limiting: true,
             rate_limit_rpm: default_rate_limit(),
-            codecoder_endpoint: default_codecoder_endpoint(),
             tunnel: TunnelConfig::default(),
+            codecoder_endpoint: None,
         }
     }
 }
@@ -323,6 +392,16 @@ pub struct ChannelsConfig {
     /// Asset capture configuration (for capturing and saving content to Feishu Docs/Notion)
     #[serde(default)]
     pub capture: Option<CaptureConfig>,
+
+    /// Enable streaming progress feedback for IM channels (default: true)
+    /// When enabled, users receive real-time progress updates as tasks execute
+    #[serde(default = "default_streaming_enabled")]
+    pub streaming_enabled: bool,
+
+    /// Throttle interval for progress updates in milliseconds (default: 1000ms)
+    /// Prevents excessive message edits that could hit rate limits
+    #[serde(default = "default_progress_throttle_ms")]
+    pub progress_throttle_ms: u64,
 }
 
 impl Default for ChannelsConfig {
@@ -344,6 +423,8 @@ impl Default for ChannelsConfig {
             tts: None,
             stt: None,
             capture: None,
+            streaming_enabled: default_streaming_enabled(),
+            progress_throttle_ms: default_progress_throttle_ms(),
         }
     }
 }
@@ -357,6 +438,9 @@ pub struct TelegramConfig {
     pub allowed_users: Vec<String>,
     #[serde(default)]
     pub allowed_chats: Vec<i64>,
+    /// Trading notification chat ID (auto-filled when user sends /bind_trading)
+    #[serde(default)]
+    pub trading_chat_id: Option<String>,
 }
 
 /// Discord channel configuration.
@@ -859,21 +943,54 @@ pub struct CodeCoderConfig {
     #[serde(default = "default_true")]
     pub enabled: bool,
 
-    /// `CodeCoder` API endpoint
-    #[serde(default = "default_codecoder_endpoint")]
-    pub endpoint: String,
+    /// CodeCoder HTTP port
+    #[serde(default = "default_codecoder_port")]
+    pub port: u16,
+
+    /// CodeCoder HTTP host
+    #[serde(default = "default_codecoder_host")]
+    pub host: String,
 
     /// API timeout in seconds
     #[serde(default = "default_timeout")]
     pub timeout_secs: u64,
+
+    /// Legacy endpoint field for backward compatibility (deprecated)
+    /// If set, will be parsed to extract host/port. Prefer using host/port directly.
+    #[serde(default, skip_serializing)]
+    endpoint: Option<String>,
 }
 
 impl Default for CodeCoderConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            endpoint: default_codecoder_endpoint(),
+            port: default_codecoder_port(),
+            host: default_codecoder_host(),
             timeout_secs: default_timeout(),
+            endpoint: None,
+        }
+    }
+}
+
+impl CodeCoderConfig {
+    /// Get the full endpoint URL.
+    pub fn endpoint(&self) -> String {
+        format!("http://{}:{}", self.host, self.port)
+    }
+
+    /// Apply legacy endpoint field if present, extracting host/port from it.
+    /// This provides backward compatibility with old config files.
+    pub fn apply_legacy_endpoint(&mut self) {
+        if let Some(ref endpoint) = self.endpoint {
+            if let Ok(url) = url::Url::parse(endpoint) {
+                if let Some(host) = url.host_str() {
+                    self.host = host.to_string();
+                }
+                if let Some(port) = url.port() {
+                    self.port = port;
+                }
+            }
         }
     }
 }
@@ -1335,11 +1452,14 @@ fn default_token_expiry() -> u64 {
 fn default_rate_limit() -> u32 {
     60
 }
-fn default_codecoder_endpoint() -> String {
-    "http://127.0.0.1:4400".into()
+fn default_codecoder_port() -> u16 {
+    4400 // CodeCoder API server port
+}
+fn default_codecoder_host() -> String {
+    "127.0.0.1".into()
 }
 fn default_timeout() -> u64 {
-    300 // 5 minutes
+    1800 // 30 minutes - LLM tasks can run long
 }
 fn default_log_level() -> String {
     "info".into()
@@ -1378,6 +1498,14 @@ fn default_imap_folder() -> String {
 
 fn default_email_poll_interval() -> u64 {
     60
+}
+
+fn default_streaming_enabled() -> bool {
+    true
+}
+
+fn default_progress_throttle_ms() -> u64 {
+    1000 // 1 second
 }
 
 fn default_provider() -> String {
@@ -1586,10 +1714,6 @@ pub struct HitLConfig {
     #[serde(default)]
     pub default_approvers: Vec<String>,
 
-    /// Channels service endpoint
-    #[serde(default = "default_channels_endpoint")]
-    pub channels_endpoint: String,
-
     /// Base URL for callbacks
     #[serde(default)]
     pub callback_base_url: String,
@@ -1597,6 +1721,12 @@ pub struct HitLConfig {
     /// Database path for HitL store
     #[serde(default = "default_hitl_db_path")]
     pub db_path: String,
+
+    /// DEPRECATED: Legacy channels_endpoint field for backward compatibility.
+    /// Use Config::channels_endpoint() instead. This field is ignored.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    channels_endpoint: Option<String>,
 }
 
 impl Default for HitLConfig {
@@ -1604,19 +1734,15 @@ impl Default for HitLConfig {
         Self {
             enabled: default_hitl_enabled(),
             default_approvers: vec![],
-            channels_endpoint: default_channels_endpoint(),
             callback_base_url: String::new(),
             db_path: default_hitl_db_path(),
+            channels_endpoint: None,
         }
     }
 }
 
 fn default_hitl_enabled() -> bool {
     true
-}
-
-fn default_channels_endpoint() -> String {
-    "http://localhost:4431".into()
 }
 
 fn default_hitl_db_path() -> String {
@@ -1724,13 +1850,9 @@ pub struct TradingConfig {
     #[serde(default = "default_gateway_host")]
     pub host: String,
 
-    /// Tushare Pro API token for A-share data
+    /// 理杏仁 (Lixinger) API token for A-share data
     #[serde(default)]
-    pub tushare_token: Option<String>,
-
-    /// Futu OpenAPI configuration
-    #[serde(default)]
-    pub futu: Option<FutuConfig>,
+    pub lixin_token: Option<String>,
 
     /// SMT pairs for divergence detection
     #[serde(default)]
@@ -1784,10 +1906,6 @@ pub struct TradingConfig {
     #[serde(default)]
     pub macro_filter_enabled: Option<bool>,
 
-    /// Workflow service endpoint for macro data
-    #[serde(default)]
-    pub workflow_endpoint: Option<String>,
-
     /// Macro data cache duration in seconds
     #[serde(default)]
     pub macro_cache_secs: Option<u64>,
@@ -1799,6 +1917,24 @@ pub struct TradingConfig {
     /// Macro agent configuration for intelligent analysis
     #[serde(default)]
     pub macro_agent: Option<MacroAgentConfig>,
+
+    /// Trading loop configuration
+    #[serde(default)]
+    pub loop_config: Option<TradingLoopConfig>,
+
+    /// Session schedule configuration
+    #[serde(default)]
+    pub schedule: Option<TradingScheduleConfig>,
+
+    /// Multi-data-source configuration for market data
+    #[serde(default)]
+    pub data_sources: Option<DataSourcesConfig>,
+
+    /// DEPRECATED: Legacy workflow_endpoint field for backward compatibility.
+    /// Use Config::workflow_endpoint() instead. This field is ignored.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    workflow_endpoint: Option<String>,
 }
 
 impl Default for TradingConfig {
@@ -1806,8 +1942,7 @@ impl Default for TradingConfig {
         Self {
             port: default_trading_port(),
             host: default_gateway_host(),
-            tushare_token: None,
-            futu: None,
+            lixin_token: None,
             smt_pairs: None,
             timeframes: None,
             min_accumulation_bars: None,
@@ -1821,29 +1956,104 @@ impl Default for TradingConfig {
             auto_execute: None,
             paper_trading: Some(true),
             macro_filter_enabled: None,
-            workflow_endpoint: None,
             macro_cache_secs: None,
             telegram_notification: None,
             macro_agent: None,
+            loop_config: None,
+            schedule: None,
+            data_sources: None,
+            workflow_endpoint: None,
         }
     }
 }
 
-/// Futu OpenAPI configuration
+// ============================================================================
+// Data Sources Configuration
+// ============================================================================
+
+/// Configuration for multi-data-source market data aggregation.
+///
+/// Enables automatic failover between data providers (Ashare, Lixin)
+/// based on health status and priority.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FutuConfig {
-    /// OpenD gateway host
-    #[serde(default = "default_futu_host")]
-    pub host: String,
-    /// OpenD gateway port
-    #[serde(default = "default_futu_port")]
-    pub port: u16,
-    /// Trading password (encrypted)
+pub struct DataSourcesConfig {
+    /// List of data source configurations
     #[serde(default)]
-    pub trading_password: Option<String>,
-    /// Enable real trading (vs paper trading)
+    pub sources: Vec<DataSourceEntry>,
+
+    /// Health check interval in seconds (default: 30)
+    #[serde(default = "default_health_check_interval")]
+    pub health_check_interval_secs: u64,
+
+    /// Number of consecutive failures before marking provider unhealthy (default: 3)
+    #[serde(default = "default_unhealthy_threshold")]
+    pub unhealthy_threshold: u32,
+
+    /// Maximum retries per provider before failover (default: 2)
+    #[serde(default = "default_data_source_retries")]
+    pub max_retries: u32,
+
+    /// Health check timeout in seconds (default: 10)
+    #[serde(default = "default_health_check_timeout")]
+    pub health_check_timeout_secs: u64,
+}
+
+impl Default for DataSourcesConfig {
+    fn default() -> Self {
+        Self {
+            sources: vec![
+                DataSourceEntry {
+                    provider: "ashare".to_string(),
+                    enabled: true,
+                    priority: 1,
+                    config: None,
+                },
+            ],
+            health_check_interval_secs: default_health_check_interval(),
+            unhealthy_threshold: default_unhealthy_threshold(),
+            max_retries: default_data_source_retries(),
+            health_check_timeout_secs: default_health_check_timeout(),
+        }
+    }
+}
+
+/// Configuration for a single data source provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataSourceEntry {
+    /// Provider name: "ashare", "lixin"
+    pub provider: String,
+
+    /// Whether this provider is enabled
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Priority (lower = higher priority, 1 is highest)
+    #[serde(default = "default_data_source_priority")]
+    pub priority: u8,
+
+    /// Provider-specific configuration (e.g., API key)
     #[serde(default)]
-    pub real_trading: bool,
+    pub config: Option<std::collections::HashMap<String, serde_json::Value>>,
+}
+
+fn default_health_check_interval() -> u64 {
+    30
+}
+
+fn default_unhealthy_threshold() -> u32 {
+    3
+}
+
+fn default_data_source_retries() -> u32 {
+    2
+}
+
+fn default_health_check_timeout() -> u64 {
+    10
+}
+
+fn default_data_source_priority() -> u8 {
+    10
 }
 
 /// SMT pair configuration
@@ -1869,9 +2079,6 @@ pub struct TradingNotificationConfig {
     /// Telegram chat ID for notifications
     #[serde(default)]
     pub telegram_chat_id: Option<String>,
-    /// Zero-channels service endpoint
-    #[serde(default = "default_channels_endpoint")]
-    pub channels_endpoint: String,
     /// Channel type (telegram, feishu, wecom, etc.)
     #[serde(default = "default_channel_type")]
     pub channel_type: String,
@@ -1887,6 +2094,12 @@ pub struct TradingNotificationConfig {
     /// Notify on position changes
     #[serde(default = "default_true")]
     pub notify_positions: bool,
+
+    /// DEPRECATED: Legacy channels_endpoint field for backward compatibility.
+    /// Use Config::channels_endpoint() instead. This field is ignored.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    channels_endpoint: Option<String>,
 }
 
 /// Macro agent configuration for intelligent analysis.
@@ -1898,10 +2111,6 @@ pub struct MacroAgentConfig {
     /// Enable macro agent integration
     #[serde(default = "default_true")]
     pub enabled: bool,
-
-    /// CodeCoder API endpoint for agent calls
-    #[serde(default = "default_codecoder_endpoint")]
-    pub codecoder_endpoint: String,
 
     /// Request timeout in seconds
     #[serde(default = "default_macro_agent_timeout")]
@@ -1926,19 +2135,25 @@ pub struct MacroAgentConfig {
     /// Monthly report cron expression (default: 1st day 9 AM)
     #[serde(default)]
     pub monthly_report_cron: Option<String>,
+
+    /// DEPRECATED: Legacy codecoder_endpoint field for backward compatibility.
+    /// Use Config::codecoder_endpoint() instead. This field is ignored.
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    codecoder_endpoint: Option<String>,
 }
 
 impl Default for MacroAgentConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            codecoder_endpoint: default_codecoder_endpoint(),
             timeout_secs: default_macro_agent_timeout(),
             cache_duration_secs: default_macro_agent_cache(),
             weekly_report_enabled: true,
             weekly_report_cron: None,
             monthly_report_enabled: true,
             monthly_report_cron: None,
+            codecoder_endpoint: None,
         }
     }
 }
@@ -1963,16 +2178,122 @@ fn default_retry_count() -> u32 {
     3
 }
 
-fn default_futu_host() -> String {
-    "127.0.0.1".into()
-}
-
-fn default_futu_port() -> u16 {
-    11111 // Default Futu OpenD port
-}
-
 fn default_paper_trading() -> Option<bool> {
     Some(true)
+}
+
+/// Trading loop configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingLoopConfig {
+    /// Main loop interval in seconds (for signal scanning)
+    #[serde(default = "default_loop_interval")]
+    pub interval_secs: u64,
+
+    /// Price check interval in seconds (for stop-loss/take-profit)
+    #[serde(default = "default_price_check_interval")]
+    pub price_check_interval_secs: u64,
+
+    /// Enable automatic order execution
+    #[serde(default)]
+    pub auto_execute: bool,
+}
+
+impl Default for TradingLoopConfig {
+    fn default() -> Self {
+        Self {
+            interval_secs: default_loop_interval(),
+            price_check_interval_secs: default_price_check_interval(),
+            auto_execute: false,
+        }
+    }
+}
+
+fn default_loop_interval() -> u64 {
+    5 // 5 seconds for signal scanning
+}
+
+fn default_price_check_interval() -> u64 {
+    1 // 1 second for price checking
+}
+
+/// Trading schedule configuration for automated session lifecycle
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingScheduleConfig {
+    /// Enable scheduled session control
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Session start cron expression (default: 9:25 on weekdays after auction)
+    #[serde(default = "default_session_start_cron")]
+    pub session_start: String,
+
+    /// Session pause cron expression (default: 11:30 lunch break)
+    #[serde(default = "default_session_pause_cron")]
+    pub session_pause: String,
+
+    /// Session resume cron expression (default: 13:00 afternoon)
+    #[serde(default = "default_session_resume_cron")]
+    pub session_resume: String,
+
+    /// Session stop cron expression (default: 15:00 market close)
+    #[serde(default = "default_session_stop_cron")]
+    pub session_stop: String,
+
+    /// Daily review cron expression (default: 15:30 after market)
+    #[serde(default = "default_daily_review_cron")]
+    pub daily_review: String,
+
+    /// Auto-start session on schedule
+    #[serde(default = "default_true")]
+    pub auto_start: bool,
+
+    /// Persist state across restarts
+    #[serde(default = "default_true")]
+    pub persist_state: bool,
+
+    /// Default trading mode (paper or live)
+    #[serde(default = "default_trading_mode")]
+    pub default_mode: String,
+}
+
+impl Default for TradingScheduleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            session_start: default_session_start_cron(),
+            session_pause: default_session_pause_cron(),
+            session_resume: default_session_resume_cron(),
+            session_stop: default_session_stop_cron(),
+            daily_review: default_daily_review_cron(),
+            auto_start: true,
+            persist_state: true,
+            default_mode: default_trading_mode(),
+        }
+    }
+}
+
+fn default_session_start_cron() -> String {
+    "0 25 9 * * 1-5".to_string() // 9:25 on weekdays
+}
+
+fn default_session_pause_cron() -> String {
+    "0 30 11 * * 1-5".to_string() // 11:30 on weekdays
+}
+
+fn default_session_resume_cron() -> String {
+    "0 0 13 * * 1-5".to_string() // 13:00 on weekdays
+}
+
+fn default_session_stop_cron() -> String {
+    "0 0 15 * * 1-5".to_string() // 15:00 on weekdays
+}
+
+fn default_daily_review_cron() -> String {
+    "0 30 15 * * 1-5".to_string() // 15:30 on weekdays
+}
+
+fn default_trading_mode() -> String {
+    "paper".to_string()
 }
 
 #[cfg(test)]
@@ -2430,7 +2751,6 @@ mod tests {
         let hitl = HitLConfig::default();
         assert!(hitl.enabled);
         assert!(hitl.default_approvers.is_empty());
-        assert_eq!(hitl.channels_endpoint, "http://localhost:4431");
         assert!(hitl.callback_base_url.is_empty());
         assert_eq!(hitl.db_path, "~/.codecoder/hitl.db");
     }
@@ -2450,7 +2770,7 @@ mod tests {
 
         assert!(config.hitl.enabled);
         assert_eq!(config.hitl.default_approvers, vec!["user1", "user2"]);
-        assert_eq!(config.hitl.channels_endpoint, "http://channels.local:4431");
+        // Note: channels_endpoint is now deprecated; use config.channels_endpoint() instead
         assert_eq!(config.hitl.callback_base_url, "https://api.example.com");
         assert_eq!(config.hitl.db_path, "/var/lib/hitl/store.db");
     }
@@ -2469,7 +2789,6 @@ mod tests {
         assert!(!config.hitl.enabled);
         assert_eq!(config.hitl.default_approvers, vec!["admin"]);
         // These should use defaults
-        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
         assert!(config.hitl.callback_base_url.is_empty());
         assert_eq!(config.hitl.db_path, "~/.codecoder/hitl.db");
     }
@@ -2482,7 +2801,6 @@ mod tests {
 
         assert!(config.hitl.enabled);
         assert!(config.hitl.default_approvers.is_empty());
-        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
     }
 
     #[test]
@@ -2494,7 +2812,6 @@ mod tests {
         // HitL should use all defaults
         assert!(config.hitl.enabled);
         assert!(config.hitl.default_approvers.is_empty());
-        assert_eq!(config.hitl.channels_endpoint, "http://localhost:4431");
         assert_eq!(config.hitl.db_path, "~/.codecoder/hitl.db");
     }
 

@@ -8,16 +8,21 @@
 mod position;
 mod order;
 mod t1_risk;
+mod executor;
 
 pub use position::Position;
-pub use order::{Order, OrderStatus, OrderType};
+pub use order::{Order, OrderStatus, OrderType, OrderSide};
 pub use t1_risk::{T1RiskManager, T1Decision};
+pub use executor::{
+    TradingExecutor, PaperExecutor, AccountInfo,
+    ExecutionRequest, ExecutionResult, ExecutionSide, ExecutionStatus,
+    create_executor,
+};
 
 use anyhow::Result;
-use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
+use chrono::{Local, NaiveDate, NaiveTime};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::RwLock;
 use zero_common::config::Config;
 
 use crate::strategy::TradingSignal;
@@ -351,33 +356,6 @@ impl ExecutionEngine {
             "Order sent to broker queue"
         );
         Ok(())
-    }
-
-    /// Execute order via broker
-    pub async fn execute_via_broker(
-        &mut self,
-        broker: &dyn crate::broker::Broker,
-        order: &Order,
-    ) -> Result<crate::broker::OrderResult> {
-        use crate::execution::order::OrderSide;
-
-        let price = order.price.unwrap_or(0.0);
-        let result = match order.side {
-            OrderSide::Buy => {
-                broker.place_buy_order(&order.symbol, order.quantity, price).await?
-            }
-            OrderSide::Sell => {
-                broker.place_sell_order(&order.symbol, order.quantity, price).await?
-            }
-        };
-
-        // Update order status based on broker result
-        if let Some(existing_order) = self.orders.get_mut(&order.id) {
-            existing_order.status = result.status.clone();
-            existing_order.broker_order_id = Some(result.broker_order_id.clone());
-        }
-
-        Ok(result)
     }
 }
 

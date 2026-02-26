@@ -20,21 +20,21 @@ fn create_test_app(temp_dir: &TempDir) -> axum::Router {
     // Set up environment for the test
     std::env::set_var("JWT_SECRET", "test-secret-key-for-integration-tests!");
 
+    // Create default gateway config and override public fields
+    let mut gateway = GatewayConfig::default();
+    gateway.port = 4430;
+    gateway.host = "127.0.0.1".to_string();
+    gateway.auth_mode = "jwt".to_string(); // Use JWT mode for tests
+    gateway.require_pairing = false;
+    gateway.paired_tokens = vec![];
+    gateway.allow_public_bind = false;
+    gateway.jwt_secret = Some("test-secret-key-for-integration-tests!".to_string());
+    gateway.token_expiry_secs = 3600;
+    gateway.rate_limiting = false;
+    gateway.rate_limit_rpm = 60;
+
     let config = Config {
-        gateway: GatewayConfig {
-            port: 4430,
-            host: "127.0.0.1".to_string(),
-            auth_mode: "jwt".to_string(), // Use JWT mode for tests
-            require_pairing: false,
-            paired_tokens: vec![],
-            allow_public_bind: false,
-            jwt_secret: Some("test-secret-key-for-integration-tests!".to_string()),
-            token_expiry_secs: 3600,
-            rate_limiting: false,
-            rate_limit_rpm: 60,
-            codecoder_endpoint: "http://127.0.0.1:4400".to_string(),
-            tunnel: Default::default(),
-        },
+        gateway,
         ..Default::default()
     };
 

@@ -60,6 +60,12 @@ regex = { workspace = true }
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 
+# SSE (Server-Sent Events) client for streaming task events
+eventsource-client = "0.13"
+
+# Thread-safe concurrent HashMap for progress message tracking
+dashmap = "5.5"
+
 # Time
 chrono = { workspace = true }
 

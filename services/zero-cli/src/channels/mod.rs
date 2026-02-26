@@ -562,6 +562,7 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
             bot_token: tg.bot_token.clone(),
             allowed_users: tg.allowed_users.clone(),
             allowed_chats: vec![],
+            trading_chat_id: None,
         });
     }
 
@@ -597,8 +598,15 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
         });
     }
 
-    // Map CodeCoder endpoint
-    common_cfg.codecoder.endpoint = config.codecoder.endpoint.clone();
+    // Map CodeCoder endpoint - parse URL to extract host and port
+    if let Ok(url) = url::Url::parse(&config.codecoder.endpoint) {
+        if let Some(host) = url.host_str() {
+            common_cfg.codecoder.host = host.to_string();
+        }
+        if let Some(port) = url.port() {
+            common_cfg.codecoder.port = port;
+        }
+    }
 
     common_cfg
 }

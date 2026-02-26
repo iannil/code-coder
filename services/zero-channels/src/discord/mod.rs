@@ -318,6 +318,15 @@ impl Channel for DiscordChannel {
                     let channel_id = d.get("channel_id").and_then(|c| c.as_str()).unwrap_or("").to_string();
                     let message_id = d.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string();
 
+                    tracing::info!(
+                        channel = "discord",
+                        user_id = %author_id,
+                        chat_id = %channel_id,
+                        message_type = "text",
+                        text = %content,
+                        "IM message received"
+                    );
+
                     let channel_msg = ChannelMessage {
                         id: message_id,
                         channel_type: ChannelType::Discord,

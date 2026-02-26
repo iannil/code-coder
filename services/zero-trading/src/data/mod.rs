@@ -1,14 +1,27 @@
 //! Market data module for A-shares.
 //!
 //! Provides data fetching, caching, and aggregation for multiple timeframes.
+//! Supports multiple data providers with automatic failover.
+//!
+//! # Data Sources
+//! - **Ashare** (Primary): Free eastmoney API, no rate limits
+//! - **Lixin** (Backup): 理杏仁 API, requires token, high-quality data
 
-mod tushare;
 mod cache;
 mod aggregator;
+mod provider;
+mod health;
+mod router;
+mod ashare;
+mod lixin;
 
-pub use tushare::TushareAdapter;
 pub use cache::DataCache;
 pub use aggregator::MarketDataAggregator;
+pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo};
+pub use health::{HealthMonitor, HealthMonitorConfig, ProviderHealth};
+pub use router::{DataProviderRouter, RouterConfig};
+pub use ashare::AshareAdapter;
+pub use lixin::LixinAdapter;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
@@ -55,15 +68,15 @@ impl Timeframe {
         }
     }
 
-    /// Convert to Tushare frequency string
-    pub fn to_tushare_freq(&self) -> &'static str {
+    /// Convert to API frequency string (for data providers)
+    pub fn to_api_freq(&self) -> &'static str {
         match self {
             Self::M1 => "1min",
             Self::M5 => "5min",
             Self::M15 => "15min",
             Self::M30 => "30min",
             Self::H1 => "60min",
-            Self::H4 => "240min", // Tushare doesn't have native 4H, use 240min
+            Self::H4 => "240min",
             Self::Daily => "D",
             Self::Weekly => "W",
         }
@@ -308,10 +321,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_timeframe_to_tushare() {
-        assert_eq!(Timeframe::Daily.to_tushare_freq(), "D");
-        assert_eq!(Timeframe::H1.to_tushare_freq(), "60min");
-        assert_eq!(Timeframe::H4.to_tushare_freq(), "240min");
+    fn test_timeframe_to_api_freq() {
+        assert_eq!(Timeframe::Daily.to_api_freq(), "D");
+        assert_eq!(Timeframe::H1.to_api_freq(), "60min");
+        assert_eq!(Timeframe::H4.to_api_freq(), "240min");
     }
 
     #[test]

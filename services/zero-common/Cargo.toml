@@ -50,6 +50,9 @@ async-trait = { workspace = true }
 # HTTP types
 http = { workspace = true }
 
+# URL parsing
+url = { workspace = true }
+
 # Time
 chrono = { workspace = true }
 cron = { workspace = true }

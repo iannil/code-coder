@@ -79,6 +79,9 @@ base64 = "0.22"
 # Regex for Telegram Markdown conversion
 regex = "1.11"
 
+# URL parsing
+url = { workspace = true }
+
 # Async traits
 async-trait = "0.1"
 

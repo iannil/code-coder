@@ -216,6 +216,15 @@ impl Channel for SlackChannel {
 
                     last_ts = ts.to_string();
 
+                    tracing::info!(
+                        channel = "slack",
+                        user_id = %user,
+                        chat_id = %channel_id,
+                        message_type = "text",
+                        text = %text,
+                        "IM message received"
+                    );
+
                     let channel_msg = ChannelMessage {
                         id: ts.to_string(),
                         channel_type: ChannelType::Slack,
