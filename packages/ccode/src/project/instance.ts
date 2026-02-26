@@ -34,6 +34,15 @@ export function getProjectIDForStorage(sessionId?: string): string {
 }
 
 export const Instance = {
+  /**
+   * Reset instance cache - used for test isolation.
+   * This clears cached instances without disposing them,
+   * appropriate for tests that need a clean slate.
+   */
+  reset() {
+    cache.clear()
+    Log.Default.debug("instance cache reset")
+  },
   async provide<R>(input: { directory: string; init?: () => Promise<any>; fn: () => R }): Promise<R> {
     let existing = cache.get(input.directory)
     if (!existing) {

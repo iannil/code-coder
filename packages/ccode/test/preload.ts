@@ -51,7 +51,9 @@ delete process.env["SAMBANOVA_API_KEY"]
 // Now safe to import from src/
 const { Log } = await import("../src/util/log")
 const { State } = await import("../src/project/state")
-const { resetAllLazy } = await import("@codecoder-ai/util/lazy")
+const { Instance } = await import("../src/project/instance")
+// Note: resetAllLazy() can cause initialization order issues
+// const { resetAllLazy } = await import("@codecoder-ai/util/lazy")
 
 Log.init({
   print: true,
@@ -61,8 +63,8 @@ Log.init({
 
 // Reset state before each test to ensure test isolation
 // This clears all cached singleton state from Instance.state() calls
-// and lazy() singletons
 beforeEach(() => {
   State.reset()
-  resetAllLazy()
+  Instance.reset()
+  // resetAllLazy() - disabled: can cause re-initialization issues
 })
