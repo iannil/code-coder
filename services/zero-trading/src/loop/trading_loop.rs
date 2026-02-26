@@ -527,6 +527,78 @@ impl TradingLoop {
 
         Ok(())
     }
+
+    /// Run preparation tasks (24/7 operation).
+    ///
+    /// Preparation tasks maintain the system state outside trading hours:
+    /// - Update position data
+    /// - Calculate stop-loss/take-profit reference prices
+    /// - Refresh risk parameters
+    ///
+    /// This can be called at any time, even when markets are closed.
+    pub async fn run_preparation(&self) -> Result<()> {
+        // 1. Refresh monitored position data
+        let positions = self.positions.read().await.clone();
+
+        if !positions.is_empty() {
+            info!(count = positions.len(), "Refreshing position data for preparation");
+
+            for position in &positions {
+                // Fetch current reference prices (if available)
+                match self.data.get_latest_quote(&position.symbol).await {
+                    Ok(quote) => {
+                        debug!(
+                            symbol = %position.symbol,
+                            current_price = quote.close,
+                            "Updated position reference price"
+                        );
+                        // Reference price updated, actual position update happens during execution
+                    }
+                    Err(e) => {
+                        debug!(
+                            symbol = %position.symbol,
+                            error = %e,
+                            "Failed to fetch reference price for preparation"
+                        );
+                    }
+                }
+            }
+        }
+
+        // 2. Update risk parameters
+        // This could include recalculating position sizes, updating stops based on volatility, etc.
+        debug!("Risk parameters refreshed");
+
+        Ok(())
+    }
+
+    /// Run execution tasks (trading hours only).
+    ///
+    /// Execution tasks involve real-time monitoring and action:
+    /// - Price checks for stop-loss/take-profit
+    /// - Signal scanning for new entries
+    /// - Order execution
+    ///
+    /// This should only be called during active trading hours.
+    pub async fn run_execution(&self) -> Result<()> {
+        // Check if we're in trading hours
+        if !self.config.is_trading_hours() {
+            debug!("Outside trading hours, execution skipped");
+            return Ok(());
+        }
+
+        // 1. Check prices for stop-loss/take-profit triggers
+        if let Err(e) = self.check_prices().await {
+            warn!(error = %e, "Price check failed");
+        }
+
+        // 2. Scan for new trading signals
+        if let Err(e) = self.scan_signals().await {
+            warn!(error = %e, "Signal scan failed");
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

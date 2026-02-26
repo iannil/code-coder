@@ -36,6 +36,8 @@ pub struct ProviderHealth {
     pub total_checks: u64,
     /// Total successful checks
     pub successful_checks: u64,
+    /// When the provider can be retried after rate limiting (if applicable)
+    pub rate_limit_until: Option<DateTime<Utc>>,
 }
 
 impl ProviderHealth {
@@ -50,6 +52,7 @@ impl ProviderHealth {
             last_error: None,
             total_checks: 0,
             successful_checks: 0,
+            rate_limit_until: None,
         }
     }
 
@@ -83,6 +86,32 @@ impl ProviderHealth {
             }
             self.healthy = false;
         }
+    }
+
+    /// Record that the provider is rate limited
+    ///
+    /// Sets the cooldown period until the provider can be retried.
+    pub fn record_rate_limited(&mut self, retry_after_secs: u64) {
+        self.rate_limit_until = Some(Utc::now() + chrono::Duration::seconds(retry_after_secs as i64));
+        self.last_error = Some(format!("Rate limited, retry after {} seconds", retry_after_secs));
+        self.last_check = Some(Utc::now());
+    }
+
+    /// Check if the provider is currently in rate limit cooldown
+    pub fn is_rate_limited(&self) -> bool {
+        if let Some(until) = self.rate_limit_until {
+            Utc::now() < until
+        } else {
+            false
+        }
+    }
+
+    /// Get remaining seconds until rate limit cooldown expires
+    pub fn rate_limit_remaining_secs(&self) -> Option<i64> {
+        self.rate_limit_until.map(|until| {
+            let remaining = until.signed_duration_since(Utc::now()).num_seconds();
+            remaining.max(0) // Return 0 if already expired
+        })
     }
 
     /// Get success rate as percentage
@@ -210,6 +239,28 @@ impl HealthMonitor {
         if let Some(h) = health.get_mut(name) {
             h.record_failure(error, self.config.unhealthy_threshold);
         }
+    }
+
+    /// Record that a provider is rate limited
+    ///
+    /// Sets a cooldown period during which the provider should not be called.
+    pub async fn record_rate_limited(&self, name: &str, retry_after_secs: u64) {
+        let mut health = self.health.write().await;
+        if let Some(h) = health.get_mut(name) {
+            h.record_rate_limited(retry_after_secs);
+            warn!(
+                provider = name,
+                retry_after_secs,
+                "Provider rate limited, will retry after {} seconds",
+                retry_after_secs
+            );
+        }
+    }
+
+    /// Check if a provider is currently in rate limit cooldown
+    pub async fn is_rate_limited(&self, name: &str) -> bool {
+        let health = self.health.read().await;
+        health.get(name).map(|h| h.is_rate_limited()).unwrap_or(false)
     }
 
     /// Perform a health check on a single provider
@@ -438,5 +489,44 @@ mod tests {
         let healthy = monitor.healthy_providers().await;
         assert_eq!(healthy.len(), 1);
         assert!(healthy.contains(&"provider1".to_string()));
+    }
+
+    #[test]
+    fn test_provider_health_rate_limit() {
+        let mut health = ProviderHealth::new("test");
+
+        // Initially not rate limited
+        assert!(!health.is_rate_limited());
+        assert_eq!(health.rate_limit_remaining_secs(), None);
+
+        // Set rate limit
+        health.record_rate_limited(60);
+
+        // Now should be rate limited
+        assert!(health.is_rate_limited());
+        assert!(health.rate_limit_remaining_secs().is_some());
+        assert!(health.rate_limit_remaining_secs().unwrap() > 0);
+        assert!(health.rate_limit_remaining_secs().unwrap() <= 60);
+
+        // Verify error message is set
+        assert!(health.last_error.as_ref().unwrap().contains("Rate limited"));
+    }
+
+    #[tokio::test]
+    async fn test_health_monitor_rate_limit() {
+        let monitor = HealthMonitor::new();
+        monitor.register_provider("test").await;
+
+        // Record rate limit
+        monitor.record_rate_limited("test", 30).await;
+
+        // Check rate limited status
+        assert!(monitor.is_rate_limited("test").await);
+
+        // Verify health status reflects rate limit
+        let health = monitor.get_health("test").await.unwrap();
+        assert!(health.is_rate_limited());
+        assert!(health.rate_limit_remaining_secs().is_some());
+        assert!(health.rate_limit_remaining_secs().unwrap() <= 30);
     }
 }

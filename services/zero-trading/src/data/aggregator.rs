@@ -17,6 +17,7 @@ use super::lixin::LixinAdapter;
 use super::local_storage::{LocalStorage, LocalStorageConfig};
 use super::router::{DataProviderRouter, RouterConfig};
 use super::{Candle, DataCache, IndexData, IndexOverview, ProviderInfo, SmtPair, Timeframe};
+use super::default_tracked_symbols;
 use zero_common::config::Config;
 
 /// Market data aggregator with multi-provider support.
@@ -66,6 +67,14 @@ impl MarketDataAggregator {
             })
             .unwrap_or_else(super::default_smt_pairs);
 
+        // Get tracked symbols from config, or use default major indices
+        let tracked_symbols = config
+            .trading
+            .as_ref()
+            .and_then(|t| t.tracked_symbols.as_ref())
+            .cloned()
+            .unwrap_or_else(default_tracked_symbols);
+
         // Initialize local storage if enabled in config
         let local_storage = Self::create_local_storage(config);
 
@@ -75,7 +84,7 @@ impl MarketDataAggregator {
             local_storage,
             connected: AtomicBool::new(true), // Will be updated by health checks
             smt_pairs,
-            tracked_symbols: RwLock::new(Vec::new()),
+            tracked_symbols: RwLock::new(tracked_symbols),
             last_update: RwLock::new(None),
         }
     }
@@ -558,6 +567,58 @@ impl MarketDataAggregator {
     /// Get the underlying router for direct access
     pub fn router(&self) -> Arc<DataProviderRouter> {
         Arc::clone(&self.router)
+    }
+
+    /// Preload historical data for all tracked symbols (24/7 operation).
+    ///
+    /// This method is called by the preparation task runner to keep
+    /// cached data fresh, ensuring fast response during trading hours.
+    ///
+    /// # Returns
+    /// Number of symbols successfully preloaded.
+    pub async fn preload_historical_data(&self) -> Result<usize> {
+        let symbols = self.tracked_symbols.read().await.clone();
+
+        if symbols.is_empty() {
+            debug!("No tracked symbols to preload");
+            return Ok(0);
+        }
+
+        info!(count = symbols.len(), "Preloading historical data");
+
+        let mut success_count = 0;
+
+        for symbol in &symbols {
+            // Preload common timeframes used in analysis
+            for tf in [Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
+                match self.get_candles(symbol, tf, 200).await {
+                    Ok(_) => {
+                        debug!(
+                            symbol = %symbol,
+                            timeframe = ?tf,
+                            "Preloaded candle data"
+                        );
+                    }
+                    Err(e) => {
+                        debug!(
+                            symbol = %symbol,
+                            timeframe = ?tf,
+                            error = %e,
+                            "Failed to preload candle data"
+                        );
+                    }
+                }
+            }
+            success_count += 1;
+        }
+
+        info!(
+            total = symbols.len(),
+            success = success_count,
+            "Historical data preload completed"
+        );
+
+        Ok(success_count)
     }
 
     /// Stop background health checks

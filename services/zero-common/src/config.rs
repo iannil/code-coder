@@ -2536,6 +2536,56 @@ pub struct CustomTunnelConfig {
 // Trading Configuration
 // ============================================================================
 
+/// Configuration for preparation tasks that run 24/7.
+///
+/// These tasks run continuously to preload data and precompute values,
+/// ensuring the system is ready when trading hours begin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreparationTaskConfig {
+    /// Interval for data preloading in seconds (default: 300 = 5 minutes)
+    #[serde(default = "default_data_preload_interval")]
+    pub data_preload_interval_secs: u64,
+
+    /// Interval for parameter precomputation in seconds (default: 600 = 10 minutes)
+    #[serde(default = "default_parameter_precompute_interval")]
+    pub parameter_precompute_interval_secs: u64,
+
+    /// Interval for macro analysis updates in seconds (default: 3600 = 1 hour)
+    #[serde(default = "default_macro_analysis_interval")]
+    pub macro_analysis_interval_secs: u64,
+
+    /// Whether preparation tasks are enabled (default: true)
+    #[serde(default = "default_prep_enabled")]
+    pub enabled: bool,
+}
+
+fn default_data_preload_interval() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_parameter_precompute_interval() -> u64 {
+    600 // 10 minutes
+}
+
+fn default_macro_analysis_interval() -> u64 {
+    3600 // 1 hour
+}
+
+fn default_prep_enabled() -> bool {
+    true
+}
+
+impl Default for PreparationTaskConfig {
+    fn default() -> Self {
+        Self {
+            data_preload_interval_secs: default_data_preload_interval(),
+            parameter_precompute_interval_secs: default_parameter_precompute_interval(),
+            macro_analysis_interval_secs: default_macro_analysis_interval(),
+            enabled: default_prep_enabled(),
+        }
+    }
+}
+
 /// Trading service configuration for automated trading.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingConfig {
@@ -2563,6 +2613,10 @@ pub struct TradingConfig {
     /// SMT pairs for divergence detection
     #[serde(default)]
     pub smt_pairs: Option<Vec<SmtPairConfig>>,
+
+    /// Tracked symbols for market data updates (e.g., ["000001.SH", "000300.SH"])
+    #[serde(default)]
+    pub tracked_symbols: Option<Vec<String>>,
 
     /// Timeframes for multi-timeframe analysis (e.g., ["D", "H4", "H1"])
     #[serde(default)]
@@ -2642,6 +2696,13 @@ pub struct TradingConfig {
     #[serde(default)]
     pub local_storage: Option<LocalStorageConfig>,
 
+    /// Preparation task configuration (24/7 operation)
+    ///
+    /// Preparation tasks run continuously to preload data and precompute
+    /// indicators, ensuring the system is ready when trading hours begin.
+    #[serde(default)]
+    pub preparation_tasks: Option<PreparationTaskConfig>,
+
     /// Full market screener configuration (as JSON value to avoid circular dependency)
     /// The zero-trading service will parse this into ScreenerConfig
     #[serde(default)]
@@ -2663,6 +2724,7 @@ impl Default for TradingConfig {
             lixin_token: None,
             itick_api_key: None,
             smt_pairs: None,
+            tracked_symbols: None,
             timeframes: None,
             min_accumulation_bars: None,
             manipulation_threshold: None,
@@ -2682,6 +2744,7 @@ impl Default for TradingConfig {
             schedule: None,
             data_sources: None,
             local_storage: None,
+            preparation_tasks: None,
             screener: None,
             workflow_endpoint: None,
         }

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::economic_bridge::{EconomicDataBridge, IndicatorConfig, IndicatorType, DataSource};
 use crate::monitor_bridge::{MonitorBridge, MonitorReport, MonitorRunResult};
 use crate::scheduler::{Scheduler, TaskInfo};
 use crate::workflow::{ExecutionStatus, Workflow, WorkflowExecutor, WorkflowResult};
@@ -84,6 +85,217 @@ impl ApiResponse<()> {
             error: Some(msg.into()),
         }
     }
+}
+
+// ============================================================================
+// Economic Data Routes
+// ============================================================================
+
+/// Response for China economic data endpoint.
+/// This format is compatible with zero-trading's MacroFilter.
+#[derive(Debug, Serialize)]
+struct ChinaEconomicDataResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pmi: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub m2_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub social_financing: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpi_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ppi_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gdp_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub industrial_value_added: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fixed_asset_investment: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retail_sales: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub export_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub import_yoy: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lpr_1y: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mlf_rate: Option<f64>,
+}
+
+/// Get China economic data for zero-trading's macro filter.
+async fn get_china_economic_data(
+    State(state): State<Arc<WorkflowState>>,
+) -> Json<ApiResponse<ChinaEconomicDataResponse>> {
+    // Create a bridge for fetching data
+    let bridge = EconomicDataBridge::new(&state.codecoder_endpoint);
+
+    // Define indicators to fetch
+    let indicators = vec![
+        IndicatorConfig {
+            indicator: IndicatorType::Pmi,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::M2,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::SocialFinancing,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::Cpi,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::Ppi,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::Gdp,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::IndustrialProduction,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::FixedAssetInvestment,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::RetailSales,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::ExportYoy,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::ImportYoy,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::Lpr,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+        IndicatorConfig {
+            indicator: IndicatorType::MlfRate,
+            source: DataSource::NbsChina,
+            country: "CN".to_string(),
+            api_endpoint: None,
+            high_threshold: None,
+            low_threshold: None,
+            change_threshold: 5.0,
+        },
+    ];
+
+    // Fetch all indicators (ignore errors, use what we can get)
+    let mut response = ChinaEconomicDataResponse {
+        pmi: None,
+        m2_yoy: None,
+        social_financing: None,
+        cpi_yoy: None,
+        ppi_yoy: None,
+        gdp_yoy: None,
+        industrial_value_added: None,
+        fixed_asset_investment: None,
+        retail_sales: None,
+        export_yoy: None,
+        import_yoy: None,
+        lpr_1y: None,
+        mlf_rate: None,
+    };
+
+    for config in &indicators {
+        match bridge.fetch_indicator(config).await {
+            Ok(data) => {
+                // Map indicator to response field
+                match config.indicator {
+                    IndicatorType::Pmi => response.pmi = Some(data.value),
+                    IndicatorType::M2 => response.m2_yoy = data.yoy_change.or(Some(data.value)),
+                    IndicatorType::SocialFinancing => response.social_financing = Some(data.value),
+                    IndicatorType::Cpi => response.cpi_yoy = Some(data.value),
+                    IndicatorType::Ppi => response.ppi_yoy = Some(data.value),
+                    IndicatorType::Gdp => response.gdp_yoy = Some(data.value),
+                    IndicatorType::IndustrialProduction => response.industrial_value_added = Some(data.value),
+                    IndicatorType::FixedAssetInvestment => response.fixed_asset_investment = Some(data.value),
+                    IndicatorType::RetailSales => response.retail_sales = Some(data.value),
+                    IndicatorType::ExportYoy => response.export_yoy = Some(data.value),
+                    IndicatorType::ImportYoy => response.import_yoy = Some(data.value),
+                    IndicatorType::Lpr => response.lpr_1y = Some(data.value),
+                    IndicatorType::MlfRate => response.mlf_rate = Some(data.value),
+                    _ => {}
+                }
+            }
+            Err(e) => {
+                tracing::debug!(indicator = ?config.indicator, error = %e, "Failed to fetch indicator");
+            }
+        }
+    }
+
+    Json(ApiResponse::success(response))
 }
 
 // ============================================================================
@@ -607,6 +819,8 @@ pub fn build_router(state: Arc<WorkflowState>) -> Router {
         .route("/api/v1/executions/:id", get(get_execution))
         // Monitor endpoints
         .route("/api/v1/monitor/status", get(get_monitor_status))
+        // Economic data endpoints (for zero-trading)
+        .route("/api/v1/economic/china", get(get_china_economic_data))
         .route("/api/v1/monitor/reports", get(list_all_reports))
         .route("/api/v1/monitor/tasks", post(create_monitor_task))
         .route("/api/v1/monitor/:task_id/run", post(run_monitor_task))

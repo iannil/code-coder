@@ -271,8 +271,8 @@ impl EconomicDataBridge {
         Ok(alerts)
     }
 
-    /// Fetch a single indicator.
-    async fn fetch_indicator(&self, config: &IndicatorConfig) -> Result<EconomicDataPoint> {
+    /// Fetch a single indicator (public method).
+    pub async fn fetch_indicator(&self, config: &IndicatorConfig) -> Result<EconomicDataPoint> {
         match config.source {
             DataSource::Fred => self.fetch_from_fred(config).await,
             DataSource::AlphaVantage => self.fetch_from_alpha_vantage(config).await,

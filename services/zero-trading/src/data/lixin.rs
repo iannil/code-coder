@@ -210,8 +210,15 @@ impl LixinAdapter {
         }
 
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            // Try to parse Retry-After header
+            let retry_after = response
+                .headers()
+                .get("Retry-After")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
+
             return Err(ProviderError::RateLimited {
-                retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
+                retry_after_secs: retry_after.or(Some(RATE_LIMIT_RETRY_SECS)),
             });
         }
 

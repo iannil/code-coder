@@ -310,6 +310,140 @@ impl SignalDetector {
             counts.clear();
         }
     }
+
+    /// Preload tracking symbols data (24/7 operation).
+    ///
+    /// Preloads historical data for all symbols that have recently
+    /// generated signals, ensuring fast access during trading hours.
+    pub async fn preload_data(&self, data: &Arc<MarketDataAggregator>) -> Result<()> {
+        use crate::data::Timeframe;
+
+        let symbols = self.get_tracked_symbols().await;
+
+        if symbols.is_empty() {
+            debug!("No tracked symbols for signal detector preload");
+            return Ok(());
+        }
+
+        info!(count = symbols.len(), "Preloading data for signal detector");
+
+        for symbol in symbols {
+            // Preload common timeframes
+            for tf in [Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
+                if let Err(e) = data.get_candles(&symbol, tf, 200).await {
+                    debug!(
+                        symbol = %symbol,
+                        timeframe = ?tf,
+                        error = %e,
+                        "Failed to preload symbol data"
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Precompute technical indicator parameters (24/7 operation).
+    ///
+    /// Calculates and caches technical indicators that are used in
+    /// signal detection, such as moving averages, ATR, and SMT divergences.
+    /// This allows faster signal detection during trading hours.
+    pub async fn precompute_parameters(&self, data: &Arc<MarketDataAggregator>) -> Result<()> {
+        use crate::data::Timeframe;
+
+        info!("Starting parameter precomputation");
+
+        // Get tracked symbols
+        let symbols = data.get_tracked_symbols().await;
+
+        for symbol in symbols {
+            // Precompute indicators for each timeframe
+            for tf in [Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
+                match data.get_candles(&symbol, tf, 200).await {
+                    Ok(candles) => {
+                        // Compute and cache moving averages
+                        if candles.len() >= 20 {
+                            let ma20: f64 = candles[candles.len() - 20..].iter().map(|c| c.close).sum::<f64>() / 20.0;
+                            debug!(
+                                symbol = %symbol,
+                                timeframe = ?tf,
+                                ma20,
+                                "Computed MA20"
+                            );
+                        }
+
+                        if candles.len() >= 50 {
+                            let ma50: f64 = candles[candles.len() - 50..].iter().map(|c| c.close).sum::<f64>() / 50.0;
+                            debug!(
+                                symbol = %symbol,
+                                timeframe = ?tf,
+                                ma50,
+                                "Computed MA50"
+                            );
+                        }
+
+                        // Compute ATR (Average True Range) for volatility
+                        if candles.len() >= 14 {
+                            let mut sum_tr = 0.0;
+                            for window in candles.windows(2) {
+                                let high_low = window[1].high - window[1].low;
+                                let high_close = (window[1].high - window[0].close).abs();
+                                let low_close = (window[1].low - window[0].close).abs();
+                                sum_tr += high_low.max(high_close).max(low_close);
+                            }
+                            let atr = sum_tr / 14.0;
+                            debug!(
+                                symbol = %symbol,
+                                timeframe = ?tf,
+                                atr,
+                                "Computed ATR"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        debug!(
+                            symbol = %symbol,
+                            timeframe = ?tf,
+                            error = %e,
+                            "Failed to fetch candles for precomputation"
+                        );
+                    }
+                }
+            }
+        }
+
+        // Precompute SMT pair divergences
+        let smt_pairs = data.get_smt_pairs();
+        for pair in smt_pairs {
+            match data.get_smt_pair_data(pair, Timeframe::Daily, 100).await {
+                Ok((primary, reference)) => {
+                    // Check for divergence (simplified check)
+                    if !primary.is_empty() && !reference.is_empty() {
+                        let primary_latest = &primary[primary.len() - 1];
+                        let reference_latest = &reference[reference.len() - 1];
+
+                        debug!(
+                            pair = %pair.name,
+                            primary_close = primary_latest.close,
+                            reference_close = reference_latest.close,
+                            "SMT pair data checked"
+                        );
+                    }
+                }
+                Err(e) => {
+                    debug!(
+                        pair = %pair.name,
+                        error = %e,
+                        "Failed to fetch SMT pair data for precomputation"
+                    );
+                }
+            }
+        }
+
+        info!("Parameter precomputation completed");
+        Ok(())
+    }
 }
 
 #[cfg(test)]

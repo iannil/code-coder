@@ -342,6 +342,26 @@ pub fn default_smt_pairs() -> Vec<SmtPair> {
     ]
 }
 
+/// Default tracked symbols for market data updates.
+/// Includes major indices and popular ETFs for A-shares.
+pub fn default_tracked_symbols() -> Vec<String> {
+    vec![
+        // Major Indices
+        "000001.SH".to_string(), // Shanghai Composite
+        "000300.SH".to_string(), // CSI 300
+        "000905.SH".to_string(), // CSI 500
+        "000016.SH".to_string(), // SSE 50
+        "000688.SH".to_string(), // STAR 50
+        "399001.SZ".to_string(), // Shenzhen Component
+        "399006.SZ".to_string(), // ChiNext
+        // Popular ETFs
+        "512880.SH".to_string(), // Securities ETF
+        "512800.SH".to_string(), // Bank ETF
+        "510300.SH".to_string(), // CSI 300 ETF
+        "159915.SZ".to_string(), // CSI 500 ETF
+    ]
+}
+
 // ============================================================================
 // Index Overview for Daily Reports
 // ============================================================================

@@ -487,8 +487,10 @@ impl AgentBridge {
     }
 
     /// Check if the CodeCoder API is available.
+    ///
+    /// Uses the root endpoint which returns {"status":"ok",...} for CodeCoder.
     pub async fn health_check(&self) -> bool {
-        let url = format!("{}/health", self.config.codecoder_endpoint);
+        let url = format!("{}/", self.config.codecoder_endpoint);
         match self.client.get(&url).send().await {
             Ok(response) => response.status().is_success(),
             Err(_) => false,

@@ -209,12 +209,57 @@ impl DataProviderRouter {
                 .is_healthy(entry.provider.name())
                 .await;
 
-            if healthy {
+            // Also skip providers that are currently rate limited
+            let rate_limited = self
+                .health_monitor
+                .is_rate_limited(entry.provider.name())
+                .await;
+
+            if healthy && !rate_limited {
                 available.push(Arc::clone(&entry.provider));
             }
         }
 
         available
+    }
+
+    /// Get providers that support a specific timeframe, sorted by priority
+    ///
+    /// Filters out providers that don't support the requested timeframe,
+    /// avoiding unnecessary API calls that will fail.
+    async fn get_capable_providers(
+        &self,
+        timeframe: Timeframe,
+    ) -> Vec<Arc<dyn DataProvider>> {
+        let providers = self.providers.read().await;
+        let mut capable = Vec::new();
+
+        for entry in providers.iter() {
+            if !entry.enabled {
+                continue;
+            }
+
+            let healthy = self
+                .health_monitor
+                .is_healthy(entry.provider.name())
+                .await;
+
+            let rate_limited = self
+                .health_monitor
+                .is_rate_limited(entry.provider.name())
+                .await;
+
+            let supports_timeframe = entry
+                .provider
+                .capabilities()
+                .supports_timeframe(timeframe);
+
+            if healthy && !rate_limited && supports_timeframe {
+                capable.push(Arc::clone(&entry.provider));
+            }
+        }
+
+        capable
     }
 
     /// Execute a request with automatic failover.
@@ -283,7 +328,107 @@ impl DataProviderRouter {
                         return Ok(result);
                     }
                     Err(e) => {
-                        self.health_monitor.record_failure(name, &e.to_string()).await;
+                        // Record rate limit events with specific cooldown time
+                        if let ProviderError::RateLimited { retry_after_secs } = &e {
+                            let retry_secs = retry_after_secs.unwrap_or(5);
+                            self.health_monitor
+                                .record_rate_limited(name, retry_secs)
+                                .await;
+                        } else {
+                            self.health_monitor.record_failure(name, &e.to_string()).await;
+                        }
+
+                        // Check if we should failover to next provider
+                        if e.should_failover() {
+                            warn!(
+                                provider = name,
+                                error = %e,
+                                "Provider error, failing over to next provider"
+                            );
+                            last_error = Some(e);
+                            break; // Exit retry loop, try next provider
+                        }
+
+                        // For rate limiting, wait and retry
+                        if let ProviderError::RateLimited { retry_after_secs } = &e {
+                            if attempt < self.config.max_retries {
+                                let wait_secs = retry_after_secs.unwrap_or(5);
+                                debug!(provider = name, wait_secs, "Rate limited, waiting");
+                                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+                                continue;
+                            }
+                        }
+
+                        last_error = Some(e);
+                    }
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| ProviderError::Unavailable("All providers failed".into())))
+    }
+
+    /// Execute a request with automatic failover, filtering by timeframe capability.
+    ///
+    /// Similar to execute_with_failover, but only considers providers that
+    /// support the requested timeframe. This avoids unnecessary API calls
+    /// that will fail with DataNotAvailable.
+    async fn execute_with_failover_with_timeframe<T, F, Fut>(
+        &self,
+        timeframe: Timeframe,
+        request_fn: F,
+    ) -> Result<T, ProviderError>
+    where
+        F: Fn(Arc<dyn DataProvider>) -> Fut,
+        Fut: std::future::Future<Output = Result<T, ProviderError>>,
+    {
+        let available = self.get_capable_providers(timeframe).await;
+
+        if available.is_empty() {
+            // Check if any enabled providers exist
+            let providers = self.providers.read().await;
+            let any_enabled = providers.iter().any(|e| e.enabled);
+            drop(providers);
+
+            if any_enabled {
+                return Err(ProviderError::DataNotAvailable(format!(
+                    "No providers support timeframe '{}'",
+                    timeframe
+                )));
+            } else {
+                return Err(ProviderError::Unavailable(
+                    "No data providers registered".into(),
+                ));
+            }
+        }
+
+        let mut last_error = None;
+
+        for provider in available {
+            let name = provider.name();
+            debug!(provider = name, timeframe = %timeframe, "Routing request to provider");
+
+            // Try with retries
+            for attempt in 0..=self.config.max_retries {
+                if attempt > 0 {
+                    debug!(provider = name, attempt, "Retrying request");
+                }
+
+                match request_fn(Arc::clone(&provider)).await {
+                    Ok(result) => {
+                        self.health_monitor.record_success(name).await;
+                        return Ok(result);
+                    }
+                    Err(e) => {
+                        // Record rate limit events with specific cooldown time
+                        if let ProviderError::RateLimited { retry_after_secs } = &e {
+                            let retry_secs = retry_after_secs.unwrap_or(5);
+                            self.health_monitor
+                                .record_rate_limited(name, retry_secs)
+                                .await;
+                        } else {
+                            self.health_monitor.record_failure(name, &e.to_string()).await;
+                        }
 
                         // Check if we should failover to next provider
                         if e.should_failover() {
@@ -348,7 +493,7 @@ impl DataProviderRouter {
         end_time: Option<DateTime<Utc>>,
     ) -> Result<Vec<Candle>, ProviderError> {
         let symbol = symbol.to_string();
-        self.execute_with_failover(move |provider| {
+        self.execute_with_failover_with_timeframe(timeframe, move |provider| {
             let symbol = symbol.clone();
             async move {
                 provider
@@ -590,5 +735,148 @@ mod tests {
             .get_daily_candles("000001.SZ", None, None, None)
             .await;
         assert!(result.is_err());
+    }
+
+    /// Mock provider with configurable timeframe support
+    struct MockProviderWithTimeframes {
+        name: &'static str,
+        priority: u8,
+        supported_timeframes: Vec<Timeframe>,
+    }
+
+    impl MockProviderWithTimeframes {
+        fn new(name: &'static str, priority: u8, supported_timeframes: Vec<Timeframe>) -> Self {
+            Self {
+                name,
+                priority,
+                supported_timeframes,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl DataProvider for MockProviderWithTimeframes {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn priority(&self) -> u8 {
+            self.priority
+        }
+
+        fn capabilities(&self) -> DataCapabilities {
+            DataCapabilities {
+                timeframes: self.supported_timeframes.clone(),
+                ..Default::default()
+            }
+        }
+
+        async fn health_check(&self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+
+        async fn get_daily_candles(
+            &self,
+            symbol: &str,
+            _start_date: Option<NaiveDate>,
+            _end_date: Option<NaiveDate>,
+            _limit: Option<usize>,
+        ) -> Result<Vec<Candle>, ProviderError> {
+            Ok(vec![Candle {
+                symbol: symbol.to_string(),
+                timeframe: Timeframe::Daily,
+                timestamp: Utc::now(),
+                open: 10.0,
+                high: 11.0,
+                low: 9.5,
+                close: 10.5,
+                volume: 1000.0,
+                amount: 10500.0,
+            }])
+        }
+
+        async fn get_minute_candles(
+            &self,
+            symbol: &str,
+            timeframe: Timeframe,
+            _start_time: Option<DateTime<Utc>>,
+            _end_time: Option<DateTime<Utc>>,
+        ) -> Result<Vec<Candle>, ProviderError> {
+            if !self.supported_timeframes.contains(&timeframe) {
+                return Err(ProviderError::DataNotAvailable(format!(
+                    "Timeframe {:?} not supported",
+                    timeframe
+                )));
+            }
+            Ok(vec![Candle {
+                symbol: symbol.to_string(),
+                timeframe,
+                timestamp: Utc::now(),
+                open: 10.0,
+                high: 11.0,
+                low: 9.5,
+                close: 10.5,
+                volume: 1000.0,
+                amount: 10500.0,
+            }])
+        }
+    }
+
+    #[tokio::test]
+    async fn test_router_capability_filtering() {
+        let router = DataProviderRouter::new();
+
+        // Register a daily-only provider
+        router
+            .register(Arc::new(MockProviderWithTimeframes::new(
+                "daily_only",
+                1,
+                vec![Timeframe::Daily],
+            )))
+            .await;
+
+        // Requesting H4 should fail with DataNotAvailable, not try the provider
+        let result = router
+            .get_minute_candles("000001.SZ", Timeframe::H4, None, None)
+            .await;
+
+        assert!(result.is_err());
+        match result {
+            Err(ProviderError::DataNotAvailable(msg)) => {
+                assert!(msg.contains("H4") || msg.contains("timeframe"));
+            }
+            _ => panic!("Expected DataNotAvailable error, got {:?}", result),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_router_capability_filtering_with_fallback() {
+        let router = DataProviderRouter::new();
+
+        // Register daily-only provider
+        router
+            .register(Arc::new(MockProviderWithTimeframes::new(
+                "daily_only",
+                1,
+                vec![Timeframe::Daily],
+            )))
+            .await;
+
+        // Register full-capability provider
+        router
+            .register(Arc::new(MockProviderWithTimeframes::new(
+                "full_capability",
+                2, // Lower priority (higher number)
+                vec![Timeframe::Daily, Timeframe::H1, Timeframe::H4, Timeframe::M5],
+            )))
+            .await;
+
+        // Requesting H4 should work via the full-capability provider
+        let result = router
+            .get_minute_candles("000001.SZ", Timeframe::H4, None, None)
+            .await;
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 1);
     }
 }

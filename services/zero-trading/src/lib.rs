@@ -52,6 +52,7 @@ pub mod scheduler;
 pub mod screener;
 pub mod session;
 pub mod strategy;
+pub mod task_scheduler;
 pub mod valuation;
 pub mod value;
 
@@ -69,7 +70,10 @@ use crate::macro_filter::MacroFilter;
 use crate::notification::NotificationClient;
 use crate::paper_trading::PaperTradingManager;
 use crate::portfolio::{DipAnalyzer, PoolsConfig, PoolsManager, SignalAnalyzer};
+use crate::scheduler::TradingScheduler;
+use crate::session::TradingSessionManager;
 use crate::strategy::StrategyEngine;
+use crate::task_scheduler::TaskScheduler;
 use crate::valuation::ValuationAnalyzer;
 use crate::value::ValueAnalyzer;
 
@@ -83,6 +87,8 @@ pub struct TradingState {
     pub strategy: Arc<StrategyEngine>,
     /// Execution engine
     pub execution: Arc<RwLock<ExecutionEngine>>,
+    /// Session manager
+    pub session_manager: Arc<TradingSessionManager>,
     /// Macro filter (rule engine)
     pub macro_filter: Arc<MacroFilter>,
     /// Macro orchestrator (hybrid mode coordinator)
@@ -132,6 +138,34 @@ impl TradingState {
         // Create paper trading manager
         let paper_manager = Arc::new(PaperTradingManager::new(&config));
 
+        // Create session manager with default config
+        let db_path = config
+            .trading
+            .as_ref()
+            .and_then(|t| t.local_storage.as_ref())
+            .and_then(|ls| ls.db_path.as_ref())
+            .map(|p| {
+                if p.starts_with("~/") {
+                    dirs::home_dir()
+                        .map(|h| h.join(&p[2..]))
+                        .unwrap_or_else(|| std::path::PathBuf::from(p))
+                } else {
+                    std::path::PathBuf::from(p)
+                }
+            })
+            .unwrap_or_else(|| dirs::home_dir()
+                .map(|h| h.join(".codecoder/financial.db"))
+                .unwrap_or_else(|| std::path::PathBuf::from("financial.db")));
+
+        let session_manager = Arc::new(
+            TradingSessionManager::new(
+                db_path,
+                Arc::clone(&data),
+                Arc::clone(&strategy),
+                Arc::clone(&execution),
+            ).expect("Failed to create session manager")
+        );
+
         // Create value analysis components (with shared local storage for caching)
         let value_analyzer = Arc::new(ValueAnalyzer::with_local_storage(&config, local_storage.clone()));
         let valuation_analyzer = Arc::new(ValuationAnalyzer::with_local_storage(local_storage));
@@ -147,6 +181,7 @@ impl TradingState {
             data,
             strategy,
             execution,
+            session_manager,
             macro_filter,
             macro_orchestrator,
             notification,
@@ -232,6 +267,12 @@ impl TradingService {
             }
         });
 
+        // Start the preparation task runner (24/7 operation)
+        let prep_state = self.state.clone();
+        tokio::spawn(async move {
+            run_preparation_tasks(prep_state).await;
+        });
+
         // Start the strategy scanner
         let strategy_state = self.state.clone();
         tokio::spawn(async move {
@@ -253,6 +294,41 @@ impl TradingService {
         tokio::spawn(async move {
             notification_client.start_retry_task().await;
         });
+
+        // Start the trading session scheduler (if enabled in config)
+        if let Some(trading_config) = &self.state.config.trading {
+            if let Some(schedule_config) = &trading_config.schedule {
+                if schedule_config.enabled {
+                    match TradingScheduler::new(
+                        schedule_config.clone(),
+                        Arc::clone(&self.state.session_manager),
+                    ) {
+                        Ok(scheduler) => {
+                            let session_manager = Arc::clone(&self.state.session_manager);
+                            tokio::spawn(async move {
+                                if let Err(e) = scheduler.run().await {
+                                    tracing::error!(error = %e, "Trading session scheduler failed");
+                                }
+                                // Ensure session is stopped when scheduler exits
+                                if let Err(e) = session_manager.stop_session().await {
+                                    tracing::warn!(error = %e, "Failed to stop session after scheduler exit");
+                                }
+                            });
+                            tracing::info!(
+                                start = %schedule_config.session_start,
+                                stop = %schedule_config.session_stop,
+                                "Trading session scheduler started"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to create trading scheduler");
+                        }
+                    }
+                } else {
+                    tracing::info!("Trading session scheduler disabled in config");
+                }
+            }
+        }
 
         // Start HTTP server
         let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
@@ -318,5 +394,63 @@ async fn run_strategy_scanner(state: Arc<TradingState>) -> Result<()> {
 
         // Sleep for 1 minute before next scan
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
+}
+
+/// Run preparation tasks (24/7 operation).
+///
+/// Preparation tasks include:
+/// - Data preloading: Cache historical data for all tracked symbols
+/// - Parameter precomputation: Calculate technical indicators
+/// - Macro analysis: Background updates for macro economic data
+///
+/// These tasks run more frequently during non-trading hours and
+/// less frequently during trading hours to avoid competing with execution tasks.
+async fn run_preparation_tasks(state: Arc<TradingState>) {
+    // Get preparation task config from trading config
+    let prep_config = state
+        .config
+        .trading
+        .as_ref()
+        .and_then(|t| t.preparation_tasks.clone())
+        .unwrap_or_default();
+
+    if !prep_config.enabled {
+        tracing::info!("Preparation tasks disabled in config");
+        return;
+    }
+
+    // Create task scheduler
+    let scheduler = TaskScheduler::new(
+        prep_config,
+        Arc::clone(&state.data),
+        Arc::clone(&state.strategy),
+    );
+
+    tracing::info!(
+        data_interval_secs = scheduler.prep_config.data_preload_interval_secs,
+        param_interval_secs = scheduler.prep_config.parameter_precompute_interval_secs,
+        macro_interval_secs = scheduler.prep_config.macro_analysis_interval_secs,
+        "Preparation task runner started"
+    );
+
+    loop {
+        let is_trading_hours = TaskScheduler::is_trading_hours();
+
+        // Run all preparation tasks
+        if let Err(e) = scheduler.run_preparation_tasks().await {
+            tracing::warn!(error = %e, "Preparation tasks failed");
+        }
+
+        // Calculate sleep interval based on trading hours
+        let sleep_secs = scheduler.get_prep_interval_secs(is_trading_hours);
+
+        tracing::debug!(
+            is_trading_hours,
+            sleep_secs,
+            "Preparation tasks cycle completed, sleeping"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
     }
 }
