@@ -699,6 +699,7 @@ show_status() {
     echo "║   • zero-gateway:  端口 4430 (认证/路由/配额)                          ║"
     echo "║   • zero-channels: 端口 4431 (Telegram/Discord/Slack)                 ║"
     echo "║   • zero-workflow: 端口 4432 (Webhook/Cron/Git)                       ║"
+    echo "║   • zero-trading:  端口 4434 (PO3+SMT 自动化交易)                    ║"
     echo "╚════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
@@ -1290,6 +1291,7 @@ show_help() {
     echo "    • zero-channels (4431): Telegram、Discord、Slack 等 IM 渠道"
     echo "    • zero-workflow (4432): Webhook、Cron、Git 工作流"
     echo "    • zero-browser  (4433): 浏览器自动化、API 学习与重放"
+    echo "    • zero-trading  (4434): PO3+SMT 自动化交易"
     echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
     echo ""
