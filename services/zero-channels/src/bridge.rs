@@ -256,6 +256,45 @@ pub struct FeatureRequestInfo {
     pub content: String,
 }
 
+// ============================================================================
+// Agent Recommendation Types
+// ============================================================================
+
+/// Request to CodeCoder agent recommend API.
+#[derive(Debug, Clone, Serialize)]
+pub struct RecommendRequest {
+    /// User intent/message content
+    pub intent: String,
+}
+
+/// Response from CodeCoder agent recommend API.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RecommendResponse {
+    pub success: bool,
+    pub data: Option<RecommendData>,
+    pub error: Option<String>,
+}
+
+/// Data payload from recommend API.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RecommendData {
+    /// Recommended agent metadata
+    pub recommended: Option<RecommendedAgent>,
+    /// Alternative agents
+    #[serde(default)]
+    pub alternates: Vec<RecommendedAgent>,
+}
+
+/// Recommended agent info.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RecommendedAgent {
+    /// Agent name (e.g., "macro", "code-reviewer")
+    pub name: String,
+    /// Display name for UI
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+}
+
 /// Detailed feasibility analysis.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeasibilityAnalysis {
