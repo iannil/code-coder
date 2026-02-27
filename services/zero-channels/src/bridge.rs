@@ -766,13 +766,36 @@ impl CodeCoderBridge {
             }
         }
 
-        // Regular chat processing
-        // Check if streaming should be used
+        // Regular chat processing with auto-routing
+        // Check if agent is specified in metadata (e.g., from previous context)
         let agent_from_meta = message.metadata.get("agent").map(|s| s.as_str());
-        if self.should_use_streaming(&message, agent_from_meta) {
-            self.process_streaming_chat(&message, &text, None).await
+
+        // Auto-route to recommended agent if no explicit agent specified
+        let recommended_agent = if agent_from_meta.is_none() {
+            // No explicit agent, try to recommend based on message content
+            self.call_recommend_agent(&text).await
         } else {
-            self.process_chat_with_agent(&message, &text, None).await
+            // Explicit agent specified, skip recommendation
+            None
+        };
+
+        // Determine final agent: metadata > recommended > None (will use default)
+        let final_agent = agent_from_meta
+            .map(|s| s.to_string())
+            .or(recommended_agent);
+
+        tracing::info!(
+            message_id = %message.id,
+            agent_from_meta = ?agent_from_meta,
+            recommended = ?final_agent,
+            "Processing message with agent routing"
+        );
+
+        // Check if streaming should be used
+        if self.should_use_streaming(&message, final_agent.as_deref()) {
+            self.process_streaming_chat(&message, &text, final_agent).await
+        } else {
+            self.process_chat_with_agent(&message, &text, final_agent).await
         }
     }
 
