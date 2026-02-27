@@ -3082,4 +3082,69 @@ mod tests {
         assert_eq!(CodeCoderBridge::format_duration(85000), "1m25s");
         assert_eq!(CodeCoderBridge::format_duration(125000), "2m5s");
     }
+
+    // ========================================================================
+    // Agent Recommendation Tests
+    // ========================================================================
+
+    #[test]
+    fn test_recommend_request_serialization() {
+        let request = RecommendRequest {
+            intent: "分析今天的GDP数据".to_string(),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("intent"));
+        assert!(json.contains("分析今天的GDP数据"));
+    }
+
+    #[test]
+    fn test_recommend_response_deserialization() {
+        let json = r#"{
+            "success": true,
+            "data": {
+                "recommended": {
+                    "name": "macro",
+                    "displayName": "Macro Economist"
+                },
+                "alternates": []
+            }
+        }"#;
+
+        let response: RecommendResponse = serde_json::from_str(json).unwrap();
+        assert!(response.success);
+        assert!(response.data.is_some());
+
+        let data = response.data.unwrap();
+        assert!(data.recommended.is_some());
+        assert_eq!(data.recommended.unwrap().name, "macro");
+    }
+
+    #[test]
+    fn test_recommend_response_empty_recommendation() {
+        let json = r#"{
+            "success": true,
+            "data": {
+                "recommended": null,
+                "alternates": []
+            }
+        }"#;
+
+        let response: RecommendResponse = serde_json::from_str(json).unwrap();
+        assert!(response.success);
+        assert!(response.data.is_some());
+        assert!(response.data.unwrap().recommended.is_none());
+    }
+
+    #[test]
+    fn test_recommend_response_failure() {
+        let json = r#"{
+            "success": false,
+            "error": "Internal server error"
+        }"#;
+
+        let response: RecommendResponse = serde_json::from_str(json).unwrap();
+        assert!(!response.success);
+        assert_eq!(response.error, Some("Internal server error".to_string()));
+    }
 }
