@@ -1822,6 +1822,86 @@ impl CodeCoderBridge {
         None
     }
 
+    // ========================================================================
+    // Agent Recommendation
+    // ========================================================================
+
+    /// Call the recommend API with timeout protection.
+    ///
+    /// Returns recommended agent name, or None if:
+    /// - API call failed
+    /// - API timed out (>200ms)
+    /// - No recommendation returned
+    async fn call_recommend_agent(&self, intent: &str) -> Option<String> {
+        let url = format!("{}/api/v1/registry/recommend", self.endpoint);
+
+        tracing::debug!(
+            endpoint = %url,
+            intent_len = intent.len(),
+            "Calling agent recommend API"
+        );
+
+        // 200ms timeout for recommend API to avoid blocking message processing
+        let result = tokio::time::timeout(
+            Duration::from_millis(200),
+            self.client
+                .post(&url)
+                .json(&RecommendRequest {
+                    intent: intent.to_string(),
+                })
+                .send(),
+        )
+        .await;
+
+        match result {
+            Ok(Ok(resp)) if resp.status().is_success() => {
+                match resp.json::<RecommendResponse>().await {
+                    Ok(rec_resp) if rec_resp.success => {
+                        let agent_name = rec_resp
+                            .data
+                            .and_then(|d| d.recommended)
+                            .map(|a| a.name);
+
+                        if let Some(ref name) = agent_name {
+                            tracing::debug!(
+                                recommended_agent = %name,
+                                "Agent recommendation successful"
+                            );
+                        }
+
+                        agent_name
+                    }
+                    Ok(rec_resp) => {
+                        tracing::debug!(
+                            error = ?rec_resp.error,
+                            "Recommend API returned unsuccessful response"
+                        );
+                        None
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to parse recommend response");
+                        None
+                    }
+                }
+            }
+            Ok(Ok(resp)) => {
+                tracing::warn!(
+                    status = %resp.status(),
+                    "Recommend API returned non-success status"
+                );
+                None
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "Recommend API call failed");
+                None
+            }
+            Err(_) => {
+                tracing::warn!("Recommend API timed out (200ms)");
+                None
+            }
+        }
+    }
+
     /// Call the compare API.
     async fn call_compare(&self, models: &[String], prompt: &str) -> Result<CompareResponse> {
         let url = format!("{}/api/v1/compare", self.endpoint);
