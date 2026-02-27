@@ -25,7 +25,7 @@ pub mod local_storage;
 pub mod sync;
 
 pub use cache::DataCache;
-pub use aggregator::MarketDataAggregator;
+pub use aggregator::{MarketDataAggregator, SyncSummary, StorageStats};
 pub use provider::{DataProvider, DataCapabilities, ProviderError, ProviderInfo, StockInfo, FinancialStatementData};
 pub use provider::{ValuationMetrics, ValuationMetricName, StatisticsGranularity, ValuationStatistics, ValuationStatisticsSet};
 pub use health::{HealthMonitor, HealthMonitorConfig, ProviderHealth};
@@ -33,6 +33,23 @@ pub use router::{DataProviderRouter, RouterConfig};
 pub use rate_limiter::{RateLimiter, SharedRateLimiter, shared_limiter};
 pub use itick::ITickAdapter;
 pub use lixin::LixinAdapter;
+// Lixin extended types
+pub use lixin::{
+    // Company data
+    CompanyProfile,
+    IndustryClassification,
+    IndexConstituent,
+    // Market data
+    Announcement,
+    BlockDeal,
+    PledgeInfo,
+    // Index data
+    IndexFundamental,
+    IndexFundamentalMetrics,
+    // Fund data
+    FundInfo,
+    FundNav,
+};
 pub use high_frequency::{
     CollectorConfig as HighFrequencyConfig,
     CollectionReport,

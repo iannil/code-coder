@@ -32,7 +32,7 @@ export namespace ConversationStore {
     const url = redisUrl
       ?? process.env.REDIS_URL
       ?? redisConfig?.url
-      ?? "redis://localhost:6379"
+      ?? "redis://localhost:4410"
 
     keyPrefix = redisConfig?.keyPrefix ?? "codecoder:"
 

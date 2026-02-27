@@ -395,7 +395,7 @@ pub struct RedisBusConfig {
 impl Default for RedisBusConfig {
     fn default() -> Self {
         Self {
-            url: "redis://127.0.0.1:6379".to_string(),
+            url: "redis://127.0.0.1:4410".to_string(),
             timeout_secs: 5,
             max_reconnects: 3,
             channel_prefix: "zero:".to_string(),
@@ -702,21 +702,16 @@ impl EventBus for RedisBus {
 // ============================================================================
 
 /// Event bus backend type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BusBackend {
     /// In-memory bus (single process).
+    #[default]
     Memory,
     /// Redis Pub/Sub (multi-process).
     Redis,
     /// NATS (future).
     Nats,
-}
-
-impl Default for BusBackend {
-    fn default() -> Self {
-        Self::Memory
-    }
 }
 
 /// Create an event bus based on the backend type (synchronous, in-memory only).
@@ -918,7 +913,7 @@ mod tests {
     #[test]
     fn test_redis_config_default() {
         let config = RedisBusConfig::default();
-        assert_eq!(config.url, "redis://127.0.0.1:6379");
+        assert_eq!(config.url, "redis://127.0.0.1:4410");
         assert_eq!(config.timeout_secs, 5);
         assert_eq!(config.max_reconnects, 3);
         assert_eq!(config.channel_prefix, "zero:");

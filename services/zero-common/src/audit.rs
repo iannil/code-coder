@@ -362,18 +362,16 @@ impl AuditLogger {
             })
             .collect();
 
-        files.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
+        files.sort_by_key(|b| std::cmp::Reverse(b.file_name()));
 
         if let Some(latest) = files.first() {
             let file = File::open(latest.path())?;
             let reader = BufReader::new(file);
 
             // Read last line
-            if let Some(last_line) = reader.lines().last() {
-                if let Ok(line) = last_line {
-                    if let Ok(entry) = serde_json::from_str::<AuditEntry>(&line) {
-                        self.last_hash = Some(entry.entry_hash);
-                    }
+            if let Some(Ok(line)) = reader.lines().last() {
+                if let Ok(entry) = serde_json::from_str::<AuditEntry>(&line) {
+                    self.last_hash = Some(entry.entry_hash);
                 }
             }
         }
@@ -400,18 +398,16 @@ impl AuditLogger {
                 let file = File::open(&filepath)?;
                 let reader = BufReader::new(file);
 
-                for line in reader.lines() {
-                    if let Ok(line) = line {
-                        if let Ok(entry) = serde_json::from_str::<AuditEntry>(&line) {
-                            if entry.timestamp >= start && entry.timestamp <= end {
-                                entries.push(entry);
-                            }
+                for line in reader.lines().map_while(Result::ok) {
+                    if let Ok(entry) = serde_json::from_str::<AuditEntry>(&line) {
+                        if entry.timestamp >= start && entry.timestamp <= end {
+                            entries.push(entry);
                         }
                     }
                 }
             }
 
-            current = current + Duration::days(1);
+            current += Duration::days(1);
         }
 
         // Calculate statistics

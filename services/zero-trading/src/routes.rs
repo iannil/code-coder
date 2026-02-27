@@ -959,27 +959,55 @@ pub struct ScreenerRunRequest {
 
 /// GET /api/v1/screener/status - Get screener status
 pub async fn screener_status(
-    State(_state): State<Arc<TradingState>>,
+    State(state): State<Arc<TradingState>>,
 ) -> Json<ScreenerStatusResponse> {
-    // TODO: Integrate with ScreenerScheduler when added to TradingState
-    Json(ScreenerStatusResponse {
-        state: "idle".to_string(),
-        last_scan_at: None,
-        last_sync_at: None,
-        last_scan_id: None,
-        last_scan_stock_count: None,
-        error_message: None,
-    })
+    match &state.screener_scheduler {
+        Some(scheduler) => {
+            let status = scheduler.status().await;
+            Json(ScreenerStatusResponse {
+                state: status.state.to_string(),
+                last_scan_at: status.last_scan_at.map(|t| t.to_rfc3339()),
+                last_sync_at: status.last_sync_at.map(|t| t.to_rfc3339()),
+                last_scan_id: status.last_scan_id,
+                last_scan_stock_count: status.last_scan_stock_count,
+                error_message: status.error_message,
+            })
+        }
+        None => Json(ScreenerStatusResponse {
+            state: "unavailable".to_string(),
+            last_scan_at: None,
+            last_sync_at: None,
+            last_scan_id: None,
+            last_scan_stock_count: None,
+            error_message: Some("Screener not available: Lixin API token not configured".to_string()),
+        }),
+    }
 }
 
 /// POST /api/v1/screener/run - Trigger a scan
 pub async fn screener_run(
-    State(_state): State<Arc<TradingState>>,
+    State(state): State<Arc<TradingState>>,
     Json(req): Json<ScreenerRunRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    let scheduler = state.screener_scheduler.as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
     let scan_type = if req.quick { "quick" } else { "full" };
     tracing::info!(scan_type, "Screener run requested");
+
+    // Spawn the scan in background to avoid blocking the request
+    let scheduler_clone = Arc::clone(scheduler);
+    let quick = req.quick;
+    tokio::spawn(async move {
+        let result = if quick {
+            scheduler_clone.trigger_quick_scan().await
+        } else {
+            scheduler_clone.trigger_full_scan().await
+        };
+        if let Err(e) = result {
+            tracing::error!(error = %e, "Screener scan failed");
+        }
+    });
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -989,26 +1017,75 @@ pub async fn screener_run(
 
 /// GET /api/v1/screener/results - Get latest results
 pub async fn screener_results(
-    State(_state): State<Arc<TradingState>>,
+    State(state): State<Arc<TradingState>>,
 ) -> Result<Json<ScreenerResultResponse>, StatusCode> {
-    // TODO: Integrate with ScreenerScheduler when added to TradingState
-    Err(StatusCode::NOT_FOUND)
+    let scheduler = state.screener_scheduler.as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
+    match scheduler.latest_result().await {
+        Some(result) => Ok(Json(ScreenerResultResponse {
+            id: result.id,
+            started_at: result.started_at.to_rfc3339(),
+            completed_at: result.completed_at.to_rfc3339(),
+            duration_secs: result.duration_secs,
+            total_scanned: result.total_scanned,
+            passed_count: result.stocks.len(),
+            config_summary: result.config_summary,
+            stocks: result.stocks.into_iter().map(|s| ScreenedStockResponse {
+                symbol: s.symbol,
+                name: s.name,
+                exchange: s.exchange,
+                industry: s.industry,
+                quant_score: s.quant_score,
+                roe: s.financials.roe,
+                gross_margin: s.financials.gross_margin,
+                pe_ttm: s.financials.pe_ttm,
+                pb: s.financials.pb,
+                dividend_yield: s.financials.dividend_yield,
+                is_printing_machine: s.deep_analysis.map(|d| d.is_printing_machine),
+            }).collect(),
+        })),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 /// GET /api/v1/screener/history - Get scan history
 pub async fn screener_history(
-    State(_state): State<Arc<TradingState>>,
+    State(state): State<Arc<TradingState>>,
 ) -> Json<ScreenerHistoryResponse> {
-    // TODO: Integrate with ScreenerScheduler when added to TradingState
-    Json(ScreenerHistoryResponse { entries: vec![] })
+    match &state.screener_scheduler {
+        Some(scheduler) => {
+            let history = scheduler.history(20).await;
+            Json(ScreenerHistoryResponse {
+                entries: history.into_iter().map(|e| ScreenerHistoryEntryResponse {
+                    id: e.id,
+                    completed_at: e.completed_at.to_rfc3339(),
+                    duration_secs: e.duration_secs,
+                    total_scanned: e.total_scanned,
+                    passed_count: e.passed_count,
+                }).collect(),
+            })
+        }
+        None => Json(ScreenerHistoryResponse { entries: vec![] }),
+    }
 }
 
 /// POST /api/v1/screener/sync - Trigger data sync
 pub async fn screener_sync(
-    State(_state): State<Arc<TradingState>>,
+    State(state): State<Arc<TradingState>>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    // TODO: Integrate with ScreenerScheduler when added to TradingState
+    let scheduler = state.screener_scheduler.as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+
     tracing::info!("Screener data sync requested");
+
+    // Spawn the sync in background to avoid blocking the request
+    let scheduler_clone = Arc::clone(scheduler);
+    tokio::spawn(async move {
+        if let Err(e) = scheduler_clone.trigger_sync().await {
+            tracing::error!(error = %e, "Screener data sync failed");
+        }
+    });
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -1016,4 +1093,127 @@ pub async fn screener_sync(
     }))
 }
 
+// ============================================================================
+// Market Data Sync Routes
+// ============================================================================
+
+/// Data sync request
+#[derive(Debug, Deserialize)]
+pub struct DataSyncRequest {
+    /// Specific symbol to sync (if empty, sync all tracked symbols)
+    pub symbol: Option<String>,
+}
+
+/// Data sync response
+#[derive(Debug, Serialize)]
+pub struct DataSyncResponse {
+    pub total_symbols: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub total_candles: usize,
+    pub errors: Vec<String>,
+}
+
+/// Storage stats response
+#[derive(Debug, Serialize)]
+pub struct StorageStatsResponse {
+    pub candle_count: u64,
+    pub financial_count: u64,
+    pub valuation_count: u64,
+    pub unique_symbols: u64,
+    pub db_size_mb: f64,
+}
+
+/// POST /api/v1/data/sync - Sync market data
+pub async fn data_sync(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<DataSyncRequest>,
+) -> Result<Json<DataSyncResponse>, StatusCode> {
+    tracing::info!(symbol = ?req.symbol, "Market data sync requested");
+
+    let summary = if let Some(symbol) = req.symbol {
+        // Sync single symbol
+        match state.data.sync_symbol_data(&symbol).await {
+            Ok(total_candles) => crate::data::SyncSummary {
+                total_symbols: 1,
+                successful: 1,
+                failed: 0,
+                total_candles,
+                errors: vec![],
+            },
+            Err(e) => crate::data::SyncSummary {
+                total_symbols: 1,
+                successful: 0,
+                failed: 1,
+                total_candles: 0,
+                errors: vec![e.to_string()],
+            },
+        }
+    } else {
+        // Sync all symbols
+        match state.data.sync_all_symbols().await {
+            Ok(summary) => summary,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to sync all symbols");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    };
+
+    Ok(Json(DataSyncResponse {
+        total_symbols: summary.total_symbols,
+        successful: summary.successful,
+        failed: summary.failed,
+        total_candles: summary.total_candles,
+        errors: summary.errors,
+    }))
+}
+
+/// GET /api/v1/data/stats - Get storage statistics
+pub async fn data_stats(
+    State(state): State<Arc<TradingState>>,
+) -> Json<StorageStatsResponse> {
+    let stats = state.data.get_storage_stats().await.unwrap_or_default();
+
+    Json(StorageStatsResponse {
+        candle_count: stats.candle_count,
+        financial_count: stats.financial_count,
+        valuation_count: stats.valuation_count,
+        unique_symbols: stats.unique_symbols,
+        db_size_mb: stats.db_size_mb,
+    })
+}
+
+/// GET /api/v1/data/symbols - Get tracked symbols
+pub async fn data_symbols(
+    State(state): State<Arc<TradingState>>,
+) -> Json<serde_json::Value> {
+    let symbols = state.data.get_tracked_symbols().await;
+    Json(serde_json::json!({
+        "symbols": symbols,
+        "count": symbols.len()
+    }))
+}
+
+/// POST /api/v1/data/symbols - Add tracked symbols
+#[derive(Debug, Deserialize)]
+pub struct AddSymbolsRequest {
+    pub symbols: Vec<String>,
+}
+
+pub async fn add_symbols(
+    State(state): State<Arc<TradingState>>,
+    Json(req): Json<AddSymbolsRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    for symbol in &req.symbols {
+        state.data.add_symbol(symbol).await;
+    }
+
+    tracing::info!(count = req.symbols.len(), symbols = ?req.symbols, "Added tracked symbols");
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: format!("Added {} tracked symbols", req.symbols.len()),
+    }))
+}
 

@@ -1,0 +1,648 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/config.json",
+  "title": "CodeCoder Configuration",
+  "description": "Core configuration for CodeCoder services (unified TypeScript and Rust)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for configuration validation"
+    },
+    "network": {
+      "$ref": "#/$defs/NetworkConfig"
+    },
+    "services": {
+      "$ref": "#/$defs/ServicesConfig"
+    },
+    "redis": {
+      "$ref": "#/$defs/RedisConfig"
+    },
+    "auth": {
+      "$ref": "#/$defs/AuthConfig"
+    },
+    "observability": {
+      "$ref": "#/$defs/ObservabilityConfig"
+    },
+    "memory": {
+      "$ref": "#/$defs/MemoryConfig"
+    },
+    "agent": {
+      "type": "object",
+      "description": "Agent configurations keyed by agent name",
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentConfig"
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "description": "MCP (Model Context Protocol) server configurations",
+      "properties": {
+        "server": {
+          "$ref": "#/$defs/McpServerConfig"
+        }
+      },
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/$defs/McpServerConfig" },
+          { "$ref": "#/$defs/McpLocalConfig" },
+          { "$ref": "#/$defs/McpRemoteConfig" },
+          { "$ref": "#/$defs/McpDisabledConfig" }
+        ]
+      }
+    },
+    "keybinds": {
+      "$ref": "#/$defs/KeybindsConfig"
+    },
+    "theme": {
+      "type": "string",
+      "description": "Theme name to use for the interface"
+    },
+    "logLevel": {
+      "type": "string",
+      "enum": ["debug", "info", "warn", "error"],
+      "description": "Log level for the application"
+    },
+    "model": {
+      "type": "string",
+      "description": "Default model in provider/model format (e.g., anthropic/claude-sonnet-4-20250514)"
+    },
+    "small_model": {
+      "type": "string",
+      "description": "Small model for tasks like title generation"
+    },
+    "default_agent": {
+      "type": "string",
+      "description": "Default agent to use when none is specified"
+    },
+    "username": {
+      "type": "string",
+      "description": "Custom username to display in conversations"
+    },
+    "autoupdate": {
+      "oneOf": [
+        { "type": "boolean" },
+        { "const": "notify" }
+      ],
+      "description": "Auto-update behavior: true, false, or 'notify'"
+    },
+    "disabled_providers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Disable providers that are loaded automatically"
+    },
+    "enabled_providers": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "When set, ONLY these providers will be enabled"
+    },
+    "instructions": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Additional instruction files or patterns to include"
+    },
+    "permission": {
+      "$ref": "#/$defs/PermissionConfig"
+    },
+    "compaction": {
+      "$ref": "#/$defs/CompactionConfig"
+    },
+    "server": {
+      "$ref": "#/$defs/ServerConfig"
+    },
+    "tui": {
+      "$ref": "#/$defs/TuiConfig"
+    },
+    "vault": {
+      "$ref": "#/$defs/VaultConfig"
+    },
+    "experimental": {
+      "$ref": "#/$defs/ExperimentalConfig"
+    },
+    "autonomousMode": {
+      "$ref": "#/$defs/AutonomousModeConfig"
+    }
+  },
+  "$defs": {
+    "NetworkConfig": {
+      "type": "object",
+      "description": "Global network configuration for all services",
+      "properties": {
+        "bind": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Bind address for all services"
+        },
+        "public_url": {
+          "type": ["string", "null"],
+          "description": "Public URL for callbacks (optional)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServicesConfig": {
+      "type": "object",
+      "description": "Services port configuration",
+      "properties": {
+        "codecoder": {
+          "$ref": "#/$defs/ServicePortConfig",
+          "description": "CodeCoder API service (default port: 4400)"
+        },
+        "gateway": {
+          "$ref": "#/$defs/ServicePortConfig",
+          "description": "Gateway service (default port: 4430)"
+        },
+        "channels": {
+          "$ref": "#/$defs/ServicePortConfig",
+          "description": "Channels service (default port: 4431)"
+        },
+        "workflow": {
+          "$ref": "#/$defs/ServicePortConfig",
+          "description": "Workflow service (default port: 4432)"
+        },
+        "trading": {
+          "$ref": "#/$defs/ServicePortConfig",
+          "description": "Trading service (default port: 4434)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServicePortConfig": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port number for the service"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RedisConfig": {
+      "type": "object",
+      "description": "Redis configuration for conversation store",
+      "properties": {
+        "url": {
+          "type": "string",
+          "default": "redis://localhost:4410",
+          "description": "Redis connection URL"
+        },
+        "password": {
+          "type": "string",
+          "description": "Redis password"
+        },
+        "db": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "default": 0,
+          "description": "Redis database number"
+        },
+        "keyPrefix": {
+          "type": "string",
+          "default": "codecoder:",
+          "description": "Key prefix for all Redis keys"
+        },
+        "connectTimeout": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5000,
+          "description": "Connection timeout in ms"
+        },
+        "commandTimeout": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3000,
+          "description": "Command timeout in ms"
+        },
+        "maxRetriesPerRequest": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Max retries per request"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuthConfig": {
+      "type": "object",
+      "description": "Authentication configuration",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["pairing", "jwt", "none"],
+          "default": "pairing",
+          "description": "Authentication mode"
+        },
+        "jwt_secret": {
+          "type": "string",
+          "description": "JWT secret for token signing"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ObservabilityConfig": {
+      "type": "object",
+      "description": "Observability configuration",
+      "properties": {
+        "log_level": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "default": "info",
+          "description": "Log level"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable observability logging"
+        },
+        "sampling": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1,
+          "description": "Sampling rate for logs (0.0-1.0)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "MemoryConfig": {
+      "type": "object",
+      "description": "Memory/persistence configuration",
+      "properties": {
+        "backend": {
+          "type": "string",
+          "enum": ["sqlite", "markdown", "none"],
+          "default": "sqlite",
+          "description": "Memory storage backend"
+        },
+        "auto_save": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-save conversation context"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AgentConfig": {
+      "type": "object",
+      "description": "Agent configuration",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model to use for this agent"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Temperature for sampling"
+        },
+        "top_p": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Top-p for nucleus sampling"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "System prompt for the agent"
+        },
+        "description": {
+          "type": "string",
+          "description": "Description of when to use the agent"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["subagent", "primary", "all"],
+          "description": "Agent mode"
+        },
+        "hidden": {
+          "type": "boolean",
+          "description": "Hide this agent from autocomplete menu"
+        },
+        "disable": {
+          "type": "boolean",
+          "description": "Disable this agent"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "Hex color code for the agent"
+        },
+        "steps": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum agentic iterations"
+        },
+        "permission": {
+          "$ref": "#/$defs/PermissionConfig"
+        },
+        "options": {
+          "type": "object",
+          "description": "Additional agent options",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "McpServerConfig": {
+      "type": "object",
+      "description": "MCP server configuration for 'mcp serve' command",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "description": "API key for MCP server authentication"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Default port for HTTP transport"
+        },
+        "defaultTransport": {
+          "type": "string",
+          "enum": ["stdio", "http"],
+          "description": "Default transport mode"
+        },
+        "resources": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Glob patterns for additional resources"
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpLocalConfig": {
+      "type": "object",
+      "description": "Local MCP server configuration",
+      "required": ["type", "command"],
+      "properties": {
+        "type": {
+          "const": "local"
+        },
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Command and arguments to run the MCP server"
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Environment variables"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable the MCP server"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in ms for MCP requests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpRemoteConfig": {
+      "type": "object",
+      "description": "Remote MCP server configuration",
+      "required": ["type", "url"],
+      "properties": {
+        "type": {
+          "const": "remote"
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the remote MCP server"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable the MCP server"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Headers to send with requests"
+        },
+        "oauth": {
+          "oneOf": [
+            { "$ref": "#/$defs/McpOAuthConfig" },
+            { "const": false }
+          ],
+          "description": "OAuth configuration"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Timeout in ms for MCP requests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpOAuthConfig": {
+      "type": "object",
+      "properties": {
+        "clientId": {
+          "type": "string",
+          "description": "OAuth client ID"
+        },
+        "clientSecret": {
+          "type": "string",
+          "description": "OAuth client secret"
+        },
+        "scope": {
+          "type": "string",
+          "description": "OAuth scopes to request"
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpDisabledConfig": {
+      "type": "object",
+      "required": ["enabled"],
+      "properties": {
+        "enabled": {
+          "const": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "KeybindsConfig": {
+      "type": "object",
+      "description": "Keyboard shortcut configurations",
+      "properties": {
+        "leader": { "type": "string", "default": "ctrl+x" },
+        "app_exit": { "type": "string", "default": "ctrl+c,ctrl+d,<leader>q" },
+        "editor_open": { "type": "string", "default": "<leader>e" },
+        "theme_list": { "type": "string", "default": "<leader>t" },
+        "sidebar_toggle": { "type": "string", "default": "<leader>b" },
+        "session_new": { "type": "string", "default": "<leader>n" },
+        "session_list": { "type": "string", "default": "<leader>l" },
+        "model_list": { "type": "string", "default": "<leader>m" },
+        "agent_list": { "type": "string", "default": "<leader>a" },
+        "command_list": { "type": "string", "default": "ctrl+p" },
+        "input_submit": { "type": "string", "default": "return" },
+        "input_newline": { "type": "string", "default": "shift+return,ctrl+return,alt+return,ctrl+j" }
+      },
+      "additionalProperties": { "type": "string" }
+    },
+    "PermissionConfig": {
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": ["ask", "allow", "deny"]
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "enum": ["ask", "allow", "deny"] },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": ["ask", "allow", "deny"]
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "description": "Permission configuration for tools"
+    },
+    "CompactionConfig": {
+      "type": "object",
+      "properties": {
+        "auto": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic compaction"
+        },
+        "prune": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable pruning of old tool outputs"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ServerConfig": {
+      "type": "object",
+      "description": "Server configuration for codecoder serve",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Port to listen on"
+        },
+        "hostname": {
+          "type": "string",
+          "description": "Hostname to listen on"
+        },
+        "mdns": {
+          "type": "boolean",
+          "description": "Enable mDNS service discovery"
+        },
+        "cors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional domains to allow for CORS"
+        },
+        "apiKey": {
+          "type": "string",
+          "description": "API key for authenticating requests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TuiConfig": {
+      "type": "object",
+      "description": "TUI specific settings",
+      "properties": {
+        "scroll_speed": {
+          "type": "number",
+          "minimum": 0.001,
+          "description": "Scroll speed"
+        },
+        "scroll_acceleration": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" }
+          }
+        },
+        "diff_style": {
+          "type": "string",
+          "enum": ["auto", "stacked"],
+          "description": "Diff rendering style"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VaultConfig": {
+      "type": "object",
+      "description": "Credential vault configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the credential vault"
+        },
+        "autoInject": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-inject credentials into HTTP requests"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExperimentalConfig": {
+      "type": "object",
+      "description": "Experimental features",
+      "properties": {
+        "chatMaxRetries": { "type": "integer" },
+        "disable_paste_summary": { "type": "boolean" },
+        "batch_tool": { "type": "boolean" },
+        "openTelemetry": { "type": "boolean" },
+        "primary_tools": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "continue_loop_on_deny": { "type": "boolean" },
+        "mcp_timeout": { "type": "integer", "minimum": 1 },
+        "observability": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+            "sampling": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "AutonomousModeConfig": {
+      "type": "object",
+      "description": "Autonomous Mode configuration",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "autonomyLevel": {
+          "type": "string",
+          "enum": ["lunatic", "insane", "crazy", "wild", "bold", "timid"]
+        },
+        "unattended": { "type": "boolean" },
+        "resourceLimits": {
+          "type": "object",
+          "properties": {
+            "maxTokens": { "type": "integer" },
+            "maxCostUSD": { "type": "number" },
+            "maxDurationMinutes": { "type": "integer" },
+            "maxFilesChanged": { "type": "integer" },
+            "maxActions": { "type": "integer" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

@@ -111,17 +111,11 @@ pub struct ServicesConfig {
 }
 
 /// Individual service port configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ServicePortConfig {
     /// Port number for the service
     #[serde(default)]
     pub port: Option<u16>,
-}
-
-impl Default for ServicePortConfig {
-    fn default() -> Self {
-        Self { port: None }
-    }
 }
 
 // ============================================================================
@@ -185,6 +179,15 @@ pub struct LlmSecretsConfig {
     pub minimax: Option<String>,
     #[serde(default)]
     pub qianfan: Option<String>,
+    #[serde(default)]
+    pub uniapi: Option<String>,
+    #[serde(default)]
+    pub volces: Option<String>,
+    #[serde(default, rename = "zhipu-ai")]
+    pub zhipu_ai: Option<String>,
+    /// Additional custom providers not explicitly defined
+    #[serde(flatten)]
+    pub other: HashMap<String, String>,
 }
 
 /// IM channel credentials.
@@ -901,18 +904,19 @@ pub struct SessionConfig {
 
 impl Config {
     /// Load configuration from the default path.
+    ///
+    /// This uses the modular config loader to merge files:
+    /// - `config.json` - Core configuration
+    /// - `secrets.json` - Credentials (API keys, tokens)
+    /// - `trading.json` - Trading module configuration
+    /// - `channels.json` - IM channels configuration
+    /// - `providers.json` - LLM provider configuration
     pub fn load() -> Result<Self> {
-        let path = config_path();
-        if !path.exists() {
-            tracing::info!("Config file not found, using defaults");
-            return Ok(Self::default());
-        }
+        // Use modular loader to merge all config files
+        let merged = crate::config_loader::load_modular_config(None)?;
 
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read config from {}", path.display()))?;
-
-        serde_json::from_str(&content)
-            .with_context(|| format!("Failed to parse config from {}", path.display()))
+        serde_json::from_value(merged)
+            .with_context(|| "Failed to parse merged configuration")
     }
 
     /// Load configuration from a specific path.
@@ -1764,7 +1768,7 @@ pub struct AutoCaptureConfig {
 }
 
 /// Workflow service configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorkflowConfig {
     /// Cron scheduler configuration
     #[serde(default)]
@@ -1785,18 +1789,6 @@ pub struct WorkflowConfig {
     /// Competitive intelligence monitoring configuration
     #[serde(default)]
     pub monitor: MonitorConfig,
-}
-
-impl Default for WorkflowConfig {
-    fn default() -> Self {
-        Self {
-            cron: CronConfig::default(),
-            webhook: WebhookConfig::default(),
-            git: GitIntegrationConfig::default(),
-            ticket: TicketConfig::default(),
-            monitor: MonitorConfig::default(),
-        }
-    }
 }
 
 // ============================================================================

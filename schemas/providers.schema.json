@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/providers.json",
+  "title": "CodeCoder LLM Providers Configuration",
+  "description": "LLM provider configuration for CodeCoder services",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference"
+    },
+    "_settings": {
+      "$ref": "#/$defs/ProviderSettings",
+      "description": "Global LLM settings"
+    }
+  },
+  "additionalProperties": {
+    "oneOf": [
+      { "type": "string" },
+      { "$ref": "#/$defs/ProviderSettings" },
+      { "$ref": "#/$defs/ProviderConfig" }
+    ]
+  },
+  "$defs": {
+    "ProviderSettings": {
+      "type": "object",
+      "description": "Global LLM settings stored in provider._settings",
+      "properties": {
+        "default": {
+          "type": "string",
+          "description": "Default model in provider/model format (e.g., deepseek/deepseek-chat)"
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2,
+          "description": "Number of retries for failed requests"
+        },
+        "backoff_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1000,
+          "description": "Base backoff in milliseconds"
+        },
+        "fallbacks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fallback provider chain"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ProviderConfig": {
+      "type": "object",
+      "description": "Individual LLM provider configuration",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Provider ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Provider display name"
+        },
+        "api": {
+          "type": "string",
+          "description": "Provider API base URL"
+        },
+        "npm": {
+          "type": "string",
+          "description": "NPM package for the provider SDK"
+        },
+        "whitelist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Only enable these models"
+        },
+        "blacklist": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Disable these models"
+        },
+        "models": {
+          "type": "object",
+          "description": "Model definitions",
+          "additionalProperties": {
+            "$ref": "#/$defs/ModelConfig"
+          }
+        },
+        "options": {
+          "$ref": "#/$defs/ProviderOptions"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ModelConfig": {
+      "type": "object",
+      "description": "Model configuration within a provider",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Model ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Model display name"
+        },
+        "tool_call": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this model supports tool calling"
+        },
+        "limit": {
+          "$ref": "#/$defs/ModelLimits"
+        },
+        "variants": {
+          "type": "object",
+          "description": "Model variant configurations",
+          "additionalProperties": {
+            "$ref": "#/$defs/VariantConfig"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ModelLimits": {
+      "type": "object",
+      "description": "Token limits for a model",
+      "properties": {
+        "context": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Context window size (input tokens)"
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum output tokens"
+        }
+      },
+      "additionalProperties": false
+    },
+    "VariantConfig": {
+      "type": "object",
+      "description": "Model variant configuration",
+      "properties": {
+        "disabled": {
+          "type": "boolean",
+          "description": "Disable this variant"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ProviderOptions": {
+      "type": "object",
+      "description": "Provider options including credentials",
+      "properties": {
+        "apiKey": {
+          "type": "string",
+          "description": "API key for this provider"
+        },
+        "baseURL": {
+          "type": "string",
+          "description": "Base URL override"
+        },
+        "enterpriseUrl": {
+          "type": "string",
+          "description": "GitHub Enterprise URL for copilot authentication"
+        },
+        "setCacheKey": {
+          "type": "boolean",
+          "description": "Enable promptCacheKey for this provider"
+        },
+        "timeout": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Timeout in milliseconds"
+            },
+            {
+              "const": false,
+              "description": "Disable timeout"
+            }
+          ],
+          "description": "Timeout for requests"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -353,6 +353,11 @@ impl<P: DataProvider + 'static> ScreenerScheduler<P> {
         *state == SchedulerState::Running
     }
 
+    /// Get a reference to the scheduler configuration.
+    pub fn config(&self) -> &ScreenerConfig {
+        &self.config
+    }
+
     // ========================================================================
     // Internal Methods
     // ========================================================================
@@ -395,7 +400,7 @@ impl<P: DataProvider + 'static> ScreenerScheduler<P> {
         // Fetch financial data in batches
         let symbols: Vec<String> = stocks.iter().map(|s| s.symbol()).collect();
         let chunk_size = 100;
-        let mut total_saved = 0;
+        let mut total_financials_saved = 0;
 
         for chunk in symbols.chunks(chunk_size) {
             match self.provider.batch_get_financial_data(chunk, None).await {
@@ -404,7 +409,7 @@ impl<P: DataProvider + 'static> ScreenerScheduler<P> {
                         .save_financial_statements(&financials, self.provider.name())
                         .await
                         .unwrap_or(0);
-                    total_saved += saved;
+                    total_financials_saved += saved;
                     debug!(chunk_size = chunk.len(), saved, "Saved financial data batch");
                 }
                 Err(e) => {
@@ -416,7 +421,35 @@ impl<P: DataProvider + 'static> ScreenerScheduler<P> {
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         }
 
-        info!(total = total_saved, "Data sync complete");
+        info!(total = total_financials_saved, "Financial statements sync complete");
+
+        // Fetch valuation metrics in batches
+        let mut total_valuations_saved = 0;
+
+        for chunk in symbols.chunks(chunk_size) {
+            match self.provider.batch_get_valuation_metrics(chunk, None).await {
+                Ok(metrics) => {
+                    let saved = self.storage
+                        .save_valuation_metrics_batch(&metrics, self.provider.name())
+                        .await
+                        .unwrap_or(0);
+                    total_valuations_saved += saved;
+                    debug!(chunk_size = chunk.len(), saved, "Saved valuation metrics batch");
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to fetch valuation metrics batch");
+                }
+            }
+
+            // Small delay to avoid rate limiting
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+
+        info!(
+            financials = total_financials_saved,
+            valuations = total_valuations_saved,
+            "Data sync complete"
+        );
         Ok(())
     }
 

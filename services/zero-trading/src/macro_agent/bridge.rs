@@ -62,6 +62,7 @@ impl AgentBridge {
 
         let request = AgentRequest {
             user_id: "zero-trading".to_string(),
+            channel: "zero-trading".to_string(),
             agent: "macro".to_string(),
             message: prompt,
             stream: false,
@@ -77,6 +78,7 @@ impl AgentBridge {
 
         let request = AgentRequest {
             user_id: "zero-trading".to_string(),
+            channel: "zero-trading".to_string(),
             agent: "macro".to_string(),
             message: prompt,
             stream: false,

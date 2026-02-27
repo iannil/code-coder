@@ -23,6 +23,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
+use std::str::FromStr;
 
 /// Actions that can be performed on resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -41,22 +43,25 @@ pub enum Action {
 }
 
 impl Action {
-    /// Parse an action from string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "read" | "r" => Some(Action::Read),
-            "write" | "w" => Some(Action::Write),
-            "execute" | "exec" | "x" => Some(Action::Execute),
-            "delete" | "d" => Some(Action::Delete),
-            "admin" | "*" => Some(Action::Admin),
-            _ => None,
-        }
-    }
-
     /// Check if this action implies another action.
     /// Admin implies all other actions.
     pub fn implies(&self, other: &Action) -> bool {
         *self == Action::Admin || *self == *other
+    }
+}
+
+impl FromStr for Action {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "read" | "r" => Ok(Action::Read),
+            "write" | "w" => Ok(Action::Write),
+            "execute" | "exec" | "x" => Ok(Action::Execute),
+            "delete" | "d" => Ok(Action::Delete),
+            "admin" | "*" => Ok(Action::Admin),
+            _ => Err(()),
+        }
     }
 }
 
@@ -76,21 +81,6 @@ pub enum ResourceType {
 }
 
 impl ResourceType {
-    /// Parse a resource type from string.
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "agent" => ResourceType::Agent,
-            "skill" => ResourceType::Skill,
-            "workflow" => ResourceType::Workflow,
-            "prompt" => ResourceType::Prompt,
-            "channel" => ResourceType::Channel,
-            "provider" => ResourceType::Provider,
-            "memory" => ResourceType::Memory,
-            "config" => ResourceType::Config,
-            other => ResourceType::Custom(other.to_string()),
-        }
-    }
-
     /// Convert to string representation.
     pub fn as_str(&self) -> &str {
         match self {
@@ -104,6 +94,24 @@ impl ResourceType {
             ResourceType::Config => "config",
             ResourceType::Custom(s) => s,
         }
+    }
+}
+
+impl FromStr for ResourceType {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "agent" => ResourceType::Agent,
+            "skill" => ResourceType::Skill,
+            "workflow" => ResourceType::Workflow,
+            "prompt" => ResourceType::Prompt,
+            "channel" => ResourceType::Channel,
+            "provider" => ResourceType::Provider,
+            "memory" => ResourceType::Memory,
+            "config" => ResourceType::Config,
+            other => ResourceType::Custom(other.to_string()),
+        })
     }
 }
 
@@ -141,13 +149,14 @@ impl ResourcePermission {
             return None;
         }
 
-        let resource_type = ResourceType::from_str(parts[0]);
+        // ResourceType::from_str is infallible, so unwrap is safe
+        let resource_type = ResourceType::from_str(parts[0]).unwrap();
         let pattern = parts[1].to_string();
 
         let actions: HashSet<Action> = if parts.len() >= 3 {
             parts[2]
                 .split(',')
-                .filter_map(|a| Action::from_str(a.trim()))
+                .filter_map(|a| Action::from_str(a.trim()).ok())
                 .collect()
         } else {
             // Default to all actions if not specified
@@ -204,9 +213,10 @@ impl ResourcePermission {
         // Exact match
         pattern == resource_id
     }
+}
 
-    /// Convert to string format.
-    pub fn to_string(&self) -> String {
+impl fmt::Display for ResourcePermission {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let actions: Vec<&str> = self
             .actions
             .iter()
@@ -218,7 +228,8 @@ impl ResourcePermission {
                 Action::Admin => "*",
             })
             .collect();
-        format!(
+        write!(
+            f,
             "{}:{}:{}",
             self.resource_type.as_str(),
             self.resource_pattern,

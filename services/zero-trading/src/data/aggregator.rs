@@ -5,6 +5,7 @@
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -98,13 +99,27 @@ impl MarketDataAggregator {
             .trading
             .as_ref()
             .and_then(|t| t.local_storage.as_ref())
-            .map(|ls| LocalStorageConfig {
-                enabled: ls.enabled,
-                db_path: ls.db_path.clone().map(std::path::PathBuf::from)
-                    .unwrap_or_else(|| LocalStorageConfig::default().db_path),
-                candle_retention_days: ls.candle_retention_days.unwrap_or(365),
-                financial_retention_years: ls.financial_retention_years.unwrap_or(5),
-                auto_sync_on_startup: ls.auto_sync_on_startup.unwrap_or(true),
+            .map(|ls| {
+                // Expand ~ in db_path to home directory
+                let db_path = if let Some(ref p) = ls.db_path {
+                    if p.starts_with("~/") {
+                        dirs::home_dir()
+                            .map(|h| h.join(&p[2..]))
+                            .unwrap_or_else(|| std::path::PathBuf::from(p))
+                    } else {
+                        std::path::PathBuf::from(p)
+                    }
+                } else {
+                    LocalStorageConfig::default().db_path
+                };
+
+                LocalStorageConfig {
+                    enabled: ls.enabled,
+                    db_path,
+                    candle_retention_days: ls.candle_retention_days.unwrap_or(365),
+                    financial_retention_years: ls.financial_retention_years.unwrap_or(5),
+                    auto_sync_on_startup: ls.auto_sync_on_startup.unwrap_or(true),
+                }
             })
             .unwrap_or_default();
 
@@ -115,7 +130,10 @@ impl MarketDataAggregator {
 
         match LocalStorage::new(ls_config) {
             Ok(storage) => {
-                info!("Local storage initialized successfully");
+                info!(
+                    db_path = %storage.db_path().display(),
+                    "Local storage initialized successfully"
+                );
                 Some(Arc::new(storage))
             }
             Err(e) => {
@@ -500,7 +518,7 @@ impl MarketDataAggregator {
         }
     }
 
-    /// Start the background data updater
+    /// Start the background data updater with rate limiting to avoid API throttling.
     pub async fn start_updater(&self) -> Result<()> {
         info!("Starting market data updater");
 
@@ -513,25 +531,33 @@ impl MarketDataAggregator {
             return Ok(());
         }
 
+        // Initial startup delay to let providers settle
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
         loop {
-            // Update tracked symbols
+            // Update tracked symbols with delays to avoid rate limiting
             let symbols = self.tracked_symbols.read().await.clone();
 
-            for symbol in &symbols {
-                // Fetch common timeframes
-                for tf in &[Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
-                    if let Err(e) = self.get_candles(symbol, *tf, 100).await {
-                        warn!(symbol, timeframe = ?tf, error = %e, "Failed to update candles");
-                    }
+            for (idx, symbol) in symbols.iter().enumerate() {
+                // Add delay between symbols to avoid rate limiting
+                if idx > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+
+                // Fetch Daily timeframe only (H4/H1 not supported by Lixin)
+                if let Err(e) = self.get_candles(symbol, Timeframe::Daily, 100).await {
+                    warn!(symbol, timeframe = ?Timeframe::Daily, error = %e, "Failed to update candles");
                 }
             }
 
-            // Update SMT pairs
-            for pair in &self.smt_pairs {
-                for tf in &[Timeframe::Daily, Timeframe::H4] {
-                    if let Err(e) = self.get_smt_pair_data(pair, *tf, 50).await {
-                        warn!(pair = %pair.name, timeframe = ?tf, error = %e, "Failed to update SMT data");
-                    }
+            // Update SMT pairs with delays (Daily only - H4 not supported by Lixin)
+            for (idx, pair) in self.smt_pairs.iter().enumerate() {
+                if idx > 0 || !symbols.is_empty() {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+
+                if let Err(e) = self.get_smt_pair_data(pair, Timeframe::Daily, 50).await {
+                    warn!(pair = %pair.name, timeframe = ?Timeframe::Daily, error = %e, "Failed to update SMT data");
                 }
             }
 
@@ -571,10 +597,12 @@ impl MarketDataAggregator {
         Arc::clone(&self.router)
     }
 
-    /// Preload historical data for all tracked symbols (24/7 operation).
+    /// Preload historical data for all tracked symbols with rate limiting.
     ///
     /// This method is called by the preparation task runner to keep
     /// cached data fresh, ensuring fast response during trading hours.
+    ///
+    /// Uses staggered delays between symbols to avoid API rate limiting.
     ///
     /// # Returns
     /// Number of symbols successfully preloaded.
@@ -590,14 +618,22 @@ impl MarketDataAggregator {
 
         let mut success_count = 0;
 
-        for symbol in &symbols {
-            // Preload common timeframes used in analysis
-            for tf in [Timeframe::Daily, Timeframe::H4, Timeframe::H1] {
-                match self.get_candles(symbol, tf, 200).await {
-                    Ok(_) => {
+        for (idx, symbol) in symbols.iter().enumerate() {
+            // Add delay between symbols to avoid rate limiting (1 second per symbol)
+            if idx > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+
+            // Preload Daily timeframe only (H4/H1 not supported by Lixin)
+            let timeframes: Vec<Timeframe> = vec![Timeframe::Daily];
+
+            for (tf_idx, tf) in timeframes.iter().enumerate() {
+                match self.get_candles(symbol, *tf, 200).await {
+                    Ok(candles) => {
                         debug!(
                             symbol = %symbol,
                             timeframe = ?tf,
+                            count = candles.len(),
                             "Preloaded candle data"
                         );
                     }
@@ -609,6 +645,11 @@ impl MarketDataAggregator {
                             "Failed to preload candle data"
                         );
                     }
+                }
+
+                // Small delay between timeframes
+                if tf_idx < timeframes.len() - 1 {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                 }
             }
             success_count += 1;
@@ -771,6 +812,163 @@ impl MarketDataAggregator {
             // This is expensive, so return empty for now
             warn!("Cannot screen by valuation without local storage enabled");
             Ok(Vec::new())
+        }
+    }
+
+    // ========================================================================
+    // Data Sync Methods
+    // ========================================================================
+
+    /// Sync data for a specific symbol with detailed progress reporting.
+    ///
+    /// Fetches data from remote providers and saves to local storage.
+    /// Returns the number of candles successfully synced.
+    pub async fn sync_symbol_data(
+        &self,
+        symbol: &str,
+    ) -> Result<usize> {
+        let mut total_synced = 0;
+
+        info!(symbol, "Starting data sync for symbol");
+
+        // Sync daily candles
+        match self.get_candles(symbol, Timeframe::Daily, 365).await {
+            Ok(candles) => {
+                let count = candles.len();
+                total_synced += count;
+                let latest_date_str = candles.last().map(|c| c.timestamp.format("%Y-%m-%d").to_string());
+                info!(
+                    symbol,
+                    count,
+                    latest_date = ?latest_date_str,
+                    "Synced daily candles"
+                );
+
+                // Explicitly save to local storage
+                if let Some(ref storage) = self.local_storage {
+                    if let Err(e) = storage.save_candles(&candles, "sync").await {
+                        warn!(symbol, error = %e, "Failed to save daily candles to storage");
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(symbol, error = %e, "Failed to sync daily candles");
+            }
+        }
+
+        // Note: H4/H1 sync removed - Lixin only supports Daily timeframe
+
+        info!(symbol, total_synced, "Data sync completed for symbol");
+
+        Ok(total_synced)
+    }
+
+    /// Sync data for all tracked symbols with rate limiting.
+    ///
+    /// Returns a summary of sync results including success/failure counts.
+    pub async fn sync_all_symbols(&self) -> Result<SyncSummary> {
+        let symbols = self.tracked_symbols.read().await.clone();
+
+        if symbols.is_empty() {
+            return Ok(SyncSummary {
+                total_symbols: 0,
+                successful: 0,
+                failed: 0,
+                total_candles: 0,
+                errors: vec!["No tracked symbols configured".to_string()],
+            });
+        }
+
+        info!(count = symbols.len(), "Starting bulk data sync");
+
+        let mut successful = 0;
+        let mut failed = 0;
+        let mut total_candles = 0;
+        let mut errors = Vec::new();
+
+        for (idx, symbol) in symbols.iter().enumerate() {
+            // Add delay between symbols to avoid rate limiting (2 seconds per symbol)
+            if idx > 0 {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+
+            match self.sync_symbol_data(symbol).await {
+                Ok(count) => {
+                    successful += 1;
+                    total_candles += count;
+                }
+                Err(e) => {
+                    failed += 1;
+                    let error_msg = format!("{}: {}", symbol, e);
+                    warn!(error = %error_msg, "Sync failed for symbol");
+                    errors.push(error_msg);
+                }
+            }
+        }
+
+        let summary = SyncSummary {
+            total_symbols: symbols.len(),
+            successful,
+            failed,
+            total_candles,
+            errors,
+        };
+
+        info!(
+            total = summary.total_symbols,
+            successful = summary.successful,
+            failed = summary.failed,
+            total_candles = summary.total_candles,
+            "Bulk data sync completed"
+        );
+
+        Ok(summary)
+    }
+
+    /// Get local storage statistics for monitoring.
+    pub async fn get_storage_stats(&self) -> Result<StorageStats> {
+        if let Some(ref storage) = self.local_storage {
+            storage.get_stats().await.map(|s| StorageStats {
+                candle_count: s.candle_count,
+                financial_count: s.financial_count,
+                valuation_count: s.valuation_count,
+                unique_symbols: s.unique_symbols,
+                db_size_mb: s.db_size_bytes as f64 / 1_048_576.0,
+            })
+        } else {
+            Ok(StorageStats::default())
+        }
+    }
+}
+
+/// Summary of a bulk sync operation
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncSummary {
+    pub total_symbols: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub total_candles: usize,
+    pub errors: Vec<String>,
+}
+
+/// Storage statistics
+#[derive(Debug, Clone, Serialize)]
+pub struct StorageStats {
+    pub candle_count: u64,
+    pub financial_count: u64,
+    pub valuation_count: u64,
+    pub unique_symbols: u64,
+    pub db_size_mb: f64,
+}
+
+impl Default for StorageStats {
+    fn default() -> Self {
+        Self {
+            candle_count: 0,
+            financial_count: 0,
+            valuation_count: 0,
+            unique_symbols: 0,
+            db_size_mb: 0.0,
         }
     }
 }

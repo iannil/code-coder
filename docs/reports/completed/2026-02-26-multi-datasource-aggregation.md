@@ -147,23 +147,29 @@ for p in providers {
 
 **基础 URL**: `https://open.lixinger.com/api`
 
-**主要端点**:
-- `/a/stock/fs/daily-candlestick` - 股票日线
-- `/a/index/fs/daily-candlestick` - 指数日线
+**主要端点** (2026-02-27 更新):
+- `/cn/company/candlestick` - 股票日K线
+- `/cn/index/candlestick` - 指数日K线
 
-**请求格式**:
+**请求格式** (新版本):
 ```json
 {
   "token": "your-api-token",
-  "stockCodes": ["000001"],
+  "type": "lxr_fc_rights",
+  "stockCode": "000001",
   "startDate": "2024-01-01",
-  "endDate": "2024-12-31"
+  "endDate": "2024-12-31",
+  "limit": 100
 }
 ```
 
+**复权类型**:
+- 股票: `"ex_rights"` (不复权), `"lxr_fc_rights"` (理杏仁前复权), `"fc_rights"` (前复权), `"bc_rights"` (后复权)
+- 指数: `"normal"` (普通), `"total_return"` (全收益)
+
 **注意事项**:
 - 理杏仁不提供分钟级别数据，分钟线请求会返回 `DataNotAvailable` 错误
-- 分钟线数据将自动 failover 到 Ashare
+- 分钟线数据将自动 failover 到 iTick
 
 ---
 

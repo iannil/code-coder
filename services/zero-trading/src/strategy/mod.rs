@@ -52,7 +52,7 @@ impl Default for StrategyConfig {
         Self {
             min_accumulation_bars: 5,
             manipulation_threshold: 1.5,
-            timeframes: vec![Timeframe::Daily, Timeframe::H4, Timeframe::H1],
+            timeframes: vec![Timeframe::Daily],
             require_alignment: true,
             signal_expiry_minutes: 60,
         }
@@ -73,7 +73,7 @@ impl StrategyConfig {
                             .filter_map(|s| Timeframe::from_str(s))
                             .collect()
                     })
-                    .unwrap_or_else(|| vec![Timeframe::Daily, Timeframe::H4, Timeframe::H1]);
+                    .unwrap_or_else(|| vec![Timeframe::Daily]);
 
                 Self {
                     min_accumulation_bars: t.min_accumulation_bars.unwrap_or(5),
@@ -326,7 +326,8 @@ mod tests {
     fn test_strategy_config_default() {
         let config = StrategyConfig::default();
         assert_eq!(config.min_accumulation_bars, 5);
-        assert_eq!(config.timeframes.len(), 3);
+        assert_eq!(config.timeframes.len(), 1);
+        assert_eq!(config.timeframes[0], Timeframe::Daily);
         assert!(config.require_alignment);
     }
 }

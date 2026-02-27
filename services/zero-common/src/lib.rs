@@ -16,6 +16,7 @@
 pub mod audit;
 pub mod bus;
 pub mod config;
+pub mod config_loader;
 pub mod error;
 #[cfg(feature = "hitl-client")]
 pub mod hitl_client;

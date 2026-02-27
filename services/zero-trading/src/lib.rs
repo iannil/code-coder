@@ -63,7 +63,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use zero_common::config::Config;
 
-use crate::data::MarketDataAggregator;
+use crate::data::{LixinAdapter, MarketDataAggregator};
 use crate::execution::ExecutionEngine;
 use crate::macro_agent::{MacroOrchestrator, MacroReportGenerator};
 use crate::macro_filter::MacroFilter;
@@ -71,11 +71,15 @@ use crate::notification::NotificationClient;
 use crate::paper_trading::PaperTradingManager;
 use crate::portfolio::{DipAnalyzer, PoolsConfig, PoolsManager, SignalAnalyzer};
 use crate::scheduler::TradingScheduler;
+use crate::screener::{ScreenerConfig, ScreenerScheduler};
 use crate::session::TradingSessionManager;
 use crate::strategy::StrategyEngine;
 use crate::task_scheduler::TaskScheduler;
 use crate::valuation::ValuationAnalyzer;
 use crate::value::ValueAnalyzer;
+
+/// Type alias for the concrete screener scheduler (uses LixinAdapter for fundamental data)
+pub type ScreenerSchedulerImpl = ScreenerScheduler<LixinAdapter>;
 
 /// Trading service state
 pub struct TradingState {
@@ -109,6 +113,8 @@ pub struct TradingState {
     pub signal_analyzer: Arc<SignalAnalyzer>,
     /// Dip analyzer (golden pit vs value trap)
     pub dip_analyzer: Arc<DipAnalyzer>,
+    /// Screener scheduler (requires Lixin API token)
+    pub screener_scheduler: Option<Arc<ScreenerSchedulerImpl>>,
 }
 
 impl TradingState {
@@ -176,6 +182,33 @@ impl TradingState {
         let signal_analyzer = Arc::new(SignalAnalyzer::default());
         let dip_analyzer = Arc::new(DipAnalyzer::default());
 
+        // Create screener scheduler (requires Lixin API token and local storage for fundamental data)
+        let screener_scheduler = config.lixin_token().and_then(|token| {
+            let local_storage_for_screener = data.local_storage()?;
+            let lixin_provider = Arc::new(LixinAdapter::new(token));
+
+            // Parse screener config from JSON value, or use defaults
+            let screener_config: ScreenerConfig = config
+                .trading
+                .as_ref()
+                .and_then(|t| t.screener.as_ref())
+                .and_then(|v| serde_json::from_value(v.clone()).ok())
+                .unwrap_or_default();
+
+            Some(Arc::new(ScreenerScheduler::new(
+                screener_config,
+                Arc::new(config.clone()),
+                lixin_provider,
+                local_storage_for_screener,
+            )))
+        });
+
+        if screener_scheduler.is_some() {
+            tracing::info!("Screener scheduler initialized with Lixin data provider");
+        } else {
+            tracing::warn!("Screener scheduler not available: Lixin API token not configured");
+        }
+
         Self {
             config,
             data,
@@ -192,6 +225,7 @@ impl TradingState {
             portfolio_manager,
             signal_analyzer,
             dip_analyzer,
+            screener_scheduler,
         }
     }
 }
@@ -252,6 +286,17 @@ impl TradingService {
             .route("/api/v1/portfolio/positions", get(routes::portfolio_positions))
             .route("/api/v1/portfolio/signals", get(routes::portfolio_signals))
             .route("/api/v1/portfolio/dip-assessment", axum::routing::post(routes::dip_assessment))
+            // Market data sync routes
+            .route("/api/v1/data/sync", axum::routing::post(routes::data_sync))
+            .route("/api/v1/data/stats", get(routes::data_stats))
+            .route("/api/v1/data/symbols", get(routes::data_symbols))
+            .route("/api/v1/data/symbols/add", axum::routing::post(routes::add_symbols))
+            // Screener routes
+            .route("/api/v1/screener/status", get(routes::screener_status))
+            .route("/api/v1/screener/run", axum::routing::post(routes::screener_run))
+            .route("/api/v1/screener/results", get(routes::screener_results))
+            .route("/api/v1/screener/history", get(routes::screener_history))
+            .route("/api/v1/screener/sync", axum::routing::post(routes::screener_sync))
             .with_state(self.state.clone());
 
         // Initialize market data aggregator (register providers)
@@ -327,6 +372,23 @@ impl TradingService {
                 } else {
                     tracing::info!("Trading session scheduler disabled in config");
                 }
+            }
+        }
+
+        // Start the screener scheduler (if available and enabled)
+        if let Some(screener) = &self.state.screener_scheduler {
+            if screener.config().enabled {
+                let screener_clone = Arc::clone(screener);
+                tokio::spawn(async move {
+                    run_screener_scheduler(screener_clone).await;
+                });
+                tracing::info!(
+                    scan_cron = %screener.config().schedule_cron,
+                    sync_cron = %screener.config().data_sync_cron,
+                    "Screener scheduler started"
+                );
+            } else {
+                tracing::info!("Screener scheduler disabled in config");
             }
         }
 
@@ -453,4 +515,124 @@ async fn run_preparation_tasks(state: Arc<TradingState>) {
 
         tokio::time::sleep(std::time::Duration::from_secs(sleep_secs)).await;
     }
+}
+
+/// Run the screener scheduler based on cron configuration.
+///
+/// Monitors two cron schedules:
+/// - `schedule_cron`: Daily market scan (default: weekdays 18:00)
+/// - `data_sync_cron`: Weekly data synchronization (default: Sunday 20:00)
+///
+/// Uses the `cron` crate for proper cron expression parsing to support
+/// user-customized schedules beyond the defaults.
+async fn run_screener_scheduler(scheduler: Arc<ScreenerSchedulerImpl>) {
+    use chrono::{Datelike, Timelike};
+    use cron::Schedule;
+    use std::str::FromStr;
+
+    let config = scheduler.config();
+    let scan_cron = &config.schedule_cron;
+    let sync_cron = &config.data_sync_cron;
+
+    // Parse cron expressions (prepend seconds field for cron crate compatibility)
+    let scan_schedule = match Schedule::from_str(&format!("0 {}", scan_cron)) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::error!(
+                cron = %scan_cron,
+                error = %e,
+                "Failed to parse scan cron expression, scan scheduling disabled"
+            );
+            None
+        }
+    };
+
+    let sync_schedule = match Schedule::from_str(&format!("0 {}", sync_cron)) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::error!(
+                cron = %sync_cron,
+                error = %e,
+                "Failed to parse sync cron expression, sync scheduling disabled"
+            );
+            None
+        }
+    };
+
+    if scan_schedule.is_none() && sync_schedule.is_none() {
+        tracing::warn!("Both cron schedules failed to parse, screener scheduler exiting");
+        return;
+    }
+
+    tracing::info!(
+        scan_cron = %scan_cron,
+        sync_cron = %sync_cron,
+        "Screener scheduler running with cron schedules"
+    );
+
+    // Track last execution times to prevent duplicate runs
+    let mut last_scan_minute: Option<(u32, u32, u32)> = None; // (hour, minute, day)
+    let mut last_sync_minute: Option<(u32, u32, u32)> = None;
+
+    loop {
+        let now = chrono::Local::now();
+        let hour = now.hour();
+        let minute = now.minute();
+        let day = now.ordinal();
+
+        // Check scan schedule
+        if let Some(ref schedule) = scan_schedule {
+            if should_run_now(schedule, now) {
+                let current = (hour, minute, day);
+                if last_scan_minute != Some(current) {
+                    last_scan_minute = Some(current);
+                    tracing::info!("Triggering scheduled market scan");
+                    if let Err(e) = scheduler.trigger_quick_scan().await {
+                        tracing::error!(error = %e, "Scheduled market scan failed");
+                    }
+                }
+            }
+        }
+
+        // Check sync schedule
+        if let Some(ref schedule) = sync_schedule {
+            if should_run_now(schedule, now) {
+                let current = (hour, minute, day);
+                if last_sync_minute != Some(current) {
+                    last_sync_minute = Some(current);
+                    tracing::info!("Triggering scheduled data sync");
+                    if let Err(e) = scheduler.trigger_sync().await {
+                        tracing::error!(error = %e, "Scheduled data sync failed");
+                    }
+                }
+            }
+        }
+
+        // Sleep for 30 seconds before next check
+        // Using 30s instead of 60s to reduce chance of missing a minute boundary
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    }
+}
+
+/// Check if the current time matches the cron schedule.
+fn should_run_now(schedule: &cron::Schedule, now: chrono::DateTime<chrono::Local>) -> bool {
+    use chrono::Timelike;
+
+    // Get the upcoming scheduled time
+    if let Some(next) = schedule.upcoming(chrono::Local).next() {
+        // If the next scheduled time is within 1 minute, we should run
+        // This handles the case where we check mid-minute
+        let diff = next.signed_duration_since(now);
+        if diff.num_seconds() <= 60 && diff.num_seconds() >= 0 {
+            return true;
+        }
+
+        // Also check if we're currently in the scheduled minute
+        // by comparing hour, minute, and day-of-week/day-of-month
+        if next.hour() == now.hour() && next.minute() == now.minute() {
+            return true;
+        }
+    }
+
+    false
 }

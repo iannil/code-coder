@@ -12,6 +12,8 @@ use crate::macro_filter::{EconomicCyclePhase, TradingBias};
 pub struct AgentRequest {
     /// User ID for the request (required by CodeCoder API)
     pub user_id: String,
+    /// Channel type (required by CodeCoder API)
+    pub channel: String,
     /// Agent to use (e.g., "macro")
     pub agent: String,
     /// Message/prompt for the agent
@@ -421,6 +423,7 @@ mod tests {
     fn test_agent_request_serialization() {
         let request = AgentRequest {
             user_id: "test-user".to_string(),
+            channel: "test-channel".to_string(),
             agent: "macro".to_string(),
             message: "分析当前宏观环境".to_string(),
             stream: false,
@@ -429,6 +432,7 @@ mod tests {
         assert!(json.contains("macro"));
         assert!(json.contains("分析当前宏观环境"));
         assert!(json.contains("test-user"));
+        assert!(json.contains("test-channel"));
     }
 
     #[test]

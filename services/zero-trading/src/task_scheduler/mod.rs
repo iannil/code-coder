@@ -46,7 +46,8 @@ pub struct TaskScheduler {
     pub prep_config: PreparationTaskConfig,
     /// Market data aggregator
     data: Arc<MarketDataAggregator>,
-    /// Strategy engine
+    /// Strategy engine (kept for component ownership, used via signal_detector)
+    #[allow(dead_code)]
     strategy: Arc<StrategyEngine>,
     /// Signal detector
     signal_detector: SignalDetector,
@@ -119,16 +120,15 @@ impl TaskScheduler {
         info!(count = symbols.len(), "Preloading data for tracked symbols");
 
         for symbol in symbols {
-            // Preload common timeframes
-            for tf in [crate::data::Timeframe::Daily, crate::data::Timeframe::H4, crate::data::Timeframe::H1] {
-                if let Err(e) = self.data.get_candles(&symbol, tf, 200).await {
-                    debug!(
-                        symbol = %symbol,
-                        timeframe = ?tf,
-                        error = %e,
-                        "Failed to preload candle data"
-                    );
-                }
+            // Preload Daily timeframe only (H4/H1 not supported by Lixin)
+            let tf = crate::data::Timeframe::Daily;
+            if let Err(e) = self.data.get_candles(&symbol, tf, 200).await {
+                debug!(
+                    symbol = %symbol,
+                    timeframe = ?tf,
+                    error = %e,
+                    "Failed to preload candle data"
+                );
             }
         }
 

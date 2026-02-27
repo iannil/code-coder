@@ -195,6 +195,44 @@ pub trait TradingExecutor: Send + Sync {
 // Paper Executor
 // ============================================================================
 
+/// Daily P&L tracking state
+struct DailyPnlState {
+    /// Realized P&L for today
+    realized_pnl: f64,
+    /// Date when P&L was last reset
+    last_reset_date: chrono::NaiveDate,
+}
+
+impl DailyPnlState {
+    fn new() -> Self {
+        Self {
+            realized_pnl: 0.0,
+            last_reset_date: chrono::Local::now().date_naive(),
+        }
+    }
+
+    /// Check if we need to reset for a new day
+    fn maybe_reset(&mut self) {
+        let today = chrono::Local::now().date_naive();
+        if today != self.last_reset_date {
+            self.realized_pnl = 0.0;
+            self.last_reset_date = today;
+        }
+    }
+
+    /// Add realized P&L (call when a position is closed)
+    fn add_realized_pnl(&mut self, pnl: f64) {
+        self.maybe_reset();
+        self.realized_pnl += pnl;
+    }
+
+    /// Get today's realized P&L (resets if new day)
+    fn get_realized_pnl(&mut self) -> f64 {
+        self.maybe_reset();
+        self.realized_pnl
+    }
+}
+
 /// Paper trading executor (simulation)
 pub struct PaperExecutor {
     /// Execution engine
@@ -203,6 +241,8 @@ pub struct PaperExecutor {
     balance: Arc<RwLock<f64>>,
     /// Order counter
     order_counter: Arc<RwLock<u64>>,
+    /// Daily P&L tracking
+    daily_pnl: Arc<RwLock<DailyPnlState>>,
 }
 
 impl PaperExecutor {
@@ -212,6 +252,7 @@ impl PaperExecutor {
             engine,
             balance: Arc::new(RwLock::new(initial_balance)),
             order_counter: Arc::new(RwLock::new(0)),
+            daily_pnl: Arc::new(RwLock::new(DailyPnlState::new())),
         }
     }
 
@@ -249,6 +290,19 @@ impl TradingExecutor for PaperExecutor {
         // For paper trading, orders are immediately filled
         let fill_price = request.price.unwrap_or(0.0);
         let amount = request.quantity * fill_price;
+
+        // For sell orders, calculate realized P&L before closing position
+        let realized_pnl = if request.side == ExecutionSide::Sell {
+            let engine = self.engine.read().await;
+            engine
+                .get_positions()
+                .iter()
+                .find(|p| p.symbol == request.symbol)
+                .map(|p| (fill_price - p.entry_price) * request.quantity)
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
 
         // Update balance
         {
@@ -304,6 +358,17 @@ impl TradingExecutor for PaperExecutor {
             }
         }
 
+        // Track realized P&L for sell orders
+        if request.side == ExecutionSide::Sell && realized_pnl != 0.0 {
+            let mut daily_pnl = self.daily_pnl.write().await;
+            daily_pnl.add_realized_pnl(realized_pnl);
+            info!(
+                symbol = %request.symbol,
+                realized_pnl,
+                "Tracked realized P&L"
+            );
+        }
+
         Ok(ExecutionResult {
             order_id,
             broker_order_id: None,
@@ -330,13 +395,19 @@ impl TradingExecutor for PaperExecutor {
         let positions = self.get_positions().await?;
         let market_value: f64 = positions.iter().map(|p| p.invested_amount()).sum();
 
+        // Get today's realized P&L (auto-resets on new day)
+        let realized_pnl_today = {
+            let mut daily_pnl = self.daily_pnl.write().await;
+            daily_pnl.get_realized_pnl()
+        };
+
         Ok(AccountInfo {
             account_id: "PAPER-ACCOUNT".to_string(),
             total_assets: balance + market_value,
             cash: balance,
             market_value,
             unrealized_pnl: positions.iter().map(|p| p.unrealized_pnl()).sum(),
-            realized_pnl_today: 0.0, // TODO: Track daily P&L
+            realized_pnl_today,
             buying_power: balance,
         })
     }

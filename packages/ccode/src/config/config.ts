@@ -370,7 +370,7 @@ export namespace Config {
 
   export const RedisConfig = z
     .object({
-      url: z.string().default("redis://localhost:6379").describe("Redis connection URL"),
+      url: z.string().default("redis://localhost:4410").describe("Redis connection URL"),
       password: z.string().optional().describe("Redis password"),
       db: z.number().int().min(0).max(15).default(0).describe("Redis database number"),
       keyPrefix: z.string().default("codecoder:").describe("Key prefix for all Redis keys"),
@@ -1427,8 +1427,103 @@ export namespace Config {
       mergeDeep(await loadFile(path.join(Global.Path.config, "codecoder.jsonc"))),
     )
 
+    // Load modular configuration files from ~/.codecoder/
+    const configDir = Global.Path.config
+
+    // Load secrets.json
+    const secrets = await loadJsonFile(path.join(configDir, "secrets.json"))
+    if (secrets) {
+      result.secrets = mergeDeep(result.secrets ?? {}, secrets) as Secrets
+      log.debug("loaded secrets.json")
+    }
+
+    // Load trading.json
+    const trading = await loadJsonFile(path.join(configDir, "trading.json"))
+    if (trading) {
+      result.trading = mergeDeep(result.trading ?? {}, trading) as Info["trading"]
+      log.debug("loaded trading.json")
+    }
+
+    // Load channels.json → zerobot.channels
+    const channels = await loadJsonFile(path.join(configDir, "channels.json"))
+    if (channels) {
+      result.zerobot = result.zerobot ?? {}
+      result.zerobot.channels = mergeDeep(result.zerobot.channels ?? {}, channels) as ZeroBot["channels"]
+      log.debug("loaded channels.json")
+    }
+
+    // Load providers.json → provider
+    const providers = await loadJsonFile(path.join(configDir, "providers.json"))
+    if (providers) {
+      result.provider = mergeDeep(result.provider ?? {}, providers) as Info["provider"]
+      log.debug("loaded providers.json")
+    }
+
+    // Apply environment variable overrides for API keys
+    applyEnvOverrides(result)
+
     return result
   })
+
+  // Helper to load a plain JSON file (no schema validation, returns raw object)
+  async function loadJsonFile<T>(filepath: string): Promise<T | null> {
+    try {
+      const text = await Bun.file(filepath).text()
+      const errors: JsoncParseError[] = []
+      const data = parseJsonc(text, errors, { allowTrailingComma: true })
+      if (errors.length) {
+        log.warn("JSONC parse errors", { path: filepath, errors: errors.map((e) => printParseErrorCode(e.error)).join(", ") })
+        return null
+      }
+      return data as T
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return null
+      }
+      log.error("failed to load config file", { path: filepath, error })
+      return null
+    }
+  }
+
+  // Apply environment variable overrides to config
+  function applyEnvOverrides(config: Info): void {
+    const env = process.env
+
+    // LLM API keys
+    const llmKeyMap: Record<string, string> = {
+      ANTHROPIC_API_KEY: "anthropic",
+      OPENAI_API_KEY: "openai",
+      DEEPSEEK_API_KEY: "deepseek",
+      GOOGLE_API_KEY: "google",
+      OPENROUTER_API_KEY: "openrouter",
+      GROQ_API_KEY: "groq",
+      MISTRAL_API_KEY: "mistral",
+      XAI_API_KEY: "xai",
+      TOGETHER_API_KEY: "together",
+      FIREWORKS_API_KEY: "fireworks",
+      PERPLEXITY_API_KEY: "perplexity",
+    }
+
+    for (const [envVar, provider] of Object.entries(llmKeyMap)) {
+      if (env[envVar]) {
+        config.secrets = config.secrets ?? {}
+        config.secrets.llm = config.secrets.llm ?? {}
+        config.secrets.llm[provider] = env[envVar]!
+      }
+    }
+
+    // External API keys
+    if (env.LIXIN_API_KEY) {
+      config.secrets = config.secrets ?? {}
+      config.secrets.external = config.secrets.external ?? {}
+      config.secrets.external.lixin = env.LIXIN_API_KEY
+    }
+    if (env.ITICK_API_KEY) {
+      config.secrets = config.secrets ?? {}
+      config.secrets.external = config.secrets.external ?? {}
+      config.secrets.external.itick = env.ITICK_API_KEY
+    }
+  }
 
   async function loadFile(filepath: string): Promise<Info> {
     log.info("loading", { path: filepath })

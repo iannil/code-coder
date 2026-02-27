@@ -311,9 +311,9 @@ pub struct LocalStorageConfig {
 impl Default for LocalStorageConfig {
     fn default() -> Self {
         Self {
-            db_path: dirs::data_dir()
+            db_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("codecoder")
+                .join(".codecoder")
                 .join("financial.db"),
             enabled: true,
             candle_retention_days: 365,

@@ -1791,7 +1791,7 @@ mod tests {
         assert!((c.default_temperature - 0.7).abs() < f64::EPSILON);
         assert!(c.api_key.is_none());
         assert!(c.workspace_dir.to_string_lossy().contains("workspace"));
-        assert!(c.config_path.to_string_lossy().contains("config.toml"));
+        assert!(c.config_path.to_string_lossy().contains(".json"));
     }
 
     #[test]
@@ -1954,7 +1954,7 @@ default_temperature = 0.7
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
 
-        let config_path = dir.join("config.toml");
+        let config_path = dir.join("config.json");
         let config = Config {
             workspace_dir: dir.join("workspace"),
             config_path: config_path.clone(),
@@ -1990,7 +1990,7 @@ default_temperature = 0.7
         assert!(config_path.exists());
 
         let contents = fs::read_to_string(&config_path).unwrap();
-        let loaded: Config = toml::from_str(&contents).unwrap();
+        let loaded: Config = serde_json::from_str(&contents).unwrap();
         assert_eq!(loaded.api_key.as_deref(), Some("sk-roundtrip"));
         assert_eq!(loaded.default_model.as_deref(), Some("test-model"));
         assert!((loaded.default_temperature - 0.9).abs() < f64::EPSILON);

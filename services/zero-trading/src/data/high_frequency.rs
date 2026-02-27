@@ -101,9 +101,9 @@ pub struct CollectorConfig {
 impl Default for CollectorConfig {
     fn default() -> Self {
         Self {
-            db_path: dirs::data_dir()
+            db_path: dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
-                .join("codecoder")
+                .join(".codecoder")
                 .join("high_frequency.db"),
             enabled: true,
             daily_schedule: "0 18 * * 1-5".to_string(),

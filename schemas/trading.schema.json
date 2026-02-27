@@ -1,0 +1,447 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/trading.json",
+  "title": "CodeCoder Trading Configuration",
+  "description": "Trading module configuration for zero-trading service",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable the trading module"
+    },
+    "paper_trading": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable paper trading (simulation mode)"
+    },
+    "auto_execute": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable automatic execution"
+    },
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535,
+      "default": 4434,
+      "description": "Trading service HTTP port"
+    },
+    "host": {
+      "type": "string",
+      "default": "127.0.0.1",
+      "description": "Trading service HTTP host"
+    },
+    "tracked_symbols": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tracked symbols for market data updates (e.g., ['000001.SH', '000300.SH'])"
+    },
+    "timeframes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Timeframes for multi-timeframe analysis (e.g., ['D', 'H4', 'H1'])"
+    },
+    "telegram_notification": {
+      "$ref": "#/$defs/TradingNotificationConfig"
+    },
+    "schedule": {
+      "$ref": "#/$defs/TradingScheduleConfig"
+    },
+    "data_sources": {
+      "$ref": "#/$defs/DataSourcesConfig"
+    },
+    "local_storage": {
+      "$ref": "#/$defs/LocalStorageConfig"
+    },
+    "screener": {
+      "$ref": "#/$defs/ScreenerConfig"
+    },
+    "macro_agent": {
+      "$ref": "#/$defs/MacroAgentConfig"
+    },
+    "loop_config": {
+      "$ref": "#/$defs/TradingLoopConfig"
+    },
+    "preparation_tasks": {
+      "$ref": "#/$defs/PreparationTaskConfig"
+    },
+    "smt_pairs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SmtPairConfig" },
+      "description": "SMT pairs for divergence detection"
+    },
+    "max_positions": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum number of open positions"
+    },
+    "max_position_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Maximum capital per position (percentage)"
+    },
+    "max_daily_capital_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Maximum daily capital deployment (percentage)"
+    },
+    "default_stop_loss_pct": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Default stop loss percentage"
+    },
+    "min_accumulation_bars": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum bars for accumulation phase detection"
+    },
+    "manipulation_threshold": {
+      "type": "number",
+      "description": "Manipulation threshold (ATR multiple)"
+    },
+    "require_alignment": {
+      "type": "boolean",
+      "description": "Require multi-timeframe alignment"
+    },
+    "signal_expiry_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Signal expiry in minutes"
+    },
+    "macro_filter_enabled": {
+      "type": "boolean",
+      "description": "Enable macro economic filter"
+    },
+    "macro_cache_secs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Macro data cache duration in seconds"
+    }
+  },
+  "$defs": {
+    "TradingNotificationConfig": {
+      "type": "object",
+      "description": "Telegram notification settings",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable notifications"
+        },
+        "chat_id": {
+          "type": "string",
+          "description": "Telegram chat ID for notifications"
+        },
+        "notify_signals": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notify on new signals"
+        },
+        "notify_trades": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notify on trade execution"
+        },
+        "notify_errors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notify on errors"
+        },
+        "notify_macro_alerts": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notify on macro alerts"
+        }
+      }
+    },
+    "TradingScheduleConfig": {
+      "type": "object",
+      "description": "Session schedule configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable scheduled sessions"
+        },
+        "session_start": {
+          "type": "string",
+          "description": "Cron expression for session start (e.g., '0 25 9 * * 1-5')"
+        },
+        "session_end": {
+          "type": "string",
+          "description": "Cron expression for session end (optional)"
+        },
+        "timezone": {
+          "type": "string",
+          "default": "Asia/Shanghai",
+          "description": "Timezone for schedule"
+        }
+      }
+    },
+    "DataSourcesConfig": {
+      "type": "object",
+      "description": "Multi-data-source configuration",
+      "properties": {
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DataSourceEntry" },
+          "description": "List of data source configurations"
+        },
+        "health_check_interval_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Health check interval in seconds"
+        },
+        "unhealthy_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Consecutive failures before marking unhealthy"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2,
+          "description": "Maximum retries per provider"
+        },
+        "health_check_timeout_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10,
+          "description": "Health check timeout in seconds"
+        }
+      }
+    },
+    "DataSourceEntry": {
+      "type": "object",
+      "description": "Data source entry configuration",
+      "required": ["provider"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["itick", "lixin", "ashare"],
+          "description": "Data provider name"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0,
+          "description": "Priority (lower = higher priority)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable this data source"
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["realtime", "historical", "fundamentals", "financial"]
+          },
+          "description": "Supported capabilities"
+        }
+      }
+    },
+    "LocalStorageConfig": {
+      "type": "object",
+      "description": "Local storage configuration for persistent data",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable local storage"
+        },
+        "directory": {
+          "type": "string",
+          "description": "Storage directory path"
+        },
+        "symbols": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Symbols to store locally"
+        },
+        "retention_days": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 365,
+          "description": "Data retention period in days"
+        }
+      }
+    },
+    "ScreenerConfig": {
+      "type": "object",
+      "description": "Full market screener configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable screener"
+        },
+        "universe": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Stock universe to screen"
+        },
+        "filters": {
+          "$ref": "#/$defs/ScreenerFilters"
+        },
+        "refresh_interval_mins": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30,
+          "description": "Refresh interval in minutes"
+        }
+      }
+    },
+    "ScreenerFilters": {
+      "type": "object",
+      "description": "Screener filter configuration",
+      "properties": {
+        "valuation": {
+          "type": "object",
+          "properties": {
+            "pe_max": { "type": "number" },
+            "pb_max": { "type": "number" },
+            "ps_max": { "type": "number" }
+          }
+        },
+        "momentum": {
+          "type": "object",
+          "properties": {
+            "rsi_min": { "type": "number", "minimum": 0, "maximum": 100 },
+            "rsi_max": { "type": "number", "minimum": 0, "maximum": 100 }
+          }
+        },
+        "volume": {
+          "type": "object",
+          "properties": {
+            "min_avg_volume": { "type": "number" },
+            "volume_ratio_min": { "type": "number" }
+          }
+        },
+        "price": {
+          "type": "object",
+          "properties": {
+            "min_price": { "type": "number", "minimum": 0 },
+            "max_price": { "type": "number", "minimum": 0 }
+          }
+        },
+        "market_cap": {
+          "type": "object",
+          "properties": {
+            "min": { "type": "number", "minimum": 0 },
+            "max": { "type": "number", "minimum": 0 }
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "MacroAgentConfig": {
+      "type": "object",
+      "description": "Macro agent configuration for intelligent analysis",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable macro agent"
+        },
+        "model": {
+          "type": "string",
+          "description": "LLM model for macro analysis"
+        },
+        "temperature": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 2,
+          "default": 0.3,
+          "description": "Temperature for LLM"
+        },
+        "cache_ttl_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cache TTL in seconds"
+        }
+      }
+    },
+    "TradingLoopConfig": {
+      "type": "object",
+      "description": "Trading loop configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable trading loop"
+        },
+        "interval_secs": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 60,
+          "description": "Loop interval in seconds"
+        },
+        "signal_cooldown_secs": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 300,
+          "description": "Signal cooldown in seconds"
+        }
+      }
+    },
+    "PreparationTaskConfig": {
+      "type": "object",
+      "description": "Preparation task configuration (24/7 operation)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable preparation tasks"
+        },
+        "preload_data": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preload market data"
+        },
+        "precompute_indicators": {
+          "type": "boolean",
+          "default": true,
+          "description": "Precompute technical indicators"
+        },
+        "schedule": {
+          "type": "string",
+          "description": "Cron expression for preparation tasks"
+        }
+      }
+    },
+    "SmtPairConfig": {
+      "type": "object",
+      "description": "SMT pair for divergence detection",
+      "required": ["symbol_a", "symbol_b"],
+      "properties": {
+        "symbol_a": {
+          "type": "string",
+          "description": "First symbol in pair"
+        },
+        "symbol_b": {
+          "type": "string",
+          "description": "Second symbol in pair"
+        },
+        "correlation_threshold": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum correlation threshold"
+        }
+      }
+    }
+  },
+  "additionalProperties": true
+}

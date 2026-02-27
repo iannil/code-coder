@@ -160,6 +160,10 @@ bun run --cwd packages/ccode build
 - Zero CLI Daemon: 4402 (Rust, 进程编排器)
 - Faster Whisper Server: 4403 (Docker)
 
+**基础设施服务 (4410-4419):**
+
+- Redis Server: 4410 (Docker, 会话存储)
+
 **协议服务 (4420-4429):**
 
 - MCP Server (HTTP): 4420 (Model Context Protocol)
@@ -210,8 +214,35 @@ bun run --cwd packages/ccode build
 
 ### 统一配置
 
-- 所有服务的配置文件统一为：`~/.codecoder/config.json`
-- 禁止使用`.toml`格式
+配置文件位于 `~/.codecoder/`，支持模块化文件结构：
+
+```
+~/.codecoder/
+├── config.json           # 核心配置 (~80 行)
+├── secrets.json          # 凭证文件 (gitignored, 600权限)
+├── trading.json          # 交易模块配置
+├── channels.json         # IM渠道配置
+└── providers.json        # LLM提供商配置
+```
+
+**核心原则**:
+- 配置使用 JSON 格式，禁止使用 `.toml`
+- `secrets.json` 单独存储敏感信息，权限设置为 600
+- 模块化文件会自动合并到主配置，优先级高于 `config.json` 中的同名字段
+- 环境变量 (`ANTHROPIC_API_KEY`, `ZERO_*`) 具有最高优先级
+
+**Schema 验证**:
+- 所有配置文件均有对应的 JSON Schema: `schemas/*.schema.json`
+- 运行 `bun run script/generate-config.ts` 可从 Schema 生成 TypeScript 类型
+
+**迁移旧配置**:
+```bash
+# 预览变更
+bun run script/migrate-config.ts --dry-run
+
+# 执行迁移
+bun run script/migrate-config.ts
+```
 
 ## 架构
 

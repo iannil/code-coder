@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/channels.json",
+  "title": "CodeCoder Channels Configuration",
+  "description": "IM channels configuration for zero-channels service",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference"
+    },
+    "cli": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable CLI channel"
+    },
+    "telegram": {
+      "$ref": "#/$defs/TelegramConfig"
+    },
+    "discord": {
+      "$ref": "#/$defs/DiscordConfig"
+    },
+    "slack": {
+      "$ref": "#/$defs/SlackConfig"
+    },
+    "whatsapp": {
+      "$ref": "#/$defs/WhatsAppConfig"
+    },
+    "feishu": {
+      "$ref": "#/$defs/FeishuConfig"
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "TelegramConfig": {
+      "type": "object",
+      "description": "Telegram channel configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Telegram channel"
+        },
+        "allowed_users": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed Telegram usernames"
+        },
+        "voice": {
+          "$ref": "#/$defs/TelegramVoiceConfig"
+        }
+      }
+    },
+    "TelegramVoiceConfig": {
+      "type": "object",
+      "description": "Voice message configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable voice message support"
+        },
+        "stt_provider": {
+          "type": "string",
+          "enum": ["openai", "uniapi", "groq", "deepinfra", "compatible"],
+          "default": "openai",
+          "description": "Speech-to-text provider"
+        },
+        "stt_model": {
+          "type": "string",
+          "description": "Speech-to-text model"
+        },
+        "stt_base_url": {
+          "type": "string",
+          "description": "Base URL for OpenAI-compatible STT providers"
+        }
+      }
+    },
+    "DiscordConfig": {
+      "type": "object",
+      "description": "Discord channel configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Discord channel"
+        },
+        "guild_id": {
+          "type": "string",
+          "description": "Discord guild/server ID"
+        },
+        "allowed_users": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed Discord user IDs"
+        }
+      }
+    },
+    "SlackConfig": {
+      "type": "object",
+      "description": "Slack channel configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Slack channel"
+        },
+        "channel_id": {
+          "type": "string",
+          "description": "Default Slack channel ID"
+        }
+      }
+    },
+    "WhatsAppConfig": {
+      "type": "object",
+      "description": "WhatsApp channel configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable WhatsApp channel"
+        },
+        "phone_number_id": {
+          "type": "string",
+          "description": "WhatsApp phone number ID"
+        },
+        "verify_token": {
+          "type": "string",
+          "description": "Webhook verification token"
+        },
+        "allowed_numbers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed phone numbers (E.164 format)"
+        }
+      }
+    },
+    "FeishuConfig": {
+      "type": "object",
+      "description": "Feishu/Lark channel configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Feishu channel"
+        },
+        "encrypt_key": {
+          "type": "string",
+          "description": "Encrypt key for event callback decryption"
+        },
+        "verification_token": {
+          "type": "string",
+          "description": "Verification token for event callback verification"
+        },
+        "allowed_users": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowed user open_ids or '*' for all"
+        },
+        "use_lark_api": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use Lark API instead of Feishu API (for international users)"
+        }
+      }
+    }
+  }
+}

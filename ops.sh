@@ -48,7 +48,7 @@ WHISPER_CONTAINER="codecoder-whisper"
 WHISPER_IMAGE="${WHISPER_IMAGE:-fedirz/faster-whisper-server:latest-cpu}"
 REDIS_CONTAINER="codecoder-redis"
 REDIS_IMAGE="${REDIS_IMAGE:-redis:7-alpine}"
-REDIS_PORT="${REDIS_PORT:-6379}"
+REDIS_PORT="${REDIS_PORT:-4410}"
 
 # 服务列表 (按启动顺序)
 # 基础设施服务 (Redis 需要先于依赖它的服务启动)
@@ -855,8 +855,224 @@ get_service_color() {
         zero-gateway) echo "\033[0;33m" ;;  # 黄色
         zero-channels) echo "\033[0;91m" ;; # 亮红色
         zero-workflow) echo "\033[0;94m" ;; # 亮蓝色
+        zero-browser) echo "\033[0;95m" ;;  # 亮紫色
+        zero-trading) echo "\033[0;96m" ;;  # 亮青色
         *) echo "\033[0m" ;;                # 默认
     esac
+}
+
+# 清理 ANSI 转义序列
+strip_ansi() {
+    sed 's/\x1b\[[0-9;]*[mGKHF]//g' | sed 's/\x1b\[?[0-9;]*[0-9;]*[0-9;]*m//g'
+}
+
+# 获取日志级别颜色
+get_level_color() {
+    case "$1" in
+        ERROR|error|FATAL|fatal) echo "\033[0;31m" ;;
+        WARN|warn|WARNING) echo "\033[0;33m" ;;
+        INFO|info) echo "\033[0;32m" ;;
+        DEBUG|debug) echo "\033[0;90m" ;;
+        TRACE|trace) echo "\033[0;37m" ;;
+        *) echo "\033[0;36m" ;;  # 默认青色
+    esac
+}
+
+# 从日志行提取日志级别
+extract_log_level() {
+    local line="$1"
+
+    # JSON 格式 - 检查 level 字段
+    if echo "$line" | grep -qE '^\{'; then
+        # 尝试提取 level 字段
+        local level
+        level=$(echo "$line" | grep -oE '"level":"?[A-Za-z]+' | head -1 | sed 's/"level"://i' | sed 's/"//g' | tr '[:lower:]' '[:upper:]')
+        if [ -n "$level" ]; then
+            echo "$level"
+            return
+        fi
+        # 检查 severity 字段 (某些服务可能使用)
+        level=$(echo "$line" | grep -oE '"severity":"?[A-Za-z]+' | head -1 | sed 's/"severity"://i' | sed 's/"//g' | tr '[:lower:]' '[:upper:]')
+        if [ -n "$level" ]; then
+            echo "$level"
+            return
+        fi
+    fi
+
+    # Pretty 格式 - 检测 INFO/WARN/ERROR/DEBUG
+    for lvl in ERROR WARN WARNING INFO DEBUG TRACE FATAL; do
+        if echo "$line" | grep -qE "\b${lvl}\b"; then
+            echo "$lvl"
+            return
+        fi
+    done
+
+    # 默认
+    echo "INFO"
+}
+
+# 从日志行提取时间戳
+extract_timestamp() {
+    local line="$1"
+    local current_ts
+    current_ts=$(date '+%m-%d %H:%M:%S')
+
+    # JSON 格式 - 检查 timestamp 字段
+    if echo "$line" | grep -qE '"timestamp'; then
+        local ts
+        ts=$(echo "$line" | grep -oE '"timestamp":"[^"]+"' | sed 's/"timestamp":"//;s/"//')
+        if [ -n "$ts" ]; then
+            # 转换 ISO 8601 到 mm-dd HH:MM:SS
+            local formatted
+            formatted=$(echo "$ts" | sed -E 's/[0-9]{4}-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})\.?[0-9]*Z?/\1-\2 \3:\4:\5/')
+            if [ "$formatted" != "$ts" ]; then
+                echo "$formatted"
+                return
+            fi
+        fi
+    fi
+
+    # Pretty 格式 - 提取时间部分
+    if echo "$line" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}'; then
+        local ts_extract
+        ts_extract=$(echo "$line" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}' | \
+            sed -E 's/^[0-9]+-([0-9]{2})-([0-9]{2})[T ]([0-9]{2}):([0-9]{2}):([0-9]{2})/\1-\2 \3:\4:\5/')
+        if [ -n "$ts_extract" ]; then
+            echo "$ts_extract"
+            return
+        fi
+    fi
+
+    # 无时间戳 - 使用当前时间
+    echo "$current_ts"
+}
+
+# 格式化 JSON 日志为 key=value 格式
+format_json_fields() {
+    local json="$1"
+    local main_message=""
+    local use_jq=false
+
+    # 检查 jq 是否可用
+    if command -v jq &> /dev/null; then
+        use_jq=true
+    fi
+
+    # 提取主要消息字段
+    if echo "$json" | grep -qE '"message"'; then
+        if [ "$use_jq" = true ]; then
+            main_message=$(echo "$json" | jq -r '.message // empty' 2>/dev/null)
+        else
+            main_message=$(echo "$json" | grep -oE '"message":"[^"]*"' | sed 's/"message":"//;s/"$//' | head -1)
+        fi
+    fi
+
+    # 检查 event 字段 (API 服务使用)
+    if echo "$json" | grep -qE '"event"'; then
+        local event_msg
+        if [ "$use_jq" = true ]; then
+            event_msg=$(echo "$json" | jq -r '.event // empty' 2>/dev/null)
+        else
+            event_msg=$(echo "$json" | grep -oE '"event":"[^"]*"' | sed 's/"event":"//;s/"$//' | head -1)
+        fi
+        if [ -n "$event_msg" ]; then
+            main_message="$event_msg"
+        fi
+    fi
+
+    # zero-daemon 格式: {"level":"INFO","fields":{"message":"..."},...}
+    if echo "$json" | grep -qE '"fields"'; then
+        if [ "$use_jq" = true ]; then
+            local fields_msg
+            fields_msg=$(echo "$json" | jq -r '.fields.message // empty' 2>/dev/null)
+            if [ -n "$fields_msg" ]; then
+                main_message="$fields_msg"
+            fi
+        fi
+    fi
+
+    # 构建字段字符串
+    local fields=""
+    local excluded_fields="timestamp level severity target message event fields"
+
+    if [ "$use_jq" = true ]; then
+        # 使用 jq 提取所有非排除字段
+        fields=$(echo "$json" | jq -r "
+            to_entries | .[] |
+            select(.key as \$k | \$k != \"timestamp\" and \$k != \"level\" and
+                   \$k != \"severity\" and \$k != \"target\" and
+                   \$k != \"message\" and \$k != \"event\" and
+                   \$k != \"fields\") |
+            \"\(.key)=\(.value)\"
+        " 2>/dev/null | tr '\n' ' ' | sed 's/ $//')
+    else
+        # 使用 grep/awk 提取字段 (简化版)
+        # 先移除大括号，然后处理每个键值对
+        fields=$(echo "$json" | sed -E 's/^\{|\}$//g' | tr ',' '\n' | \
+            grep -vE '^"(timestamp|level|severity|target|message|event|fields)"' | \
+            while IFS=':' read -r key value; do
+                key=$(echo "$key" | sed 's/"//g' | xargs)
+                value=$(echo "$value" | sed 's/"//g' | xargs)
+                if [ -n "$key" ] && [ -n "$value" ]; then
+                    echo "${key}=${value}"
+                fi
+            done | tr '\n' ' ' | sed 's/ $//')
+    fi
+
+    # 组合输出
+    if [ -n "$fields" ]; then
+        if [ -n "$main_message" ]; then
+            echo "${main_message} ${fields}"
+        else
+            echo "$fields"
+        fi
+    else
+        echo "$main_message"
+    fi
+}
+
+# 格式化单行日志输出
+# 格式: MM-DD HH:MM:SS | service | LEVEL | message
+format_log_line() {
+    local raw_line="$1"
+    local service="$2"
+    local service_color="$3"
+
+    # 清理 ANSI
+    local clean_line
+    clean_line=$(echo "$raw_line" | strip_ansi)
+
+    # 提取信息
+    local timestamp
+    local level
+    local message
+
+    timestamp=$(extract_timestamp "$clean_line")
+    level=$(extract_log_level "$clean_line")
+
+    # 检查是否为 JSON
+    if echo "$clean_line" | grep -qE '^\{'; then
+        message=$(format_json_fields "$clean_line")
+        # 如果解析失败，使用原始行
+        if [ -z "$message" ]; then
+            message="$clean_line"
+        fi
+    else
+        # 移除时间戳前缀 (如果存在)
+        # 支持格式: ISO 8601 (2026-02-27T10:30:45.123Z) 和带空格格式
+        # 注意: macOS sed 不支持 \s，使用字面空格
+        message=$(echo "$clean_line" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z)? +//')
+        # 移除日志级别前缀
+        message=$(echo "$message" | sed -E 's/^ *(INFO|WARN|ERROR|DEBUG|TRACE|FATAL|WARNING) *//')
+    fi
+
+    # 获取级别颜色
+    local level_color
+    level_color=$(get_level_color "$level")
+
+    # 格式化输出: 时间戳 | 服务名(右对齐14字符) | 级别 | 消息
+    # 服务名对齐: api/web 短名靠右，zero-* 长名自然显示
+    printf "%s | ${service_color}%14s${NC} | ${level_color}%-5s${NC} | %s\n" "$timestamp" "$service" "$level" "$message"
 }
 
 # 同时监控所有服务日志
@@ -970,19 +1186,16 @@ tail_all_logs() {
         service_type=$(get_service_type "${service}")
         local color
         color=$(get_service_color "${service}")
-        local prefix
-        # 固定宽度的服务名前缀（15字符）
-        prefix=$(printf "%-15s" "[${service}]")
 
         if [ "${service_type}" = "docker" ]; then
             # Docker 容器日志 - 使用进程替换避免管道信号问题
             if [ "${raw}" = "true" ]; then
                 while IFS= read -r line; do
-                    echo -e "${color}${prefix}${NC} ${line}"
+                    format_log_line "$line" "${service}" "${color}"
                 done < <(docker logs -f "${WHISPER_CONTAINER}" 2>&1) &
             else
                 while IFS= read -r line; do
-                    echo -e "${color}${prefix}${NC} ${line}"
+                    format_log_line "$line" "${service}" "${color}"
                 done < <(docker logs -f "${WHISPER_CONTAINER}" 2>&1 | grep -vE "${NOISE_FILTER_PATTERN}") &
             fi
             pids+=($!)
@@ -992,11 +1205,11 @@ tail_all_logs() {
             log_file=$(get_log_file "${service}")
             if [ "${raw}" = "true" ]; then
                 while IFS= read -r line; do
-                    echo -e "${color}${prefix}${NC} ${line}"
+                    format_log_line "$line" "${service}" "${color}"
                 done < <(tail -f "${log_file}" 2>/dev/null) &
             else
                 while IFS= read -r line; do
-                    echo -e "${color}${prefix}${NC} ${line}"
+                    format_log_line "$line" "${service}" "${color}"
                 done < <(tail -f "${log_file}" 2>/dev/null | grep -vE "${NOISE_FILTER_PATTERN}") &
             fi
             pids+=($!)
@@ -1258,7 +1471,7 @@ show_help() {
     echo "  running            仅运行中的服务 (用于 tail 命令)"
     echo ""
     echo "环境变量:"
-    echo "  REDIS_PORT         Redis 端口 (默认: 6379)"
+    echo "  REDIS_PORT         Redis 端口 (默认: 4410)"
     echo "  REDIS_IMAGE        Redis Docker 镜像 (默认: redis:7-alpine)"
     echo "  WHISPER_MODEL      Whisper 模型: tiny|base|small|medium|large (默认: base)"
     echo "  WHISPER_IMAGE      Whisper Docker 镜像 (默认: fedirz/faster-whisper-server:latest-cpu)"

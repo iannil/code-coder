@@ -490,34 +490,29 @@ impl TradingLoop {
     async fn execute_entry(&self, signal: &crate::strategy::TradingSignal) -> Result<()> {
         let mut execution = self.execution.write().await;
 
-        match self.config.mode {
-            TradingMode::Paper => {
-                // Paper trading
-                let order = execution.execute_buy(signal).await?;
-                info!(
-                    symbol = %signal.symbol,
-                    order_id = %order.id,
-                    "[PAPER] Entry order executed"
-                );
-            }
-            TradingMode::Live => {
-                // Live trading
-                let order = execution.execute_buy(signal).await?;
-                info!(
-                    symbol = %signal.symbol,
-                    order_id = %order.id,
-                    "[LIVE] Entry order executed"
-                );
-            }
-        }
+        // Execute order - ExecutionEngine calculates position size using risk-based sizing:
+        // quantity = (2% of capital) / (entry_price - stop_loss)
+        let order = execution.execute_buy(signal).await?;
 
-        // Add to monitoring
+        let mode_label = match self.config.mode {
+            TradingMode::Paper => "[PAPER]",
+            TradingMode::Live => "[LIVE]",
+        };
+        info!(
+            symbol = %signal.symbol,
+            order_id = %order.id,
+            quantity = order.quantity,
+            "{} Entry order executed",
+            mode_label
+        );
+
+        // Add to monitoring - use the quantity calculated by ExecutionEngine
         let position = MonitoredPosition {
             id: uuid::Uuid::new_v4().to_string(),
             symbol: signal.symbol.clone(),
             entry_price: signal.entry_price,
             current_price: signal.entry_price,
-            quantity: 100.0, // TODO: Calculate based on position sizing
+            quantity: order.quantity,
             stop_loss: signal.stop_loss,
             take_profit: signal.take_profit,
             entry_time: chrono::Utc::now(),

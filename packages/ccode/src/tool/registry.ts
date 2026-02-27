@@ -27,6 +27,7 @@ import { PlanExitTool, PlanEnterTool } from "./plan"
 import { ApplyPatchTool } from "./apply_patch"
 import { NetworkAnalyzerTool } from "./network-analyzer"
 import { GetCredentialTool } from "./credential"
+import { ReachTools } from "./reach"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -97,6 +98,7 @@ export namespace ToolRegistry {
       ...(Flag.CCODE_EXPERIMENTAL_PLAN_MODE && Flag.CCODE_CLIENT === "cli"
         ? [PlanExitTool, PlanEnterTool]
         : []),
+      ...ReachTools,
       ...custom,
     ]
   }

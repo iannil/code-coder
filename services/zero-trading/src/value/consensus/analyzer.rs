@@ -204,6 +204,7 @@ impl ConsensusAnalysis {
 #[derive(Debug, Serialize)]
 struct AgentRequest {
     user_id: String,
+    channel: String,
     agent: String,
     message: String,
     stream: bool,
@@ -256,6 +257,7 @@ impl ConsensusAnalyzer {
 
         let request = AgentRequest {
             user_id: "zero-trading".to_string(),
+            channel: "zero-trading".to_string(),
             agent: self.config.agent_name.clone(),
             message: prompt,
             stream: false,
@@ -280,6 +282,7 @@ impl ConsensusAnalyzer {
 
         let request = AgentRequest {
             user_id: "zero-trading".to_string(),
+            channel: "zero-trading".to_string(),
             agent: self.config.agent_name.clone(),
             message: prompt,
             stream: false,
