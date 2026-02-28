@@ -16,6 +16,7 @@ pub mod dsl;
 pub mod economic_bridge;
 pub mod github;
 pub mod gitlab;
+pub mod hands;
 pub mod monitor_bridge;
 pub mod review_bridge;
 pub mod risk_monitor;
@@ -47,6 +48,12 @@ pub use economic_bridge::{AnomalyAlert, AlertType, DataSource, EconomicDataBridg
 pub use risk_monitor::{AlertSeverity, AlertThreshold, Margin, MarginCategory, RiskAlert, RiskAlertType, RiskMonitor, RiskMonitorConfig};
 pub use trading_review::{AssetClass, JournalEntry, ReminderSchedule, ReviewPeriod, ReviewStats, TradeDirection, TradeEntry, TradeOutcome, TradingReview, TradingReviewSystem};
 pub use dsl::{evaluate_expression, interpolate, ControlFlow, EvalContext, EvalError, ExecutionState};
+// Hands exports
+pub use hands::{
+    HandExecutor, HandManifest, HandConfig, HandSummary, HandsScheduler,
+    HandExecution, HandState, StateStore,
+    state::ExecutionStatus as HandExecutionStatus,
+};
 
 // ============================================================================
 // Workflow Service

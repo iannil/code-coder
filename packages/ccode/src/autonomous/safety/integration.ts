@@ -5,6 +5,7 @@ import { SafetyGuard, type SafetyCheckResult, type ResourceUsage } from "./const
 import { SafetyGuardrails, type LoopPattern } from "./guardrails"
 import { RollbackManager, type RollbackTrigger, type RollbackOptions } from "./rollback"
 import { AutonomousState } from "../state/states"
+import { assessToolRisk as assessToolRiskCore, type RiskLevel } from "@/permission/auto-approve"
 
 const log = Log.create({ service: "autonomous.safety.integration" })
 
@@ -32,6 +33,35 @@ export interface DestructiveOperation {
 }
 
 /**
+ * Operation history entry for loop detection
+ */
+export interface OperationHistory {
+  /** Unique operation ID */
+  id: string
+
+  /** Operation type */
+  type: "tool_call" | "state_transition" | "decision"
+
+  /** Timestamp */
+  timestamp: number
+
+  /** Tool name (for tool_call type) */
+  tool?: string
+
+  /** Input/state (serializable) */
+  input: unknown
+
+  /** Result */
+  result: "success" | "error" | "pending"
+
+  /** Error message (if result is error) */
+  error?: string
+
+  /** Additional metadata */
+  metadata?: Record<string, unknown>
+}
+
+/**
  * Safety integration configuration
  */
 export interface SafetyIntegrationConfig {
@@ -39,6 +69,43 @@ export interface SafetyIntegrationConfig {
   enableDestructiveProtection: boolean
   autoRollbackOnFailure: boolean
   rollbackOptions: Partial<RollbackOptions>
+  loopDetection?: LoopDetectionConfig
+}
+
+/**
+ * Loop detection configuration
+ */
+export interface LoopDetectionConfig {
+  /** Number of times same operation can repeat before detection (default: 3) */
+  repeatThreshold: number
+
+  /** Number of times similar errors can repeat before detection (default: 3) */
+  errorRepeatThreshold: number
+
+  /** Window size - check last N operations (default: 10) */
+  windowSize: number
+
+  /** Similarity threshold for fuzzy matching (0-1, default: 0.8) */
+  similarityThreshold: number
+
+  /** Time window in milliseconds (default: 60000 = 1 minute) */
+  timeWindowMs: number
+}
+
+/**
+ * Loop detection result
+ */
+export interface LoopDetectionResult {
+  detected: boolean
+  reason: string
+  confidence: number
+  loopType: "exact_repeat" | "similar_error" | "state_oscillation" | "decision_hesitation"
+  details: {
+    matchingOperations: number
+    windowSize: number
+    similarity?: number
+    pattern?: unknown
+  }
 }
 
 /**
@@ -51,6 +118,13 @@ const DEFAULT_CONFIG: SafetyIntegrationConfig = {
   rollbackOptions: {
     createCheckpoint: true,
     maxRetries: 2,
+  },
+  loopDetection: {
+    repeatThreshold: 3,
+    errorRepeatThreshold: 3,
+    windowSize: 10,
+    similarityThreshold: 0.8,
+    timeWindowMs: 60000,
   },
 }
 
@@ -497,6 +571,344 @@ export class SafetyIntegration {
     this.rollbackManager.resetCount()
     this.destructiveOpsHistory = []
     log.info("Safety integration reset", { sessionId: this.sessionId })
+  }
+
+  /**
+   * Assess risk level for a tool operation
+   *
+   * Integrates with the auto-approve risk assessment system.
+   * Used by autonomous mode to evaluate operations before execution.
+   */
+  assessToolRisk(tool: string, input: unknown): {
+    risk: RiskLevel
+    reason: string
+    autoApprovable: boolean
+  } {
+    const assessment = assessToolRiskCore(tool, input)
+    return {
+      risk: assessment.risk,
+      reason: assessment.reason,
+      autoApprovable: assessment.autoApprovable,
+    }
+  }
+
+  /**
+   * Check if tool operation should be auto-approved based on risk
+   */
+  shouldAutoApprove(tool: string, input: unknown, riskThreshold: RiskLevel): boolean {
+    const assessment = this.assessToolRisk(tool, input)
+
+    // Critical operations are never auto-approved
+    if (assessment.risk === "critical") {
+      return false
+    }
+
+    // Check against threshold
+    const riskValues: Record<RiskLevel, number> = {
+      safe: 0,
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4,
+    }
+
+    return riskValues[assessment.risk] <= riskValues[riskThreshold]
+  }
+
+  /**
+   * Detect DOOM_LOOP with enhanced similarity matching
+   *
+   * Uses configurable thresholds and similarity detection to identify:
+   * - Exact repeated operations
+   * - Similar error patterns
+   * - State oscillation
+   * - Decision hesitation
+   */
+  detectDoomLoop(history: OperationHistory[]): LoopDetectionResult {
+    const config = this.config.loopDetection ?? DEFAULT_CONFIG.loopDetection!
+    const now = Date.now()
+
+    // Filter to recent operations within time window
+    const recentOps = history.filter(
+      (op) => now - op.timestamp < config.timeWindowMs
+    ).slice(-config.windowSize)
+
+    if (recentOps.length < config.repeatThreshold) {
+      return {
+        detected: false,
+        reason: "Insufficient history",
+        confidence: 0,
+        loopType: "exact_repeat",
+        details: {
+          matchingOperations: 0,
+          windowSize: recentOps.length,
+        },
+      }
+    }
+
+    // Check for exact repeated operations
+    const exactRepeatResult = this.detectExactRepeat(recentOps, config)
+    if (exactRepeatResult.detected) {
+      return exactRepeatResult
+    }
+
+    // Check for similar error patterns
+    const errorOps = recentOps.filter((op) => op.result === "error")
+    const similarErrorResult = this.detectSimilarErrors(errorOps, config)
+    if (similarErrorResult.detected) {
+      return similarErrorResult
+    }
+
+    // Check for state oscillation
+    const stateOps = recentOps.filter((op) => op.type === "state_transition")
+    const oscillationResult = this.detectStateOscillation(stateOps, config)
+    if (oscillationResult.detected) {
+      return oscillationResult
+    }
+
+    return {
+      detected: false,
+      reason: "No loop pattern detected",
+      confidence: 0,
+      loopType: "exact_repeat",
+      details: {
+        matchingOperations: 0,
+        windowSize: recentOps.length,
+      },
+    }
+  }
+
+  /**
+   * Detect exact repeated operations
+   */
+  private detectExactRepeat(
+    ops: OperationHistory[],
+    config: LoopDetectionConfig
+  ): LoopDetectionResult {
+    // Group by tool + input hash
+    const groups = new Map<string, OperationHistory[]>()
+
+    for (const op of ops) {
+      if (op.type !== "tool_call") continue
+      const key = `${op.tool}:${JSON.stringify(op.input)}`
+      const existing = groups.get(key) ?? []
+      existing.push(op)
+      groups.set(key, existing)
+    }
+
+    // Find largest group
+    let maxGroup: OperationHistory[] = []
+    let maxKey = ""
+    for (const [key, group] of groups) {
+      if (group.length > maxGroup.length) {
+        maxGroup = group
+        maxKey = key
+      }
+    }
+
+    if (maxGroup.length >= config.repeatThreshold) {
+      return {
+        detected: true,
+        reason: `Exact repeat detected: ${maxGroup.length} identical operations`,
+        confidence: Math.min(1, maxGroup.length / config.repeatThreshold),
+        loopType: "exact_repeat",
+        details: {
+          matchingOperations: maxGroup.length,
+          windowSize: ops.length,
+          pattern: maxKey,
+        },
+      }
+    }
+
+    return {
+      detected: false,
+      reason: "No exact repeat",
+      confidence: 0,
+      loopType: "exact_repeat",
+      details: {
+        matchingOperations: maxGroup.length,
+        windowSize: ops.length,
+      },
+    }
+  }
+
+  /**
+   * Detect similar error patterns
+   */
+  private detectSimilarErrors(
+    errorOps: OperationHistory[],
+    config: LoopDetectionConfig
+  ): LoopDetectionResult {
+    if (errorOps.length < config.errorRepeatThreshold) {
+      return {
+        detected: false,
+        reason: "Insufficient errors",
+        confidence: 0,
+        loopType: "similar_error",
+        details: {
+          matchingOperations: errorOps.length,
+          windowSize: errorOps.length,
+        },
+      }
+    }
+
+    // Group by tool
+    const toolGroups = new Map<string, OperationHistory[]>()
+    for (const op of errorOps) {
+      const existing = toolGroups.get(op.tool ?? "") ?? []
+      existing.push(op)
+      toolGroups.set(op.tool ?? "", existing)
+    }
+
+    // Find tool with most errors
+    let maxToolErrors: OperationHistory[] = []
+    let maxTool = ""
+    for (const [tool, group] of toolGroups) {
+      if (group.length > maxToolErrors.length) {
+        maxToolErrors = group
+        maxTool = tool
+      }
+    }
+
+    if (maxToolErrors.length >= config.errorRepeatThreshold) {
+      // Calculate error similarity
+      const errorMessages = maxToolErrors
+        .map((op) => op.error ?? "")
+        .filter(Boolean)
+
+      const similarity = this.calculateErrorSimilarity(errorMessages)
+
+      if (similarity >= config.similarityThreshold) {
+        return {
+          detected: true,
+          reason: `Similar errors detected: ${maxToolErrors.length} errors with ${maxTool}, ${(similarity * 100).toFixed(0)}% similarity`,
+          confidence: similarity,
+          loopType: "similar_error",
+          details: {
+            matchingOperations: maxToolErrors.length,
+            windowSize: errorOps.length,
+            similarity,
+            pattern: maxTool,
+          },
+        }
+      }
+    }
+
+    return {
+      detected: false,
+      reason: "No similar error pattern",
+      confidence: 0,
+      loopType: "similar_error",
+      details: {
+        matchingOperations: maxToolErrors.length,
+        windowSize: errorOps.length,
+      },
+    }
+  }
+
+  /**
+   * Detect state oscillation (A -> B -> A -> B pattern)
+   */
+  private detectStateOscillation(
+    stateOps: OperationHistory[],
+    config: LoopDetectionConfig
+  ): LoopDetectionResult {
+    if (stateOps.length < 4) {
+      return {
+        detected: false,
+        reason: "Insufficient state transitions",
+        confidence: 0,
+        loopType: "state_oscillation",
+        details: {
+          matchingOperations: 0,
+          windowSize: stateOps.length,
+        },
+      }
+    }
+
+    // Look for A-B-A-B pattern in last 6 transitions
+    const recent = stateOps.slice(-6)
+    let oscillationCount = 0
+
+    for (let i = 2; i < recent.length; i++) {
+      const prev2 = recent[i - 2]
+      const current = recent[i]
+      if (prev2.input === current.input) {
+        oscillationCount++
+      }
+    }
+
+    if (oscillationCount >= 2) {
+      return {
+        detected: true,
+        reason: `State oscillation detected: ${oscillationCount + 2} alternating transitions`,
+        confidence: Math.min(1, oscillationCount / 3),
+        loopType: "state_oscillation",
+        details: {
+          matchingOperations: oscillationCount + 2,
+          windowSize: recent.length,
+          pattern: recent.map((op) => op.input).join(" -> "),
+        },
+      }
+    }
+
+    return {
+      detected: false,
+      reason: "No state oscillation",
+      confidence: 0,
+      loopType: "state_oscillation",
+      details: {
+        matchingOperations: 0,
+        windowSize: stateOps.length,
+      },
+    }
+  }
+
+  /**
+   * Calculate similarity between error messages
+   */
+  private calculateErrorSimilarity(messages: string[]): number {
+    if (messages.length < 2) return 0
+
+    // Extract common patterns (keywords, paths, numbers removed)
+    const normalized = messages.map((m) =>
+      m.toLowerCase()
+        .replace(/\d+/g, "N")
+        .replace(/\/[^\s]+/g, "/PATH")
+        .replace(/["'][^"']+["']/g, '"STR"')
+    )
+
+    // Calculate pairwise similarity
+    let totalSimilarity = 0
+    let pairs = 0
+
+    for (let i = 0; i < normalized.length; i++) {
+      for (let j = i + 1; j < normalized.length; j++) {
+        totalSimilarity += this.stringSimilarity(normalized[i], normalized[j])
+        pairs++
+      }
+    }
+
+    return pairs > 0 ? totalSimilarity / pairs : 0
+  }
+
+  /**
+   * Calculate string similarity (Jaccard index on words)
+   */
+  private stringSimilarity(a: string, b: string): number {
+    const wordsA = new Set(a.split(/\s+/).filter(Boolean))
+    const wordsB = new Set(b.split(/\s+/).filter(Boolean))
+
+    if (wordsA.size === 0 && wordsB.size === 0) return 1
+    if (wordsA.size === 0 || wordsB.size === 0) return 0
+
+    let intersection = 0
+    for (const word of wordsA) {
+      if (wordsB.has(word)) intersection++
+    }
+
+    const union = wordsA.size + wordsB.size - intersection
+    return union > 0 ? intersection / union : 0
   }
 
   /**

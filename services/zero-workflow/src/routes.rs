@@ -5,6 +5,7 @@
 //! - Cron task management
 //! - Execution monitoring
 //! - Competitive intelligence monitoring
+//! - Hands autonomous agents
 
 use axum::{
     extract::{Path, Query, State},
@@ -18,6 +19,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::economic_bridge::{EconomicDataBridge, IndicatorConfig, IndicatorType, DataSource};
+use crate::hands::{HandsScheduler, HandExecution, HandSummary};
 use crate::monitor_bridge::{MonitorBridge, MonitorReport, MonitorRunResult};
 use crate::scheduler::{Scheduler, TaskInfo};
 use crate::workflow::{ExecutionStatus, Workflow, WorkflowExecutor, WorkflowResult};
@@ -44,6 +46,8 @@ pub struct WorkflowState {
     pub monitor_bridge: Arc<MonitorBridge>,
     /// Monitor tasks configuration
     pub monitor_tasks: Arc<RwLock<HashMap<String, MonitorTask>>>,
+    /// Hands scheduler
+    pub hands_scheduler: Arc<RwLock<Option<HandsScheduler>>>,
 }
 
 // ============================================================================
@@ -794,6 +798,153 @@ async fn delete_monitor_task(
 }
 
 // ============================================================================
+// Hands Routes
+// ============================================================================
+
+/// Response for Hands status.
+#[derive(Debug, Serialize)]
+struct HandsStatus {
+    enabled: bool,
+    hands_count: usize,
+    hands: Vec<HandSummary>,
+}
+
+/// Get Hands status.
+async fn get_hands_status(
+    State(state): State<Arc<WorkflowState>>,
+) -> Json<ApiResponse<HandsStatus>> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    if hands_scheduler.is_none() {
+        return Json(ApiResponse::success(HandsStatus {
+            enabled: false,
+            hands_count: 0,
+            hands: vec![],
+        }));
+    }
+
+    let scheduler = hands_scheduler.as_ref().unwrap();
+    let hands = scheduler.list_hands().await;
+
+    Json(ApiResponse::success(HandsStatus {
+        enabled: true,
+        hands_count: hands.len(),
+        hands,
+    }))
+}
+
+/// List all hands.
+async fn list_hands(
+    State(state): State<Arc<WorkflowState>>,
+) -> Json<ApiResponse<Vec<HandSummary>>> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    if hands_scheduler.is_none() {
+        return Json(ApiResponse::success(vec![]));
+    }
+
+    let scheduler = hands_scheduler.as_ref().unwrap();
+    let hands = scheduler.list_hands().await;
+
+    Json(ApiResponse::success(hands))
+}
+
+/// Get a specific hand.
+async fn get_hand(
+    State(state): State<Arc<WorkflowState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<crate::hands::HandManifest>>, StatusCode> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    let scheduler = hands_scheduler.as_ref()
+        .ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    match scheduler.get_hand(&id).await {
+        Some(hand) => Ok(Json(ApiResponse::success(hand))),
+        None => Ok(Json(ApiResponse {
+            success: false,
+            data: None,
+            error: Some(format!("Hand '{}' not found", id)),
+        })),
+    }
+}
+
+/// Trigger a hand execution manually.
+async fn trigger_hand(
+    State(state): State<Arc<WorkflowState>>,
+    Path(id): Path<String>,
+) -> Result<Json<ApiResponse<HandExecution>>, StatusCode> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    let scheduler = hands_scheduler.as_ref()
+        .ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    match scheduler.trigger_hand(&id).await {
+        Ok(execution) => {
+            tracing::info!(hand_id = %id, execution_id = %execution.id, "Manually triggered hand");
+            Ok(Json(ApiResponse::success(execution)))
+        }
+        Err(e) => {
+            tracing::error!(hand_id = %id, error = %e, "Failed to trigger hand");
+            Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            }))
+        }
+    }
+}
+
+/// Get execution history for a hand.
+async fn list_hand_executions(
+    State(state): State<Arc<WorkflowState>>,
+    Path(id): Path<String>,
+    Query(query): Query<ListReportsQuery>,
+) -> Result<Json<ApiResponse<Vec<HandExecution>>>, StatusCode> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    let scheduler = hands_scheduler.as_ref()
+        .ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    match scheduler.get_executions(&id, query.limit) {
+        Ok(executions) => Ok(Json(ApiResponse::success(executions))),
+        Err(e) => {
+            tracing::error!(hand_id = %id, error = %e, "Failed to get executions");
+            Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            }))
+        }
+    }
+}
+
+/// Reload hands from disk.
+async fn reload_hands(
+    State(state): State<Arc<WorkflowState>>,
+) -> Result<Json<ApiResponse<usize>>, StatusCode> {
+    let hands_scheduler = state.hands_scheduler.read().await;
+
+    let scheduler = hands_scheduler.as_ref()
+        .ok_or_else(|| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    match scheduler.reload_hands().await {
+        Ok(count) => {
+            tracing::info!(count = count, "Reloaded hands");
+            Ok(Json(ApiResponse::success(count)))
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to reload hands");
+            Ok(Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            }))
+        }
+    }
+}
+
+// ============================================================================
 // Router Builder
 // ============================================================================
 
@@ -826,6 +977,13 @@ pub fn build_router(state: Arc<WorkflowState>) -> Router {
         .route("/api/v1/monitor/:task_id/run", post(run_monitor_task))
         .route("/api/v1/monitor/:task_id/reports", get(list_task_reports))
         .route("/api/v1/monitor/:task_id", delete(delete_monitor_task))
+        // Hands endpoints
+        .route("/api/v1/hands/status", get(get_hands_status))
+        .route("/api/v1/hands", get(list_hands))
+        .route("/api/v1/hands", post(reload_hands))
+        .route("/api/v1/hands/:id", get(get_hand))
+        .route("/api/v1/hands/:id/trigger", post(trigger_hand))
+        .route("/api/v1/hands/:id/executions", get(list_hand_executions))
         // Add state
         .with_state(state)
 }
@@ -842,6 +1000,7 @@ pub fn create_state(codecoder_endpoint: String) -> Arc<WorkflowState> {
         codecoder_endpoint,
         monitor_bridge: Arc::new(monitor_bridge),
         monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+        hands_scheduler: Arc::new(RwLock::new(None)),
     })
 }
 
@@ -861,6 +1020,7 @@ pub fn create_state_with_channels(
         codecoder_endpoint,
         monitor_bridge: Arc::new(monitor_bridge),
         monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+        hands_scheduler: Arc::new(RwLock::new(None)),
     })
 }
 
@@ -883,6 +1043,7 @@ pub fn create_isolated_test_state(codecoder_endpoint: String) -> Arc<WorkflowSta
         codecoder_endpoint,
         monitor_bridge: Arc::new(monitor_bridge),
         monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+        hands_scheduler: Arc::new(RwLock::new(None)),
     })
 }
 
@@ -911,6 +1072,7 @@ mod tests {
             codecoder_endpoint: "http://localhost:4400".to_string(),
             monitor_bridge: Arc::new(monitor_bridge),
             monitor_tasks: Arc::new(RwLock::new(HashMap::new())),
+            hands_scheduler: Arc::new(RwLock::new(None)),
         })
     }
 

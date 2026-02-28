@@ -6,6 +6,9 @@ import { Identifier } from "../id/id"
 import { Instance } from "../project/instance"
 import { Wildcard } from "@/util/wildcard"
 
+// Re-export auto-approve module
+export * from "./auto-approve"
+
 export namespace Permission {
   const log = Log.create({ service: "permission" })
 

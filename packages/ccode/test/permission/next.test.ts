@@ -688,3 +688,130 @@ test("ask - allows all patterns when all match allow rules", async () => {
     },
   })
 })
+
+// auto-approve integration tests
+
+test("ask - auto-approves when autoApproveConfig is provided and tool is safe", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // With auto-approve enabled for Read tool at safe threshold
+      const result = await PermissionNext.ask({
+        sessionID: "session_test",
+        permission: "Read",
+        patterns: ["/some/file.ts"],
+        metadata: { file_path: "/some/file.ts" },
+        always: [],
+        ruleset: [{ permission: "Read", pattern: "*", action: "ask" }], // Would normally ask
+        autoApproveConfig: {
+          enabled: true,
+          allowedTools: ["Read", "Glob", "Grep"],
+          riskThreshold: "low",
+        },
+      })
+      // Should auto-approve without asking
+      expect(result).toBeUndefined()
+    },
+  })
+})
+
+test("ask - auto-approve respects risk threshold", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // With auto-approve enabled but riskThreshold is "safe", Write is medium risk
+      const promise = PermissionNext.ask({
+        sessionID: "session_test",
+        permission: "Write",
+        patterns: ["/some/file.ts"],
+        metadata: { file_path: "/some/file.ts" },
+        always: [],
+        ruleset: [{ permission: "Write", pattern: "*", action: "ask" }],
+        autoApproveConfig: {
+          enabled: true,
+          allowedTools: ["Write"],
+          riskThreshold: "safe", // Write is medium, exceeds threshold
+        },
+      })
+      // Should return a pending promise (not auto-approved)
+      expect(promise).toBeInstanceOf(Promise)
+    },
+  })
+})
+
+test("ask - auto-approve respects whitelist", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // With auto-approve enabled but Read is not in whitelist
+      const promise = PermissionNext.ask({
+        sessionID: "session_test",
+        permission: "Read",
+        patterns: ["/some/file.ts"],
+        metadata: { file_path: "/some/file.ts" },
+        always: [],
+        ruleset: [{ permission: "Read", pattern: "*", action: "ask" }],
+        autoApproveConfig: {
+          enabled: true,
+          allowedTools: ["Glob", "Grep"], // Read not in list
+          riskThreshold: "low",
+        },
+      })
+      // Should return a pending promise (not auto-approved)
+      expect(promise).toBeInstanceOf(Promise)
+    },
+  })
+})
+
+test("ask - auto-approve disabled does not auto-approve", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // With auto-approve explicitly disabled
+      const promise = PermissionNext.ask({
+        sessionID: "session_test",
+        permission: "Read",
+        patterns: ["/some/file.ts"],
+        metadata: { file_path: "/some/file.ts" },
+        always: [],
+        ruleset: [{ permission: "Read", pattern: "*", action: "ask" }],
+        autoApproveConfig: {
+          enabled: false, // Disabled
+          allowedTools: ["Read"],
+          riskThreshold: "low",
+        },
+      })
+      // Should return a pending promise (not auto-approved because disabled)
+      expect(promise).toBeInstanceOf(Promise)
+    },
+  })
+})
+
+test("ask - empty whitelist uses risk-based evaluation only", async () => {
+  await using tmp = await tmpdir({ git: true })
+  await Instance.provide({
+    directory: tmp.path,
+    fn: async () => {
+      // With empty whitelist, any tool within risk threshold is allowed
+      const result = await PermissionNext.ask({
+        sessionID: "session_test",
+        permission: "WebFetch", // Not in any explicit whitelist
+        patterns: ["https://example.com"],
+        metadata: { url: "https://example.com" },
+        always: [],
+        ruleset: [{ permission: "WebFetch", pattern: "*", action: "ask" }],
+        autoApproveConfig: {
+          enabled: true,
+          allowedTools: [], // Empty = risk-based only
+          riskThreshold: "low", // WebFetch is low risk
+        },
+      })
+      // Should auto-approve because WebFetch is low risk
+      expect(result).toBeUndefined()
+    },
+  })
+})

@@ -9,6 +9,13 @@ import { Log } from "@/util/log"
 import { Wildcard } from "@/util/wildcard"
 import os from "os"
 import z from "zod"
+import {
+  shouldAutoApprove,
+  resolveAutoApproveConfig,
+  AutoApproveConfigSchema,
+  getAutoApproveFromEnv,
+  type AutoApproveConfig,
+} from "./auto-approve"
 
 export namespace PermissionNext {
   const log = Log.create({ service: "permission" })
@@ -149,16 +156,80 @@ export namespace PermissionNext {
   export const ask = fn(
     Request.partial({ id: true }).extend({
       ruleset: Ruleset,
+      /** Optional auto-approve configuration for risk-based automatic approval */
+      autoApproveConfig: AutoApproveConfigSchema.optional(),
     }),
     async (input) => {
       const s = await state()
-      const { ruleset, ...request } = input
+      const { ruleset, autoApproveConfig: autoApproveInput, ...request } = input
+
+      // Resolve auto-approve config from multiple sources (priority: input > session > zerobot > env)
+      const config = await Config.get()
+      const sessionAutoApprove = config.autonomousMode?.autoApprove
+      const zerobotAutonomy = config.zerobot?.autonomy
+      const unattended = config.autonomousMode?.unattended ?? false
+
+      // Determine effective auto-approve config
+      let effectiveAutoApprove: AutoApproveConfig | undefined
+
+      // 1. Explicit input (from Agent.autoApprove) takes highest priority
+      if (autoApproveInput) {
+        effectiveAutoApprove = resolveAutoApproveConfig(autoApproveInput, unattended)
+      }
+      // 2. Session autonomousMode.autoApprove
+      else if (sessionAutoApprove) {
+        effectiveAutoApprove = resolveAutoApproveConfig(sessionAutoApprove, unattended)
+      }
+      // 3. ZeroBot autonomy config
+      else if (zerobotAutonomy) {
+        if (zerobotAutonomy.autoApprove) {
+          effectiveAutoApprove = resolveAutoApproveConfig(zerobotAutonomy.autoApprove, true)
+        }
+        // When level is "full" and no explicit autoApprove, default to permissive
+        else if (zerobotAutonomy.level === "full") {
+          effectiveAutoApprove = {
+            enabled: true,
+            allowedTools: zerobotAutonomy.allowed_commands ?? [],
+            riskThreshold: "medium",
+            timeoutMs: 30000,
+            unattended: true,
+          }
+          log.info("zerobot full autonomy - enabling permissive auto-approve")
+        }
+      }
+      // 4. Environment variables (lowest priority)
+      else {
+        const envConfig = getAutoApproveFromEnv()
+        if (envConfig) {
+          effectiveAutoApprove = resolveAutoApproveConfig(envConfig, unattended)
+          log.info("using auto-approve config from environment variables")
+        }
+      }
+
       for (const pattern of request.patterns ?? []) {
         const rule = evaluate(request.permission, pattern, ruleset, s.approved)
         log.info("evaluated", { permission: request.permission, pattern, action: rule })
         if (rule.action === "deny")
           throw new DeniedError(ruleset.filter((r) => Wildcard.match(request.permission, r.permission)))
         if (rule.action === "ask") {
+          // Check if auto-approve applies
+          if (effectiveAutoApprove) {
+            const autoResult = shouldAutoApprove(
+              effectiveAutoApprove,
+              request.permission,
+              request.metadata,
+            )
+            if (autoResult === "once") {
+              log.info("auto-approved", {
+                permission: request.permission,
+                pattern,
+                reason: "Within risk threshold",
+              })
+              continue // Auto-approved, move to next pattern
+            }
+            // If autoResult is undefined, fall through to manual approval
+          }
+
           const id = input.id ?? Identifier.ascending("permission")
           return new Promise<void>((resolve, reject) => {
             const info: Request = {

@@ -981,6 +981,8 @@ impl LixinAdapter {
     }
 
     /// Batch fetch valuation metrics for multiple stocks
+    /// Note: Lixin's /cn/company/fundamental/non_financial API only supports single stock queries,
+    /// so we process stocks one at a time with rate limiting.
     async fn batch_fetch_valuation_metrics(
         &self,
         symbols: &[String],
@@ -988,70 +990,17 @@ impl LixinAdapter {
     ) -> Result<Vec<ValuationMetrics>, ProviderError> {
         let mut results = Vec::with_capacity(symbols.len());
 
-        let today = Utc::now().date_naive();
-
-        // Process in batches to respect API limits
-        for chunk in symbols.chunks(MAX_BATCH_SIZE) {
-            let stock_codes: Vec<String> = chunk
-                .iter()
-                .filter_map(|s| to_lixin_code(s))
-                .collect();
-
-            if stock_codes.is_empty() {
-                continue;
-            }
-
-            // If specific date requested, use it; otherwise get most recent data
-            let request = if let Some(d) = date {
-                LixinNonFinancialRequest {
-                    token: self.token.clone(),
-                    stock_codes: stock_codes.clone(),
-                    metrics_list: Some(ValuationMetricName::all_metrics()
-                        .into_iter()
-                        .map(String::from)
-                        .collect()),
-                    date: Some(d.format("%Y-%m-%d").to_string()),
-                    start_date: None,
-                    end_date: None,
-                    limit: None,
+        // Process stocks one at a time (API limitation: only supports single stock per request)
+        for symbol in symbols {
+            match self.fetch_valuation_metrics(symbol, date).await {
+                Ok(metrics) => results.push(metrics),
+                Err(ProviderError::DataNotAvailable(_)) => {
+                    // Skip stocks without valuation data
+                    continue;
                 }
-            } else {
-                // Query last 7 days to get most recent available data
-                let start = today - chrono::Duration::days(7);
-                LixinNonFinancialRequest {
-                    token: self.token.clone(),
-                    stock_codes: stock_codes.clone(),
-                    metrics_list: Some(ValuationMetricName::all_metrics()
-                        .into_iter()
-                        .map(String::from)
-                        .collect()),
-                    date: None,
-                    start_date: Some(start.format("%Y-%m-%d").to_string()),
-                    end_date: Some(today.format("%Y-%m-%d").to_string()),
-                    limit: None,
-                }
-            };
-
-            let response: LixinResponse<Vec<LixinNonFinancialData>> = self
-                .call_api(NON_FINANCIAL_ENDPOINT, &request)
-                .await?;
-
-            let data = response.data.unwrap_or_default();
-
-            // Map results back to original symbols
-            for item in data {
-                // Find the original symbol that matches this stock code
-                let original_symbol = chunk.iter()
-                    .find(|s| to_lixin_code(s).as_deref() == Some(item.stock_code.as_str()))
-                    .map(|s| s.as_str());
-
-                if let Some(symbol) = original_symbol {
-                    match self.convert_to_valuation_metrics(symbol, &item) {
-                        Ok(metrics) => results.push(metrics),
-                        Err(e) => {
-                            debug!(symbol = %item.stock_code, error = %e, "Failed to convert valuation metrics");
-                        }
-                    }
+                Err(e) => {
+                    debug!(symbol, error = %e, "Failed to fetch valuation metrics");
+                    // Continue with other stocks instead of failing the entire batch
                 }
             }
         }

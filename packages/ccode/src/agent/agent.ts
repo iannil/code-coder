@@ -40,6 +40,7 @@ import PROMPT_PRD_GENERATOR from "./prompt/prd-generator.txt"
 import PROMPT_FEASIBILITY_ASSESS from "./prompt/feasibility-assess.txt"
 import * as WriterService from "./writer-service"
 import { PermissionNext } from "@/permission/next"
+import { AutoApproveConfigSchema, type AutoApproveConfigInput } from "@/permission/auto-approve"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
 import { Global } from "@/global"
 import path from "path"
@@ -65,6 +66,8 @@ export namespace Agent {
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
+      /** Auto-approve configuration for this agent */
+      autoApprove: AutoApproveConfigSchema.optional(),
     })
     .meta({
       ref: "Agent",
@@ -148,6 +151,12 @@ export namespace Agent {
         options: {},
         mode: "subagent",
         native: true,
+        // General agent - auto-approve safe read operations
+        autoApprove: {
+          enabled: true,
+          allowedTools: ["Read", "Glob", "Grep", "LS"],
+          riskThreshold: "safe",
+        },
       },
       explore: {
         name: "explore",
@@ -175,6 +184,12 @@ export namespace Agent {
         options: {},
         mode: "subagent",
         native: true,
+        // Explore agent uses only read-only tools - safe to auto-approve
+        autoApprove: {
+          enabled: true,
+          allowedTools: ["Read", "Glob", "Grep", "LS", "WebFetch", "WebSearch"],
+          riskThreshold: "low",
+        },
       },
       compaction: {
         name: "compaction",

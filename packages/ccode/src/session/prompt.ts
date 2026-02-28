@@ -392,6 +392,7 @@ export namespace SessionPrompt {
               ...req,
               sessionID: sessionID,
               ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []),
+              autoApproveConfig: taskAgent.autoApprove,
             })
           },
         }
@@ -702,6 +703,7 @@ export namespace SessionPrompt {
           sessionID: input.session.id,
           tool: { messageID: input.processor.message.id, callID: options.toolCallId },
           ruleset: PermissionNext.merge(input.agent.permission, input.session.permission ?? []),
+          autoApproveConfig: input.agent.autoApprove,
         })
       },
     })

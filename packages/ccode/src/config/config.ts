@@ -24,6 +24,7 @@ import { BunProc } from "@/bun"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { Bus } from "@/bus"
+import { AutoApproveConfigSchema } from "@/permission/auto-approve"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -752,6 +753,9 @@ export namespace Config {
       forbidden_paths: z.array(z.string()).optional().describe("Paths that are never accessible"),
       max_actions_per_hour: z.number().int().positive().optional().describe("Rate limit for autonomous actions"),
       max_cost_per_day_cents: z.number().int().positive().optional().describe("Daily cost limit in cents"),
+      autoApprove: AutoApproveConfigSchema.optional().describe(
+        "Auto-approval configuration. When level is 'full' and this is not set, defaults to medium risk threshold.",
+      ),
     })
     .strict()
     .meta({ ref: "ZeroBotAutonomyConfig" })
@@ -1394,6 +1398,9 @@ export namespace Config {
             .optional()
             .describe("Autonomy level for Autonomous Mode"),
           unattended: z.boolean().optional().describe("Run in unattended mode (no user present)"),
+          autoApprove: AutoApproveConfigSchema.optional().describe(
+            "Auto-approval configuration for permission requests based on risk assessment",
+          ),
           resourceLimits: z
             .object({
               maxTokens: z.number().optional().describe("Maximum tokens to consume"),

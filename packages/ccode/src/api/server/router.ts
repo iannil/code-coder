@@ -770,6 +770,16 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/v1/causal/graph", getCausalGraphData)
   router.get("/api/v1/causal/mermaid", getCausalMermaid)
   router.get("/api/v1/causal/health", causalHealth)
+
+  // Autonomous Mode routes (for Hands system integration)
+  const {
+    executeAutonomous,
+    autonomousHealth,
+    getThresholdsInfo,
+  } = await import("./handlers/autonomous")
+  router.post("/api/v1/autonomous/execute", executeAutonomous)
+  router.get("/api/v1/autonomous/health", autonomousHealth)
+  router.get("/api/v1/autonomous/thresholds", getThresholdsInfo)
 }
 
 // ============================================================================

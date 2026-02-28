@@ -18,6 +18,7 @@ pub mod bus;
 pub mod config;
 pub mod config_loader;
 pub mod error;
+pub mod guardrails;
 #[cfg(feature = "hitl-client")]
 pub mod hitl_client;
 pub mod hybrid;
@@ -40,6 +41,10 @@ pub use config::{
     WorkflowConfig,
 };
 pub use error::{Error, Result};
+pub use guardrails::{
+    Action, ActionCategory, ApprovalRequest, ApprovalStatus, Decision, Guardrails,
+    GuardrailsConfig, RiskLevel,
+};
 pub use hybrid::{
     AgentResult, AnalysisTrigger, DecisionSource, HybridConfig, HybridDecision,
     HybridDecisionMaker,
@@ -52,6 +57,7 @@ pub mod prelude {
     pub use crate::bus::{create_bus, topics, BusBackend, Event, EventBus};
     pub use crate::config::{AgentConfig, Config, LlmConfig, ToolsConfig};
     pub use crate::error::{Error, Result};
+    pub use crate::guardrails::{Action, Decision, Guardrails, RiskLevel};
     pub use crate::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
     pub use crate::logging::init_logging;
     pub use crate::validation::{Validate, ValidationError};

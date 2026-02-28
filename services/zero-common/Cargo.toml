@@ -73,6 +73,7 @@ futures-util = { workspace = true, optional = true }
 default = []
 redis-backend = ["redis", "futures-util"]
 hitl-client = ["reqwest"]
+guardrails = ["reqwest"]
 
 [dev-dependencies]
 tokio-test = "0.4"

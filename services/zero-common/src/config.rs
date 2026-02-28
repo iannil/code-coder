@@ -1789,6 +1789,14 @@ pub struct WorkflowConfig {
     /// Competitive intelligence monitoring configuration
     #[serde(default)]
     pub monitor: MonitorConfig,
+
+    /// Hands autonomous agents configuration
+    #[serde(default)]
+    pub hands: HandsConfig,
+
+    /// Autonomous Mode integration configuration
+    #[serde(default)]
+    pub autonomous: AutonomousConfig,
 }
 
 // ============================================================================
@@ -1894,6 +1902,73 @@ pub struct CronTask {
     /// Task description
     #[serde(default)]
     pub description: Option<String>,
+}
+
+// ============================================================================
+// Hands Configuration
+// ============================================================================
+
+/// Hands autonomous agents configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HandsConfig {
+    /// Enable Hands system
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Hands manifest directory (default: ~/.codecoder/hands)
+    #[serde(default)]
+    pub hands_dir: Option<String>,
+
+    /// Memory output directory (default: ./memory/hands)
+    #[serde(default)]
+    pub memory_dir: Option<String>,
+
+    /// Maximum execution history per hand
+    #[serde(default = "default_hands_max_history")]
+    pub max_history: usize,
+}
+
+fn default_hands_max_history() -> usize {
+    100
+}
+
+/// Autonomous Mode integration configuration for Hands.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutonomousConfig {
+    /// CodeCoder autonomous API endpoint
+    #[serde(default = "default_autonomous_endpoint")]
+    pub endpoint: String,
+
+    /// Default timeout for autonomous execution (seconds)
+    #[serde(default = "default_autonomous_timeout")]
+    pub timeout_sec: usize,
+
+    /// Enable autonomous mode by default for Hands
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Default autonomy level
+    #[serde(default)]
+    pub default_level: Option<String>,
+}
+
+impl Default for AutonomousConfig {
+    fn default() -> Self {
+        Self {
+            endpoint: default_autonomous_endpoint(),
+            timeout_sec: 300,
+            enabled: false,
+            default_level: None,
+        }
+    }
+}
+
+fn default_autonomous_endpoint() -> String {
+    "http://127.0.0.1:4400/api/v1/autonomous/execute".to_string()
+}
+
+fn default_autonomous_timeout() -> usize {
+    300
 }
 
 /// Webhook configuration.
