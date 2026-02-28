@@ -1,0 +1,44 @@
+flowchart TB
+    START([任务入口]) --> CLASSIFY{任务分类}
+
+    CLASSIFY -->|协议解析| RUST[Zero-* Rust服务]
+    CLASSIFY -->|安全验证| RUST
+    CLASSIFY -->|速率限制| RUST
+    CLASSIFY -->|消息路由| RUST
+    CLASSIFY -->|定时调度| RUST
+    CLASSIFY -->|权限校验| RUST
+
+    CLASSIFY -->|意图理解| TS[ccode TypeScript引擎]
+    CLASSIFY -->|上下文推理| TS
+    CLASSIFY -->|代码生成| TS
+    CLASSIFY -->|决策建议| TS
+    CLASSIFY -->|自然语言处理| TS
+    CLASSIFY -->|多轮对话| TS
+
+    subgraph RUST_SERVICES[Rust微服务层]
+        GATEWAY[Zero Gateway<br/>认证/路由]
+        CHANNELS[Zero Channels<br/>IM适配]
+        WORKFLOW[Zero Workflow<br/>调度执行]
+        TRADING[Zero Trading<br/>交易执行]
+    end
+
+    subgraph TS_SERVICES[TypeScript引擎层]
+        AGENTS[Agent系统<br/>23个Agent]
+        LLM[LLM调用<br/>多提供商]
+        MEMORY[记忆系统<br/>双层架构]
+    end
+
+    RUST --> RUST_SERVICES
+    TS --> TS_SERVICES
+
+    RUST_SERVICES --> R_OUTPUT[确定结果<br/>高可靠]
+    TS_SERVICES --> T_OUTPUT[智能结果<br/>高灵活]
+
+    R_OUTPUT --> HYBRID[混合决策层]
+    T_OUTPUT --> HYBRID
+
+    HYBRID --> RESULT([最终输出])
+
+    style RUST fill:#f99,stroke:#333
+    style TS fill:#99f,stroke:#333
+    style HYBRID fill:#9f9,stroke:#333,stroke-width:3px

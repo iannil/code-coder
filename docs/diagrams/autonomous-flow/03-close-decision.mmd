@@ -1,0 +1,48 @@
+flowchart TB
+    START([决策场景]) --> C[C - Convergence<br/>收敛程度评估]
+
+    C --> C_CHECK{收敛度≥7?}
+    C_CHECK -->|否| C_REFINE[重新定义问题<br/>提高收敛度]
+    C_REFINE --> C
+
+    C_CHECK -->|是| L[L - Leverage<br/>杠杆效应评估]
+
+    L --> L_CHECK{杠杆效应≥7?}
+    L_CHECK -->|否| L_BOOST[寻找高杠杆点<br/>结构调整]
+    L_BOOST --> L
+
+    L_CHECK -->|是| O[O - Optionality<br/>选择权保留评估]
+
+    O --> O_CHECK{选择权≥7?}
+    O_CHECK -->|否| O_EXPAND[增加选项<br/>避免路径锁定]
+    O_EXPAND --> O
+
+    O_CHECK -->|是| S[S - Surplus<br/>余量消耗评估]
+
+    S --> S_CHECK{余量保留≥7?}
+    S_CHECK -->|否| S_RESERVE[保留资源<br/>降低消耗]
+    S_RESERVE --> S
+
+    S_CHECK -->|是| E[E - Evolution<br/>演化空间评估]
+
+    E --> E_CHECK{演化空间≥7?}
+    E_CHECK -->|否| E_FLEX[增强适应性<br/>模块化设计]
+    E_FLEX --> E
+
+    E_CHECK -->|是| CALC[计算综合得分]
+
+    CALC --> SCORE[CLOSE总分]
+
+    SCORE --> DECISION{总分≥35?}
+    DECISION -->|是| APPROVE[✓ 批准执行]
+    DECISION -->|否| MITIGATE[风险缓解<br/>或请求确认]
+
+    MITIGATE --> USER_CONFIRM{用户确认?}
+    USER_CONFIRM -->|是| APPROVE
+    USER_CONFIRM -->|否| REJECT[✗ 拒绝/重新规划]
+
+    APPROVE --> ACTION([进入执行阶段])
+
+    style APPROVE fill:#9f9,stroke:#333,stroke-width:3px
+    style REJECT fill:#f99,stroke:#333,stroke-width:2px
+    style MITIGATE fill:#ff9,stroke:#333,stroke-width:2px

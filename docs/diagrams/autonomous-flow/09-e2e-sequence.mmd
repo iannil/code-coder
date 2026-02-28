@@ -1,0 +1,55 @@
+sequenceDiagram
+    participant U as 用户
+    participant I as UI接入层
+    participant G as Zero Gateway
+    participant O as Orchestrator
+    participant A as Autonomous Agent
+    participant D as Decision Agent
+    participant P as Plan Agent
+    participant T as TDD Guide
+    participant R as Code Reviewer
+    participant S as Security Reviewer
+    participant L as LLM Provider
+    participant M as Memory
+
+    U->>I: 输入问题
+    I->>G: 认证请求
+    G->>G: JWT验证 + RBAC
+    G->>O: 转发请求
+
+    O->>A: 启动自主模式
+
+    A->>D: @decision CLOSE评估
+    D->>L: 调用LLM
+    L-->>D: 返回评估结果
+    D-->>A: CLOSE报告
+
+    A->>P: @plan 生成计划
+    P->>L: 调用LLM
+    L-->>P: 返回计划
+    P-->>A: IMPLEMENTATION_PLAN.md
+
+    A->>T: @tdd-guide TDD开发
+    T->>T: RED: 写测试
+    T->>T: GREEN: 写实现
+    T->>T: IMPROVE: 重构
+    T->>T: 检查覆盖率≥80%
+    T-->>A: 测试+代码
+
+    A->>R: @code-reviewer 审查
+    R->>L: 调用LLM
+    L-->>R: 审查结果
+    R-->>A: 审查报告
+
+    A->>S: @security-reviewer 安全检查
+    S->>L: 调用LLM
+    L-->>S: 安全报告
+    S-->>A: 安全评估
+
+    A->>M: 写入记忆
+    M-->>A: 确认
+
+    A->>O: 返回结果
+    O->>G: 转发结果
+    G->>I: 响应
+    I-->>U: 显示结果

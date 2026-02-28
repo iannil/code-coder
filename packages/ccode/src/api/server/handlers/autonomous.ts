@@ -99,6 +99,8 @@ export interface HandsContext {
 export interface AutonomousExecuteRequest {
   /** Task request/description */
   request: string
+  /** Agent to use for execution (e.g., "verifier", "macro", "general") */
+  agent?: string
   /** Autonomous configuration */
   config: AutonomousConfig
   /** Optional context from Hands */
@@ -305,6 +307,7 @@ async function executeAutonomousTask(
   request: string,
   config: AutonomousConfig,
   context?: HandsContext,
+  explicitAgent?: string,
 ): Promise<AutonomousExecutionResult> {
   const startTime = Date.now()
 
@@ -373,23 +376,32 @@ async function executeAutonomousTask(
   const { Agent } = await import("../../../agent/agent")
   const { SessionPrompt } = await import("../../../session/prompt")
 
-  // Find appropriate agent
+  // Determine agent to use
   const agents = await Agent.list()
-  let agentName = "general"
+  let agentName = explicitAgent ?? "general"
 
-  // Try to determine agent from request or use general
-  const lowerRequest = request.toLowerCase()
-  if (lowerRequest.includes("macro") || lowerRequest.includes("economic")) {
-    agentName = "macro"
-  } else if (lowerRequest.includes("trading") || lowerRequest.includes("market")) {
-    agentName = "trader"
-  } else if (lowerRequest.includes("code") || lowerRequest.includes("implement")) {
-    agentName = "code-reviewer"
-  }
+  // If explicit agent is provided, verify it exists
+  if (explicitAgent) {
+    const agentExists = agents.some((a) => a.name === explicitAgent)
+    if (!agentExists) {
+      console.warn(`Explicit agent "${explicitAgent}" not found, falling back to "general"`)
+      agentName = "general"
+    }
+  } else {
+    // Fallback: Try to determine agent from request content
+    const lowerRequest = request.toLowerCase()
+    if (lowerRequest.includes("macro") || lowerRequest.includes("economic")) {
+      agentName = "macro"
+    } else if (lowerRequest.includes("trading") || lowerRequest.includes("market")) {
+      agentName = "trader"
+    } else if (lowerRequest.includes("code") || lowerRequest.includes("implement")) {
+      agentName = "code-reviewer"
+    }
 
-  const agentExists = agents.some((a) => a.name === agentName)
-  if (!agentExists) {
-    agentName = "general"
+    const agentExists = agents.some((a) => a.name === agentName)
+    if (!agentExists) {
+      agentName = "general"
+    }
   }
 
   // Create a temporary session for this execution
@@ -557,7 +569,7 @@ export async function executeAutonomous(
     }
 
     // Execute autonomous task
-    const result = await executeAutonomousTask(input.request, input.config, input.context)
+    const result = await executeAutonomousTask(input.request, input.config, input.context, input.agent)
 
     const sessionId = input.sessionId ?? `hands-${input.context?.handId ?? "auto"}-${Date.now()}`
 

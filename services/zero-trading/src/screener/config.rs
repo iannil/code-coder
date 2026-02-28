@@ -19,7 +19,9 @@ pub struct ScreenerConfig {
     #[serde(default = "default_schedule_cron")]
     pub schedule_cron: String,
 
-    /// Cron expression for weekly data sync (e.g., "0 20 * * 0")
+    /// Cron expression for weekly data sync (e.g., "0 20 * * 7" for Sundays)
+    ///
+    /// Note: Use 7 (or SUN/SUNDAY) for Sunday, not 0, due to cron crate limitations.
     #[serde(default = "default_data_sync_cron")]
     pub data_sync_cron: String,
 
@@ -58,7 +60,7 @@ fn default_schedule_cron() -> String {
 }
 
 fn default_data_sync_cron() -> String {
-    "0 20 * * 0".to_string() // 8 PM on Sundays
+    "0 20 * * 7".to_string() // 8 PM on Sundays (use 7, not 0, for cron crate compatibility)
 }
 
 fn default_deep_analysis_threshold() -> usize {

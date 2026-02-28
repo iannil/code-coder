@@ -170,6 +170,79 @@ impl WorkflowService {
             .layer(cors)
     }
 
+    /// Build the workflow router with an existing state.
+    fn build_router_with_state(&self, state: Arc<WorkflowState>) -> Router {
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        let codecoder_endpoint = self.config.codecoder_endpoint();
+
+        // Build webhook state with optional review bridge
+        let webhook_state = WebhookState::new(
+            self.config.workflow.webhook.secret.clone().map(Arc::new),
+            self.config.workflow.git.github_secret.clone().map(Arc::new),
+            self.config.workflow.git.gitlab_token.clone().map(Arc::new),
+        );
+
+        // Add review bridge if Git integration is enabled
+        let webhook_state = if self.config.workflow.git.enabled {
+            let review_bridge = Arc::new(ReviewBridge::new(codecoder_endpoint.clone()));
+            webhook_state.with_review_bridge(review_bridge)
+        } else {
+            webhook_state
+        };
+
+        // Build ticket bridge if ticket automation is enabled
+        let channels_endpoint = self.config.channels_endpoint();
+        let webhook_state = if self.config.workflow.ticket.enabled {
+            if let Some(ref github_config) = self.config.workflow.ticket.github {
+                let github_token = github_config
+                    .token
+                    .clone()
+                    .or_else(|| self.config.workflow.git.github_token.clone());
+
+                if let Some(token) = github_token {
+                    if let Ok(github_client) = GitHubClient::new(&token) {
+                        let mut ticket_bridge = TicketBridge::new(codecoder_endpoint)
+                            .with_github(Arc::new(github_client))
+                            .with_default_repo(&github_config.default_repo)
+                            .with_bug_labels(github_config.bug_labels.clone())
+                            .with_feature_labels(github_config.feature_labels.clone());
+
+                        if let Some(ref notification) = self.config.workflow.ticket.notification {
+                            if notification.enabled {
+                                ticket_bridge = ticket_bridge.with_im_config(TicketIMConfig {
+                                    enabled: true,
+                                    channels_endpoint: Some(channels_endpoint),
+                                    channel_type: notification.channel_type.clone(),
+                                    channel_id: Some(notification.channel_id.clone()),
+                                });
+                            }
+                        }
+
+                        webhook_state.with_ticket_bridge(Arc::new(ticket_bridge))
+                    } else {
+                        webhook_state
+                    }
+                } else {
+                    webhook_state
+                }
+            } else {
+                webhook_state
+            }
+        } else {
+            webhook_state
+        };
+
+        // Combine routes
+        Router::new()
+            .merge(build_router(state))
+            .merge(webhook_routes(webhook_state))
+            .layer(cors)
+    }
+
     /// Start the workflow service.
     pub async fn start(&self) -> anyhow::Result<()> {
         tracing::info!("Starting Zero Workflow service");
@@ -259,8 +332,32 @@ impl WorkflowService {
             tracing::info!("Cron scheduler started");
         }
 
+        // Initialize Hands scheduler if enabled
+        if self.config.workflow.hands.enabled {
+            tracing::info!("Initializing Hands scheduler");
+            match HandsScheduler::new(self.config.codecoder_endpoint()) {
+                Ok(mut scheduler) => {
+                    // Start the scheduler (loads hands and begins scheduling loop)
+                    match scheduler.start().await {
+                        Ok(()) => {
+                            tracing::info!("Hands scheduler started");
+                            // Store in state for API access
+                            let mut hands_scheduler = state.hands_scheduler.write().await;
+                            *hands_scheduler = Some(scheduler);
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to start Hands scheduler");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to create Hands scheduler");
+                }
+            }
+        }
+
         // Build and start HTTP server
-        let router = self.build_router();
+        let router = self.build_router_with_state(state.clone());
 
         // Use the centralized config accessors for port and bind address
         let port = self.config.workflow_port();

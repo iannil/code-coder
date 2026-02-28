@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1490.1000000000004 1117.6" width="1490.1000000000004" height="1117.6" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="40" y="517.6" width="866.0500000000001" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="517.6" width="866.0500000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="531.6" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">Rust微服务层</text>
+<rect x="926.0500000000003" y="517.6" width="524.05" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="926.0500000000003" y="517.6" width="524.05" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="938.0500000000003" y="531.6" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">TypeScript引擎层</text>
+<polyline points="596.1000000000001,76 596.1000000000001,196.00000000000003" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="559.0521973094171,243.55219730941707 559.0521973094171,300.6 156.65000000000006,300.6 156.65000000000006,417.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="633.1478026905831,243.55219730941707 633.1478026905831,300.6 1035.5500000000002,300.6 1035.5500000000002,417.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="156.65000000000006,453.6 156.65000000000006,573.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1035.5500000000002,453.6 1035.5500000000002,573.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="792.975,609.6 792.975,729.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1365.6250000000002,609.6 1365.6250000000002,729.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="792.975,765.6 792.975,903.6 1045.4250000000002,903.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1365.6250000000002,765.6 1365.6250000000002,903.6 1113.1750000000002,903.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1079.3000000000002,921.6 1079.3000000000002,1041.6" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="137.21000000000006" y="335.6" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="156.65000000000006" y="349.1" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">权限校验</text>
+<rect x="1016.1100000000001" y="335.6" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1035.5500000000002" y="349.1" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">多轮对话</text>
+<rect x="565.8000000000002" y="40" width="60.6" height="36" rx="18" ry="18" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="596.1000000000001,196 638.4000000000001,238.3 596.1000000000001,280.6 553.8000000000002,238.3" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="94.17500000000007" y="417.6" width="124.95" height="36" rx="0" ry="0" fill="#f99" stroke="#333" stroke-width="0.75" />
+<rect x="955.2000000000002" y="417.6" width="160.70000000000002" height="36" rx="0" ry="0" fill="#99f" stroke="#333" stroke-width="0.75" />
+<rect x="734.075" y="729.6" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1306.7250000000001" y="729.6" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1045.4250000000002" y="885.6" width="67.75" height="36" rx="0" ry="0" fill="#9f9" stroke="#333" stroke-width="3px" />
+<rect x="1049.0000000000002" y="1041.6" width="60.6" height="36" rx="18" ry="18" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="62.00000000000006" y="573.6" width="189.3" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="275.30000000000007" y="573.6" width="189.3" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="488.6" y="573.6" width="189.3" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="701.9" y="573.6" width="182.15" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="948.0500000000002" y="573.6" width="175" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1147.0500000000002" y="573.6" width="132.10000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1303.1500000000003" y="573.6" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="596.1000000000001" y="58" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">任务入口</text>
+<text x="596.1000000000001" y="238.3" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">任务分类</text>
+<text x="156.65000000000006" y="435.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero-* Rust服务</text>
+<text x="1035.5500000000002" y="435.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">ccode TypeScript引擎</text>
+<text x="792.975" y="747.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">确定结果&lt;br/&gt;高可靠</text>
+<text x="1365.6250000000002" y="747.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">智能结果&lt;br/&gt;高灵活</text>
+<text x="1079.3000000000002" y="903.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">混合决策层</text>
+<text x="1079.3000000000002" y="1059.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">最终输出</text>
+<text x="156.65000000000006" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Gateway&lt;br/&gt;认证/路由</text>
+<text x="369.95000000000005" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Channels&lt;br/&gt;IM适配</text>
+<text x="583.25" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Workflow&lt;br/&gt;调度执行</text>
+<text x="792.975" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Trading&lt;br/&gt;交易执行</text>
+<text x="1035.5500000000002" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Agent系统&lt;br/&gt;23个Agent</text>
+<text x="1213.1000000000001" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">LLM调用&lt;br/&gt;多提供商</text>
+<text x="1365.6250000000002" y="591.6" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">记忆系统&lt;br/&gt;双层架构</text>
+</svg>

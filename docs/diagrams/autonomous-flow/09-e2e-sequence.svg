@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1872.525 1590" width="1872.525" height="1590" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="seq-arrow" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="seq-arrow-open" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto-start-reverse">
+    <polyline points="0 0, 8 2.4, 0 4.8" fill="none" stroke="var(--_arrow)" stroke-width="1" />
+  </marker>
+</defs>
+<line x1="70" y1="70" x2="70" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="210" y1="70" x2="210" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="350" y1="70" x2="350" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="507.8" y1="70" x2="507.8" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="679.9000000000001" y1="70" x2="679.9000000000001" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="859.1500000000001" y1="70" x2="859.1500000000001" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1016.95" y1="70" x2="1016.95" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1156.95" y1="70" x2="1156.95" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1307.6000000000001" y1="70" x2="1307.6000000000001" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1486.8500000000001" y1="70" x2="1486.8500000000001" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1662.525" y1="70" x2="1662.525" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="1802.525" y1="70" x2="1802.525" y2="1560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" />
+<line x1="70" y1="90" x2="210" y2="90" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="140" y="84" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">输入问题</text>
+<line x1="210" y1="130" x2="350" y2="130" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="280" y="124" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">认证请求</text>
+<polyline points="350,170 380,170 380,190 350,190" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="386" y="180" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">JWT验证 + RBAC</text>
+<line x1="350" y1="240" x2="507.8" y2="240" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="428.9" y="234" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">转发请求</text>
+<line x1="507.8" y1="280" x2="679.9000000000001" y2="280" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="593.85" y="274" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">启动自主模式</text>
+<line x1="679.9000000000001" y1="320" x2="859.1500000000001" y2="320" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="769.5250000000001" y="314" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">@decision CLOSE评估</text>
+<line x1="859.1500000000001" y1="360" x2="1662.525" y2="360" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1260.8375" y="354" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">调用LLM</text>
+<line x1="1662.525" y1="400" x2="859.1500000000001" y2="400" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1260.8375" y="394" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">返回评估结果</text>
+<line x1="859.1500000000001" y1="440" x2="679.9000000000001" y2="440" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="769.5250000000001" y="434" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">CLOSE报告</text>
+<line x1="679.9000000000001" y1="480" x2="1016.95" y2="480" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="848.4250000000001" y="474" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">@plan 生成计划</text>
+<line x1="1016.95" y1="520" x2="1662.525" y2="520" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1339.7375000000002" y="514" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">调用LLM</text>
+<line x1="1662.525" y1="560" x2="1016.95" y2="560" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1339.7375000000002" y="554" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">返回计划</text>
+<line x1="1016.95" y1="600" x2="679.9000000000001" y2="600" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="848.4250000000001" y="594" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">IMPLEMENTATION_PLAN.md</text>
+<line x1="679.9000000000001" y1="640" x2="1156.95" y2="640" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="918.4250000000001" y="634" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">@tdd-guide TDD开发</text>
+<polyline points="1156.95,680 1186.95,680 1186.95,700 1156.95,700" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1192.95" y="690" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">RED: 写测试</text>
+<polyline points="1156.95,750 1186.95,750 1186.95,770 1156.95,770" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1192.95" y="760" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">GREEN: 写实现</text>
+<polyline points="1156.95,820 1186.95,820 1186.95,840 1156.95,840" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1192.95" y="830" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">IMPROVE: 重构</text>
+<polyline points="1156.95,890 1186.95,890 1186.95,910 1156.95,910" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1192.95" y="900" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">检查覆盖率≥80%</text>
+<line x1="1156.95" y1="960" x2="679.9000000000001" y2="960" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="918.4250000000001" y="954" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">测试+代码</text>
+<line x1="679.9000000000001" y1="1000" x2="1307.6000000000001" y2="1000" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="993.7500000000001" y="994" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">@code-reviewer 审查</text>
+<line x1="1307.6000000000001" y1="1040" x2="1662.525" y2="1040" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1485.0625" y="1034" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">调用LLM</text>
+<line x1="1662.525" y1="1080" x2="1307.6000000000001" y2="1080" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1485.0625" y="1074" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">审查结果</text>
+<line x1="1307.6000000000001" y1="1120" x2="679.9000000000001" y2="1120" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="993.7500000000001" y="1114" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">审查报告</text>
+<line x1="679.9000000000001" y1="1160" x2="1486.8500000000001" y2="1160" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1083.375" y="1154" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">@security-reviewer 安全检查</text>
+<line x1="1486.8500000000001" y1="1200" x2="1662.525" y2="1200" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1574.6875" y="1194" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">调用LLM</text>
+<line x1="1662.525" y1="1240" x2="1486.8500000000001" y2="1240" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1574.6875" y="1234" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">安全报告</text>
+<line x1="1486.8500000000001" y1="1280" x2="679.9000000000001" y2="1280" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1083.375" y="1274" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">安全评估</text>
+<line x1="679.9000000000001" y1="1320" x2="1802.525" y2="1320" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="1241.2125" y="1314" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">写入记忆</text>
+<line x1="1802.525" y1="1360" x2="679.9000000000001" y2="1360" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="1241.2125" y="1354" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">确认</text>
+<line x1="679.9000000000001" y1="1400" x2="507.8" y2="1400" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="593.85" y="1394" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">返回结果</text>
+<line x1="507.8" y1="1440" x2="350" y2="1440" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="428.9" y="1434" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">转发结果</text>
+<line x1="350" y1="1480" x2="210" y2="1480" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#seq-arrow)" />
+<text x="280" y="1474" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">响应</text>
+<line x1="210" y1="1520" x2="70" y2="1520" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="6 4" marker-end="url(#seq-arrow)" />
+<text x="140" y="1514" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-muted)">显示结果</text>
+<rect x="30" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="70" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">用户</text>
+<rect x="170" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="210" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">UI接入层</text>
+<rect x="291.1" y="30" width="117.80000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="350" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Gateway</text>
+<rect x="448.9" y="30" width="117.80000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="507.8" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Orchestrator</text>
+<rect x="606.7" y="30" width="146.4" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="679.9000000000001" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Autonomous Agent</text>
+<rect x="793.1000000000001" y="30" width="132.10000000000002" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="859.1500000000001" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Decision Agent</text>
+<rect x="965.2" y="30" width="103.5" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1016.95" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Plan Agent</text>
+<rect x="1108.775" y="30" width="96.35000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1156.95" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">TDD Guide</text>
+<rect x="1245.1250000000002" y="30" width="124.95" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1307.6000000000001" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Code Reviewer</text>
+<rect x="1410.075" y="30" width="153.55" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1486.8500000000001" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Security Reviewer</text>
+<rect x="1603.625" y="30" width="117.80000000000001" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1662.525" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">LLM Provider</text>
+<rect x="1762.525" y="30" width="80" height="40" rx="4" ry="4" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1802.525" y="50" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Memory</text>
+</svg>

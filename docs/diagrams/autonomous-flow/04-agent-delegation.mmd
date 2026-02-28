@@ -1,0 +1,45 @@
+flowchart TB
+    START([Autonomous Agent启动]) --> ANALYZE[分析任务类型]
+
+    ANALYZE --> TYPE{任务类型判断}
+
+    TYPE -->|代码审查| REVIEW[code-reviewer Agent]
+    TYPE -->|安全分析| SECURITY[security-reviewer Agent]
+    TYPE -->|新功能/修复| TDD[tdd-guide Agent]
+    TYPE -->|架构设计| ARCH[architect Agent]
+    TYPE -->|代码库探索| EXPLORE[explore Agent]
+    TYPE -->|长文写作| WRITER[writer Agent]
+    TYPE -->|决策分析| DECISION[decision Agent]
+    TYPE -->|多任务并行| GENERAL[general Agent]
+    TYPE -->|逆向工程| REVERSE[code-reverse Agent]
+
+    REVIEW --> R_RESULT[审查报告]
+    SECURITY --> S_RESULT[安全报告]
+    TDD --> T_RESULT[测试+实现]
+    ARCH --> A_RESULT[架构设计]
+    EXPLORE --> E_RESULT[代码地图]
+    WRITER --> W_RESULT[长文内容]
+    DECISION --> D_RESULT[CLOSE评估]
+    GENERAL --> G_RESULT[并行结果]
+    REVERSE --> REV_RESULT[逆向分析]
+
+    R_RESULT --> AGGREGATE[结果聚合]
+    S_RESULT --> AGGREGATE
+    T_RESULT --> AGGREGATE
+    A_RESULT --> AGGREGATE
+    E_RESULT --> AGGREGATE
+    W_RESULT --> AGGREGATE
+    D_RESULT --> AGGREGATE
+    G_RESULT --> AGGREGATE
+    REV_RESULT --> AGGREGATE
+
+    AGGREGATE --> SYNTHESIS[综合分析]
+    SYNTHESIS --> NEXT{需要更多Agent?}
+    NEXT -->|是| ANALYZE
+    NEXT -->|否| OUTPUT([输出最终结果])
+
+    style REVIEW fill:#9cf,stroke:#333
+    style SECURITY fill:#fc9,stroke:#333
+    style TDD fill:#f99,stroke:#333
+    style GENERAL fill:#ccc,stroke:#333
+    style OUTPUT fill:#9f9,stroke:#333,stroke-width:3px

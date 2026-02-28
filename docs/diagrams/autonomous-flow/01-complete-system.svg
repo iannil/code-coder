@@ -1,0 +1,231 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 7068.362500000001 1710" width="7068.362500000001" height="1710" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="40" y="293" width="630.0999999999997" height="152" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="293" width="630.0999999999997" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="307" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;用户接入层&quot;</text>
+<rect x="49.724999999999795" y="810" width="2042.3500000000006" height="860" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="49.724999999999795" y="810" width="2042.3500000000006" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="61.724999999999795" y="824" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;安全边界层 (Zero Gateway :4430)&quot;</text>
+<rect x="690.0999999999996" y="40" width="701.3500000000001" height="669" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="690.0999999999996" y="40" width="701.3500000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="702.0999999999996" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;核心引擎层 (ccode/TypeScript)&quot;</text>
+<rect x="2835.1725000000006" y="530" width="3889.4400000000005" height="432" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="2835.1725000000006" y="530" width="3889.4400000000005" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="2847.1725000000006" y="544" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Agent生态系统 (23个Agent)&quot;</text>
+<rect x="2855.1725000000006" y="566" width="596.54" height="376" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="2855.1725000000006" y="566" width="596.54" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="2867.1725000000006" y="580" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;主模式&quot;</text>
+<rect x="3471.7125000000005" y="830" width="693.2499999999995" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="3471.7125000000005" y="830" width="693.2499999999995" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="3483.7125000000005" y="844" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;工程质量&quot;</text>
+<rect x="4184.962500000001" y="830" width="1270.0000000000005" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="4184.962500000001" y="830" width="1270.0000000000005" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="4196.962500000001" y="844" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;祝融说系列&quot;</text>
+<rect x="5474.962500000001" y="830" width="367.9500000000007" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="5474.962500000001" y="830" width="367.9500000000007" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="5486.962500000001" y="844" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;内容创作&quot;</text>
+<rect x="5862.912500000001" y="830" width="468.0499999999993" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="5862.912500000001" y="830" width="468.0499999999993" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="5874.912500000001" y="844" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;逆向工程&quot;</text>
+<rect x="6350.9625000000015" y="830" width="353.65000000000055" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="6350.9625000000015" y="830" width="353.65000000000055" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="6362.9625000000015" y="844" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;工具辅助&quot;</text>
+<rect x="6744.612500000001" y="40" width="283.75" height="1158" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="6744.612500000001" y="40" width="283.75" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="6756.612500000001" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;工作流引擎 (Zero Workflow :4432)&quot;</text>
+<rect x="1934.0500000000002" y="293" width="841.2325000000001" height="416" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="1934.0500000000002" y="293" width="841.2325000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1946.0500000000002" y="307" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Rust微服务层&quot;</text>
+<rect x="1411.4499999999998" y="546" width="502.60000000000036" height="163" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="1411.4499999999998" y="546" width="502.60000000000036" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1423.4499999999998" y="560" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;基础设施层&quot;</text>
+<polyline points="99.44999999999993,405 99.44999999999993,904 209.97249999999997,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="219.80000000000013,405 219.80000000000013,904 209.97249999999997,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="336.57499999999993,405 336.57499999999993,904 384.97249999999997,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="521.2749999999999,405 521.2749999999999,465 2041.0325000000003,465 2041.0325000000003,645.5 1969.1225000000004,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2085.2225000000003,663.5 2085.2225000000003,729 1666.6500000000003,729 1666.6500000000003,904 384.97249999999997,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="297.47249999999997,922 297.47249999999997,1122" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="297.47249999999997,1158 297.47249999999997,1358" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="297.47249999999997,1394 297.47249999999997,1612 724.4349999999998,1612" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="754.7349999999998,1594 754.7349999999998,1574 2055.925,1574 2055.925,709 1251.1,709 1251.1,134 1252.3125,134" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1286.1875,152 1286.1875,172 1321.2749999999999,172 1321.2749999999999,369" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1321.2749999999999,405 1321.2749999999999,425 1366.3624999999997,425 1366.3624999999997,645.5 3158.2400000000007,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 2953.9475,689 2953.9475,886" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3106.4725000000003,689 3106.4725000000003,886" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3145.9125000000004,689 3145.9125000000004,904 3493.7125000000005,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3185.3525000000004,689 3185.3525000000004,904 3642.6625000000004,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3224.7925000000005,689 3224.7925000000005,904 3820.2125,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3264.2325000000005,689 3264.2325000000005,904 4060.9125,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3303.6725000000006,689 3303.6725000000006,904 4391.6625,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3343.1125000000006,689 3343.1125000000006,904 5496.962500000001,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3382.5525000000007,689 3382.5525000000007,904 6372.962500000001,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="3245.7400000000007,663.5 3245.7400000000007,689 3421.9925000000007,689 3421.9925000000007,904 6766.612500000001,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1321.2749999999999,405 1321.2749999999999,425 881.8249999999999,425 881.8249999999999,627.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1321.2749999999999,405 1321.2749999999999,425 1152.3249999999998,425 1152.3249999999998,627.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="6868.412500000001,405 6868.412500000001,886" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="6868.412500000001,922 6868.412500000001,1140 6901.240000000001,1140" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="6931.540000000001,1122 6931.540000000001,1102 6992.212500000001,1102 6992.212500000001,134 6901.230000000001,134" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="6870.930000000001,152 6870.930000000001,172 6868.412500000001,172 6868.412500000001,369" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="6870.930000000001,152 6870.930000000001,172 6806.512500000001,172 6806.512500000001,387 1369.4499999999998,387" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1286.1875,152 1286.1875,172 1356.3624999999997,172 1356.3624999999997,387 2360.0125000000003,387" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2714.2725,425 2714.2725,729 1991.1750000000004,729 1991.1750000000004,904 384.97249999999997,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2201.5350000000003,425 2201.5350000000003,645.5 2201.3225,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2734.2725,425 2734.2725,729 6930.312500000001,729 6930.312500000001,904 6970.2125000000015,904" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2337.8475000000003,425 2337.8475000000003,627.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2583.3225,425 2583.3225,627.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1321.2749999999999,405 1321.2749999999999,645.5 1433.4499999999998,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1321.2749999999999,405 1321.2749999999999,425 1346.3624999999997,425 1346.3624999999997,645.5 1596.7,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2472.5375000000004,405 2472.5375000000004,425 2011.3125,425 2011.3125,645.5 1892.0500000000002,645.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="85.72999999999993" y="632" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="99.44999999999993" y="645.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">命令</text>
+<rect x="206.08000000000013" y="632" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="219.80000000000013" y="645.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">交互</text>
+<rect x="317.13499999999993" y="632" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="336.57499999999993" y="645.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">HTTP</text>
+<rect x="2027.3125000000002" y="500" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="2041.0325000000003" y="513.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">消息</text>
+<rect x="2940.2275000000004" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="2953.9475" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3092.7525000000005" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3106.4725000000003" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3132.1925000000006" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3145.9125000000004" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3171.6325000000006" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3185.3525000000004" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3211.0725000000007" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3224.7925000000005" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3250.5125000000007" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3264.2325000000005" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3289.952500000001" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3303.6725000000006" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3329.392500000001" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3343.1125000000006" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3368.832500000001" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3382.5525000000007" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">委派</text>
+<rect x="3408.272500000001" y="764" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="3421.9925000000007" y="777.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">协调</text>
+<rect x="6792.7925000000005" y="247" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="6806.512500000001" y="260.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">调用</text>
+<rect x="61.99999999999993" y="369" width="74.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="160.90000000000012" y="369" width="117.80000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="302.69999999999993" y="369" width="67.75" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="394.4499999999999" y="369" width="253.65" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="209.97249999999997" y="886" width="175" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="234.99749999999997" y="1122" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="267.17249999999996" y="1358" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="724.4349999999998" y="1594" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1252.3125" y="116" width="67.75" height="36" rx="0" ry="0" fill="#99f" stroke="#333" stroke-width="2px" />
+<rect x="1273.1" y="369" width="96.35000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="712.0999999999999" y="627.5" width="339.45000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1075.5499999999997" y="627.5" width="153.55" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2887.8975" y="886" width="132.10000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="3043.9975000000004" y="886" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="3158.2400000000007" y="627.5" width="175" height="36" rx="0" ry="0" fill="#ff9" stroke="#333" stroke-width="3px" />
+<rect x="3493.7125000000005" y="886" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="3642.6625000000004" y="886" width="153.55" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="3820.2125" y="886" width="96.35000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="3940.5625" y="886" width="96.35000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="4060.9125" y="886" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="4206.962500000001" y="886" width="160.70000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="4391.6625" y="886" width="175" height="36" rx="0" ry="0" fill="#9f9" stroke="#333" stroke-width="2px" />
+<rect x="4590.6625" y="886" width="132.10000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="4746.762500000001" y="886" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="4910.0125" y="886" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="5058.962500000001" y="886" width="175" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="5257.962500000001" y="886" width="175" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="5496.962500000001" y="886" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="5660.212500000001" y="886" width="160.70000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="5884.912500000001" y="886" width="182.15" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6091.062500000002" y="886" width="217.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6372.962500000001" y="886" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6536.2125000000015" y="886" width="146.4" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6766.612500000001" y="886" width="203.60000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6901.240000000001" y="1122" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6840.630000000001" y="116" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="6838.112500000001" y="369" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2360.0125000000003" y="369" width="225.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1969.1225000000004" y="627.5" width="232.20000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2225.3225" y="627.5" width="225.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="2474.3725000000004" y="627.5" width="217.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1433.4499999999998" y="629" width="139.25" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="1433.4499999999998" y1="629" x2="1433.4499999999998" y2="662" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="1572.6999999999998" y1="629" x2="1572.6999999999998" y2="662" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1503.0749999999998" cy="662" rx="69.625" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1503.0749999999998" cy="629" rx="69.625" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1596.7" y="629" width="132.10000000000002" height="33" fill="var(--_node-fill)" stroke="none" />
+<line x1="1596.7" y1="629" x2="1596.7" y2="662" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<line x1="1728.8000000000002" y1="629" x2="1728.8000000000002" y2="662" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1662.75" cy="662" rx="66.05000000000001" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<ellipse cx="1662.75" cy="629" rx="66.05000000000001" ry="7" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1752.8000000000002" y="627.5" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="99.44999999999993" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CLI命令行</text>
+<text x="219.80000000000013" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Terminal TUI</text>
+<text x="336.57499999999993" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Web界面</text>
+<text x="521.2749999999999" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">IM渠道&lt;br/&gt;Telegram/Discord/Slack</text>
+<text x="297.47249999999997" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">认证&lt;br/&gt;Pairing + JWT</text>
+<text x="297.47249999999997" y="1140" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">授权&lt;br/&gt;RBAC权限</text>
+<text x="297.47249999999997" y="1376" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">配额管理</text>
+<text x="754.7349999999998" y="1612" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">审计日志</text>
+<text x="1286.1875" y="134" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">任务编排器</text>
+<text x="1321.2749999999999" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Agent执行引擎</text>
+<text x="881.8249999999999" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">AI Provider适配层&lt;br/&gt;Claude/OpenAI/Google/MCP</text>
+<text x="1152.3249999999998" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">记忆系统&lt;br/&gt;流层 + 沉积层</text>
+<text x="2953.9475" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">build&lt;br/&gt;开发模式</text>
+<text x="3106.4725000000003" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">plan&lt;br/&gt;规划模式</text>
+<text x="3245.7400000000007" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">autonomous&lt;br/&gt;自主执行★</text>
+<text x="3556.1875000000005" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">code-reviewer</text>
+<text x="3719.4375000000005" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">security-reviewer</text>
+<text x="3868.3875000000003" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">tdd-guide</text>
+<text x="3988.7375" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">architect</text>
+<text x="4101.9375" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">explore</text>
+<text x="4287.312500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">observer&lt;br/&gt;观察者理论</text>
+<text x="4479.1625" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">decision&lt;br/&gt;CLOSE决策</text>
+<text x="4656.712500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">macro&lt;br/&gt;宏观经济</text>
+<text x="4816.387500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">trader&lt;br/&gt;交易分析</text>
+<text x="4972.4875" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">picker&lt;br/&gt;选品</text>
+<text x="5146.462500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">miniproduct&lt;br/&gt;极小产品</text>
+<text x="5345.462500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">ai-engineer&lt;br/&gt;AI工程</text>
+<text x="5566.587500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">writer&lt;br/&gt;长文写作</text>
+<text x="5740.562500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">proofreader&lt;br/&gt;校对</text>
+<text x="5975.987500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">code-reverse&lt;br/&gt;网站逆向</text>
+<text x="6200.012500000002" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">jar-code-reverse&lt;br/&gt;JAR逆向</text>
+<text x="6442.587500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">general&lt;br/&gt;多任务</text>
+<text x="6609.412500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">synton-assistant</text>
+<text x="6868.412500000001" y="904" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">触发器&lt;br/&gt;Webhook/Cron/Git</text>
+<text x="6931.540000000001" y="1140" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">流程编排</text>
+<text x="6870.930000000001" y="134" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">步骤执行</text>
+<text x="6868.412500000001" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">条件分支</text>
+<text x="2472.5375000000004" y="387" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Daemon&lt;br/&gt;进程编排器 :4402</text>
+<text x="2085.2225000000003" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Channels&lt;br/&gt;IM适配 :4431</text>
+<text x="2337.8475000000003" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Trading&lt;br/&gt;交易系统 :4434</text>
+<text x="2583.3225" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Zero Browser&lt;br/&gt;浏览器 :4433</text>
+<text x="1503.0749999999998" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Redis&lt;br/&gt;会话/缓存</text>
+<text x="1662.75" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">SQLite&lt;br/&gt;持久化</text>
+<text x="1822.4250000000002" y="645.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">Docker&lt;br/&gt;容器编排</text>
+</svg>

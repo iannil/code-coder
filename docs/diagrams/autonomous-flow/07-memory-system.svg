@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1529.9900000000002 621.5" width="1529.9900000000002" height="621.5" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="40" y="40" width="100.6" height="236" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="40" width="100.6" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">输入</text>
+<rect x="268.64" y="100" width="307.95000000000005" height="176" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="268.64" y="100" width="307.95000000000005" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="280.64" y="114" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">流层 - Daily</text>
+<rect x="1094.3900000000003" y="40" width="200.70000000000005" height="356" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="1094.3900000000003" y="40" width="200.70000000000005" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="1106.3900000000003" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">沉积层 - Long-term</text>
+<rect x="40" y="380" width="1449.9900000000002" height="201.5" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="380" width="1449.9900000000002" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="394" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">输出</text>
+<polyline points="120.6,236 288.64,236" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="556.59,236 576.59,236 576.59,176 696.03,176" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="780.6299999999999,176 914.35,176" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="759.8777514309076,196.7522485690924 800.63,196.7522485690924 800.63,236 914.35,236" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="974.9499999999999,236 994.95,236 994.95,116 1153.715,116" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="974.9499999999999,236 994.95,236 994.95,176 1150.14,176" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="974.9499999999999,236 1153.715,236" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="974.9499999999999,236 994.95,236 994.95,296 1153.715,296" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="120.6,537.25 140.6,537.25 140.6,494.5 1194.74,494.5 1194.74,374" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="120.6,537.25 140.6,537.25 140.6,523 422.615,523 422.615,254" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1275.09,356 1315.0900000000001,356 1315.0900000000001,446 1432.5400000000002,446 1432.5400000000002,480.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="556.59,236 576.59,236 576.59,246 596.59,246 596.59,466 1432.5400000000002,466 1432.5400000000002,480.75" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1395.0900000000001,498.75 1375.0900000000001,498.75 1375.0900000000001,551.5 90.3,551.5 90.3,555.25" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="185.18" y="222.5" width="38.88" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="204.62" y="236" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">即时追加</text>
+<rect x="612.59" y="162.5" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="626.3100000000001" y="176" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">每日</text>
+<rect x="836.63" y="162.5" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="847.49" y="176" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="836.63" y="222.5" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="847.49" y="236" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="1030.95" y="102.5" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1044.67" y="116" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">整合</text>
+<rect x="1030.95" y="162.5" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1044.67" y="176" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">整合</text>
+<rect x="1030.95" y="222.5" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1044.67" y="236" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">整合</text>
+<rect x="1030.95" y="282.5" width="27.44" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1044.67" y="296" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">整合</text>
+<rect x="710.31" y="481" width="56.04" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="738.3299999999999" y="494.5" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">加载长期上下文</text>
+<rect x="176.6" y="509.5" width="56.04" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="204.62" y="523" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">加载近期上下文</text>
+<polygon points="738.3299999999999,133.7 780.6299999999999,176 738.3299999999999,218.3 696.03,176" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="914.35" y="158" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="914.35" y="218" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="60" y="98" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="60" y="158" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="60" y="218" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="288.64" y="218" width="267.95000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1114.39" y="338" width="160.70000000000002" height="36" rx="0" ry="0" fill="#9cf" stroke="#333" stroke-width="0.75" />
+<rect x="1153.715" y="98" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1150.14" y="158" width="89.2" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1153.715" y="218" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1153.715" y="278" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1395.0900000000001" y="480.75" width="74.9" height="36" rx="0" ry="0" fill="#9f9" stroke="#333" stroke-width="0.75" />
+<rect x="60" y="519.25" width="60.6" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="738.3299999999999" y="176" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">有意义?</text>
+<text x="944.65" y="176" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">保持日志</text>
+<text x="944.65" y="236" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">智能合并</text>
+<text x="90.3" y="116" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">用户消息</text>
+<text x="90.3" y="176" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">工具结果</text>
+<text x="90.3" y="236" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">决策记录</text>
+<text x="422.615" y="236" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">./memory/daily/&lt;br/&gt;YYYY-MM-DD.md</text>
+<text x="1194.74" y="356" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">./memory/MEMORY.md</text>
+<text x="1194.74" y="116" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">## 用户偏好</text>
+<text x="1194.74" y="176" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">## 项目上下文</text>
+<text x="1194.74" y="236" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">## 关键决策</text>
+<text x="1194.74" y="296" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">## 经验教训</text>
+<text x="1432.5400000000002" y="498.75" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">系统提示构建</text>
+<text x="90.3" y="537.25" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">响应生成</text>
+</svg>

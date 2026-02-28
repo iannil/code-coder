@@ -284,6 +284,9 @@ pub struct AutonomousRequest {
     /// Task request/description
     pub request: String,
 
+    /// Agent to use for execution (e.g., "verifier", "macro", "general")
+    pub agent: Option<String>,
+
     /// Autonomous configuration
     pub config: AutonomousConfig,
 
@@ -467,6 +470,7 @@ impl AutonomousBridge {
                 hand.config.description,
                 hand.content.chars().take(1000).collect::<String>()
             ),
+            agent: Some(hand.config.agent.clone()),
             config: AutonomousConfig {
                 autonomy_level: BridgeAutonomyLevel::from(autonomy.level),
                 unattended: autonomy.unattended,

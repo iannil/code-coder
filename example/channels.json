@@ -1,0 +1,23 @@
+{
+  "$schema": "https://code-coder.com/channels.schema.json",
+  "telegram": {
+    "enabled": true,
+    "allowed_users": ["your_username"],
+    "allowed_chats": [123456789]
+  },
+  "discord": null,
+  "slack": null,
+  "feishu": null,
+  "wecom": null,
+  "dingtalk": null,
+  "matrix": null,
+  "whatsapp": null,
+  "imessage": null,
+  "cli": null,
+  "email": null,
+  "tts": null,
+  "stt": null,
+  "capture": null,
+  "streaming_enabled": true,
+  "progress_throttle_ms": 1000
+}

@@ -727,13 +727,31 @@ export namespace Provider {
     const legacyProviderIds = new Set([...Object.keys(llmProviders), ...Object.keys(llmSecrets)])
 
     for (const providerID of legacyProviderIds) {
-      if (existingProviderIds.has(providerID)) continue
-
       const llmConfig = llmProviders[providerID]
       const apiKey = llmSecrets[providerID]
 
       // Skip if no API key (required to connect)
       if (!apiKey) continue
+
+      // If provider already exists in configProviders, merge the apiKey into its options
+      if (existingProviderIds.has(providerID)) {
+        const existingIndex = configProviders.findIndex(([id]) => id === providerID)
+        if (existingIndex !== -1) {
+          const [id, existingProvider] = configProviders[existingIndex]
+          configProviders[existingIndex] = [
+            id,
+            {
+              ...existingProvider,
+              options: {
+                ...existingProvider.options,
+                apiKey, // Merge apiKey from secrets
+              },
+            },
+          ]
+          log.info("merged apiKey from secrets.llm into existing provider", { providerID })
+        }
+        continue
+      }
 
       const legacyProvider: Config.Provider = {
         options: {

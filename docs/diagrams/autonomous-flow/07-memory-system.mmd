@@ -1,0 +1,46 @@
+flowchart LR
+    subgraph INPUT[输入]
+        USER[用户消息]
+        TOOL[工具结果]
+        DECISION[决策记录]
+    end
+
+    subgraph STREAM[流层 - Daily]
+        DAILY[./memory/daily/<br/>YYYY-MM-DD.md]
+    end
+
+    subgraph SEDIMENT[沉积层 - Long-term]
+        MEMORY[./memory/MEMORY.md]
+        PREF[## 用户偏好]
+        CTX[## 项目上下文]
+        KEY[## 关键决策]
+        LESSON[## 经验教训]
+    end
+
+    subgraph OUTPUT[输出]
+        SYSTEM[系统提示构建]
+        RESPONSE[响应生成]
+    end
+
+    INPUT -->|即时追加| STREAM
+    STREAM -->|每日| ANALYZE{有意义?}
+
+    ANALYZE -->|否| IGNORE[保持日志]
+    ANALYZE -->|是| MERGE[智能合并]
+
+    MERGE -->|整合| PREF
+    MERGE -->|整合| CTX
+    MERGE -->|整合| KEY
+    MERGE -->|整合| LESSON
+
+    OUTPUT -->|加载长期上下文| MEMORY
+    OUTPUT -->|加载近期上下文| DAILY
+
+    MEMORY --> SYSTEM
+    DAILY --> SYSTEM
+
+    SYSTEM --> RESPONSE
+
+    style MEMORY fill:#9cf,stroke:#333
+    style STREAM fill:#ff9,stroke:#333
+    style SYSTEM fill:#9f9,stroke:#333

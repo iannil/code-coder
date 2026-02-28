@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-CodeCoder 是一个个人工作台，融合工程能力与决策智慧。
+CodeCoder 是一个个人工作台，融合工程能力与决策智慧。默认包含 rust 编写的 zero-* 系列（`services/zero-*`），和 typescript 编写的 ccode 系列（`packages/ccode`）。
 
 使用 Turborepo 和 Bun 构建的 monorepo，支持多个 AI 提供商（Claude、OpenAI、Google、通过 MCP 支持本地模型）、CLI/TUI 界面，采用客户端/服务器架构支持远程操作。
 

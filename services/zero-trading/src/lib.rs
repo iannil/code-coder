@@ -525,6 +525,9 @@ async fn run_preparation_tasks(state: Arc<TradingState>) {
 ///
 /// Uses the `cron` crate for proper cron expression parsing to support
 /// user-customized schedules beyond the defaults.
+///
+/// Note: The cron crate requires day-of-week values 1-7 (7=Sunday) or names (SUN-SAT),
+/// not 0-6. Use `7` or `SUN` for Sunday, not `0`.
 async fn run_screener_scheduler(scheduler: Arc<ScreenerSchedulerImpl>) {
     use chrono::{Datelike, Timelike};
     use cron::Schedule;
@@ -635,4 +638,33 @@ fn should_run_now(schedule: &cron::Schedule, now: chrono::DateTime<chrono::Local
     }
 
     false
+}
+
+#[cfg(test)]
+mod cron_tests {
+    use super::*;
+    use cron::Schedule;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_screener_cron_expressions() {
+        // Test scan_cron: "0 18 * * 1-5" (weekdays at 6 PM)
+        let scan_exp = "0 18 * * 1-5";
+        let scan_with_sec = format!("0 {}", scan_exp);
+        assert!(
+            Schedule::from_str(&scan_with_sec).is_ok(),
+            "Scan expression '{}' should be valid",
+            scan_with_sec
+        );
+
+        // Test default sync_cron: "0 20 * * 7" (Sundays at 8 PM)
+        // Note: cron crate requires 7 or SUN/SUNDAY for Sunday, not 0
+        let sync_exp = "0 20 * * 7";
+        let sync_with_sec = format!("0 {}", sync_exp);
+        assert!(
+            Schedule::from_str(&sync_with_sec).is_ok(),
+            "Sync expression '{}' should be valid",
+            sync_with_sec
+        );
+    }
 }

@@ -1,0 +1,54 @@
+flowchart TB
+    START([外部事件]) --> ROUTER{触发类型}
+
+    ROUTER -->|Webhook| WEBHOOK[HTTP Webhook]
+    ROUTER -->|定时| CRON[Cron表达式]
+    ROUTER -->|Git事件| GIT[Git Push/PR]
+    ROUTER -->|手动| MANUAL[用户触发]
+
+    WEBHOOK --> PARSE[事件解析]
+    CRON --> PARSE
+    GIT --> PARSE
+    MANUAL --> PARSE
+
+    PARSE --> VALIDATE{参数验证}
+    VALIDATE -->|失败| ERROR([返回错误])
+    VALIDATE -->|通过| MATCH[工作流匹配]
+
+    MATCH --> FOUND{找到工作流?}
+    FOUND -->|否| DEFAULT[默认处理]
+    FOUND -->|是| LOAD[加载工作流定义]
+
+    DEFAULT --> ERROR
+
+    LOAD --> CONTEXT[构建执行上下文]
+    CONTEXT --> STEP[执行第一步]
+
+    STEP --> STEP_TYPE{步骤类型}
+    STEP_TYPE -->|agent| AGENT_CALL[调用Agent]
+    STEP_TYPE -->|notify| NOTIFY[发送通知]
+    STEP_TYPE -->|condition| CONDITION[条件判断]
+    STEP_TYPE -->|parallel| PARALLEL[并行执行]
+
+    AGENT_CALL --> STEP_RESULT[收集结果]
+    NOTIFY --> STEP_RESULT
+    CONDITION --> COND_RESULT{条件结果}
+    PARALLEL --> PARA_RESULT[并行聚合]
+
+    COND_RESULT -->|真| NEXT_STEP[下一步骤]
+    COND_RESULT -->|假| BRANCH[分支路径]
+    PARA_RESULT --> STEP_RESULT
+
+    NEXT_STEP --> MORE_STEPS{更多步骤?}
+    BRANCH --> MORE_STEPS
+    STEP_RESULT --> MORE_STEPS
+
+    MORE_STEPS -->|是| STEP
+    MORE_STEPS -->|否| PERSIST[持久化结果]
+
+    PERSIST --> CALLBACK[执行回调]
+    CALLBACK --> SUCCESS([执行成功])
+
+    style AGENT_CALL fill:#99f,stroke:#333
+    style SUCCESS fill:#9f9,stroke:#333,stroke-width:3px
+    style ERROR fill:#f99,stroke:#333,stroke-width:2px

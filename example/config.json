@@ -1,0 +1,125 @@
+{
+  "$schema": "https://code-coder.com/config.schema.json",
+  "network": {
+    "bind": "127.0.0.1",
+    "public_url": null
+  },
+  "services": {
+    "codecoder": { "port": 4400 },
+    "gateway": { "port": 4430 },
+    "channels": { "port": 4431 },
+    "workflow": { "port": 4432 },
+    "trading": { "port": 4434 }
+  },
+  "redis": {
+    "url": "redis://localhost:4410",
+    "db": 0,
+    "keyPrefix": "codecoder:",
+    "connectTimeout": 5000,
+    "commandTimeout": 3000,
+    "maxRetriesPerRequest": 3
+  },
+  "auth": {
+    "mode": "pairing",
+    "token_expiry_secs": 86400
+  },
+  "tunnel": {
+    "provider": "cloudflare"
+  },
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "chrome-devtools-mcp@latest"],
+      "enabled": true,
+      "timeout": 60000
+    }
+  },
+  "voice": {
+    "tts": { "provider": "compatible", "voice": "nova" },
+    "stt": { "provider": "local", "model": "base" }
+  },
+  "gateway": {
+    "require_pairing": false,
+    "allow_public_bind": false,
+    "rate_limiting": true,
+    "rate_limit_rpm": 60
+  },
+  "workflow": {
+    "cron": { "enabled": true, "tasks": [] },
+    "webhook": { "enabled": true, "port": null },
+    "git": { "enabled": true },
+    "ticket": { "enabled": true, "github": null },
+    "monitor": { "enabled": true, "tasks": [] },
+    "hands": { "enabled": true, "max_history": 100 }
+  },
+  "codecoder": {
+    "enabled": true,
+    "timeout_secs": 1800
+  },
+  "observability": {
+    "log_level": "debug",
+    "log_format": "pretty",
+    "tracing": true,
+    "show_trace_id": true,
+    "excluded_targets": []
+  },
+  "memory": {
+    "backend": "sqlite"
+  },
+  "audit": {
+    "enabled": true,
+    "retention_years": 5,
+    "hash_content": true,
+    "chain_integrity": true,
+    "compliance_standard": "financial"
+  },
+  "sandbox": {
+    "enabled": true,
+    "docker_socket": "/var/run/docker.sock",
+    "default_timeout_secs": 60,
+    "max_memory_mb": 256,
+    "network_enabled": false
+  },
+  "qdrant": {
+    "enabled": true,
+    "url": "http://localhost:6333",
+    "collection": "codecoder_memory",
+    "embedding_model": "openai"
+  },
+  "hitl": {
+    "enabled": true,
+    "default_approvers": ["your_username"],
+    "callback_base_url": "",
+    "db_path": "~/.codecoder/hitl.db"
+  },
+  "agent": {
+    "build": { "model": "zhipu-ai/glm-5" },
+    "plan": { "model": "uniapi/gemini-2.5-pro" },
+    "autonomous": { "model": "uniapi/gemini-2.5-pro" },
+    "writer": { "model": "deepseek/deepseek-chat" },
+    "general": { "model": "deepseek/deepseek-chat" },
+    "explore": { "model": "deepseek/deepseek-chat" },
+    "code-reviewer": { "model": "zhipu-ai/glm-5" },
+    "security-reviewer": { "model": "zhipu-ai/glm-5" },
+    "tdd-guide": { "model": "zhipu-ai/glm-5" },
+    "architect": { "model": "uniapi/gemini-2.5-pro" },
+    "code-reverse": { "model": "zhipu-ai/glm-5" },
+    "jar-code-reverse": { "model": "zhipu-ai/glm-5" },
+    "verifier": { "model": "zhipu-ai/glm-5" },
+    "feasibility-assess": { "model": "zhipu-ai/glm-5" },
+    "ai-engineer": { "model": "zhipu-ai/glm-5" },
+    "expander": { "model": "deepseek/deepseek-chat" },
+    "expander-fiction": { "model": "deepseek/deepseek-chat" },
+    "expander-nonfiction": { "model": "deepseek/deepseek-chat" },
+    "proofreader": { "model": "deepseek/deepseek-chat" },
+    "prd-generator": { "model": "deepseek/deepseek-chat" },
+    "observer": { "model": "deepseek/deepseek-chat" },
+    "decision": { "model": "uniapi/gemini-2.5-pro" },
+    "macro": { "model": "deepseek/deepseek-chat" },
+    "trader": { "model": "deepseek/deepseek-chat" },
+    "picker": { "model": "deepseek/deepseek-chat" },
+    "miniproduct": { "model": "deepseek/deepseek-chat" },
+    "value-analyst": { "model": "deepseek/deepseek-chat" },
+    "synton-assistant": { "model": "deepseek/deepseek-chat" }
+  }
+}

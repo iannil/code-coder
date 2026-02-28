@@ -1,0 +1,66 @@
+{
+  "$schema": "https://code-coder.com/providers.schema.json",
+  "_settings": {
+    "default": "deepseek/deepseek-chat",
+    "retries": 2,
+    "backoff_ms": 1000
+  },
+  "deepseek": {
+    "api": "https://api.deepseek.com/v1",
+    "name": "DeepSeek",
+    "npm": "@ai-sdk/openai-compatible",
+    "models": {
+      "deepseek-chat": {
+        "id": "deepseek-chat",
+        "name": "DeepSeek Chat",
+        "tool_call": true
+      }
+    },
+    "options": {
+      "baseURL": "https://api.deepseek.com"
+    }
+  },
+  "zhipu-ai": {
+    "api": "https://open.bigmodel.cn/api/coding/paas/v4",
+    "name": "Zhipu AI",
+    "npm": "@ai-sdk/openai-compatible",
+    "models": {
+      "glm-5": {
+        "id": "glm-5",
+        "name": "GLM-5",
+        "tool_call": true
+      }
+    },
+    "options": {
+      "baseURL": "https://open.bigmodel.cn/api/coding/paas/v4"
+    }
+  },
+  "volces": {
+    "npm": "@ai-sdk/openai-compatible",
+    "name": "volcengine",
+    "models": {
+      "doubao-1-5-pro-32k-250115": {
+        "id": "doubao-1-5-pro-32k-250115",
+        "name": "doubao-1-5-pro-32k-250115"
+      }
+    },
+    "options": {
+      "baseURL": "https://ark.cn-beijing.volces.com/api/v3"
+    }
+  },
+  "uniapi": {
+    "api": "https://hk.uniapi.io/v1",
+    "name": "uniapi",
+    "npm": "@ai-sdk/openai-compatible",
+    "models": {
+      "gemini-2.5-pro": {
+        "id": "gemini-2.5-pro",
+        "name": "gemini-2.5-pro",
+        "tool_call": true
+      }
+    },
+    "options": {
+      "baseURL": "https://hk.uniapi.io"
+    }
+  }
+}

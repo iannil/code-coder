@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1441.7175 1303.5500000000002" width="1441.7175" height="1303.5500000000002" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<polyline points="122.79999999999995,713.9000000000001 122.79999999999995,803.3500000000001 40.00000000000004,803.3500000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="148.95000000000005,785.3500000000001 148.95000000000005,733.9000000000001 175.0999999999999,733.9000000000001 175.0999999999999,613.6323976800176 181.26239768001747,613.6323976800176" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="213.84634422739788,595.5836557726021 213.84634422739788,649.4000000000001 270.29999999999995,649.4000000000001 270.29999999999995,677.9000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="270.29999999999995,713.9000000000001 270.29999999999995,803.3500000000001 257.90000000000003,803.3500000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="202.5155828503081,606.9144171496919 202.5155828503081,649.4000000000001 219.26999999999975,649.4000000000001 219.26999999999975,695.9000000000001 367.4999999999999,695.9000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="465.7249999999999,677.9000000000001 465.7249999999999,649.4000000000001 381.4424999999999,649.4000000000001 381.4424999999999,448.00036043168467 402.9128604316845,448.00036043168467" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="447.9714987005486,436.9410012994514 447.9714987005486,493.50000000000006 511.5374999999999,493.50000000000006 511.5374999999999,553.45" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="511.5374999999999,589.45 511.5374999999999,695.9000000000001 563.9499999999999,695.9000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="422.34071141185063,462.5717885881493 422.34071141185063,493.50000000000006 423.8249999999998,493.50000000000006 423.8249999999998,571.45 605.1624999999999,571.45" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="717.6874999999999,553.45 717.6874999999999,493.50000000000006 671.875,493.50000000000006 671.875,283.64535905464095 699.3828590546409,283.64535905464095" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="735.9921409453591,283.64535905464095 735.9921409453591,330.45000000000005 763.5,330.45000000000005 763.5,393.975" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="763.5,429.975 763.5,571.45 830.2124999999999,571.45" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="715.6032839764069,299.86578397640693 715.6032839764069,330.45000000000005 714.2574999999999,330.45000000000005 714.2574999999999,411.975 857.1249999999999,411.975" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="951.7749999999999,393.975 951.7749999999999,105.07907671018967 1187.9015767101896,105.07907671018967" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1259.370268310795,115.55223168920503 1259.370268310795,174.55 1339.2424999999998,174.55 1339.2424999999998,234.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1339.2424999999998,270.5 1339.2424999999998,411.975 1046.425,411.975" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1202.961989901524,120.13948990152417 1202.961989901524,174.55 1150.9675,174.55 1150.9675,234.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1150.9675,270.5 1150.9675,330.45000000000005 1188.48,330.45000000000005 1188.48,358.95" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1212.1102656183596,441.3697343816405 1212.1102656183596,493.50000000000006 1254.0175,493.50000000000006 1254.0175,553.45" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1254.0175,553.45 1254.0175,493.50000000000006 1072,493.50000000000006 1072,252.5 1049.1675,252.5" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1164.8497343816405,441.36973438164046 1164.8497343816405,493.50000000000006 1122.9424999999999,493.50000000000006 1122.9424999999999,571.45 1043.7425,571.45" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1006.2925,589.45 1006.2925,677.9000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1006.2925,713.9000000000001 1006.2925,753.9000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1029.3757062178292,829.716793782171 1029.3757062178292,881.3000000000001 1074.5349999999999,881.3000000000001 1074.5349999999999,1169.5500000000002 1098.555,1169.5500000000002" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="988.4442831522853,834.9517831522854 988.4442831522853,881.3000000000001 962.2674999999999,881.3000000000001 962.2674999999999,909.8000000000001" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="962.2674999999999,945.8000000000001 962.2674999999999,1002.8000000000002" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="981.7316388485727,1075.0858611514275 981.7316388485727,1123.0500000000002 1017.0799999999999,1123.0500000000002 1017.0799999999999,1169.5500000000002 1023.655,1169.5500000000002" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="953.789914643503,1086.0724146435032 953.789914643503,1123.0500000000002 945.4075,1123.0500000000002 945.4075,1151.5500000000002" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1061.105,1187.5500000000002 1061.105,1227.5500000000002" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<rect x="259.43999999999994" y="635.9000000000001" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="270.29999999999995" y="649.4000000000001" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="208.40999999999974" y="635.9000000000001" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="219.26999999999975" y="649.4000000000001" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="500.6774999999999" y="480.00000000000006" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="511.5374999999999" y="493.50000000000006" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="412.9649999999998" y="480.00000000000006" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="423.8249999999998" y="493.50000000000006" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="752.64" y="316.95000000000005" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="763.5" y="330.45000000000005" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="703.3974999999999" y="316.95000000000005" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="714.2574999999999" y="330.45000000000005" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="1328.3825" y="161.05" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1339.2424999999998" y="174.55" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="1140.1075" y="161.05" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1150.9675" y="174.55" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="1243.1575" y="480.00000000000006" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1254.0175" y="493.50000000000006" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="1112.0825" y="480.00000000000006" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1122.9424999999999" y="493.50000000000006" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="1063.675" y="960.8000000000001" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1074.5349999999999" y="974.3000000000001" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="951.4074999999999" y="867.8000000000001" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="962.2674999999999" y="881.3000000000001" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="1006.2199999999999" y="1109.5500000000002" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="1017.0799999999999" y="1123.0500000000002" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">是</text>
+<rect x="934.5475" y="1109.5500000000002" width="21.72" height="27" rx="4" ry="4" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="0.5" />
+<text x="945.4075" y="1123.0500000000002" text-anchor="middle" dy="0.35em" font-size="11" font-weight="400" fill="var(--_text-muted)">否</text>
+<rect x="92.49999999999996" y="677.9000000000001" width="60.6" height="36" rx="18" ry="18" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="40.00000000000004" y="785.3500000000001" width="217.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="188.52999999999997,522 237.97999999999996,571.45 188.52999999999997,620.9000000000001 139.07999999999998,571.45" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="197.09999999999997" y="677.9000000000001" width="146.4" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="367.4999999999999" y="677.9000000000001" width="196.45000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="419.9124999999999,358.95000000000005 472.9374999999999,411.975 419.9124999999999,465 366.88749999999993,411.975" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="441.9124999999999" y="553.45" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="605.1624999999999" y="553.45" width="225.05" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="717.6875,203.05 767.1375,252.5 717.6875,301.95 668.2375,252.5" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="693.875" y="393.975" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="857.1249999999999" y="393.975" width="189.3" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="1228.8725,40 1281.8975,93.025 1228.8725,146.05 1175.8474999999999,93.025" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1276.7675" y="234.5" width="124.95" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1049.1675" y="234.5" width="203.60000000000002" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="1188.48,358.95000000000005 1241.505,411.975 1188.48,465 1135.455,411.975" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1184.3925" y="553.45" width="139.25" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="968.8425" y="553.45" width="74.9" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="965.2675" y="677.9000000000001" width="82.05000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<polygon points="1006.2925,753.9000000000001 1055.7425,803.3500000000001 1006.2925,852.8000000000002 956.8425,803.3500000000001" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1023.655" y="1151.5500000000002" width="74.9" height="36" rx="0" ry="0" fill="#9f9" stroke="#333" stroke-width="3px" />
+<rect x="896.2175" y="909.8000000000001" width="132.10000000000002" height="36" rx="0" ry="0" fill="#ff9" stroke="#333" stroke-width="2px" />
+<polygon points="962.2674999999999,1002.8000000000002 1008.1424999999999,1048.6750000000002 962.2674999999999,1094.5500000000002 916.3924999999999,1048.6750000000002" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="897.2325000000001" y="1151.5500000000002" width="96.35000000000001" height="36" rx="0" ry="0" fill="#f99" stroke="#333" stroke-width="2px" />
+<rect x="1023.655" y="1227.5500000000002" width="74.9" height="36" rx="18" ry="18" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<text x="122.79999999999995" y="695.9000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">决策场景</text>
+<text x="148.95000000000005" y="803.3500000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">C - Convergence&lt;br/&gt;收敛程度评估</text>
+<text x="188.52999999999997" y="571.45" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">收敛度≥7?</text>
+<text x="270.29999999999995" y="695.9000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">重新定义问题&lt;br/&gt;提高收敛度</text>
+<text x="465.7249999999999" y="695.9000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">L - Leverage&lt;br/&gt;杠杆效应评估</text>
+<text x="419.9124999999999" y="411.975" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">杠杆效应≥7?</text>
+<text x="511.5374999999999" y="571.45" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">寻找高杠杆点&lt;br/&gt;结构调整</text>
+<text x="717.6874999999999" y="571.45" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">O - Optionality&lt;br/&gt;选择权保留评估</text>
+<text x="717.6875" y="252.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">选择权≥7?</text>
+<text x="763.5" y="411.975" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">增加选项&lt;br/&gt;避免路径锁定</text>
+<text x="951.7749999999999" y="411.975" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">S - Surplus&lt;br/&gt;余量消耗评估</text>
+<text x="1228.8725" y="93.025" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">余量保留≥7?</text>
+<text x="1339.2424999999998" y="252.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">保留资源&lt;br/&gt;降低消耗</text>
+<text x="1150.9675" y="252.5" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">E - Evolution&lt;br/&gt;演化空间评估</text>
+<text x="1188.48" y="411.975" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">演化空间≥7?</text>
+<text x="1254.0175" y="571.45" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">增强适应性&lt;br/&gt;模块化设计</text>
+<text x="1006.2925" y="571.45" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">计算综合得分</text>
+<text x="1006.2925" y="695.9000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">CLOSE总分</text>
+<text x="1006.2925" y="803.3500000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">总分≥35?</text>
+<text x="1061.105" y="1169.5500000000002" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">✓ 批准执行</text>
+<text x="962.2674999999999" y="927.8000000000001" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">风险缓解&lt;br/&gt;或请求确认</text>
+<text x="962.2674999999999" y="1048.6750000000002" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">用户确认?</text>
+<text x="945.4075" y="1169.5500000000002" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">✗ 拒绝/重新规划</text>
+<text x="1061.105" y="1245.5500000000002" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">进入执行阶段</text>
+</svg>

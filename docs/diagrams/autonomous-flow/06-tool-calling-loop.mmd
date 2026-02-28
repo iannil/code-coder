@@ -1,0 +1,49 @@
+flowchart TB
+    START([Agent启动]) --> PROMPT[构建系统提示词<br/>+ 用户消息]
+
+    PROMPT --> LLM_CALL[调用 LLM API]
+
+    LLM_CALL --> LLM_RESPONSE{{LLM响应}}
+
+    LLM_RESPONSE -->|文本| FINAL([返回最终结果])
+    LLM_RESPONSE -->|工具调用| PARSE[解析工具调用]
+
+    PARSE --> TOOLS[工具列表]
+
+    TOOLS --> TOOL_LOOP{遍历工具}
+
+    TOOL_LOOP -->|下一个工具| EXEC[执行工具]
+
+    EXEC --> TOOL_TYPE{工具类型}
+
+    TOOL_TYPE -->|Read/Write| FILE_IO[文件操作]
+    TOOL_TYPE -->|Bash| CMD[执行命令]
+    TOOL_TYPE -->|Agent| SUB_AGENT[子Agent调用]
+    TOOL_TYPE -->|Skill| SKILL[技能调用]
+    TOOL_TYPE -->|WebSearch| SEARCH[网络搜索]
+    TOOL_TYPE -->|Task| PARALLEL[并行任务]
+
+    FILE_IO --> RESULT[收集结果]
+    CMD --> RESULT
+    SUB_AGENT --> RESULT
+    SKILL --> RESULT
+    SEARCH --> RESULT
+    PARALLEL --> RESULT
+
+    RESULT --> TOOL_LOOP
+
+    TOOL_LOOP -->|全部完成| APPEND[追加到消息历史]
+
+    APPEND --> ITER_CHECK{迭代次数≥10?}
+    ITER_CHECK -->|是| LIMIT[达到限制]
+    ITER_CHECK -->|否| LOOP_CHECK{循环检测?}
+
+    LOOP_CHECK -->|检测到循环| LIMIT
+    LOOP_CHECK -->|否| LLM_CALL
+
+    LIMIT --> FINAL
+
+    style LLM_CALL fill:#ff9,stroke:#333
+    style EXEC fill:#9cf,stroke:#333
+    style FINAL fill:#9f9,stroke:#333,stroke-width:2px
+    style LIMIT fill:#f99,stroke:#333,stroke-width:2px

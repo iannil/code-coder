@@ -1,0 +1,63 @@
+flowchart TB
+    START([用户输入问题]) --> INTENT[意图识别<br/>Agent推荐]
+
+    INTENT --> DECISION{是否需要<br/>CLOSE决策?}
+
+    DECISION -->|是| CLOSE[执行 @decision<br/>CLOSE五维评估]
+    DECISION -->|否| PLAN_DIRECT[直接规划]
+
+    CLOSE --> CLOSE_RESULT{{CLOSE评估结果}}
+    CLOSE_RESULT -->|Convergence≥7<br/>可持续性高| PLAN_DIRECT
+    CLOSE_RESULT -->|Surplus≥7<br/>余量充足| PLAN_DIRECT
+    CLOSE_RESULT -->|风险过高| CONFIRM[请求用户确认]
+
+    CONFIRM --> PLAN_DIRECT
+
+    PLAN_DIRECT --> PLAN[执行 @plan<br/>生成实施计划]
+
+    PLAN --> PLAN_OUT{{计划输出}}
+    PLAN_OUT --> PLAN_FILE[写入IMPLEMENTATION_PLAN.md]
+    PLAN_OUT --> TASKS[创建TodoWrite任务列表]
+
+    PLAN_FILE --> TDD_CHECK{需要TDD?}
+    TASKS --> TDD_CHECK
+
+    TDD_CHECK -->|是| TDD[执行 @tdd-guide<br/>测试驱动开发]
+    TDD_CHECK -->|否| EXECUTE[直接执行]
+
+    TDD --> RED[写测试 → RED]
+    RED --> GREEN[实现 → GREEN]
+    GREEN --> REFACTOR[重构 → IMPROVE]
+
+    REFACTOR --> COVERAGE{覆盖率≥80%?}
+    COVERAGE -->|否| RED
+    COVERAGE -->|是| REVIEW
+
+    EXECUTE --> REVIEW[执行 @code-reviewer<br/>代码审查]
+
+    REVIEW --> REVIEW_OUT{{审查结果}}
+    REVIEW_OUT -->|CRITICAL/HIGH| FIX[修复问题]
+    FIX --> REVIEW
+
+    REVIEW_OUT -->|通过| SECURITY[执行 @security-reviewer<br/>安全审查]
+
+    SECURITY --> SEC_OUT{{安全结果}}
+    SEC_OUT -->|有问题| SEC_FIX[修复安全问题]
+    SEC_FIX --> SECURITY
+
+    SEC_OUT -->|通过| VERIFY[执行 @verification<br/>验收测试]
+
+    VERIFY --> VERIFY_OUT{{验收结果}}
+    VERIFY_OUT -->|失败| ITERATE[迭代优化]
+    ITERATE --> REVIEW
+
+    VERIFY_OUT -->|通过| SOLIDIFY[固化技能<br/>写入SKILL.md]
+
+    SOLIDIFY --> COMPLETE([任务完成])
+
+    style CLOSE fill:#9f9,stroke:#333
+    style PLAN fill:#99f,stroke:#333
+    style TDD fill:#f99,stroke:#333
+    style REVIEW fill:#ff9,stroke:#333
+    style SECURITY fill:#fc9,stroke:#333
+    style COMPLETE fill:#9f9,stroke:#333,stroke-width:3px

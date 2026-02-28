@@ -1,0 +1,126 @@
+flowchart TB
+    subgraph UI["用户接入层"]
+        CLI[CLI命令行]
+        TUI[Terminal TUI]
+        WEB[Web界面]
+        IM[IM渠道<br/>Telegram/Discord/Slack]
+    end
+
+    subgraph GATEWAY["安全边界层 (Zero Gateway :4430)"]
+        AUTH[认证<br/>Pairing + JWT]
+        RBAC[授权<br/>RBAC权限]
+        QUOTA[配额管理]
+        AUDIT[审计日志]
+    end
+
+    subgraph CORE["核心引擎层 (ccode/TypeScript)"]
+        ORCHESTRATOR[任务编排器]
+        AGENT_ENGINE[Agent执行引擎]
+        LLM_PROVIDER[AI Provider适配层<br/>Claude/OpenAI/Google/MCP]
+        MEMORY[记忆系统<br/>流层 + 沉积层]
+    end
+
+    subgraph AGENTS["Agent生态系统 (23个Agent)"]
+        direction TB
+        subgraph MAIN["主模式"]
+            BUILD[build<br/>开发模式]
+            PLAN[plan<br/>规划模式]
+            AUTO[autonomous<br/>自主执行★]
+        end
+
+        subgraph ENGR["工程质量"]
+            REVIEW[code-reviewer]
+            SECURITY[security-reviewer]
+            TDD[tdd-guide]
+            ARCH[architect]
+            EXPLORE[explore]
+        end
+
+        subgraph ZRS["祝融说系列"]
+            OBS[observer<br/>观察者理论]
+            DEC[decision<br/>CLOSE决策]
+            MAC[macro<br/>宏观经济]
+            TRD[trader<br/>交易分析]
+            PK[picker<br/>选品]
+            MP[miniproduct<br/>极小产品]
+            AIE[ai-engineer<br/>AI工程]
+        end
+
+        subgraph CONTENT["内容创作"]
+            WRITER[writer<br/>长文写作]
+            PROOF[proofreader<br/>校对]
+        end
+
+        subgraph REVERSE["逆向工程"]
+            CR[code-reverse<br/>网站逆向]
+            JR[jar-code-reverse<br/>JAR逆向]
+        end
+
+        subgraph UTIL["工具辅助"]
+            GEN[general<br/>多任务]
+            SYNT[synton-assistant]
+        end
+    end
+
+    subgraph WORKFLOW["工作流引擎 (Zero Workflow :4432)"]
+        TRIGGER[触发器<br/>Webhook/Cron/Git]
+        FLOW[流程编排]
+        STEP[步骤执行]
+        CONDITION[条件分支]
+    end
+
+    subgraph SERVICES["Rust微服务层"]
+        DAEMON[Zero Daemon<br/>进程编排器 :4402]
+        CHANNELS[Zero Channels<br/>IM适配 :4431]
+        TRADING[Zero Trading<br/>交易系统 :4434]
+        BROWSER[Zero Browser<br/>浏览器 :4433]
+    end
+
+    subgraph INFRA["基础设施层"]
+        REDIS[(Redis<br/>会话/缓存)]
+        DB[(SQLite<br/>持久化)]
+        DOCKER[Docker<br/>容器编排]
+    end
+
+    %% 连接关系
+    CLI -->|命令| AUTH
+    TUI -->|交互| AUTH
+    WEB -->|HTTP| AUTH
+    IM -->|消息| CHANNELS
+    CHANNELS --> AUTH
+
+    AUTH --> RBAC --> QUOTA --> AUDIT --> ORCHESTRATOR
+
+    ORCHESTRATOR --> AGENT_ENGINE
+    AGENT_ENGINE --> AUTO
+    AUTO -->|委派| BUILD
+    AUTO -->|委派| PLAN
+    AUTO -->|委派| REVIEW
+    AUTO -->|委派| SECURITY
+    AUTO -->|委派| TDD
+    AUTO -->|委派| EXPLORE
+    AUTO -->|委派| DEC
+    AUTO -->|委派| WRITER
+    AUTO -->|委派| GEN
+    AUTO -->|协调| WORKFLOW
+
+    AGENT_ENGINE --> LLM_PROVIDER
+    AGENT_ENGINE --> MEMORY
+
+    WORKFLOW --> TRIGGER --> FLOW --> STEP --> CONDITION
+    STEP -->|调用| AGENT_ENGINE
+
+    ORCHESTRATOR --> DAEMON
+    DAEMON --> GATEWAY
+    DAEMON --> CHANNELS
+    DAEMON --> WORKFLOW
+    DAEMON --> TRADING
+    DAEMON --> BROWSER
+
+    AGENT_ENGINE --> REDIS
+    AGENT_ENGINE --> DB
+    DAEMON --> DOCKER
+
+    style AUTO fill:#ff9,stroke:#333,stroke-width:3px
+    style DEC fill:#9f9,stroke:#333,stroke-width:2px
+    style ORCHESTRATOR fill:#99f,stroke:#333,stroke-width:2px

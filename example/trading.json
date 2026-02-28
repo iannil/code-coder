@@ -1,0 +1,129 @@
+{
+  "$schema": "https://code-coder.com/trading.schema.json",
+  "local_storage": {
+    "enabled": true,
+    "db_path": "~/.codecoder/financial.db",
+    "candle_retention_days": 365,
+    "financial_retention_years": 5,
+    "auto_sync_on_startup": true,
+    "sync_interval_minutes": 60
+  },
+  "smt_pairs": [
+    {
+      "primary": "000300.SH",
+      "reference": "000905.SH",
+      "name": "沪深300 vs 中证500",
+      "description": "大盘股 vs 中盘股背离"
+    },
+    {
+      "primary": "000001.SH",
+      "reference": "399001.SZ",
+      "name": "上证指数 vs 深证成指",
+      "description": "沪深两市背离"
+    }
+  ],
+  "timeframes": ["D"],
+  "min_accumulation_bars": 10,
+  "manipulation_threshold": 1.5,
+  "require_alignment": true,
+  "signal_expiry_minutes": 60,
+  "max_positions": 5,
+  "max_position_pct": 20.0,
+  "max_daily_capital_pct": 50.0,
+  "default_stop_loss_pct": 3.0,
+  "auto_execute": false,
+  "paper_trading": true,
+  "macro_filter_enabled": true,
+  "macro_cache_secs": 3600,
+  "telegram_notification": {
+    "enabled": true,
+    "telegram_chat_id": "123456789",
+    "channel_type": "telegram",
+    "retry_count": 3,
+    "notify_signals": true,
+    "notify_orders": true,
+    "notify_positions": true
+  },
+  "macro_agent": {
+    "enabled": true,
+    "timeout_secs": 30,
+    "cache_duration_secs": 3600,
+    "weekly_report_enabled": true,
+    "weekly_report_cron": null,
+    "monthly_report_enabled": true,
+    "monthly_report_cron": null,
+    "daily_morning_enabled": true,
+    "daily_morning_cron": null,
+    "daily_afternoon_enabled": true,
+    "daily_afternoon_cron": null,
+    "include_index_data": true,
+    "index_symbols": ["000300.SH", "000905.SH", "000001.SH"]
+  },
+  "loop_config": {
+    "interval_secs": 5,
+    "price_check_interval_secs": 1,
+    "auto_execute": false
+  },
+  "schedule": {
+    "enabled": true,
+    "session_start": "0 25 9 * * 1-5",
+    "session_pause": "0 30 11 * * 1-5",
+    "session_resume": "0 0 13 * * 1-5",
+    "session_stop": "0 0 15 * * 1-5",
+    "daily_review": "0 30 15 * * 1-5",
+    "auto_start": true,
+    "persist_state": true,
+    "default_mode": "paper"
+  },
+  "data_sources": {
+    "sources": [
+      { "provider": "itick", "enabled": false, "priority": 1 },
+      { "provider": "lixin", "enabled": true, "priority": 2 }
+    ],
+    "health_check_interval_secs": 100,
+    "unhealthy_threshold": 3,
+    "max_retries": 2,
+    "health_check_timeout_secs": 10
+  },
+  "preparation_tasks": {
+    "enabled": true,
+    "data_preload_interval_secs": 300,
+    "parameter_precompute_interval_secs": 600,
+    "macro_analysis_interval_secs": 3600
+  },
+  "screener": {
+    "enabled": true,
+    "schedule_cron": "0 18 * * 1-5",
+    "data_sync_cron": "0 20 * * 0",
+    "deep_analysis_threshold": 200,
+    "filters": {
+      "target_symbols": [],
+      "include_industries": [],
+      "exclude_industries": [],
+      "exclude_st": true,
+      "exclude_bj": true,
+      "min_listing_days": 365,
+      "min_market_cap": null,
+      "max_market_cap": null,
+      "min_roe_3y": 10.0,
+      "min_gross_margin": 20.0,
+      "max_debt_ratio": 70.0,
+      "healthy_cash_flow_dna": true,
+      "valuation": {
+        "max_pe_percentile": 50,
+        "max_pe_absolute": 30.0,
+        "max_pb": 5.0,
+        "min_dividend_yield": 2.0,
+        "use_pb_roe_model": true
+      }
+    },
+    "output": {
+      "telegram_enabled": false,
+      "telegram_chat_id": null,
+      "local_report_enabled": true,
+      "report_dir": "~/.codecoder/reports/screener",
+      "report_format": ["markdown", "json"],
+      "notification_max_stocks": 20
+    }
+  }
+}
