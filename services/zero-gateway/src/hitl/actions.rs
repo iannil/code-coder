@@ -131,6 +131,7 @@ impl ActionRegistry {
             Arc::new(HighCostOperationAction::new()),
         );
         registry.register("risk_operation", Arc::new(RiskOperationAction::new()));
+        registry.register("tool_execution", Arc::new(ToolExecutionAction::new()));
 
         registry
     }
@@ -528,6 +529,93 @@ impl ApprovalAction for RiskOperationAction {
     }
 }
 
+/// Action handler for tool execution approvals (Hands autonomous execution).
+///
+/// This handler is a no-op as the actual tool execution is performed
+/// by the Hands executor after approval is granted. The approval just
+/// signals that the executor can proceed.
+pub struct ToolExecutionAction {
+    // No state needed - just signals approval
+}
+
+impl ToolExecutionAction {
+    /// Create a new tool execution action handler.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Default for ToolExecutionAction {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl ApprovalAction for ToolExecutionAction {
+    async fn execute(&self, request: &ApprovalRequest) -> Result<ActionResult> {
+        if let ApprovalType::ToolExecution {
+            tool,
+            args,
+            risk_level,
+            hand_id,
+            execution_id,
+        } = &request.approval_type
+        {
+            info!(
+                tool = %tool,
+                hand_id = %hand_id,
+                execution_id = %execution_id,
+                risk_level = %risk_level.name(),
+                "Tool execution approved"
+            );
+
+            // The actual tool execution is performed by the Hands executor.
+            // This handler just returns success to indicate approval was granted.
+            // The executor polls for approval status and proceeds when approved.
+
+            Ok(ActionResult::success_with_data(
+                format!(
+                    "Tool '{}' execution approved for hand '{}' (risk: {})",
+                    tool, hand_id, risk_level.name()
+                ),
+                serde_json::json!({
+                    "tool": tool,
+                    "args": args,
+                    "hand_id": hand_id,
+                    "execution_id": execution_id,
+                    "risk_level": risk_level.name(),
+                    "approved": true
+                }),
+            ))
+        } else {
+            Err(anyhow!("Invalid approval type for ToolExecutionAction"))
+        }
+    }
+
+    async fn rollback(&self, request: &ApprovalRequest) -> Result<()> {
+        if let ApprovalType::ToolExecution {
+            tool,
+            hand_id,
+            execution_id,
+            ..
+        } = &request.approval_type
+        {
+            info!(
+                tool = %tool,
+                hand_id = %hand_id,
+                execution_id = %execution_id,
+                "Rollback requested for tool execution (not supported)"
+            );
+
+            // Tool execution rollback is not directly supported.
+            // The tool would need to implement its own undo logic.
+        }
+
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,6 +721,30 @@ mod tests {
             title: "Critical data operation".to_string(),
             description: None,
             channel: "telegram".to_string(),
+            message_id: None,
+            metadata: serde_json::json!({}),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            expires_at: None,
+        }
+    }
+
+    fn create_tool_execution(risk_level: RiskLevel) -> ApprovalRequest {
+        ApprovalRequest {
+            id: "tool-1".to_string(),
+            approval_type: ApprovalType::ToolExecution {
+                tool: "Bash".to_string(),
+                args: serde_json::json!({"command": "rm -rf /tmp/test"}),
+                risk_level,
+                hand_id: "test-hand".to_string(),
+                execution_id: "exec-123".to_string(),
+            },
+            status: super::super::ApprovalStatus::Pending,
+            requester: "hands-executor".to_string(),
+            approvers: vec!["admin".to_string()],
+            title: "Execute Bash command".to_string(),
+            description: Some("Executing Bash: rm -rf /tmp/test".to_string()),
+            channel: "tui".to_string(),
             message_id: None,
             metadata: serde_json::json!({}),
             created_at: Utc::now(),
@@ -959,6 +1071,47 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    // ========== ToolExecutionAction tests ==========
+
+    #[tokio::test]
+    async fn test_tool_execution_action_execute() {
+        let action = ToolExecutionAction::new();
+        let request = create_tool_execution(RiskLevel::High);
+
+        let result = action.execute(&request).await.unwrap();
+        assert!(result.success);
+        assert!(result.message.contains("Bash"));
+        assert!(result.message.contains("test-hand"));
+        assert!(result.message.contains("High"));
+
+        let data = result.data.unwrap();
+        assert_eq!(data["tool"], "Bash");
+        assert_eq!(data["hand_id"], "test-hand");
+        assert_eq!(data["execution_id"], "exec-123");
+        assert_eq!(data["risk_level"], "High");
+        assert_eq!(data["approved"], true);
+    }
+
+    #[tokio::test]
+    async fn test_tool_execution_action_wrong_type() {
+        let action = ToolExecutionAction::new();
+        let request = create_merge_request(); // Wrong type
+
+        let result = action.execute(&request).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid approval type"));
+    }
+
+    #[tokio::test]
+    async fn test_tool_execution_action_rollback() {
+        let action = ToolExecutionAction::new();
+        let request = create_tool_execution(RiskLevel::Critical);
+
+        // Rollback should succeed (no-op)
+        let result = action.rollback(&request).await;
+        assert!(result.is_ok());
+    }
+
     // ========== Integration tests ==========
 
     #[tokio::test]
@@ -972,6 +1125,7 @@ mod tests {
             create_config_change(),
             create_high_cost_operation(),
             create_risk_operation(RiskLevel::Medium),
+            create_tool_execution(RiskLevel::High),
         ];
 
         for request in requests {

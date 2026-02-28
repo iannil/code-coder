@@ -104,6 +104,19 @@ pub enum ApprovalType {
         /// Risk level assessment
         risk_level: RiskLevel,
     },
+    /// Tool execution approval (for Hands autonomous execution)
+    ToolExecution {
+        /// Tool name being executed
+        tool: String,
+        /// Tool arguments (JSON)
+        args: serde_json::Value,
+        /// Risk level assessment
+        risk_level: RiskLevel,
+        /// Hand ID that requested this execution
+        hand_id: String,
+        /// Execution ID for tracking
+        execution_id: String,
+    },
 }
 
 impl ApprovalType {
@@ -115,6 +128,7 @@ impl ApprovalType {
             ApprovalType::ConfigChange { .. } => "config_change",
             ApprovalType::HighCostOperation { .. } => "high_cost_operation",
             ApprovalType::RiskOperation { .. } => "risk_operation",
+            ApprovalType::ToolExecution { .. } => "tool_execution",
         }
     }
 }

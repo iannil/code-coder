@@ -12,6 +12,7 @@
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构总览 |
 | [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md) | 设计思想与哲学框架 |
 | [CCODE_VS_ZERO.md](./CCODE_VS_ZERO.md) | packages/ccode 与 services/zero-* 关系 |
+| [OPENFANG_VS_CODECODER.md](./OPENFANG_VS_CODECODER.md) | OpenFang vs CodeCoder 对比分析 |
 | [diagrams/](./diagrams/) | ASCII 架构图 |
 
 ## 快速导航

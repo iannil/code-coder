@@ -79,6 +79,11 @@ export interface DecisionConfig {
 }
 
 /**
+ * Pipeline execution mode
+ */
+export type PipelineMode = "sequential" | "parallel" | "conditional"
+
+/**
  * Hand configuration
  */
 export interface HandConfig {
@@ -97,8 +102,22 @@ export interface HandConfig {
   /** Cron schedule expression */
   schedule?: string
 
-  /** Agent to use for execution */
+  /** Agent to use for execution (single-agent mode) */
   agent: string
+
+  /**
+   * List of agents for pipeline execution.
+   * When specified, `agent` field is ignored and agents are executed according to `pipeline` mode.
+   */
+  agents?: string[]
+
+  /**
+   * Pipeline execution mode for multi-agent hands.
+   * - sequential: Execute agents in order, passing output from one to the next
+   * - parallel: Execute all agents simultaneously and merge outputs
+   * - conditional: Execute agents based on CLOSE framework decisions
+   */
+  pipeline?: PipelineMode
 
   /** Whether the hand is enabled */
   enabled: boolean
@@ -134,7 +153,42 @@ export interface HandManifest {
 /**
  * Execution status
  */
-export type ExecutionStatus = "pending" | "running" | "completed" | "failed" | "paused"
+export type ExecutionStatus = "pending" | "running" | "waiting_approval" | "completed" | "failed" | "paused"
+
+/**
+ * Risk level for tool operations
+ */
+export type RiskLevelValue = "safe" | "low" | "medium" | "high" | "critical"
+
+/**
+ * Approval decision from auto-approver
+ */
+export type ApprovalDecision = "auto_approve" | "queue" | "deny"
+
+/**
+ * Risk evaluation result
+ */
+export interface RiskEvaluation {
+  tool: string
+  riskLevel: RiskLevelValue
+  reasons: string[]
+  adjustments: Array<{
+    pattern: string
+    adjustment: number
+    reason: string
+  }>
+}
+
+/**
+ * Approval result from the auto-approver
+ */
+export interface ApprovalResult {
+  decision: ApprovalDecision
+  riskEvaluation: RiskEvaluation
+  reasons: string[]
+  timeoutApplicable: boolean
+  timeoutMs?: number
+}
 
 /**
  * Hand execution result
@@ -216,13 +270,17 @@ export interface TriggerResponse {
 // Zod Schemas
 // ============================================================================
 
+export const PipelineModeSchema = z.enum(["sequential", "parallel", "conditional"])
+
 export const HandConfigSchema = z.object({
   id: z.string(),
   name: z.string(),
   version: z.string().default("1.0.0"),
   description: z.string().default(""),
   schedule: z.string().optional(),
-  agent: z.string(),
+  agent: z.string().default(""),
+  agents: z.array(z.string()).optional(),
+  pipeline: PipelineModeSchema.optional(),
   enabled: z.boolean().default(true),
   memoryPath: z.string().optional(),
   params: z.record(z.string(), z.unknown()).optional(),
@@ -585,3 +643,47 @@ export async function getHandExecution(executionId: string): Promise<HandExecuti
 export async function isHandsServiceHealthy(): Promise<boolean> {
   return getBridge().health()
 }
+
+// ============================================================================
+// Pipeline Helper Functions
+// ============================================================================
+
+/**
+ * Check if a hand uses pipeline mode (multiple agents)
+ */
+export function isPipelineHand(config: HandConfig): boolean {
+  return (config.agents?.length ?? 0) > 1
+}
+
+/**
+ * Get the list of agents for a hand.
+ * Returns agents from `agents` field if set, otherwise wraps `agent` in an array.
+ */
+export function getHandAgents(config: HandConfig): string[] {
+  if (config.agents && config.agents.length > 0) {
+    return config.agents
+  }
+  return config.agent ? [config.agent] : []
+}
+
+/**
+ * Get the pipeline mode for a hand, defaulting to sequential.
+ */
+export function getHandPipelineMode(config: HandConfig): PipelineMode {
+  return config.pipeline ?? "sequential"
+}
+
+/**
+ * Get pipeline mode description in Chinese
+ */
+export function getPipelineModeDescription(mode: PipelineMode): string {
+  switch (mode) {
+    case "sequential":
+      return "顺序执行：前一个 Agent 的输出作为下一个的输入"
+    case "parallel":
+      return "并行执行：所有 Agent 同时执行并合并输出"
+    case "conditional":
+      return "条件执行：根据 CLOSE 框架决策选择下一个 Agent"
+  }
+}
+

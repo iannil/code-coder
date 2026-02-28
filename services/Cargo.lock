@@ -5504,6 +5504,7 @@ dependencies = [
  "hex",
  "hmac",
  "http-body-util",
+ "regex",
  "reqwest",
  "rss",
  "rusqlite",

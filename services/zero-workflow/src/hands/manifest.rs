@@ -286,6 +286,35 @@ fn default_max_duration_sec() -> usize {
     600
 }
 
+/// Pipeline execution mode for multi-agent hands.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum PipelineMode {
+    /// Execute agents sequentially, passing output from one to the next.
+    /// Each agent receives the output of the previous agent as context.
+    #[default]
+    Sequential,
+
+    /// Execute all agents in parallel and merge their outputs.
+    /// Each agent receives the same initial context.
+    Parallel,
+
+    /// Execute agents conditionally based on previous agent's output.
+    /// The next agent is selected based on the decision from CLOSE framework.
+    Conditional,
+}
+
+impl PipelineMode {
+    /// Get description of this pipeline mode.
+    pub fn description(&self) -> &'static str {
+        match self {
+            PipelineMode::Sequential => "顺序执行：前一个 Agent 的输出作为下一个的输入",
+            PipelineMode::Parallel => "并行执行：所有 Agent 同时执行并合并输出",
+            PipelineMode::Conditional => "条件执行：根据 CLOSE 框架决策选择下一个 Agent",
+        }
+    }
+}
+
 /// Hand manifest parsed from HAND.md.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandManifest {
@@ -321,7 +350,19 @@ pub struct HandConfig {
     pub schedule: String,
 
     /// Which agent to call (macro, trader, picker, etc.)
+    /// Used for single-agent hands. For multi-agent pipelines, use `agents` instead.
+    #[serde(default)]
     pub agent: String,
+
+    /// List of agents for pipeline execution.
+    /// When specified, `agent` field is ignored and agents are executed according to `pipeline` mode.
+    #[serde(default)]
+    pub agents: Option<Vec<String>>,
+
+    /// Pipeline execution mode for multi-agent hands.
+    /// Only used when `agents` is specified.
+    #[serde(default)]
+    pub pipeline: Option<PipelineMode>,
 
     /// Whether the hand is enabled
     #[serde(default = "default_enabled")]
@@ -418,12 +459,19 @@ impl HandManifest {
         let autonomy_level = self.config.autonomy.as_ref().map(|a| format!("{:?}", a.level));
         let autonomous = self.config.autonomy.is_some();
 
+        // For pipeline hands, show first agent or "pipeline"
+        let agent = if self.config.is_pipeline() {
+            format!("pipeline({})", self.config.agents.as_ref().map_or(0, |a| a.len()))
+        } else {
+            self.config.agent.clone()
+        };
+
         HandSummary {
             id: self.config.id.clone(),
             name: self.config.name.clone(),
             version: self.config.version.clone(),
             schedule: self.config.schedule.clone(),
-            agent: self.config.agent.clone(),
+            agent,
             enabled: self.config.enabled,
             description: self.config.description.clone(),
             autonomy_level,
@@ -435,6 +483,30 @@ impl HandManifest {
     pub fn is_autonomous(&self) -> bool {
         self.config.autonomy.is_some() &&
             self.config.decision.as_ref().map_or(false, |d| d.use_close)
+    }
+}
+
+impl HandConfig {
+    /// Check if this hand uses pipeline mode (multiple agents).
+    pub fn is_pipeline(&self) -> bool {
+        self.agents.as_ref().map_or(false, |a| a.len() > 1)
+    }
+
+    /// Get the list of agents to execute.
+    /// Returns agents from `agents` field if set, otherwise wraps `agent` in a vec.
+    pub fn get_agents(&self) -> Vec<String> {
+        self.agents.clone().unwrap_or_else(|| {
+            if self.agent.is_empty() {
+                Vec::new()
+            } else {
+                vec![self.agent.clone()]
+            }
+        })
+    }
+
+    /// Get the pipeline mode, defaulting to Sequential.
+    pub fn get_pipeline_mode(&self) -> PipelineMode {
+        self.pipeline.unwrap_or_default()
     }
 }
 

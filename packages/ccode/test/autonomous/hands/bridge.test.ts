@@ -156,7 +156,7 @@ describe("hands-bridge", () => {
       })
 
       test("validates status enum", () => {
-        const validStatuses = ["pending", "running", "completed", "failed", "paused"]
+        const validStatuses = ["pending", "running", "completed", "failed", "paused"] as const
 
         for (const status of validStatuses) {
           const input = {

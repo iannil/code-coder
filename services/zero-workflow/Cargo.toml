@@ -67,6 +67,9 @@ rss = "2.0"
 # Async utilities
 futures = "0.3"
 
+# Regex for risk pattern matching
+regex = "1.11"
+
 # Temp directories (for test state isolation)
 tempfile = "3.14"
 

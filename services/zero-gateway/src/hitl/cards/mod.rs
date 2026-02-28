@@ -152,6 +152,24 @@ pub fn format_approval_summary(request: &ApprovalRequest) -> String {
                 description, risk_label
             )
         }
+        ApprovalType::ToolExecution {
+            tool,
+            risk_level,
+            hand_id,
+            execution_id,
+            ..
+        } => {
+            let risk_label = match risk_level {
+                RiskLevel::Low => "低",
+                RiskLevel::Medium => "中",
+                RiskLevel::High => "高",
+                RiskLevel::Critical => "危急",
+            };
+            format!(
+                "【工具执行】\n工具: {}\nHand: {}\n执行ID: {}\n风险等级: {}",
+                tool, hand_id, execution_id, risk_label
+            )
+        }
     };
 
     let mut summary = format!(

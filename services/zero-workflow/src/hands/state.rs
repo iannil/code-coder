@@ -17,6 +17,8 @@ use rusqlite::{params, Connection};
 pub enum ExecutionStatus {
     Scheduled,
     Running,
+    /// Waiting for human approval (HITL)
+    WaitingApproval,
     Success,
     Failed,
     Cancelled,
@@ -218,6 +220,7 @@ impl StateStore {
         let status_str = match execution.status {
             ExecutionStatus::Scheduled => "scheduled",
             ExecutionStatus::Running => "running",
+            ExecutionStatus::WaitingApproval => "waiting_approval",
             ExecutionStatus::Success => "success",
             ExecutionStatus::Failed => "failed",
             ExecutionStatus::Cancelled => "cancelled",
@@ -264,6 +267,7 @@ impl StateStore {
             let status = match status_str.as_str() {
                 "scheduled" => ExecutionStatus::Scheduled,
                 "running" => ExecutionStatus::Running,
+                "waiting_approval" => ExecutionStatus::WaitingApproval,
                 "success" => ExecutionStatus::Success,
                 "failed" => ExecutionStatus::Failed,
                 "cancelled" => ExecutionStatus::Cancelled,
@@ -317,6 +321,7 @@ impl StateStore {
             let status = match status_str.as_str() {
                 "scheduled" => ExecutionStatus::Scheduled,
                 "running" => ExecutionStatus::Running,
+                "waiting_approval" => ExecutionStatus::WaitingApproval,
                 "success" => ExecutionStatus::Success,
                 "failed" => ExecutionStatus::Failed,
                 "cancelled" => ExecutionStatus::Cancelled,

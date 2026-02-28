@@ -280,6 +280,40 @@
   - 删除 `ashare.rs`、`tushare.rs`
 - **配置变更**: 数据源配置移至 `secrets.external.itick` 和 `secrets.external.lixin`
 
+### 2026-02-27: IM Agent 自动路由实现
+
+- **决策**: 在 zero-channels bridge.rs 中实现自动路由功能
+- **理由**: 根据 prompt 内容智能推荐 agent，提升用户体验
+- **实现**: RecommendRequest/Response 类型 + 200ms 超时保护
+- **优先级链**: metadata (@agent) > recommended (API) > default
+
+### 2026-02-28: Hands + HITL 系统完成 (OpenFang 学习点整合)
+
+- **决策**: 完成从 OpenFang 学习的四大特性实现
+- **实现内容**:
+  - Phase 1: Auto-Approve 基础实现 (风险评估、HAND.md 清单扩展)
+  - Phase 2: Auto-Approve 生态扩展 (Config、Zod Schema、Agent 级别配置)
+  - Phase 3: 深度增强 (环境变量、会话检查点、DOOM_LOOP 检测、审计日志)
+  - Phase 4: 安全加固 (Prompt 注入扫描、Agent 签名验证、Hands 桥接、自适应风险、沙箱集成)
+- **测试覆盖**: 143 个新增测试通过
+- **新增模块**:
+  - `packages/ccode/src/permission/auto-approve.ts`
+  - `packages/ccode/src/security/prompt-injection.ts`
+  - `packages/ccode/src/agent/signature.ts`
+  - `packages/ccode/src/autonomous/hands/bridge.ts`
+  - `packages/ccode/src/autonomous/execution/session-checkpoint.ts`
+  - `packages/ccode/src/audit/audit-log.ts`
+  - `packages/ccode/src/hitl/` (HITL 审批队列)
+
+### 2026-02-28: 文档整理完成
+
+- **决策**: 系统性整理项目文档，归档已完成工作
+- **归档数量**: 14 个 progress 文档移至 completed/
+- **修正问题**:
+  - 时间戳错误: 2025-02-27 → 2026-02-27
+  - 文件命名规范化: 为无日期文件添加日期前缀
+- **结果**: docs/progress/ 目录已清空，所有已完成工作可追溯
+
 ## 经验教训
 
 ### 代码清理

@@ -3,14 +3,17 @@
 //! Executes a Hand by:
 //! 1. Loading previous state from SQLite
 //! 2. Building context with state history
-//! 3. Calling the configured agent via ccode API
+//! 3. Checking auto-approval configuration for tool calls
+//! 4. Calling the configured agent via ccode API
 //!    - If autonomy is configured, uses Autonomous Bridge
 //!    - Otherwise, uses simple chat API
-//! 4. Recording result to SQLite
-//! 5. Writing Markdown memory file
-//! 6. Updating state for next run
+//!    - For pipeline hands, executes multiple agents sequentially or in parallel
+//! 5. Recording result to SQLite
+//! 6. Writing Markdown memory file
+//! 7. Updating state for next run
 
-use super::manifest::HandManifest;
+use super::auto_approve::{ApprovalDecision, ApprovalResult, AutoApprover};
+use super::manifest::{HandManifest, PipelineMode};
 use super::autonomous_bridge::{AutonomousBridge, PreviousResult};
 use super::state::{ExecutionStatus, HandExecution, StateStore};
 use anyhow::{Context, Result};
@@ -103,6 +106,9 @@ pub struct HandExecutor {
 
     /// Autonomous bridge (optional, created when needed)
     autonomous_bridge: Option<AutonomousBridge>,
+
+    /// HITL Gateway endpoint (for approval requests)
+    hitl_endpoint: Option<String>,
 }
 
 impl HandExecutor {
@@ -126,12 +132,16 @@ impl HandExecutor {
         // Create autonomous bridge
         let autonomous_bridge = AutonomousBridge::new(codecoder_endpoint.clone());
 
+        // Default HITL endpoint
+        let hitl_endpoint = Some("http://127.0.0.1:4430".to_string());
+
         Ok(Self {
             codecoder_endpoint,
             client,
             state_store,
             memory_dir,
             autonomous_bridge: Some(autonomous_bridge),
+            hitl_endpoint,
         })
     }
 
@@ -147,11 +157,48 @@ impl HandExecutor {
         self
     }
 
+    /// Set a custom HITL endpoint.
+    pub fn with_hitl_endpoint(mut self, endpoint: String) -> Self {
+        self.hitl_endpoint = Some(endpoint);
+        self
+    }
+
+    /// Build an AutoApprover for a hand based on its configuration.
+    fn build_auto_approver(&self, hand: &HandManifest) -> AutoApprover {
+        let autonomy = hand.config.autonomy.as_ref();
+
+        match autonomy {
+            Some(autonomy_config) => {
+                match &autonomy_config.auto_approve {
+                    Some(auto_approve) => {
+                        AutoApprover::new(
+                            auto_approve.clone(),
+                            autonomy_config.level,
+                            autonomy_config.unattended,
+                        )
+                    }
+                    None => {
+                        // No auto_approve config, create a disabled approver
+                        AutoApprover::disabled()
+                    }
+                }
+            }
+            None => {
+                // No autonomy config, create a disabled approver
+                AutoApprover::disabled()
+            }
+        }
+    }
+
     /// Execute a hand.
     pub async fn execute(&self, hand: &HandManifest) -> Result<HandExecution> {
+        let is_pipeline = hand.config.is_pipeline();
+        let agents = hand.config.get_agents();
+
         tracing::info!(
             hand_id = %hand.config.id,
-            agent = %hand.config.agent,
+            agents = ?agents,
+            pipeline = is_pipeline,
             autonomous = hand.is_autonomous(),
             "Executing hand"
         );
@@ -178,8 +225,12 @@ impl HandExecutor {
         // Build previous results for autonomous mode
         let previous_results = self.build_previous_results(&state).await?;
 
-        // Call agent (either autonomous or simple)
-        let (result, autonomous_metadata) = if use_autonomous {
+        // Call agent(s) based on pipeline configuration
+        let (result, autonomous_metadata) = if is_pipeline {
+            // Pipeline execution: multiple agents
+            let pipeline_mode = hand.config.get_pipeline_mode();
+            self.execute_pipeline(hand, &agents, pipeline_mode, &context, previous_results).await
+        } else if use_autonomous {
             let (output, metadata) = self.call_autonomous(hand, &context, previous_results).await?;
             (Ok(output), Some(metadata))
         } else {
@@ -245,6 +296,199 @@ impl HandExecutor {
         self.state_store.update_state(&hand.config.id, &execution)?;
 
         Ok(execution)
+    }
+
+    /// Execute a pipeline of multiple agents.
+    async fn execute_pipeline(
+        &self,
+        hand: &HandManifest,
+        agents: &[String],
+        mode: PipelineMode,
+        context: &AgentContext,
+        previous_results: Vec<PreviousResult>,
+    ) -> (Result<String>, Option<serde_json::Value>) {
+        tracing::info!(
+            hand_id = %hand.config.id,
+            agents = ?agents,
+            mode = ?mode,
+            "Executing pipeline"
+        );
+
+        match mode {
+            PipelineMode::Sequential => {
+                self.execute_sequential(hand, agents, context, previous_results).await
+            }
+            PipelineMode::Parallel => {
+                self.execute_parallel(hand, agents, context).await
+            }
+            PipelineMode::Conditional => {
+                // Conditional execution requires CLOSE framework
+                // Falls back to sequential for now, with decision points between agents
+                self.execute_sequential(hand, agents, context, previous_results).await
+            }
+        }
+    }
+
+    /// Execute agents sequentially, passing output from one to the next.
+    async fn execute_sequential(
+        &self,
+        hand: &HandManifest,
+        agents: &[String],
+        context: &AgentContext,
+        _previous_results: Vec<PreviousResult>,
+    ) -> (Result<String>, Option<serde_json::Value>) {
+        let mut accumulated_output = String::new();
+        let mut all_metadata = Vec::new();
+        let mut current_context = context.clone();
+
+        for (i, agent) in agents.iter().enumerate() {
+            tracing::debug!(
+                hand_id = %hand.config.id,
+                agent = %agent,
+                step = i + 1,
+                total = agents.len(),
+                "Executing pipeline step"
+            );
+
+            // Build prompt with previous agent's output
+            let prompt = if accumulated_output.is_empty() {
+                self.build_prompt(hand, &current_context)
+            } else {
+                format!(
+                    "{}\n\n## Previous Agent Output\n\n{}\n\n**Please continue with your analysis:**\n",
+                    self.build_prompt(hand, &current_context),
+                    accumulated_output
+                )
+            };
+
+            // Call the agent
+            match self.call_agent(agent, &prompt, &current_context).await {
+                Ok(output) => {
+                    all_metadata.push(serde_json::json!({
+                        "agent": agent,
+                        "step": i + 1,
+                        "success": true,
+                    }));
+
+                    // Update context with this output for next agent
+                    current_context.last_output = Some(output.clone());
+                    accumulated_output = output;
+                }
+                Err(e) => {
+                    tracing::error!(
+                        hand_id = %hand.config.id,
+                        agent = %agent,
+                        step = i + 1,
+                        error = %e,
+                        "Pipeline step failed"
+                    );
+                    all_metadata.push(serde_json::json!({
+                        "agent": agent,
+                        "step": i + 1,
+                        "success": false,
+                        "error": e.to_string(),
+                    }));
+                    return (Err(e), Some(serde_json::json!({
+                        "pipeline": true,
+                        "mode": "sequential",
+                        "completed_steps": i,
+                        "total_steps": agents.len(),
+                        "steps": all_metadata,
+                    })));
+                }
+            }
+        }
+
+        let metadata = serde_json::json!({
+            "pipeline": true,
+            "mode": "sequential",
+            "completed_steps": agents.len(),
+            "total_steps": agents.len(),
+            "steps": all_metadata,
+        });
+
+        (Ok(accumulated_output), Some(metadata))
+    }
+
+    /// Execute agents in parallel and merge their outputs.
+    async fn execute_parallel(
+        &self,
+        hand: &HandManifest,
+        agents: &[String],
+        context: &AgentContext,
+    ) -> (Result<String>, Option<serde_json::Value>) {
+        use futures::future::join_all;
+
+        tracing::debug!(
+            hand_id = %hand.config.id,
+            agents = ?agents,
+            "Executing pipeline steps in parallel"
+        );
+
+        let prompt = self.build_prompt(hand, context);
+
+        // Create futures for all agents
+        let futures: Vec<_> = agents.iter()
+            .map(|agent| {
+                let agent = agent.clone();
+                let prompt = prompt.clone();
+                let context = context.clone();
+                async move {
+                    let result = self.call_agent(&agent, &prompt, &context).await;
+                    (agent, result)
+                }
+            })
+            .collect();
+
+        // Execute all in parallel
+        let results = join_all(futures).await;
+
+        // Collect results
+        let mut outputs = Vec::new();
+        let mut all_metadata = Vec::new();
+        let mut had_error = false;
+        let mut first_error: Option<anyhow::Error> = None;
+
+        for (agent, result) in results {
+            match result {
+                Ok(output) => {
+                    all_metadata.push(serde_json::json!({
+                        "agent": agent,
+                        "success": true,
+                    }));
+                    outputs.push(format!("## {} Output\n\n{}", agent, output));
+                }
+                Err(e) => {
+                    had_error = true;
+                    all_metadata.push(serde_json::json!({
+                        "agent": agent,
+                        "success": false,
+                        "error": e.to_string(),
+                    }));
+                    if first_error.is_none() {
+                        first_error = Some(e);
+                    }
+                }
+            }
+        }
+
+        let metadata = serde_json::json!({
+            "pipeline": true,
+            "mode": "parallel",
+            "completed_steps": outputs.len(),
+            "total_steps": agents.len(),
+            "steps": all_metadata,
+        });
+
+        // If all agents failed, return the first error
+        if outputs.is_empty() && had_error {
+            return (Err(first_error.unwrap_or_else(|| anyhow::anyhow!("All parallel agents failed"))), Some(metadata));
+        }
+
+        // Merge all outputs
+        let merged_output = outputs.join("\n\n---\n\n");
+
+        (Ok(merged_output), Some(metadata))
     }
 
     /// Build agent context from state.
@@ -410,6 +654,308 @@ impl HandExecutor {
         // Reverse so most recent is last (matching the API expectation)
         results.reverse();
         Ok(results)
+    }
+
+    /// Check if a tool call should be auto-approved or needs human approval.
+    ///
+    /// Returns the approval decision and optionally creates an approval request
+    /// in the HITL system if the operation requires human review.
+    pub async fn check_tool_approval(
+        &self,
+        hand: &HandManifest,
+        execution_id: &str,
+        tool: &str,
+        args: &serde_json::Value,
+    ) -> Result<ApprovalResult> {
+        let auto_approver = self.build_auto_approver(hand);
+        let result = auto_approver.should_approve(tool, args);
+
+        tracing::debug!(
+            hand_id = %hand.config.id,
+            tool = %tool,
+            decision = ?result.decision,
+            risk_level = ?result.risk_evaluation.risk_level,
+            "Tool approval check"
+        );
+
+        // If queued, create an approval request in HITL
+        if result.decision == ApprovalDecision::Queue {
+            if let Some(ref hitl_endpoint) = self.hitl_endpoint {
+                if let Err(e) = self.create_hitl_approval_request(
+                    hitl_endpoint,
+                    hand,
+                    execution_id,
+                    tool,
+                    args,
+                    &result,
+                ).await {
+                    tracing::warn!(
+                        hand_id = %hand.config.id,
+                        tool = %tool,
+                        error = %e,
+                        "Failed to create HITL approval request, falling back to queue"
+                    );
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Create an approval request in the HITL system.
+    async fn create_hitl_approval_request(
+        &self,
+        hitl_endpoint: &str,
+        hand: &HandManifest,
+        execution_id: &str,
+        tool: &str,
+        args: &serde_json::Value,
+        approval_result: &ApprovalResult,
+    ) -> Result<String> {
+        let risk_level = match approval_result.risk_evaluation.risk_level {
+            super::risk::RiskLevel::Safe => "Low",
+            super::risk::RiskLevel::Low => "Low",
+            super::risk::RiskLevel::Medium => "Medium",
+            super::risk::RiskLevel::High => "High",
+            super::risk::RiskLevel::Critical => "Critical",
+        };
+
+        let request_body = serde_json::json!({
+            "approval_type": {
+                "type": "tool_execution",
+                "tool": tool,
+                "args": args,
+                "risk_level": risk_level,
+                "hand_id": hand.config.id,
+                "execution_id": execution_id,
+            },
+            "requester": format!("hand:{}", hand.config.id),
+            "approvers": ["admin"],
+            "title": format!("Execute {} for Hand '{}'", tool, hand.config.name),
+            "description": format!(
+                "Tool: {}\nHand: {} ({})\nRisk: {}\nReasons: {}",
+                tool,
+                hand.config.name,
+                hand.config.id,
+                approval_result.risk_evaluation.risk_level,
+                approval_result.reasons.join(", ")
+            ),
+            "channel": "tui",
+            "metadata": {
+                "hand_id": hand.config.id,
+                "execution_id": execution_id,
+                "tool": tool,
+                "risk_level": risk_level,
+            },
+            "ttl_seconds": approval_result.timeout_ms.map(|ms| ms / 1000),
+        });
+
+        let url = format!("{}/api/v1/hitl/request", hitl_endpoint.trim_end_matches('/'));
+
+        let response = self.client
+            .post(&url)
+            .json(&request_body)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .context("Failed to create HITL approval request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("HITL API returned {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct HitlResponse {
+            success: bool,
+            approval: Option<HitlApproval>,
+            error: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        struct HitlApproval {
+            id: String,
+        }
+
+        let hitl_response: HitlResponse = response
+            .json()
+            .await
+            .context("Failed to parse HITL response")?;
+
+        if let Some(error) = hitl_response.error {
+            anyhow::bail!("HITL error: {}", error);
+        }
+
+        let approval_id = hitl_response.approval
+            .map(|a| a.id)
+            .unwrap_or_else(|| "unknown".to_string());
+
+        tracing::info!(
+            hand_id = %hand.config.id,
+            tool = %tool,
+            approval_id = %approval_id,
+            "Created HITL approval request"
+        );
+
+        Ok(approval_id)
+    }
+
+    /// Poll for approval status from HITL.
+    ///
+    /// Returns true if approved, false if rejected, or an error if still pending.
+    pub async fn poll_approval_status(&self, approval_id: &str) -> Result<Option<bool>> {
+        let hitl_endpoint = self.hitl_endpoint.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("HITL endpoint not configured"))?;
+
+        let url = format!("{}/api/v1/hitl/{}", hitl_endpoint.trim_end_matches('/'), approval_id);
+
+        let response = self.client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await
+            .context("Failed to poll HITL approval status")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("HITL API returned {}: {}", status, body);
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct HitlStatusResponse {
+            success: bool,
+            approval: Option<HitlApprovalStatus>,
+            error: Option<String>,
+        }
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct HitlApprovalStatus {
+            status: HitlStatus,
+        }
+
+        #[derive(Deserialize)]
+        #[serde(tag = "status", rename_all = "snake_case")]
+        #[allow(dead_code)]
+        enum HitlStatus {
+            Pending,
+            Approved { by: String, at: String },
+            Rejected { by: String, reason: Option<String>, at: String },
+            Cancelled { reason: String },
+        }
+
+        let status_response: HitlStatusResponse = response
+            .json()
+            .await
+            .context("Failed to parse HITL status response")?;
+
+        if let Some(error) = status_response.error {
+            anyhow::bail!("HITL error: {}", error);
+        }
+
+        match status_response.approval {
+            Some(approval) => {
+                match approval.status {
+                    HitlStatus::Pending => Ok(None),
+                    HitlStatus::Approved { .. } => Ok(Some(true)),
+                    HitlStatus::Rejected { .. } => Ok(Some(false)),
+                    HitlStatus::Cancelled { .. } => Ok(Some(false)),
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Wait for approval with timeout support.
+    ///
+    /// This method polls for approval status and handles timeout-based auto-approval
+    /// for unattended mode. Critical risk operations never auto-approve.
+    ///
+    /// Returns:
+    /// - Ok(true) if approved (by human or timeout)
+    /// - Ok(false) if rejected
+    /// - Err if polling failed or timeout for critical operations
+    pub async fn wait_for_approval(
+        &self,
+        approval_id: &str,
+        approval_result: &ApprovalResult,
+    ) -> Result<bool> {
+        let timeout_ms = approval_result.timeout_ms.unwrap_or(0);
+        let timeout_applicable = approval_result.timeout_applicable;
+        let is_critical = approval_result.risk_evaluation.risk_level == super::risk::RiskLevel::Critical;
+
+        let start_time = std::time::Instant::now();
+        let poll_interval = Duration::from_secs(2);
+
+        tracing::info!(
+            approval_id = %approval_id,
+            timeout_ms = timeout_ms,
+            timeout_applicable = timeout_applicable,
+            is_critical = is_critical,
+            "Waiting for approval"
+        );
+
+        loop {
+            // Check elapsed time
+            let elapsed = start_time.elapsed();
+
+            // Check for timeout auto-approval
+            if timeout_applicable && !is_critical && timeout_ms > 0 {
+                if elapsed.as_millis() as u64 >= timeout_ms {
+                    tracing::warn!(
+                        approval_id = %approval_id,
+                        elapsed_ms = elapsed.as_millis(),
+                        "Timeout reached, auto-approving (non-critical operation)"
+                    );
+                    return Ok(true);
+                }
+            }
+
+            // Poll for status
+            match self.poll_approval_status(approval_id).await {
+                Ok(Some(approved)) => {
+                    tracing::info!(
+                        approval_id = %approval_id,
+                        approved = approved,
+                        elapsed_ms = elapsed.as_millis(),
+                        "Approval decision received"
+                    );
+                    return Ok(approved);
+                }
+                Ok(None) => {
+                    // Still pending, continue polling
+                    tracing::trace!(
+                        approval_id = %approval_id,
+                        elapsed_ms = elapsed.as_millis(),
+                        "Approval still pending"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        approval_id = %approval_id,
+                        error = %e,
+                        "Error polling approval status"
+                    );
+                    // Continue polling on transient errors
+                }
+            }
+
+            // Sleep before next poll
+            tokio::time::sleep(poll_interval).await;
+
+            // Safety limit: 1 hour max wait for any operation
+            if elapsed > Duration::from_secs(3600) {
+                tracing::error!(
+                    approval_id = %approval_id,
+                    "Maximum wait time exceeded (1 hour), rejecting"
+                );
+                return Ok(false);
+            }
+        }
     }
 
     /// Call the autonomous API for enhanced execution with CLOSE decision framework.
