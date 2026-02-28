@@ -133,6 +133,32 @@ export const ProgressEvent = z.object({
 })
 export type ProgressEvent = z.infer<typeof ProgressEvent>
 
+export const DebugInfoEvent = z.object({
+  type: z.literal("debug_info"),
+  data: z.object({
+    model: z.string().optional(),
+    provider: z.string().optional(),
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional(),
+    total_tokens: z.number().optional(),
+    duration_ms: z.number().optional(),
+    request_bytes: z.number().optional(),
+    response_bytes: z.number().optional(),
+  }),
+})
+export type DebugInfoEvent = z.infer<typeof DebugInfoEvent>
+
+export const AgentInfoEvent = z.object({
+  type: z.literal("agent_info"),
+  data: z.object({
+    agent: z.string(),
+    display_name: z.string().optional(),
+    is_primary: z.boolean().optional(),
+    duration_ms: z.number().optional(),
+  }),
+})
+export type AgentInfoEvent = z.infer<typeof AgentInfoEvent>
+
 export const TaskEvent = z.discriminatedUnion("type", [
   ThoughtEvent,
   ToolUseEvent,
@@ -140,6 +166,8 @@ export const TaskEvent = z.discriminatedUnion("type", [
   ConfirmationEvent,
   FinishEvent,
   ProgressEvent,
+  DebugInfoEvent,
+  AgentInfoEvent,
 ])
 export type TaskEvent = z.infer<typeof TaskEvent>
 

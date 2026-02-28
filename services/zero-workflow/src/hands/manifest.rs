@@ -33,7 +33,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use zero_common::config::config_dir;
+use zero_common::config::{config_dir, workspace_hands_dir, HandNotificationConfig};
 
 /// Autonomy level for CLOSE decision framework thresholds.
 ///
@@ -388,6 +388,10 @@ pub struct HandConfig {
     #[serde(default)]
     pub resources: Option<ResourceLimits>,
 
+    /// Notification configuration (optional)
+    #[serde(default)]
+    pub notification: Option<HandNotificationConfig>,
+
     /// Description (from content, extracted for convenience)
     #[serde(skip_serializing)]
     #[serde(default)]
@@ -549,7 +553,16 @@ fn extract_description(markdown: &str) -> String {
 }
 
 /// Default hands directory.
+///
+/// Priority: workspace.subdirs.hands > ~/.codecoder/hands (legacy)
 pub fn hands_dir() -> PathBuf {
+    // Try to load workspace configuration
+    if let Ok(config) = zero_common::config::load_config() {
+        if let Some(ref workspace) = config.workspace {
+            return workspace_hands_dir(&Some(workspace.clone()));
+        }
+    }
+    // Backward compatibility: use ~/.codecoder/hands
     config_dir().join("hands")
 }
 

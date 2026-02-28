@@ -1194,6 +1194,24 @@ export namespace Config {
       network: Network.optional().describe("Network configuration (unified with Rust zero-* services)"),
       services: Services.optional().describe("Services port configuration (unified with Rust zero-* services)"),
       redis: RedisConfig.describe("Redis configuration for conversation store"),
+      workspace: z
+        .object({
+          path: z.string().optional().describe("Path to workspace directory (supports ~ expansion)"),
+          subdirs: z
+            .object({
+              hands: z.string().optional(),
+              storage: z.string().optional(),
+              log: z.string().optional(),
+              tool_output: z.string().optional(),
+              knowledge: z.string().optional(),
+              tracking: z.string().optional(),
+              mcp_auth: z.string().optional(),
+              cache: z.string().optional(),
+            })
+            .optional(),
+        })
+        .optional()
+        .describe("Workspace configuration for runtime data"),
       command: z
         .record(z.string(), Command)
         .optional()

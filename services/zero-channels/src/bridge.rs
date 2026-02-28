@@ -7,6 +7,7 @@
 //! 4. Route response back to original channel
 
 use crate::capture_bridge::CaptureBridge;
+use crate::debug::extract_debug_flag;
 use crate::message::{ChannelMessage, MessageContent, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::progress::{ImProgressHandler, ProgressHandler};
@@ -559,6 +560,31 @@ impl CodeCoderBridge {
             return self.handle_bind_trading(message).await;
         }
 
+        // Extract debug flag (@@debug) early so all paths can use it
+        let (debug_mode, cleaned_text) = extract_debug_flag(text);
+
+        if debug_mode {
+            tracing::info!(
+                message_id = %message.id,
+                "Debug mode requested via @@debug flag"
+            );
+        }
+
+        // Use cleaned_text for all further processing (debug flag removed)
+        let text = cleaned_text.as_str();
+
+        // Check if this is a capture request (highest priority for capture-related messages)
+        if let Some(ref capture_bridge) = self.capture_bridge {
+            tracing::info!(
+                message_id = %message.id,
+                chat_id = %message.channel_id,
+                user_id = %message.user_id,
+                "Detected /bind_trading command"
+            );
+
+            return self.handle_bind_trading(message).await;
+        }
+
         // Check if this is a capture request (highest priority for capture-related messages)
         if let Some(ref capture_bridge) = self.capture_bridge {
             if capture_bridge.is_capturable(&message) && capture_bridge.is_capture_request(&message)
@@ -760,9 +786,14 @@ impl CodeCoderBridge {
 
             // Use streaming for agent commands that are likely to be slow
             if self.should_use_streaming(&message, Some(&agent)) {
-                return self.process_streaming_chat(&message, &prompt, Some(agent)).await;
+                return self.process_streaming_chat(&message, &prompt, Some(agent), debug_mode).await;
             } else {
-                return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+                // For non-streaming, handle debug mode separately
+                if debug_mode {
+                    return self.process_chat_with_agent_debug(&message, &prompt, Some(agent)).await;
+                } else {
+                    return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+                }
             }
         }
 
@@ -792,10 +823,16 @@ impl CodeCoderBridge {
         );
 
         // Check if streaming should be used
+        // Note: debug_mode and text (cleaned) are already extracted at the start of the function
         if self.should_use_streaming(&message, final_agent.as_deref()) {
-            self.process_streaming_chat(&message, &text, final_agent).await
+            self.process_streaming_chat(&message, text, final_agent, debug_mode).await
         } else {
-            self.process_chat_with_agent(&message, &text, final_agent).await
+            // For non-streaming mode, we still need to handle debug flag by appending it to the response
+            if debug_mode {
+                self.process_chat_with_agent_debug(&message, text, final_agent).await
+            } else {
+                self.process_chat_with_agent(&message, text, final_agent).await
+            }
         }
     }
 
@@ -994,6 +1031,95 @@ impl CodeCoderBridge {
         Ok(())
     }
 
+    /// Process a chat message with debug information appended (non-streaming).
+    ///
+    /// This is similar to process_chat_with_agent but adds debug info to the response.
+    async fn process_chat_with_agent_debug(
+        &self,
+        message: &ChannelMessage,
+        text: &str,
+        agent: Option<String>,
+    ) -> Result<()> {
+        let start = Instant::now();
+
+        // Create a tracing context for this operation
+        let ctx = RequestContext {
+            trace_id: message.trace_id.clone(),
+            span_id: generate_span_id(),
+            parent_span_id: Some(message.span_id.clone()),
+            service: "zero-channels".to_string(),
+            user_id: Some(message.user_id.clone()),
+            baggage: std::collections::HashMap::new(),
+        };
+
+        // Build the request with agent if specified
+        let conversation_id = message
+            .metadata
+            .get("conversation_id")
+            .cloned()
+            .unwrap_or_else(|| format!("{}:{}", message.channel_type.as_str(), message.channel_id));
+
+        let request = ChatRequest {
+            message: text.to_string(),
+            conversation_id: Some(conversation_id),
+            agent: agent.or_else(|| message.metadata.get("agent").cloned()),
+            user_id: message.user_id.clone(),
+            channel: message.channel_type.as_str().to_string(),
+        };
+
+        // Send to CodeCoder with tracing context
+        let response = self.call_codecoder(&request, &ctx).await;
+
+        // Route the response with debug info
+        match response {
+            Ok(resp) => {
+                let duration_ms = start.elapsed().as_millis() as u64;
+                let duration_text = Self::format_duration(duration_ms);
+
+                // Build debug info section
+                let debug_info = if let Some(ref usage) = resp.usage {
+                    format!(
+                        "\n\n{}\n🐛 Debug Info\n🤖 Tokens: {} in + {} out = {} total\n⏱ Duration: {}",
+                        "─".repeat(20),
+                        usage.input_tokens,
+                        usage.output_tokens,
+                        usage.total_tokens,
+                        duration_text
+                    )
+                } else {
+                    format!(
+                        "\n\n{}\n🐛 Debug Info\n⏱ Duration: {}",
+                        "─".repeat(20),
+                        duration_text
+                    )
+                };
+
+                let text_with_debug = format!("{}{}", resp.message, debug_info);
+                let content = OutgoingContent::Markdown { text: text_with_debug };
+                let result = self.router.respond(&message.id, content).await;
+
+                if !result.success {
+                    tracing::error!(
+                        message_id = %message.id,
+                        error = ?result.error,
+                        "Failed to send response"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "CodeCoder API call failed");
+
+                // Send error message to user
+                let error_content = OutgoingContent::Text {
+                    text: format!("Sorry, I encountered an error: {}", e),
+                };
+                let _ = self.router.respond(&message.id, error_content).await;
+            }
+        }
+
+        Ok(())
+    }
+
     // ========================================================================
     // Streaming Processing (Real-time Progress Feedback)
     // ========================================================================
@@ -1011,11 +1137,13 @@ impl CodeCoderBridge {
     /// * `message` - The incoming channel message
     /// * `text` - The message text content
     /// * `agent` - Optional agent name to invoke
+    /// * `debug_mode` - Whether to include debug information in the response
     async fn process_streaming_chat(
         &self,
         message: &ChannelMessage,
         text: &str,
         agent: Option<String>,
+        debug_mode: bool,
     ) -> Result<()> {
         let start = Instant::now();
 
@@ -1023,12 +1151,22 @@ impl CodeCoderBridge {
             message_id = %message.id,
             agent = ?agent,
             streaming = true,
+            debug_mode = debug_mode,
             "Processing message via streaming task API"
         );
 
-        // Create the progress handler
+        // Create a modified message with debug_mode in metadata
+        let mut message_with_debug = message.clone();
+        if debug_mode {
+            message_with_debug
+                .metadata
+                .insert("debug_mode".to_string(), "true".to_string());
+        }
+
+        // Create the progress handler with debug mode
         let progress_handler = ImProgressHandler::new(self.router.clone(), self.telegram.clone())
-            .with_throttle(Duration::from_millis(self.progress_throttle_ms));
+            .with_throttle(Duration::from_millis(self.progress_throttle_ms))
+            .with_debug_mode(debug_mode);
 
         // Create task context with conversation_id for session continuity
         let context = TaskContext::new(&message.user_id, &message.channel_id, message.channel_type.as_str());
@@ -1064,7 +1202,7 @@ impl CodeCoderBridge {
         );
 
         // Step 2: Send start notification
-        progress_handler.on_start(message, &task_id).await?;
+        progress_handler.on_start(&message_with_debug, &task_id).await?;
 
         // Step 3: Subscribe to SSE events
         let sse_client = SseTaskClient::new(SseClientConfig {
@@ -1076,7 +1214,7 @@ impl CodeCoderBridge {
 
         // Step 4: Process events
         while let Some(event) = rx.recv().await {
-            let finished = progress_handler.handle_event(message, event).await?;
+            let finished = progress_handler.handle_event(&message_with_debug, event).await?;
             if finished {
                 break;
             }

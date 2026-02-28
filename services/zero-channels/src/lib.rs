@@ -28,6 +28,7 @@
 pub mod bridge;
 pub mod capture_bridge;
 pub mod cli;
+pub mod debug;
 pub mod dingtalk;
 pub mod discord;
 pub mod email;
@@ -80,8 +81,8 @@ pub use whatsapp::WhatsAppChannel;
 // SSE and Progress modules
 pub use progress::{ImProgressHandler, ProgressHandler};
 pub use sse::{
-    CreateTaskRequest, CreateTaskResponse, FinishData, ProgressData, SseClientConfig,
-    SseTaskClient, TaskContext, TaskData, TaskEvent, ToolUseData,
+    CreateTaskRequest, CreateTaskResponse, DebugInfoData, FinishData, ProgressData,
+    SseClientConfig, SseTaskClient, TaskContext, TaskData, TaskEvent, ToolUseData,
 };
 
 use std::net::SocketAddr;

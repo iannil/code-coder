@@ -47,6 +47,18 @@ pub fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
 
+/// Load configuration from the default config file.
+///
+/// Returns Ok(config) if successful, Ok(default) if file doesn't exist,
+/// or Err if parsing fails.
+pub fn load_config() -> Result<Config, anyhow::Error> {
+    let path = config_path();
+    if !path.exists() {
+        return Ok(Config::default());
+    }
+    Config::load_from(&path)
+}
+
 // ============================================================================
 // Network Configuration (Global bind address)
 // ============================================================================
@@ -597,6 +609,134 @@ fn default_stt_model() -> String {
 }
 
 // ============================================================================
+// Workspace Configuration
+// ============================================================================
+
+/// Workspace configuration for runtime-generated data.
+///
+/// Centralizes all runtime outputs (hands, storage, logs, etc.) under one directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceConfig {
+    /// Path to workspace directory.
+    /// Supports ~ expansion. Can be overridden by CODECODER_WORKSPACE env var.
+    #[serde(default = "default_workspace_path")]
+    pub path: Option<String>,
+
+    /// Named subdirectories within workspace.
+    #[serde(default)]
+    pub subdirs: WorkspaceSubdirs,
+}
+
+impl Default for WorkspaceConfig {
+    fn default() -> Self {
+        Self {
+            path: default_workspace_path(),
+            subdirs: WorkspaceSubdirs::default(),
+        }
+    }
+}
+
+fn default_workspace_path() -> Option<String> {
+    Some("~/.codecoder/workspace".into())
+}
+
+/// Workspace subdirectory configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WorkspaceSubdirs {
+    /// Hands definitions and output directory.
+    #[serde(default = "default_hands_dir")]
+    pub hands: Option<String>,
+
+    /// Persistent storage (sessions, messages, etc.).
+    #[serde(default)]
+    pub storage: Option<String>,
+
+    /// Log files directory.
+    #[serde(default)]
+    pub log: Option<String>,
+
+    /// Tool execution output directory.
+    #[serde(default = "default_tool_output_dir")]
+    pub tool_output: Option<String>,
+
+    /// Knowledge base storage.
+    #[serde(default)]
+    pub knowledge: Option<String>,
+
+    /// Execution tracking data.
+    #[serde(default)]
+    pub tracking: Option<String>,
+
+    /// MCP authentication storage file.
+    #[serde(default = "default_mcp_auth_file")]
+    pub mcp_auth: Option<String>,
+
+    /// Cache directory.
+    #[serde(default)]
+    pub cache: Option<String>,
+}
+
+fn default_hands_dir() -> Option<String> {
+    Some("hands".into())
+}
+
+fn default_tool_output_dir() -> Option<String> {
+    Some("tool-output".into())
+}
+
+fn default_mcp_auth_file() -> Option<String> {
+    Some("mcp-auth.json".into())
+}
+
+/// Get the workspace root directory from configuration.
+///
+/// Priority: CODECODER_WORKSPACE env var > config.path > default
+pub fn workspace_root(config: &Option<WorkspaceConfig>) -> PathBuf {
+    if let Ok(env_path) = std::env::var("CODECODER_WORKSPACE") {
+        return expand_tilde(&env_path);
+    }
+    if let Some(ref wc) = config {
+        if let Some(ref p) = wc.path {
+            return expand_tilde(p);
+        }
+    }
+    expand_tilde("~/.codecoder/workspace")
+}
+
+/// Expand tilde (~) to home directory.
+///
+/// # Arguments
+/// * `path` - Path possibly starting with ~
+///
+/// # Returns
+/// Absolute path with ~ expanded
+pub fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(rest) = path.strip_prefix("~/") {
+        directories::UserDirs::new()
+            .map_or_else(|| PathBuf::from(rest), |dirs| dirs.home_dir().join(rest))
+    } else {
+        PathBuf::from(path)
+    }
+}
+
+/// Resolve workspace hands directory from configuration.
+///
+/// # Arguments
+/// * `config` - Optional workspace configuration
+///
+/// # Returns
+/// Absolute path to hands directory
+pub fn workspace_hands_dir(config: &Option<WorkspaceConfig>) -> PathBuf {
+    let root = workspace_root(config);
+    let hands = config
+        .as_ref()
+        .and_then(|wc| wc.subdirs.hands.as_ref())
+        .map(|s| s.as_str())
+        .unwrap_or("hands");
+    root.join(hands)
+}
+
+// ============================================================================
 // Simplified Channels Configuration
 // ============================================================================
 
@@ -654,6 +794,10 @@ pub struct Config {
     /// Voice configuration (TTS/STT)
     #[serde(default)]
     pub voice: VoiceConfig,
+
+    /// Workspace configuration for runtime data
+    #[serde(default)]
+    pub workspace: Option<WorkspaceConfig>,
 
     // =========================================================================
     // Service Configuration (business logic, not port/host)
@@ -1876,6 +2020,32 @@ fn default_source_type() -> String {
 
 fn default_monitor_template() -> String {
     "daily_brief".to_string()
+}
+
+/// Notification configuration for Hand execution results.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HandNotificationConfig {
+    /// Channel type (telegram, feishu, wecom, dingtalk, discord, slack)
+    pub channel_type: String,
+
+    /// Channel ID (group chat ID)
+    pub channel_id: String,
+
+    /// Message template: brief (concise), detailed (full report)
+    #[serde(default = "default_hand_notification_template")]
+    pub template: String,
+
+    /// When to send: always, on_success, on_failure
+    #[serde(default = "default_hand_notification_when")]
+    pub send_when: String,
+}
+
+fn default_hand_notification_template() -> String {
+    "brief".to_string()
+}
+
+fn default_hand_notification_when() -> String {
+    "on_success".to_string()
 }
 
 /// Cron scheduler configuration.

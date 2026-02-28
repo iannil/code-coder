@@ -135,6 +135,38 @@ export interface VoiceConfigNew {
 }
 
 // ============================================================================
+// Workspace Configuration
+// ============================================================================
+
+/**
+ * Workspace configuration for runtime-generated data.
+ * Centralizes all runtime outputs (hands, storage, logs, etc.) under one directory.
+ */
+export interface WorkspaceConfig {
+  /** Path to workspace directory. Supports ~ expansion. Can be overridden by CODECODER_WORKSPACE env var. */
+  path?: string
+  /** Named subdirectories within workspace */
+  subdirs?: {
+    /** Hands definitions and output directory */
+    hands?: string
+    /** Persistent storage (sessions, messages, etc.) */
+    storage?: string
+    /** Log files directory */
+    log?: string
+    /** Tool execution output directory */
+    tool_output?: string
+    /** Knowledge base storage */
+    knowledge?: string
+    /** Execution tracking data */
+    tracking?: string
+    /** MCP authentication storage file */
+    mcp_auth?: string
+    /** Cache directory */
+    cache?: string
+  }
+}
+
+// ============================================================================
 // Tunnel Configuration
 // ============================================================================
 
@@ -191,6 +223,8 @@ export interface Config {
     slack?: ChannelEnableConfig
     feishu?: ChannelEnableConfig
   }
+  /** Workspace configuration for runtime data */
+  workspace?: WorkspaceConfig
 }
 
 // ============================================================================
@@ -408,6 +442,19 @@ export const DEFAULT_CONFIG: Config = {
     tts: { provider: "compatible", voice: "nova" },
     stt: { provider: "local", model: "base" },
   },
+  workspace: {
+    path: "~/.codecoder/workspace",
+    subdirs: {
+      hands: "hands",
+      storage: "storage",
+      log: "log",
+      tool_output: "tool-output",
+      knowledge: "knowledge",
+      tracking: "tracking",
+      mcp_auth: "mcp-auth.json",
+      cache: "cache",
+    },
+  },
 }
 
 // ============================================================================
@@ -530,6 +577,22 @@ const ChannelEnableSchema = z.object({
   allowed_users: z.array(z.string()).optional(),
 }).optional()
 
+const WorkspaceSubdirsSchema = z.object({
+  hands: z.string().optional(),
+  storage: z.string().optional(),
+  log: z.string().optional(),
+  tool_output: z.string().optional(),
+  knowledge: z.string().optional(),
+  tracking: z.string().optional(),
+  mcp_auth: z.string().optional(),
+  cache: z.string().optional(),
+}).optional()
+
+const WorkspaceSchema = z.object({
+  path: z.string().optional(),
+  subdirs: WorkspaceSubdirsSchema,
+}).optional()
+
 /**
  * Zod schema for the root configuration.
  * Provides runtime validation and TypeScript type inference.
@@ -548,6 +611,7 @@ export const ConfigSchema = z.object({
     slack: ChannelEnableSchema,
     feishu: ChannelEnableSchema,
   }).optional(),
+  workspace: WorkspaceSchema,
 }).passthrough()
 
 export type ValidatedConfig = z.infer<typeof ConfigSchema>
@@ -886,6 +950,7 @@ export class ConfigManager {
       voice: { ...DEFAULT_CONFIG.voice, ...config.voice },
       tunnel: config.tunnel,
       channels: config.channels,
+      workspace: config.workspace ?? DEFAULT_CONFIG.workspace,
     }
   }
 

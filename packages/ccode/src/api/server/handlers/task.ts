@@ -40,6 +40,34 @@ async function readRequestBody(body: ReadableStream | null | undefined): Promise
   return await new Response(body).text()
 }
 
+/**
+ * Get the display name for an agent.
+ */
+function getAgentDisplayName(agent: string): string | undefined {
+  const displayNames: Record<string, string> = {
+    "build": "构建工程师",
+    "plan": "规划专家",
+    "code-reviewer": "代码审查员",
+    "security-reviewer": "安全审计员",
+    "tdd-guide": "TDD指导",
+    "architect": "架构师",
+    "writer": "写作助手",
+    "proofreader": "校对员",
+    "code-reverse": "代码逆向工程师",
+    "jar-code-reverse": "JAR逆向工程师",
+    "observer": "观察者",
+    "decision": "决策顾问",
+    "macro": "宏观经济分析师",
+    "trader": "交易顾问",
+    "picker": "选品专家",
+    "miniproduct": "极小产品教练",
+    "ai-engineer": "AI工程师导师",
+    "general": "通用助手",
+    "autonomous": "自主代理"
+  }
+  return displayNames[agent]
+}
+
 function formatSSEEvent(event: string, data: string, id?: string): string {
   let output = ""
   if (id) {
@@ -248,13 +276,93 @@ async function executeTask(
 
     // Get the response
     const messages = await LocalSession.messages({ sessionID })
+    log.info("task: retrieved messages for output", {
+      taskID,
+      sessionID,
+      totalMessages: messages.length,
+      roles: messages.map((m) => m.info.role),
+    })
+
     const lastAssistantMessage = messages.findLast((m) => m.info.role === "assistant")
-    const output = lastAssistantMessage
-      ? lastAssistantMessage.parts
-          .filter((c): c is { type: "text"; text: string; id: string; sessionID: string; messageID: string } => c.type === "text")
-          .map((c) => c.text)
-          .join("\n")
-      : "Task completed"
+
+    // Emit agent info event with the primary agent used
+    TaskEmitter.agentInfo(taskID, {
+      agent,
+      display_name: getAgentDisplayName(agent),
+      is_primary: true,
+      duration_ms: Date.now() - startTime,
+    })
+
+    // Emit debug info event if usage information is available
+    if (lastAssistantMessage && lastAssistantMessage.info.role === "assistant") {
+      const assistantInfo = lastAssistantMessage.info as { modelID?: string; providerID?: string; tokens?: { input: number; output: number; reasoning?: number; cache?: { read: number; write: number } } }
+
+      if (assistantInfo.tokens) {
+        const totalTokens = assistantInfo.tokens.input +
+          assistantInfo.tokens.output +
+          (assistantInfo.tokens.reasoning || 0)
+
+        TaskEmitter.debugInfo(taskID, {
+          model: model || assistantInfo.modelID,
+          provider: assistantInfo.providerID,
+          input_tokens: assistantInfo.tokens.input,
+          output_tokens: assistantInfo.tokens.output,
+          total_tokens: totalTokens,
+        })
+      }
+    }
+
+    if (lastAssistantMessage) {
+      log.info("task: found assistant message", {
+        taskID,
+        messageID: lastAssistantMessage.info.id,
+        partsCount: lastAssistantMessage.parts.length,
+        partsTypes: lastAssistantMessage.parts.map((p) => p.type),
+        partsDetail: lastAssistantMessage.parts.map((p) => ({
+          type: p.type,
+          hasText: "text" in p && !!p.text,
+          textLength: "text" in p ? p.text?.length ?? 0 : 0,
+          isSynthetic: "synthetic" in p ? p.synthetic : undefined,
+          isIgnored: "ignored" in p ? p.ignored : undefined,
+        })),
+      })
+    } else {
+      log.warn("task: no assistant message found", { taskID, messagesCount: messages.length })
+    }
+
+    // Check for errors in assistant message (error is in info object)
+    const assistantError = lastAssistantMessage?.info?.error
+    const hasError = assistantError && typeof assistantError === "object" && assistantError !== undefined
+
+    // Filter text parts, excluding synthetic ones (like tool call summaries)
+    const textParts = lastAssistantMessage
+      ? lastAssistantMessage.parts.filter((c) => {
+          if (c.type !== "text") return false
+          // Skip synthetic parts (system reminders, tool call descriptions, etc.)
+          if ("synthetic" in c && c.synthetic) return false
+          return true
+        })
+      : []
+
+    log.info("task: filtered text parts", {
+      taskID,
+      textPartsCount: textParts.length,
+      hasError,
+      errorName: assistantError?.name,
+    })
+
+    // Generate output from text parts or error information
+    let output: string
+    if (textParts.length > 0) {
+      output = textParts.map((c) => (c as { text: string }).text).join("\n")
+    } else if (hasError) {
+      // Extract error information
+      const errorMsg = (assistantError as any)?.data?.message || (assistantError as any)?.message || assistantError.name || "Unknown error"
+      output = `❌ 处理失败: ${errorMsg}`
+      log.warn("task: using error message as output", { taskID, error: errorMsg })
+    } else {
+      output = "Task completed"
+    }
 
     const elapsedMs = Date.now() - startTime
     log.info("task completed successfully", {

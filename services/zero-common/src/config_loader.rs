@@ -79,9 +79,86 @@ pub fn load_modular_config(dir: Option<PathBuf>) -> Result<Value> {
     tracing::debug!("Loading modular config from {}", cfg_dir.display());
 
     // Load and merge secrets
+    // secrets.json has mixed structure:
+    // - auth, tunnel, workflow go to top-level config fields
+    // - llm, channels, external go to config.secrets
     if let Some(secrets) = load_json_file(&cfg_dir.join("secrets.json"))? {
-        if let Some(config_obj) = config.as_object_mut() {
-            config_obj.insert("secrets".to_string(), secrets);
+        if let Some(secrets_obj) = secrets.as_object() {
+            if let Some(config_obj) = config.as_object_mut() {
+                // Fields that go to config.secrets
+                let secret_fields = ["llm", "channels", "external"];
+                let mut secrets_value = serde_json::Map::new();
+
+                for (key, value) in secrets_obj.iter() {
+                    // Filter out meta-fields
+                    if key.starts_with('$') {
+                        continue;
+                    }
+
+                    match key.as_str() {
+                        // Fields that merge into top-level config
+                        "auth" => {
+                            if let Some(auth_obj) = config_obj.get_mut("auth") {
+                                merge_json(auth_obj, value.clone());
+                            } else {
+                                config_obj.insert(key.clone(), value.clone());
+                            }
+                        }
+                        "workflow" => {
+                            if let Some(workflow_obj) = config_obj.get_mut("workflow") {
+                                merge_json(workflow_obj, value.clone());
+                            } else {
+                                config_obj.insert(key.clone(), value.clone());
+                            }
+                        }
+                        "tunnel" => {
+                            // Transform tunnel secrets: cloudflare_token -> cloudflare.token
+                            if let Some(tunnel_obj) = value.as_object() {
+                                if let Some(config_tunnel) = config_obj.get_mut("tunnel") {
+                                    if let Some(tunnel_map) = config_tunnel.as_object_mut() {
+                                        // cloudflare_token -> cloudflare.token
+                                        if let Some(token) = tunnel_obj.get("cloudflare_token").and_then(|v| v.as_str()) {
+                                            if !token.is_empty() {
+                                                tunnel_map.entry("cloudflare")
+                                                    .or_insert_with(|| Value::Object(Default::default()))
+                                                    .as_object_mut()
+                                                    .map(|cf| cf.insert("token".to_string(), Value::String(token.to_string())));
+                                            }
+                                        }
+                                        // ngrok_auth -> ngrok.token
+                                        if let Some(token) = tunnel_obj.get("ngrok_auth").and_then(|v| v.as_str()) {
+                                            if !token.is_empty() {
+                                                tunnel_map.entry("ngrok")
+                                                    .or_insert_with(|| Value::Object(Default::default()))
+                                                    .as_object_mut()
+                                                    .map(|ng| ng.insert("token".to_string(), Value::String(token.to_string())));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Fields that go to config.secrets
+                        "llm" | "channels" | "external" => {
+                            secrets_value.insert(key.clone(), value.clone());
+                        }
+                        // Unknown fields - put in secrets for compatibility
+                        _ => {
+                            secrets_value.insert(key.clone(), value.clone());
+                        }
+                    }
+                }
+
+                // Update config.secrets with the filtered values
+                if !secrets_value.is_empty() {
+                    match config_obj.get_mut("secrets") {
+                        Some(existing) => merge_json(existing, Value::Object(secrets_value)),
+                        None => {
+                            config_obj.insert("secrets".to_string(), Value::Object(secrets_value));
+                        }
+                    }
+                }
+            }
         }
         tracing::debug!("Loaded secrets.json");
     }
@@ -99,20 +176,25 @@ pub fn load_modular_config(dir: Option<PathBuf>) -> Result<Value> {
         tracing::debug!("Loaded trading.json");
     }
 
-    // Load and merge channels config into zerobot.channels
+    // Load and merge channels config into top-level channels field
     if let Some(channels) = load_json_file(&cfg_dir.join("channels.json"))? {
         if let Some(config_obj) = config.as_object_mut() {
-            // Ensure zerobot object exists
-            let zerobot = config_obj
-                .entry("zerobot")
-                .or_insert(Value::Object(Default::default()));
+            // Filter out meta-fields ($schema, etc.)
+            let filtered_channels = if let Some(obj) = channels.as_object() {
+                let filtered: serde_json::Map<String, Value> = obj
+                    .iter()
+                    .filter(|(key, _)| !key.starts_with('$'))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                Value::Object(filtered)
+            } else {
+                channels
+            };
 
-            if let Some(zerobot_obj) = zerobot.as_object_mut() {
-                match zerobot_obj.get_mut("channels") {
-                    Some(existing) => merge_json(existing, channels),
-                    None => {
-                        zerobot_obj.insert("channels".to_string(), channels);
-                    }
+            match config_obj.get_mut("channels") {
+                Some(existing) => merge_json(existing, filtered_channels),
+                None => {
+                    config_obj.insert("channels".to_string(), filtered_channels);
                 }
             }
         }

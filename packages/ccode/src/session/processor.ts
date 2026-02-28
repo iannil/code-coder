@@ -412,6 +412,13 @@ export namespace SessionProcessor {
                     if (value.providerMetadata) currentText.metadata = value.providerMetadata
                     await Session.updatePart(currentText)
 
+                    // Log text part saved for debugging
+                    log.info("text-end: saved text part", {
+                      messageID: input.assistantMessage.id,
+                      textLength: currentText.text.length,
+                      textPreview: currentText.text.slice(0, 100),
+                    })
+
                     // Flush any remaining output content
                     flushOutput()
                   }

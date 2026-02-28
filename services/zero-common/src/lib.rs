@@ -36,9 +36,9 @@ pub use bus::{
     RedisBus, RedisBusConfig, SessionPayload,
 };
 pub use config::{
-    AgentConfig, ChannelsConfig, CodeCoderConfig, Config, GatewayConfig, LlmConfig,
-    LlmOllamaConfig, LlmProviderConfig, MemoryConfig, ObservabilityConfig, ToolsConfig,
-    WorkflowConfig,
+    AgentConfig, ChannelsConfig, CodeCoderConfig, Config, GatewayConfig, HandNotificationConfig,
+    LlmConfig, LlmOllamaConfig, LlmProviderConfig, MemoryConfig, MonitorNotificationConfig,
+    ObservabilityConfig, ToolsConfig, WorkflowConfig,
 };
 pub use error::{Error, Result};
 pub use guardrails::{

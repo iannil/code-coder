@@ -149,6 +149,34 @@ export namespace TaskEmitter {
   }
 
   /**
+   * Emit a debug info event
+   */
+  export function debugInfo(taskID: string, data: {
+    model?: string
+    provider?: string
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
+    duration_ms?: number
+    request_bytes?: number
+    response_bytes?: number
+  }): void {
+    emit(taskID, { type: "debug_info", data })
+  }
+
+  /**
+   * Emit an agent info event
+   */
+  export function agentInfo(taskID: string, data: {
+    agent: string
+    display_name?: string
+    is_primary?: boolean
+    duration_ms?: number
+  }): void {
+    emit(taskID, { type: "agent_info", data })
+  }
+
+  /**
    * Emit a finish event (success or failure)
    */
   export function finish(taskID: string, success: boolean, output?: string, error?: string): void {

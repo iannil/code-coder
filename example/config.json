@@ -4,6 +4,19 @@
     "bind": "127.0.0.1",
     "public_url": null
   },
+  "workspace": {
+    "path": "~/.codecoder/workspace",
+    "subdirs": {
+      "hands": "hands",
+      "storage": "storage",
+      "log": "log",
+      "tool_output": "tool-output",
+      "knowledge": "knowledge",
+      "tracking": "tracking",
+      "mcp_auth": "mcp-auth.json",
+      "cache": "cache"
+    }
+  },
   "services": {
     "codecoder": { "port": 4400 },
     "gateway": { "port": 4430 },

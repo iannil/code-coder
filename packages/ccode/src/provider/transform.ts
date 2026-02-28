@@ -721,19 +721,22 @@ export namespace ProviderTransform {
 
     // Convert integer enums to string enums for Google/Gemini
     if (model.providerID === "google" || model.api.id.includes("gemini")) {
-      const sanitizeGemini = (obj: any): any => {
+      const sanitizeGemini = (obj: any, depth = 0): any => {
         if (obj === null || typeof obj !== "object") {
           return obj
         }
 
         if (Array.isArray(obj)) {
-          return obj.map(sanitizeGemini)
+          return obj.map((item) => sanitizeGemini(item, depth))
         }
 
         const result: any = {}
         for (const [key, value] of Object.entries(obj)) {
           // Skip zod's internal 'ref' field - Google API doesn't recognize it
           if (key === "ref") continue
+
+          // Skip 'additionalProperties' as it can cause issues with nested schemas
+          if (key === "additionalProperties" && depth > 0) continue
 
           if (key === "enum" && Array.isArray(value)) {
             // Convert all enum values to strings
@@ -743,7 +746,7 @@ export namespace ProviderTransform {
               result.type = "string"
             }
           } else if (typeof value === "object" && value !== null) {
-            result[key] = sanitizeGemini(value)
+            result[key] = sanitizeGemini(value, depth + 1)
           } else {
             result[key] = value
           }

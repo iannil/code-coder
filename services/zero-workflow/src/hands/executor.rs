@@ -15,6 +15,7 @@
 use super::auto_approve::{ApprovalDecision, ApprovalResult, AutoApprover};
 use super::manifest::{HandManifest, PipelineMode};
 use super::autonomous_bridge::{AutonomousBridge, PreviousResult};
+use super::notification_bridge::NotificationBridge;
 use super::state::{ExecutionStatus, HandExecution, StateStore};
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -109,6 +110,9 @@ pub struct HandExecutor {
 
     /// HITL Gateway endpoint (for approval requests)
     hitl_endpoint: Option<String>,
+
+    /// Zero channels endpoint (for notifications)
+    channels_endpoint: Option<String>,
 }
 
 impl HandExecutor {
@@ -135,6 +139,9 @@ impl HandExecutor {
         // Default HITL endpoint
         let hitl_endpoint = Some("http://127.0.0.1:4430".to_string());
 
+        // Default channels endpoint
+        let channels_endpoint = Some("http://127.0.0.1:4431".to_string());
+
         Ok(Self {
             codecoder_endpoint,
             client,
@@ -142,6 +149,7 @@ impl HandExecutor {
             memory_dir,
             autonomous_bridge: Some(autonomous_bridge),
             hitl_endpoint,
+            channels_endpoint,
         })
     }
 
@@ -160,6 +168,12 @@ impl HandExecutor {
     /// Set a custom HITL endpoint.
     pub fn with_hitl_endpoint(mut self, endpoint: String) -> Self {
         self.hitl_endpoint = Some(endpoint);
+        self
+    }
+
+    /// Set a custom channels endpoint for notifications.
+    pub fn with_channels_endpoint(mut self, endpoint: String) -> Self {
+        self.channels_endpoint = Some(endpoint);
         self
     }
 
@@ -294,6 +308,36 @@ impl HandExecutor {
         // Store execution result
         self.state_store.update_execution(&execution)?;
         self.state_store.update_state(&hand.config.id, &execution)?;
+
+        // Send notification if configured
+        if let Some(ref notification_config) = hand.config.notification {
+            if let Some(ref channels_endpoint) = self.channels_endpoint {
+                let bridge = NotificationBridge::new(channels_endpoint.clone());
+                let hand_clone = hand.clone();
+                let execution_clone = execution.clone();
+                let config_clone = notification_config.clone();
+
+                // Non-blocking send
+                tokio::spawn(async move {
+                    if let Err(e) = bridge
+                        .send_notification(&hand_clone, &execution_clone, &config_clone)
+                        .await
+                    {
+                        tracing::warn!(
+                            hand_id = %hand_clone.config.id,
+                            execution_id = %execution_clone.id,
+                            error = %e,
+                            "Failed to send notification"
+                        );
+                    }
+                });
+            } else {
+                tracing::warn!(
+                    hand_id = %hand.config.id,
+                    "Notification configured but channels endpoint is not set"
+                );
+            }
+        }
 
         Ok(execution)
     }

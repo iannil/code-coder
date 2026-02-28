@@ -121,6 +121,9 @@
     },
     "autonomousMode": {
       "$ref": "#/$defs/AutonomousModeConfig"
+    },
+    "workspace": {
+      "$ref": "#/$defs/WorkspaceConfig"
     }
   },
   "$defs": {
@@ -642,6 +645,31 @@
         }
       },
       "additionalProperties": false
+    },
+    "WorkspaceConfig": {
+      "type": "object",
+      "description": "Workspace configuration for runtime-generated data",
+      "properties": {
+        "path": {
+          "type": "string",
+          "default": "~/.codecoder/workspace",
+          "description": "Path to workspace directory. Supports ~ expansion. Can be overridden by CODECODER_WORKSPACE env var."
+        },
+        "subdirs": {
+          "type": "object",
+          "description": "Named subdirectories within workspace",
+          "properties": {
+            "hands": { "type": "string", "default": "hands" },
+            "storage": { "type": "string", "default": "storage" },
+            "log": { "type": "string", "default": "log" },
+            "tool_output": { "type": "string", "default": "tool-output" },
+            "knowledge": { "type": "string", "default": "knowledge" },
+            "tracking": { "type": "string", "default": "tracking" },
+            "mcp_auth": { "type": "string", "default": "mcp-auth.json" },
+            "cache": { "type": "string", "default": "cache" }
+          }
+        }
+      }
     }
   },
   "additionalProperties": true

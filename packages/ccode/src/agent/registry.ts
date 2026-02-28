@@ -604,13 +604,22 @@ export class AgentRegistry {
    * Recommend an agent based on user intent.
    */
   recommend(intent: string): AgentMetadata | undefined {
+    const trimmed = intent.trim()
+
     // First try trigger matching
     const triggerMatches = this.findByTrigger(intent)
     if (triggerMatches.length > 0) {
       return triggerMatches[0]
     }
 
-    // Fall back to search
+    // For short inputs (≤3 chars), skip fuzzy search to avoid false matches
+    // E.g., "hi" should not match "architect"
+    if (trimmed.length <= 3) {
+      const recommended = this.listRecommended()
+      return recommended[0]
+    }
+
+    // Fall back to search for longer inputs
     const searchResults = this.search(intent, { limit: 1 })
     if (searchResults.length > 0) {
       return searchResults[0].agent

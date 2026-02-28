@@ -50,6 +50,14 @@ pub enum TaskEvent {
     #[serde(rename = "progress")]
     Progress(ProgressData),
 
+    /// Debug information event (triggered by @@debug)
+    #[serde(rename = "debug_info")]
+    DebugInfo(DebugInfoData),
+
+    /// Agent information event (which agents were invoked)
+    #[serde(rename = "agent_info")]
+    AgentInfo(AgentInfoData),
+
     /// Task completion event (success or failure)
     #[serde(rename = "finish")]
     Finish(FinishData),
@@ -92,6 +100,51 @@ pub struct FinishData {
     pub output: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Debug information event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DebugInfoData {
+    /// Model identifier (e.g., "claude-opus-4.5")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Provider (e.g., "anthropic", "openai")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Input tokens consumed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    /// Output tokens generated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    /// Total tokens (may be provided by some providers)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<u64>,
+    /// Duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    /// Request size in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub request_bytes: Option<u64>,
+    /// Response size in bytes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response_bytes: Option<u64>,
+}
+
+/// Agent information event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInfoData {
+    /// Agent name (e.g., "build", "code-reviewer", "macro")
+    pub agent: String,
+    /// Display name for the agent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Whether this is the primary agent
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_primary: Option<bool>,
+    /// Duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 // ============================================================================
@@ -451,5 +504,29 @@ mod tests {
         assert_eq!(ctx.user_id, "user123");
         assert_eq!(ctx.platform, "telegram");
         assert_eq!(ctx.source, "remote");
+    }
+
+    #[test]
+    fn test_parse_debug_info_event() {
+        let json = r#"{
+            "type": "debug_info",
+            "data": {
+                "model": "claude-opus-4.5",
+                "provider": "anthropic",
+                "input_tokens": 1234,
+                "output_tokens": 567,
+                "duration_ms": 1250
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::DebugInfo(data) => {
+                assert_eq!(data.model, Some("claude-opus-4.5".to_string()));
+                assert_eq!(data.provider, Some("anthropic".to_string()));
+                assert_eq!(data.input_tokens, Some(1234));
+                assert_eq!(data.output_tokens, Some(567));
+            }
+            _ => panic!("Expected DebugInfo event"),
+        }
     }
 }

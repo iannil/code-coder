@@ -31,6 +31,7 @@ pub mod autonomous_bridge;
 pub mod close;
 pub mod executor;
 pub mod manifest;
+pub mod notification_bridge;
 pub mod risk;
 pub mod scheduler;
 pub mod state;
@@ -43,6 +44,9 @@ pub use manifest::{
     discover_hands, hands_dir, AutonomyConfig, AutoApproveConfig, DecisionConfig, HandConfig, HandManifest,
     HandSummary, ResourceLimits, RiskThreshold,
 };
+pub use notification_bridge::NotificationBridge;
 pub use risk::{RiskEvaluation, RiskEvaluator, RiskLevel};
 pub use scheduler::HandsScheduler;
 pub use state::{ExecutionStatus, HandExecution, HandState, StateStore};
+// Re-export notification config from zero-common
+pub use zero_common::config::HandNotificationConfig;
