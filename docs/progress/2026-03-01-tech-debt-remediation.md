@@ -80,17 +80,20 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 - CLI entry point error handling - User-facing error messages
 
 ### 6. Break Down Other Oversized Files
-- **Status:** Planning
+- **Status:** Analysis complete
 
 **Remaining oversized files:**
 
-| File | Lines | Over limit |
-|------|-------|------------|
-| `prompt.ts` | 1787 | 223% |
-| `config.ts` | 1820 | 228% |
-| `server.ts` | 2046 | 256% |
+| File | Lines | Over limit | Complexity |
+|------|-------|------------|------------|
+| `prompt.ts` | 1787 | 223% | High - namespace pattern with shared internal state |
+| `config.ts` | 1820 | 228% | Medium - could split by config domain |
+| `server.ts` | 2046 | 256% | Medium - could split by route handlers |
 
-**Note:** `prompt.ts` has tightly coupled functions in a namespace pattern. Decomposition requires careful dependency analysis.
+**Analysis:**
+- `prompt.ts` uses namespace pattern with `start()`, `cancel()`, `state()` shared across `loop()`, `shell()`, `command()` functions
+- Decomposition requires refactoring to dependency injection pattern
+- Recommended: Keep as-is unless major refactoring planned
 
 ---
 
@@ -110,10 +113,14 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 - Fixed in 4 files: file-search.ts, image-generation.ts, local-shell.ts, code-interpreter.ts
 
 ### 8. Type Safety Cleanup
-- **Status:** Partially addressed
-- **Remaining:**
-  - 95+ `any` type usages
-  - Some `@ts-ignore` directives
+- **Status:** Analysis complete, low priority
+- **Findings:**
+  - 95+ `any` type usages, but most are justified:
+    - **Provider SDK handling**: Dynamic SDK loading requires `any` for different provider interfaces
+    - **Log utility**: `any` for message flexibility is standard practice
+    - **LSP responses**: External LSP types not worth strict typing
+    - **Memory stats**: Return type interfaces could be typed but low impact
+- **Recommendation:** Focus on critical paths (provider, session) when refactoring; current usages are acceptable trade-offs
 
 ### 9. Add Tests for packages/web
 - **Status:** Not started
@@ -130,6 +137,7 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 ## Git Log Summary
 
 ```
+41e5053 docs: update progress with ai-sdk v3 upgrade completion
 b894377 feat: upgrade @ai-sdk/* packages to v3/v4
 a9b552c docs: update progress with ai-sdk analysis
 1acd2c6 docs: update progress with structured logging completion
