@@ -207,6 +207,12 @@ export { AutonomousModeHook } from "./integration/hook"
 export { DecisionReporter } from "./integration/reporter"
 export type { DecisionSummary } from "./integration/reporter"
 
+// NOTE: Autonomous Builder exports are intentionally NOT included here to avoid
+// circular dependencies. The chain was:
+//   tool/read.ts -> tool/tool.ts -> autonomous/index.ts -> builder/validation.ts -> @/memory/tools
+// Import builder types directly from "@/autonomous/builder" when needed.
+// The evolution-loop module uses lazy imports for builder to avoid triggering the cycle.
+
 // Validate autonomous mode config
 export const validateAutonomousModeConfig = (
   config: unknown,

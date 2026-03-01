@@ -188,6 +188,50 @@ export const DecisionTemplates = {
     surplus: 9,
     evolution: 7,
   }),
+
+  /**
+   * Self-building: Create a new concept to address a capability gap
+   *
+   * Scores vary by concept type risk level:
+   * - Low-risk (TOOL, PROMPT, SKILL): Higher scores, auto-approvable
+   * - Medium-risk (AGENT, MEMORY): Moderate scores, may need approval
+   * - High-risk (HAND, WORKFLOW): Lower scores, always needs approval
+   *
+   * @param conceptType - Type of concept being built
+   * @param confidence - Detection confidence (0-1)
+   * @param isAutoApprovable - Whether the concept type can be auto-approved
+   */
+  selfBuildConcept: (
+    conceptType: string,
+    confidence: number,
+    isAutoApprovable: boolean,
+  ): Partial<AutonomousDecisionCriteria> => {
+    // Risk-based adjustments
+    const isLowRisk = ["TOOL", "PROMPT", "SKILL"].includes(conceptType)
+    const isHighRisk = ["HAND", "WORKFLOW"].includes(conceptType)
+    const riskAdjustment = isLowRisk ? 0 : isHighRisk ? -2 : -1
+
+    return {
+      type: "feature",
+      description: `Build new ${conceptType} concept`,
+      riskLevel: isLowRisk ? "low" : isHighRisk ? "high" : "medium",
+      // Convergence: Lower risk concepts are more reversible
+      convergence: Math.max(1, 7 + riskAdjustment),
+      // Leverage: High because building once enables reuse
+      leverage: 8,
+      // Optionality: Building a concept doesn't lock us in (much)
+      optionality: Math.max(3, 8 + riskAdjustment),
+      // Surplus: Depends on detection confidence
+      surplus: Math.round(confidence * 8),
+      // Evolution: Always learning value in building new concepts
+      evolution: 7,
+      metadata: {
+        conceptType,
+        confidence,
+        autoApprovable: isAutoApprovable,
+      },
+    }
+  },
 }
 
 export function buildCriteria(template: Partial<AutonomousDecisionCriteria>): AutonomousDecisionCriteria {

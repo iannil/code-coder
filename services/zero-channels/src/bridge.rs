@@ -377,6 +377,10 @@ pub enum SessionCommand {
     New,
     /// Compact/summarize context (/compact, /summary)
     Compact,
+    /// Enable autonomous mode (/enable_autonomous)
+    EnableAutonomous,
+    /// Disable autonomous mode (/disable_autonomous)
+    DisableAutonomous,
 }
 
 impl std::fmt::Display for SessionCommand {
@@ -384,6 +388,8 @@ impl std::fmt::Display for SessionCommand {
         match self {
             SessionCommand::New => write!(f, "new"),
             SessionCommand::Compact => write!(f, "compact"),
+            SessionCommand::EnableAutonomous => write!(f, "enable_autonomous"),
+            SessionCommand::DisableAutonomous => write!(f, "disable_autonomous"),
         }
     }
 }
@@ -1746,7 +1752,7 @@ impl CodeCoderBridge {
     }
 
     // ========================================================================
-    // Session Control Commands (/new, /compact)
+    // Session Control Commands (/new, /compact, /enable_autonomous, /disable_autonomous)
     // ========================================================================
 
     /// Parse session control command from message.
@@ -1754,6 +1760,8 @@ impl CodeCoderBridge {
     /// Detects patterns like:
     /// - `/new` or `/clear` → SessionCommand::New
     /// - `/compact` or `/summary` → SessionCommand::Compact
+    /// - `/enable_autonomous` → SessionCommand::EnableAutonomous
+    /// - `/disable_autonomous` → SessionCommand::DisableAutonomous
     fn parse_session_command(content: &str) -> Option<SessionCommand> {
         let trimmed = content.trim().to_lowercase();
 
@@ -1764,6 +1772,15 @@ impl CodeCoderBridge {
 
         if trimmed == "/compact" || trimmed == "/summary" || trimmed.starts_with("/compact ") || trimmed.starts_with("/summary ") {
             return Some(SessionCommand::Compact);
+        }
+
+        // Autonomous mode commands
+        if trimmed == "/enable_autonomous" || trimmed.starts_with("/enable_autonomous ") {
+            return Some(SessionCommand::EnableAutonomous);
+        }
+
+        if trimmed == "/disable_autonomous" || trimmed.starts_with("/disable_autonomous ") {
+            return Some(SessionCommand::DisableAutonomous);
         }
 
         None
@@ -1857,6 +1874,12 @@ impl CodeCoderBridge {
             }
             SessionCommand::Compact => {
                 self.call_compact_conversation(message, &conversation_id).await
+            }
+            SessionCommand::EnableAutonomous => {
+                self.call_autonomous_toggle(message, &conversation_id, true).await
+            }
+            SessionCommand::DisableAutonomous => {
+                self.call_autonomous_toggle(message, &conversation_id, false).await
             }
         }
     }
@@ -2044,6 +2067,101 @@ impl CodeCoderBridge {
 
                 let content = OutgoingContent::Text {
                     text: format!("❌ 压缩上下文失败: {}", e),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Call the autonomous toggle API to enable/disable autonomous mode.
+    async fn call_autonomous_toggle(
+        &self,
+        message: &ChannelMessage,
+        conversation_id: &str,
+        enable: bool,
+    ) -> Result<()> {
+        let url = format!("{}/api/v1/chat/autonomous", self.endpoint);
+
+        let body = serde_json::json!({
+            "conversation_id": conversation_id,
+            "user_id": message.user_id,
+            "channel": message.channel_type.as_str(),
+            "enabled": enable
+        });
+
+        tracing::debug!(
+            endpoint = %url,
+            conversation_id = %conversation_id,
+            enable = enable,
+            "Calling autonomous toggle API"
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&body)
+            .timeout(self.timeout)
+            .send()
+            .await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let data: serde_json::Value = resp.json().await.unwrap_or_default();
+
+                let enabled = data
+                    .get("enabled")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(enable);
+
+                let emoji = if enabled { "🤖" } else { "👤" };
+                let status = if enabled { "已启用" } else { "已关闭" };
+                let instructions = if enabled {
+                    "AI 将自主执行任务，包括代码生成、测试和部署决策。\n使用 /disable_autonomous 可随时关闭。"
+                } else {
+                    "已切换回普通对话模式。"
+                };
+
+                let content = OutgoingContent::Text {
+                    text: format!("{} 自主模式{}\n\n{}", emoji, status, instructions),
+                };
+
+                tracing::info!(
+                    conversation_id = %conversation_id,
+                    enabled = enabled,
+                    "Autonomous mode toggled"
+                );
+
+                let result = self.router.respond(&message.id, content).await;
+
+                if !result.success {
+                    tracing::error!(
+                        message_id = %message.id,
+                        error = ?result.error,
+                        "Failed to send autonomous toggle response"
+                    );
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let error_text = resp.text().await.unwrap_or_default();
+                tracing::error!(
+                    status = %status,
+                    error = %error_text,
+                    "Autonomous toggle API failed"
+                );
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 操作失败: {}", error_text),
+                };
+                let _ = self.router.respond(&message.id, content).await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Autonomous toggle API call failed");
+
+                let content = OutgoingContent::Text {
+                    text: format!("❌ 操作失败，请稍后重试: {}", e),
                 };
                 let _ = self.router.respond(&message.id, content).await;
             }
@@ -3643,6 +3761,44 @@ mod tests {
         let result = CodeCoderBridge::parse_session_command("\t/compact\n");
         assert!(result.is_some());
         assert_eq!(result.unwrap(), SessionCommand::Compact);
+    }
+
+    #[test]
+    fn test_autonomous_command_parsing() {
+        use super::{CodeCoderBridge, SessionCommand};
+
+        // Should match /enable_autonomous command
+        let result = CodeCoderBridge::parse_session_command("/enable_autonomous");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::EnableAutonomous);
+
+        // Should match /enable_autonomous with trailing text
+        let result = CodeCoderBridge::parse_session_command("/enable_autonomous wild");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::EnableAutonomous);
+
+        // Should match /disable_autonomous command
+        let result = CodeCoderBridge::parse_session_command("/disable_autonomous");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::DisableAutonomous);
+
+        // Should be case insensitive
+        let result = CodeCoderBridge::parse_session_command("/ENABLE_AUTONOMOUS");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::EnableAutonomous);
+
+        let result = CodeCoderBridge::parse_session_command("/DISABLE_AUTONOMOUS");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::DisableAutonomous);
+
+        // Should handle whitespace
+        let result = CodeCoderBridge::parse_session_command("  /enable_autonomous  ");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), SessionCommand::EnableAutonomous);
+
+        // Should NOT match partial commands
+        assert!(CodeCoderBridge::parse_session_command("enable_autonomous").is_none());
+        assert!(CodeCoderBridge::parse_session_command("enable autonomous").is_none());
     }
 
     #[test]

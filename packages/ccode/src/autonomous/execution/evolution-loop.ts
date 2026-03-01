@@ -21,8 +21,14 @@ import type { FetchedContent } from "./web-search"
 import { getLLMSolver, type LLMSolver, type ReflectionAnalysis } from "./llm-solver"
 import { sedimentEvolutionSuccess, logEvolutionFailure } from "./memory-writer"
 import { Log } from "@/util/log"
+// NOTE: Builder imports are lazy to avoid circular dependency
+// (autonomous/index.ts -> orchestrator -> evolution-loop -> builder -> validation -> memory/tools)
+import type { GapDetectionResult, BuildResult, TaskFailure } from "../builder"
 
 const log = Log.create({ service: "autonomous.evolution-loop" })
+
+// Lazy import helpers to break circular dependency
+const getBuilderModule = async () => import("../builder")
 
 // ============================================================================
 // Types
@@ -90,6 +96,12 @@ export interface EvolutionResult {
   durationMs: number
   /** Summary of the process */
   summary: string
+  /** Gap detected from failure (auto-builder) */
+  gapDetected?: GapDetectionResult
+  /** Whether a build was attempted (auto-builder) */
+  buildAttempted?: boolean
+  /** Build result if attempted (auto-builder) */
+  buildResult?: BuildResult
 }
 
 /** Evolution loop configuration */
@@ -120,6 +132,14 @@ export interface EvolutionConfig {
   githubScoutMode: "autonomous" | "recommend" | "ask"
   /** GitHub Scout minimum trigger confidence */
   githubScoutTriggerThreshold: number
+  /** Enable auto-builder for gap detection on failure */
+  enableAutoBuilder: boolean
+  /** Enable meta-builder for concept creation */
+  enableAutoMetaBuilder: boolean
+  /** Minimum attempts before triggering auto-builder */
+  autoBuilderMinAttempts: number
+  /** CLOSE score threshold for auto-build approval */
+  autoBuilderCloseThreshold: number
 }
 
 // ============================================================================
@@ -140,6 +160,10 @@ const DEFAULT_CONFIG: EvolutionConfig = {
   enableGithubScout: true,
   githubScoutMode: "autonomous",
   githubScoutTriggerThreshold: 0.6,
+  enableAutoBuilder: true,
+  enableAutoMetaBuilder: true, // Enable auto-building new concepts from gaps
+  autoBuilderMinAttempts: 2,
+  autoBuilderCloseThreshold: 5.5,
 }
 
 // ============================================================================
@@ -447,6 +471,45 @@ export class EvolutionLoop {
       githubScoutResult,
       durationMs: Date.now() - startTime,
       summary: `Could not solve problem after ${attempts.length} attempts. Consider seeking human assistance.`,
+    }
+
+    // Auto-Builder: Detect capability gaps and attempt to build new concepts
+    if (this.config.enableAutoBuilder && attempts.length >= this.config.autoBuilderMinAttempts) {
+      const gap = await this.detectGapFromFailure(problem, attempts)
+
+      if (gap) {
+        failureResult.gapDetected = gap
+        log.info("Capability gap detected", {
+          gapId: gap.id,
+          type: gap.type,
+          confidence: gap.confidence,
+          closeScore: gap.closeScore.total,
+        })
+
+        // Attempt auto-build if enabled and CLOSE score is sufficient
+        if (
+          this.config.enableAutoMetaBuilder &&
+          gap.closeScore.total >= this.config.autoBuilderCloseThreshold
+        ) {
+          const buildResult = await this.attemptAutoBuild(gap, problem)
+          failureResult.buildAttempted = true
+          failureResult.buildResult = buildResult ?? undefined
+
+          if (buildResult?.success) {
+            log.info("Auto-built new concept", {
+              type: buildResult.concept?.type,
+              identifier: buildResult.concept?.identifier,
+              durationMs: buildResult.durationMs,
+            })
+            failureResult.summary = `${failureResult.summary} Auto-built ${buildResult.concept?.type}: ${buildResult.concept?.identifier}.`
+          } else {
+            log.warn("Auto-build attempted but failed", {
+              gapId: gap.id,
+              summary: buildResult?.summary,
+            })
+          }
+        }
+      }
     }
 
     // Log failure to daily notes (for debugging and analysis)
@@ -805,6 +868,82 @@ main().then(result => process.exit(result ? 0 : 1));
 
     const entry = await this.knowledge.sediment(context)
     return { id: entry.id }
+  }
+
+  /**
+   * Detect capability gap from a failed problem-solving attempt
+   *
+   * Analyzes the failure pattern to identify what kind of new concept
+   * could help solve similar problems in the future.
+   */
+  private async detectGapFromFailure(
+    problem: AutonomousProblem,
+    attempts: SolutionAttempt[],
+  ): Promise<GapDetectionResult | null> {
+    const { getGapDetector } = await getBuilderModule()
+    const gapDetector = getGapDetector()
+
+    // Build TaskFailure from evolution context
+    const taskFailure: TaskFailure = {
+      sessionId: problem.sessionId,
+      description: problem.description,
+      errorMessage: problem.errorMessage,
+      technology: problem.technology,
+      attempts: attempts.length,
+      webSearchUsed: this.config.enableWebSearch,
+      toolSearchUsed: this.config.enableToolDiscovery,
+      evolutionResult: {
+        solved: false,
+        attempts,
+        durationMs: 0, // Not known yet
+        summary: "Evolution failed",
+      },
+    }
+
+    try {
+      return await gapDetector.detectFromFailure(taskFailure)
+    } catch (error) {
+      log.error("Gap detection failed", { error })
+      return null
+    }
+  }
+
+  /**
+   * Attempt to auto-build a new concept to address a detected gap
+   *
+   * Uses the MetaBuilder to orchestrate the full build flow:
+   * evaluation → generation → validation → approval → registration
+   */
+  private async attemptAutoBuild(
+    gap: GapDetectionResult,
+    problem: AutonomousProblem,
+  ): Promise<BuildResult | null> {
+    const { getMetaBuilder } = await getBuilderModule()
+    const metaBuilder = getMetaBuilder()
+
+    try {
+      // Initialize the meta-builder if needed
+      await metaBuilder.initialize()
+
+      // Build from the gap
+      return await metaBuilder.buildFromFailure(
+        {
+          sessionId: problem.sessionId,
+          description: problem.description,
+          errorMessage: problem.errorMessage,
+          technology: problem.technology,
+          attempts: this.previousAttempts.length,
+          webSearchUsed: this.config.enableWebSearch,
+          toolSearchUsed: this.config.enableToolDiscovery,
+        },
+        {
+          workingDir: problem.workingDir,
+        },
+      )
+    } catch (error) {
+      log.error("Auto-build failed", { error, gapId: gap.id })
+      return null
+    }
   }
 
   /**

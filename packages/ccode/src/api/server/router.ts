@@ -422,11 +422,12 @@ export async function registerRoutes(): Promise<void> {
   router.delete("/api/skills/:id", uninstallSkill)
 
   // Chat routes (for ZeroBot bridge)
-  const { chat, chatHealth, clearConversation, compactConversation } = await import("./handlers/chat")
+  const { chat, chatHealth, clearConversation, compactConversation, toggleAutonomous } = await import("./handlers/chat")
   router.post("/api/v1/chat", chat)
   router.get("/api/v1/chat/health", chatHealth)
   router.post("/api/v1/chat/clear", clearConversation)
   router.post("/api/v1/chat/compact", compactConversation)
+  router.post("/api/v1/chat/autonomous", toggleAutonomous)
 
   // Metering routes (for Admin dashboard)
   const { getUsage, getUsersUsage, getQuotas, updateQuota, recordUsage } = await import("./handlers/metering")

@@ -1,7 +1,7 @@
 # CodeCoder 架构文档
 
-> 生成时间: 2026-02-25
-> 版本: 0.0.1
+> 生成时间: 2026-03-01
+> 版本: 0.0.2
 
 本目录包含 CodeCoder 项目的完整架构文档。
 
@@ -9,6 +9,7 @@
 
 | 文档 | 说明 |
 |------|------|
+| [CORE_CONCEPTS.md](./CORE_CONCEPTS.md) | **核心概念详解 (AGENT/PROMPT/SKILL/TOOL/CHANNEL/MEMORY/WORKFLOW/HAND)** |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构总览 |
 | [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md) | 设计思想与哲学框架 |
 | [CCODE_VS_ZERO.md](./CCODE_VS_ZERO.md) | packages/ccode 与 services/zero-* 关系 |
@@ -17,7 +18,19 @@
 
 ## 快速导航
 
-### 核心概念
+### 核心概念 (推荐首先阅读)
+
+- **AGENT** - 智能执行单元 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#agent---智能执行单元)
+- **PROMPT** - Agent 行为定义 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#prompt---agent-行为定义)
+- **SKILL** - 可复用能力 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#skill---可复用能力)
+- **TOOL** - 执行工具 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#tool---执行工具)
+- **CHANNEL** - 消息渠道 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#channel---消息渠道)
+- **MEMORY** - 记忆系统 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#memory---记忆系统)
+- **WORKFLOW** - 工作流引擎 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#workflow---工作流引擎)
+- **HAND** - 自主代理 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#hand---自主代理)
+- **概念关系详解** - 包含/调用关系 - 见 [CORE_CONCEPTS.md](./CORE_CONCEPTS.md#概念关系详解)
+
+### 哲学与设计
 
 - **祝融说哲学** - 见 [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md#一核心设计哲学)
 - **CLOSE 决策框架** - 见 [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md#12-close-决策框架)

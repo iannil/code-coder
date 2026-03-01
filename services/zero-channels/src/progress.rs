@@ -491,9 +491,9 @@ impl ImProgressHandler {
             .map(|s| s.to_string())
             .unwrap_or_else(|| result.to_string());
 
-        // Truncate very large outputs to avoid message size limits
-        // Telegram has a 4096 character limit for messages
-        const MAX_OUTPUT_LENGTH: usize = 2000;
+        // Truncate very large outputs to avoid memory issues
+        // The downstream Telegram layer handles message size limits via chunking/file conversion
+        const MAX_OUTPUT_LENGTH: usize = 50000;
 
         if result_str.len() > MAX_OUTPUT_LENGTH {
             format!("{} {}\n\n```\n{}...\n```\n[输出已截断，共 {} 字符]",

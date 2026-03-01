@@ -101,6 +101,19 @@ use tower_http::cors::{Any, CorsLayer};
 use zero_common::config::Config;
 use zero_common::TracingExt;
 
+// ============================================================================
+// Message Size Constants
+// ============================================================================
+
+/// Telegram single message maximum length (characters).
+/// Messages exceeding this will be split into multiple chunks.
+pub const TELEGRAM_MAX_MESSAGE_LEN: usize = 4096;
+
+/// Threshold for converting long messages to file attachments.
+/// Messages longer than this will be sent as Markdown files instead of multiple chunks.
+/// Rationale: ~5 Telegram messages (4096×5=20480) is the upper limit for comfortable reading.
+pub const FILE_THRESHOLD: usize = 20000;
+
 /// Find the largest valid UTF-8 character boundary at or before `index`.
 ///
 /// This is essential when truncating strings that may contain multi-byte UTF-8

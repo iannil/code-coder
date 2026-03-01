@@ -9,7 +9,7 @@ use crate::message::{Attachment, AttachmentType, ChannelMessage, ChannelType, Me
 use crate::stt::SpeechToText;
 use crate::tts::TextToSpeech;
 use crate::traits::{Channel, ChannelError, ChannelResult};
-use crate::{floor_char_boundary, safe_truncate};
+use crate::{floor_char_boundary, safe_truncate, FILE_THRESHOLD};
 use async_trait::async_trait;
 use reqwest::multipart::{Form, Part};
 use std::path::Path;
@@ -700,6 +700,26 @@ impl Channel for TelegramChannel {
 
         match message.content {
             OutgoingContent::Text { text } | OutgoingContent::Markdown { text } => {
+                // Very long messages: convert to Markdown file attachment
+                if text.len() > FILE_THRESHOLD {
+                    let filename = format!(
+                        "report_{}.md",
+                        chrono::Utc::now().format("%Y%m%d_%H%M%S")
+                    );
+                    tracing::info!(
+                        chat_id = %message.channel_id,
+                        text_length = text.len(),
+                        filename = %filename,
+                        "Converting long message to file attachment"
+                    );
+                    return self
+                        .send_document_bytes(&message.channel_id, text.into_bytes(), &filename, None)
+                        .await
+                        .map(|_| uuid::Uuid::new_v4().to_string())
+                        .map_err(|e| ChannelError::SendFailed(e.to_string()));
+                }
+
+                // Medium-length messages: split into multiple chunks
                 let chunks = split_message(&text, MAX_MESSAGE_LEN);
                 for chunk in chunks {
                     self.send_single_chunk(&chunk, &message.channel_id)
@@ -1063,5 +1083,40 @@ mod tests {
         let msg = "x".repeat(5000);
         let result = split_message(&msg, 4096);
         assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn file_threshold_constant() {
+        // Verify FILE_THRESHOLD is imported and reasonable
+        use crate::FILE_THRESHOLD;
+        assert_eq!(FILE_THRESHOLD, 20000);
+        // Should be ~5 Telegram messages worth
+        assert!(FILE_THRESHOLD > 4096 * 4);
+        assert!(FILE_THRESHOLD <= 4096 * 6);
+    }
+
+    #[test]
+    fn split_message_at_file_threshold() {
+        // Messages at or below FILE_THRESHOLD should be split
+        use crate::FILE_THRESHOLD;
+        let msg = "x".repeat(FILE_THRESHOLD);
+        let result = split_message(&msg, 4096);
+        // Should be split into multiple chunks
+        assert!(result.len() > 1);
+        // Each chunk should be at most 4096 chars
+        for chunk in &result {
+            assert!(chunk.len() <= 4096);
+        }
+    }
+
+    #[test]
+    fn split_message_above_file_threshold() {
+        // Messages above FILE_THRESHOLD would be sent as file
+        // This test verifies split_message still works for edge cases
+        use crate::FILE_THRESHOLD;
+        let msg = "x".repeat(FILE_THRESHOLD + 5000);
+        let result = split_message(&msg, 4096);
+        // Would be sent as file in send(), but split_message still works
+        assert!(result.len() >= 6);
     }
 }

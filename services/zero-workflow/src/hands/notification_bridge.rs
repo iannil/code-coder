@@ -202,14 +202,9 @@ impl NotificationBridge {
         }
         message.push_str(&format!(" | 耗时: {:.1}s\n\n", duration_sec));
 
-        // Add output preview (first 500 chars)
+        // Add output (full content - Telegram layer handles chunking/file conversion)
         if let Some(ref output) = execution.output {
-            let preview = if output.len() > 500 {
-                format!("{}...", &output[..500])
-            } else {
-                output.clone()
-            };
-            message.push_str(&format!("{}\n", preview));
+            message.push_str(&format!("{}\n", output));
         }
 
         // Add error if present
@@ -309,13 +304,8 @@ impl NotificationBridge {
         message.push_str("## 执行结果\n\n");
 
         if let Some(ref output) = execution.output {
-            // Limit output to 3000 chars for IM
-            let truncated = if output.len() > 3000 {
-                format!("{}...\n\n*(Output truncated)*", &output[..3000])
-            } else {
-                output.clone()
-            };
-            message.push_str(&truncated);
+            // Full output - Telegram layer handles chunking/file conversion
+            message.push_str(output);
         }
 
         // Error section

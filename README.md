@@ -5,45 +5,97 @@
 [![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
 [![Bun](https://img.shields.io/badge/Bun-1.3+-pink.svg)](https://bun.sh/)
 
-<!-- Logo placeholder: Add your logo here -->
+[中文文档](README.zh-CN.md)
 
 ---
 
-## Beyond Code Completion
+## Autonomous Evolution: The Core Differentiator
 
-CodeCoder isn't just another AI coding assistant. It's a **work station** that combines engineering prowess with decision wisdom.
+**CodeCoder** is the first AI workstation with **self-building and autonomous evolution capabilities**.
 
-At its core is **Observer Theory** from the 祝融说 (Zhurongsuo) philosophy: every observation collapses infinite possibilities into concrete reality. When you ask CodeCoder to review code, design architecture, or analyze a market trend, you're not just getting answers—you're participating in a creative act that shapes outcomes from a field of potential.
+Unlike traditional AI coding assistants that only execute predefined tasks, CodeCoder can:
 
-This philosophical foundation manifests in the **CLOSE Framework** for decision-making:
+- **Detect capability gaps** — Identify when it lacks the right tools or knowledge
+- **Build new concepts autonomously** — Create Agent, Prompt, Skill, Tool, Hand, Memory, or Workflow
+- **Learn from experience** — Extract reusable patterns from successful solutions
+- **Make sustainable decisions** — Use the CLOSE framework to evaluate options
 
-- **C**lear reversibility assessment
-- **L**everage option preservation
-- **O**ption space expansion
-- **S**ustainability over optimality
-- **E**xit strategy planning
+### How It Works: The 5-Step Evolution Loop
 
-The key insight: **sustainable decisions outperform optimal ones**. CodeCoder helps you maintain "possibility margin" (可用余量)—the unfixed potential that enables adaptation, creativity, and the ability to "play again" when circumstances change.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        AUTONOMOUS EVOLUTION LOOP                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  1. Proactive Resource Retrieval (主动资源检索)                              │
+│     └─ Search documentation and web when confidence is low                  │
+│                                                                             │
+│  2. Tool Discovery (工具发现)                                               │
+│     └─ Check for existing reusable tools before generating code             │
+│                                                                             │
+│  3. Dynamic Code Generation (动态编程保底)                                  │
+│     └─ Write and execute temporary scripts as fallback                      │
+│                                                                             │
+│  4. Self-Reflection & Retry (自主反思与重试)                                │
+│     └─ Analyze errors like a human programmer and correct                   │
+│                                                                             │
+│  5. Knowledge Sedimentation (沉淀与进化)                                    │
+│     └─ Store successful solutions as reusable tools/skills                  │
+│                                                                             │
+│              ┌─────────────────────────────────────────────────┐            │
+│              │         FAILURE TRIGGERS AUTO-BUILDER           │            │
+│              │  ┌──────────────────────────────────────────┐  │            │
+│              │  │ Detect Gap → CLOSE Eval → Build Concept │  │            │
+│              │  └──────────────────────────────────────────┘  │            │
+│              └─────────────────────────────────────────────────┘            │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### CLOSE Decision Framework
+
+Every autonomous decision is evaluated using the **CLOSE framework**:
+
+| Dimension | Range | Description |
+|-----------|-------|-------------|
+| **C**onvergence | 0-10 | How much this limits future options (lower = more reversible) |
+| **L**everage | 0-10 | Value gained relative to risk taken |
+| **O**ptionality | 0-10 | Ability to undo or pivot later |
+| **S**urplus | 0-10 | Resource margin preserved |
+| **E**volution | 0-10 | Learning value for future decisions |
+
+**Key insight**: Sustainable decisions > Optimal decisions. Maintaining "available surplus" (可用余量) — the ability to "play again" — matters more than one-time optimization.
+
+### Autonomy Levels
+
+| Level | Score | Description |
+|-------|-------|-------------|
+| **Lunatic** | 90+ | Fully autonomous, operates independently |
+| **Insane** | 75-89 | Highly autonomous, minimal intervention |
+| **Crazy** | 60-74 | Significantly autonomous, periodic check-ins |
+| **Wild** | 40-59 | Partially autonomous, needs guidance |
+| **Bold** | 20-39 | Cautiously autonomous, frequent pauses |
+| **Timid** | <20 | Barely autonomous, constant supervision |
 
 ---
 
 ## What is CodeCoder?
 
-A three-layer wisdom architecture that goes beyond code:
+A three-layer AI workstation combining engineering capability with decision wisdom:
 
 | Layer | Focus | Capabilities |
 |-------|-------|--------------|
-| **Engineering** | Code & Systems | Code review, security analysis, TDD, architecture design, reverse engineering |
-| **Domain** | Expert Knowledge | Macro economics, trading analysis, product selection, miniproduct development, AI engineering |
-| **Thinking** | Decision Frameworks | 祝融说 philosophy, CLOSE framework, observer theory |
+| **Engineering** | Code & Systems | Code review, security analysis, TDD, architecture, reverse engineering |
+| **Domain** | Expert Knowledge | Macro economics, trading, product selection, AI engineering |
+| **Thinking** | Decision Frameworks | Observer theory, CLOSE framework, sustainable decisions |
 
-**Core Features:**
+### Core Capabilities
 
-- **20+ AI Providers** — Claude, OpenAI, Google, Amazon Bedrock, Azure, xAI, and more
-- **24 Specialized Agents** — Each with distinct expertise and personality
-- **MCP Protocol** — Local, remote, and OAuth-authenticated Model Context Protocol servers
-- **30+ LSP Integrations** — TypeScript, Rust, Go, Python, Java, and more
-- **Multiple Modes** — CLI, TUI (terminal UI), and headless API server
+- **31 Specialized Agents** — Each with distinct expertise and personality
+- **Autonomous Evolution** — Self-building capability through gap detection
+- **20+ AI Providers** — Claude, OpenAI, Google, Amazon Bedrock, xAI, and more
+- **Multiple Interfaces** — CLI, TUI (terminal UI), Web, and IM bots
+- **MCP Protocol** — Local, remote, and OAuth-authenticated servers
+- **Rust Microservices** — High-performance services for production deployment
 - **Markdown Memory** — Human-readable, Git-friendly knowledge persistence
 
 ---
@@ -90,11 +142,14 @@ bun dev run --agent code-reviewer "Analyze src/api/server.ts"
 
 # Use @ syntax for agents
 bun dev run "@decision Analyze this career choice using CLOSE framework"
+
+# Use autonomous mode (self-directed execution)
+bun dev run --agent autonomous "Build a REST API for user management"
 ```
 
 ---
 
-## Architecture
+## Architecture Overview
 
 ```
 codecoder/
@@ -102,6 +157,7 @@ codecoder/
 │   ├── ccode/                   # Core CLI & business logic
 │   │   ├── src/
 │   │   │   ├── agent/           # Agent definitions & prompts
+│   │   │   ├── autonomous/      # Autonomous evolution system
 │   │   │   ├── api/             # HTTP API server (Hono)
 │   │   │   ├── cli/             # CLI commands & TUI
 │   │   │   ├── config/          # Configuration management
@@ -116,7 +172,8 @@ codecoder/
 │   ├── zero-cli/                # CLI daemon (combined service)
 │   ├── zero-gateway/            # Auth, routing, quota
 │   ├── zero-channels/           # Telegram, Discord, Slack
-│   ├── zero-workflow/           # Webhooks, Cron, Git
+│   ├── zero-workflow/           # Webhooks, Cron, Git + Hands
+│   ├── zero-browser/            # Browser automation
 │   ├── zero-common/             # Shared config
 │   ├── zero-agent/              # Agent execution (lib)
 │   ├── zero-memory/             # Memory persistence (lib)
@@ -134,95 +191,160 @@ codecoder/
 |---------|------|------------|
 | CodeCoder API Server | 4400 | Bun/TypeScript |
 | Web Frontend | 4401 | Vite/React |
-| Zero CLI Daemon | 4402 | Rust (combined: gateway + channels + scheduler) |
+| Zero CLI Daemon | 4402 | Rust (combined) |
 | Whisper STT Server | 4403 | Docker |
-| Zero Gateway | 4410 | Rust (standalone) |
-| Zero Channels | 4411 | Rust (standalone) |
-| Zero Workflow | 4412 | Rust (standalone) |
-| MCP Server (HTTP) | 4420 | Protocol (Model Context Protocol) |
+| MCP Server | 4420 | Model Context Protocol |
+| Zero Gateway | 4430 | Rust |
+| Zero Channels | 4431 | Rust |
+| Zero Workflow | 4432 | Rust |
+| Zero Browser | 4433 | Rust |
 
 ---
 
-## Agent System
+## 8 Core Concepts
 
-CodeCoder includes 24 specialized agents organized into 6 categories:
+CodeCoder is built on 8 foundational concepts:
 
-### Main Modes (3)
+| Concept | Description | Location |
+|---------|-------------|----------|
+| **AGENT** | Intelligent execution units with specific roles | `packages/ccode/src/agent/` |
+| **PROMPT** | Agent behavior definition files | `packages/ccode/src/agent/prompt/*.txt` |
+| **SKILL** | Reusable cross-project capabilities | `~/.codecoder/skills/*/SKILL.md` |
+| **TOOL** | Execution tools for environment interaction | `packages/ccode/src/tool/` |
+| **CHANNEL** | Message channels (IM platforms) | `services/zero-channels/` |
+| **MEMORY** | Two-layer Markdown memory system | `memory/` directory |
+| **WORKFLOW** | Automation engine (Cron, Webhook, Git) | `services/zero-workflow/` |
+| **HAND** | Autonomous persistent agents | `services/zero-workflow/src/hands/` |
+
+### HAND = WORKFLOW + AGENT + MEMORY
+
+A **HAND** is the highest-level abstraction — a declaratively defined autonomous agent:
+
+```markdown
+---
+id: "market-sentinel"
+name: "Market Sentinel"
+schedule: "0 */30 * * * *"        # Every 30 minutes
+agent: "macro"                     # Use macro Agent
+enabled: true
+autonomy:
+  level: "crazy"                   # Autonomy level
+  unattended: true
+decision:
+  use_close: true                  # Use CLOSE framework
+---
+
+# Market Sentinel
+
+Monitor macroeconomic data changes and identify market signals.
+```
+
+---
+
+## Agent List
+
+CodeCoder includes 31 specialized agents:
+
+### Main Modes (4)
 
 | Agent | Description |
 |-------|-------------|
 | `build` | Default development mode with full capabilities |
 | `plan` | Planning mode for structured implementation design |
+| `writer` | Long-form content writing (20k+ words) |
 | `autonomous` | Self-directed execution with CLOSE decision framework |
+
+### Engineering Quality (7)
+
+| Agent | Description |
+|-------|-------------|
+| `code-reviewer` | Comprehensive code quality review |
+| `security-reviewer` | Security vulnerability analysis |
+| `tdd-guide` | Test-driven development enforcement |
+| `architect` | System architecture design |
+| `explore` | Fast codebase exploration and pattern search |
+| `general` | Multi-step task execution and research |
+| `verifier` | Build, type, and test verification |
 
 ### Reverse Engineering (2)
 
 | Agent | Description |
 |-------|-------------|
 | `code-reverse` | Pixel-perfect website recreation planning |
-| `jar-code-reverse` | Java JAR file decompilation and reconstruction |
-
-### Engineering (7)
-
-| Agent | Description |
-|-------|-------------|
-| `general` | Multi-step task execution and research |
-| `explore` | Fast codebase exploration and pattern search |
-| `code-reviewer` | Comprehensive code quality review |
-| `security-reviewer` | Security vulnerability analysis |
-| `tdd-guide` | Test-driven development enforcement |
-| `architect` | System architecture design |
-| `verifier` | Formal verification and property testing |
+| `jar-code-reverse` | Java JAR decompilation and reconstruction |
 
 ### Content Creation (5)
 
 | Agent | Description |
 |-------|-------------|
-| `writer` | Long-form content writing (20k+ words) |
-| `proofreader` | Grammar, style, and consistency checking |
 | `expander` | Systematic content expansion framework |
 | `expander-fiction` | Fiction-specific worldbuilding and narrative |
 | `expander-nonfiction` | Non-fiction argumentation and evidence |
+| `proofreader` | Grammar, style, and consistency checking |
+| `writer` | Long-form content writing |
 
-### 祝融说 (Zhurongsuo) Series (8)
+### 祝融说 Series (8)
 
 | Agent | Description |
 |-------|-------------|
-| `observer` | Observer theory analysis—revealing possibility spaces |
+| `observer` | Observer theory analysis |
 | `decision` | CLOSE framework decision advisor |
-| `macro` | Macroeconomic data interpretation (GDP, policy, etc.) |
+| `macro` | Macroeconomic data interpretation |
 | `trader` | Ultra-short-term trading pattern recognition |
 | `picker` | Product selection using "Seven Sins" methodology |
 | `miniproduct` | Solo developer 0-to-1 product coaching |
 | `ai-engineer` | AI/ML engineering mentor |
-| `synton-assistant` | SYNTON-DB memory database assistant |
+| `value-analyst` | Value investment analysis |
 
-### System (3, hidden)
+### Product & Feasibility (2)
 
 | Agent | Description |
 |-------|-------------|
-| `compaction` | Context compression for long sessions |
-| `title` | Automatic session title generation |
-| `summary` | Session summary generation |
+| `prd-generator` | Product requirements document generation |
+| `feasibility-assess` | Technical feasibility analysis |
 
-### Usage Examples
+### System (3)
 
-```bash
-# Code review
-bun dev run --agent code-reviewer "Review src/api/server.ts"
+| Agent | Description |
+|-------|-------------|
+| `synton-assistant` | SYNTON-DB memory database assistant |
+| `compaction` | Context compression (hidden) |
+| `title` | Automatic session title generation (hidden) |
+| `summary` | Session summary generation (hidden) |
 
-# Security analysis
-bun dev run --agent security-reviewer "Audit the authentication system"
+---
 
-# Decision consulting
-bun dev run "@decision Use CLOSE framework to analyze this job offer"
+## Autonomous Evolution Deep Dive
 
-# Macro analysis
-bun dev run "@macro Interpret this month's PMI data"
+### Self-Building Capability
 
-# Architecture design
-bun dev run --agent architect "Design a microservices migration plan"
-```
+When CodeCoder encounters a task it cannot complete with existing capabilities, it can:
+
+1. **Detect the gap** — Analyze failure patterns to identify missing capabilities
+2. **Evaluate with CLOSE** — Decide whether building the capability is worthwhile
+3. **Generate the concept** — Create Agent, Prompt, Skill, Tool, Hand, Memory, or Workflow
+4. **Validate** — Ensure the generated concept meets quality standards
+5. **Register** — Make the new concept available for future use
+
+### What Can Be Auto-Built
+
+| Concept | Risk | Example |
+|---------|------|---------|
+| **TOOL** | Low | A reusable script for JSON transformation |
+| **PROMPT** | Low | Behavior template for a new specialist |
+| **SKILL** | Low | TDD methodology for a specific framework |
+| **AGENT** | Medium | New domain specialist like "database-optimizer" |
+| **MEMORY** | Medium | Structured knowledge base for a project |
+| **HAND** | High | Persistent autonomous agent for monitoring |
+| **WORKFLOW** | High | Multi-step automation pipeline |
+
+### Safety Mechanisms
+
+- **Resource Limits** — Token, cost, and time budgets prevent runaway execution
+- **Loop Detection** — Identifies and breaks infinite loops
+- **Checkpoint System** — Creates checkpoints before risky operations
+- **Rollback Capability** — Maintains ability to revert any change
+- **CLOSE Evaluation** — Every decision is scored before execution
 
 ---
 
@@ -250,67 +372,6 @@ CodeCoder supports 20+ AI providers out of the box:
 | OpenRouter | API Key |
 | Vercel AI | API Key |
 | GitLab Duo | OAuth |
-
-### Configuration
-
-```json
-{
-  "provider": {
-    "anthropic": {
-      "options": {
-        "apiKey": "sk-ant-..."
-      }
-    },
-    "openai": {
-      "options": {
-        "apiKey": "sk-proj-..."
-      }
-    }
-  },
-  "model": "anthropic/claude-sonnet-4-5"
-}
-```
-
----
-
-## Rust Services
-
-For production deployments, CodeCoder includes high-performance Rust services:
-
-### Zero Daemon (Combined Service)
-
-The `zero-daemon` runs all services in a single process—ideal for development and single-machine deployments:
-
-```bash
-# Build Rust services
-./ops.sh build rust
-
-# Start the daemon
-./ops.sh start zero-daemon
-```
-
-### Standalone Services (Modular Deployment)
-
-For distributed deployments, run services independently:
-
-| Service | Purpose |
-|---------|---------|
-| `zero-gateway` | Authentication, routing, rate limiting, sandboxing |
-| `zero-channels` | Telegram, Discord, Slack, Email integrations |
-| `zero-workflow` | Webhook handlers, cron jobs, Git operations |
-
-```bash
-# Start individual services
-./ops.sh start zero-gateway
-./ops.sh start zero-channels
-./ops.sh start zero-workflow
-
-# View all service status
-./ops.sh status
-
-# View logs
-./ops.sh logs zero-workflow
-```
 
 ---
 
@@ -344,25 +405,58 @@ Configuration files are loaded in priority order (later overrides earlier):
     "filesystem": {
       "type": "local",
       "command": ["npx", "@anthropic/mcp-server-filesystem", "/home/user"]
-    },
-    "remote-server": {
-      "type": "remote",
-      "url": "https://mcp.example.com/sse",
-      "oauth": {
-        "clientId": "...",
-        "scope": "read write"
-      }
     }
   },
 
   "permission": {
     "*": "allow",
     "bash": {
-      "rm -rf *": "deny",
-      "git *": "allow"
+      "rm -rf *": "deny"
     }
   }
 }
+```
+
+---
+
+## Rust Microservices
+
+For production deployments, CodeCoder includes high-performance Rust services:
+
+### Zero Daemon (Combined Service)
+
+The `zero-daemon` runs all services in a single process—ideal for development and single-machine deployments.
+
+```bash
+# Build Rust services
+./ops.sh build rust
+
+# Start the daemon
+./ops.sh start zero-daemon
+```
+
+### Standalone Services
+
+For distributed deployments:
+
+| Service | Purpose | Port |
+|---------|---------|------|
+| `zero-gateway` | Authentication, routing, rate limiting | 4430 |
+| `zero-channels` | IM integrations | 4431 |
+| `zero-workflow` | Automation engine | 4432 |
+| `zero-browser` | Browser automation | 4433 |
+
+```bash
+# Start individual services
+./ops.sh start zero-gateway
+./ops.sh start zero-channels
+./ops.sh start zero-workflow
+
+# View status
+./ops.sh status
+
+# View logs
+./ops.sh logs zero-workflow
 ```
 
 ---
@@ -381,15 +475,15 @@ CodeCoder uses a transparent, Git-friendly two-layer memory architecture:
 
 - **Path:** `./memory/MEMORY.md`
 - **Type:** Curated, structured knowledge
-- **Categories:** User preferences, project context, key decisions, lessons learned
+- **Categories:** User preferences, project context, key decisions
 
 ### Operation Rules
 
 | Operation | When | Behavior |
 |-----------|------|----------|
 | **Read** | Session init | Load MEMORY.md + current/previous daily notes |
-| **Immediate write** | After important interactions | Append to daily note (immutable) |
-| **Consolidation** | Detecting significant info | Update MEMORY.md (merge/replace outdated) |
+| **Immediate write** | After interactions | Append to daily note (immutable) |
+| **Consolidation** | Significant info detected | Update MEMORY.md |
 
 All memory files are standard Markdown—edit them directly when needed.
 
@@ -433,9 +527,18 @@ bun run --cwd packages/ccode build
 
 ---
 
+## Documentation
+
+- [Architecture Overview](docs/architecture/README.md)
+- [Core Concepts](docs/architecture/CORE_CONCEPTS.md) — AGENT, PROMPT, SKILL, TOOL, CHANNEL, MEMORY, WORKFLOW, HAND
+- [Design Philosophy](docs/architecture/DESIGN_PHILOSOPHY.md) — Zhurongsuo philosophy and CLOSE framework
+- [CLAUDE.md](CLAUDE.md) — Project-specific instructions for Claude Code
+
+---
+
 ## Contributing
 
-We welcome contributions! Please see our contributing guidelines:
+We welcome contributions! Please:
 
 - PRs must reference an existing issue
 - PR titles follow conventional commits (`feat:`, `fix:`, `docs:`, etc.)
@@ -446,7 +549,7 @@ We welcome contributions! Please see our contributing guidelines:
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ---
 
