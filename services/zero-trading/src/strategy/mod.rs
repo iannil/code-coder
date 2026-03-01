@@ -305,7 +305,7 @@ impl StrategyEngine {
 
     /// Get last scan time
     pub fn last_scan_time(&self) -> Option<DateTime<Utc>> {
-        self.last_scan.blocking_read().clone()
+        *self.last_scan.blocking_read()
     }
 
     /// Clear all signals

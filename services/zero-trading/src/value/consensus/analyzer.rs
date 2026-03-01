@@ -153,7 +153,7 @@ impl ConsensusAnalysis {
     pub fn to_markdown(&self) -> String {
         let mut md = String::new();
 
-        md.push_str(&format!("# 政策共识分析报告\n\n"));
+        md.push_str(&"# 政策共识分析报告\n\n".to_string());
         md.push_str(&format!("**文档**: {}\n", self.document_title));
         md.push_str(&format!("**分析时间**: {}\n\n", self.analyzed_at.format("%Y-%m-%d %H:%M")));
 
@@ -166,7 +166,7 @@ impl ConsensusAnalysis {
         for (i, theme) in self.priority_ranking.iter().enumerate() {
             md.push_str(&format!("{}. {}\n", i + 1, theme));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         // Theme strengths
         md.push_str("## 主题强度分析\n\n");
@@ -178,7 +178,7 @@ impl ConsensusAnalysis {
             };
             md.push_str(&format!("### {}{}\n\n", ts.theme, change_marker));
             md.push_str(&format!("**强度**: {:.0}%\n\n", ts.strength * 100.0));
-            md.push_str(&format!("**关键表述**:\n"));
+            md.push_str(&"**关键表述**:\n".to_string());
             for phrase in &ts.key_phrases {
                 md.push_str(&format!("- \"{}\"\n", phrase));
             }

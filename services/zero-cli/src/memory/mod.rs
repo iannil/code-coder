@@ -1,4 +1,4 @@
-//! Memory system for ZeroBot.
+//! Memory system for `ZeroBot`.
 //!
 //! This module provides the memory factory and unique hygiene functionality.
 //! Core memory implementations are imported from `zero-memory`.

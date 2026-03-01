@@ -41,8 +41,10 @@ use serde::{Deserialize, Serialize};
 
 /// Session state
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SessionState {
     /// Session created but not started
+    #[default]
     Created,
     /// Session is starting up
     Starting,
@@ -107,11 +109,6 @@ impl SessionState {
     }
 }
 
-impl Default for SessionState {
-    fn default() -> Self {
-        Self::Created
-    }
-}
 
 #[cfg(test)]
 mod tests {

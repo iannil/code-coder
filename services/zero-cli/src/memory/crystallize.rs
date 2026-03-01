@@ -107,8 +107,7 @@ impl Crystallizer {
         // Determine language from last attempt
         let language = attempts
             .last()
-            .map(|a| a.language)
-            .unwrap_or(Language::Python);
+            .map_or(Language::Python, |a| a.language);
 
         // Generate tags for searchability
         let tags = self.generate_tags(problem, &errors);

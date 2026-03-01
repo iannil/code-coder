@@ -163,7 +163,7 @@ async fn handle_restart(
     let service_exists = manager
         .status()
         .iter()
-        .any(|s| s.name == name || s.name == format!("zero-{}", name));
+        .any(|s| s.name == name || s.name == format!("zero-{name}"));
 
     if !service_exists {
         return (
@@ -202,7 +202,7 @@ async fn handle_stop(State(state): State<ApiState>, Path(name): Path<String>) ->
     let service_exists = manager
         .status()
         .iter()
-        .any(|s| s.name == name || s.name == format!("zero-{}", name));
+        .any(|s| s.name == name || s.name == format!("zero-{name}"));
 
     if !service_exists {
         return (
@@ -242,7 +242,7 @@ async fn handle_start(
     let service_exists = manager
         .status()
         .iter()
-        .any(|s| s.name == name || s.name == format!("zero-{}", name));
+        .any(|s| s.name == name || s.name == format!("zero-{name}"));
 
     if !service_exists {
         return (

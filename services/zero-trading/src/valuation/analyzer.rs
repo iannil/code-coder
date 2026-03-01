@@ -453,7 +453,7 @@ fn calculate_pe_statistics(pe_values: &[f64]) -> (f64, f64, f64, f64, f64) {
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
     let len = sorted.len();
-    let median = if len % 2 == 0 {
+    let median = if len.is_multiple_of(2) {
         (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
     } else {
         sorted[len / 2]

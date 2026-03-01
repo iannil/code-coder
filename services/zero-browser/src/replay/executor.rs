@@ -183,17 +183,14 @@ impl ReplayExecutor {
 
         // Use pattern auth (would need credential lookup in real implementation)
         if let Some(ref auth) = pattern.auth {
-            match auth {
-                AuthPattern::Bearer { token_source } => {
-                    // In real implementation, resolve token_source
-                    if token_source != "dynamic" {
-                        return Err(BrowserError::ReplayFailed {
-                            pattern_id: pattern.id.clone(),
-                            reason: "Auth token required but not provided".to_string(),
-                        });
-                    }
+            if let AuthPattern::Bearer { token_source } = auth {
+                // In real implementation, resolve token_source
+                if token_source != "dynamic" {
+                    return Err(BrowserError::ReplayFailed {
+                        pattern_id: pattern.id.clone(),
+                        reason: "Auth token required but not provided".to_string(),
+                    });
                 }
-                _ => {}
             }
         }
 

@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use zero_common::{build_client, ClientCategory};
 
 use crate::hands::state::ExecutionStatus;

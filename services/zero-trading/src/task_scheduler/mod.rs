@@ -200,7 +200,7 @@ impl TaskScheduler {
 
         // A-share trading hours: 9:15-15:00
         (hour == 9 && minute >= 15)
-            || (hour >= 10 && hour < 15)
+            || (10..15).contains(&hour)
             || (hour == 15 && minute == 0)
     }
 }

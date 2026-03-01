@@ -9,7 +9,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 use zero_common::{build_client, ClientCategory, TimeoutConfig};
 
 use crate::github::GitHubClient;

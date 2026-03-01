@@ -186,8 +186,8 @@ async fn list_patterns(
     let filtered: Vec<&ApiPattern> = patterns
         .values()
         .filter(|p| {
-            query.host.as_ref().map_or(true, |h| &p.host == h)
-                && query.method.as_ref().map_or(true, |m| &p.method == m)
+            query.host.as_ref().is_none_or(|h| &p.host == h)
+                && query.method.as_ref().is_none_or(|m| &p.method == m)
         })
         .collect();
 
@@ -207,7 +207,7 @@ async fn get_pattern(
     let patterns = state.patterns.read().await;
     let pattern = patterns
         .get(&id)
-        .ok_or_else(|| BrowserError::PatternNotFound(id))?;
+        .ok_or(BrowserError::PatternNotFound(id))?;
 
     Ok(Json(serde_json::json!({
         "success": true,

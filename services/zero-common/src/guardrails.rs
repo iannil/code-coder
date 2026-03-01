@@ -23,7 +23,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use zero_common::guardrails::{Guardrails, Action, RiskLevel};
+//! use zero_common::guardrails::{Guardrails, Action, RiskLevel, Decision};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let guardrails = Guardrails::new()
@@ -61,12 +61,14 @@ use uuid::Uuid;
 /// Risk level for an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RiskLevel {
     /// No confirmation needed (read-only, analysis)
     Safe,
     /// Log only (code review, suggestions)
     Low,
     /// Notify user (minor code changes, file edits)
+    #[default]
     Medium,
     /// Require confirmation (external API calls, purchases)
     High,
@@ -92,11 +94,6 @@ impl RiskLevel {
     }
 }
 
-impl Default for RiskLevel {
-    fn default() -> Self {
-        RiskLevel::Medium
-    }
-}
 
 // ============================================================================
 // Action Types

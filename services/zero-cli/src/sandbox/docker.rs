@@ -26,12 +26,12 @@ pub struct DockerSandbox {
 }
 
 impl DockerSandbox {
-    /// Create a new DockerSandbox with default configuration.
+    /// Create a new `DockerSandbox` with default configuration.
     pub async fn new() -> Result<Self> {
         Self::with_config(SandboxConfig::default()).await
     }
 
-    /// Create a new DockerSandbox with custom configuration.
+    /// Create a new `DockerSandbox` with custom configuration.
     pub async fn with_config(config: SandboxConfig) -> Result<Self> {
         let client =
             Docker::connect_with_local_defaults().context("Failed to connect to Docker daemon")?;
@@ -196,7 +196,7 @@ impl DockerSandbox {
     ) -> Result<()> {
         // Use base64 encoding to safely pass code through shell
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, code);
-        let command = format!("echo '{}' | base64 -d > {}", encoded, filename);
+        let command = format!("echo '{encoded}' | base64 -d > {filename}");
 
         let create_options = CreateExecOptions {
             cmd: Some(vec![
@@ -252,8 +252,7 @@ impl DockerSandbox {
         Ok(info
             .state
             .and_then(|s| s.exit_code)
-            .map(|c| c as i32)
-            .unwrap_or(-1))
+            .map_or(-1, |c| c as i32))
     }
 
     /// Kill a running container.

@@ -85,8 +85,7 @@ pub fn load_modular_config(dir: Option<PathBuf>) -> Result<Value> {
     if let Some(secrets) = load_json_file(&cfg_dir.join("secrets.json"))? {
         if let Some(secrets_obj) = secrets.as_object() {
             if let Some(config_obj) = config.as_object_mut() {
-                // Fields that go to config.secrets
-                let secret_fields = ["llm", "channels", "external"];
+                // Secrets are now nested under config.secrets
                 let mut secrets_value = serde_json::Map::new();
 
                 for (key, value) in secrets_obj.iter() {

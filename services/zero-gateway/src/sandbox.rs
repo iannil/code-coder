@@ -1112,10 +1112,8 @@ impl Sandbox {
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?))
         })?;
-        for row in rows {
-            if let Ok((action_type, count)) = row {
-                by_action_type.insert(action_type, count);
-            }
+        for (action_type, count) in rows.flatten() {
+            by_action_type.insert(action_type, count);
         }
 
         // Count by day (last 30 days)
@@ -1130,10 +1128,8 @@ impl Sandbox {
                 count: row.get(1)?,
             })
         })?;
-        for row in rows {
-            if let Ok(day_count) = row {
-                by_day.push(day_count);
-            }
+        for day_count in rows.flatten() {
+            by_day.push(day_count);
         }
 
         // Recent blocked entries

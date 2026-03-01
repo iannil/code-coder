@@ -1780,6 +1780,10 @@ impl Config {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    // Mutex to serialize tests that modify environment variables
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     // ── Defaults ─────────────────────────────────────────────
 
@@ -2465,6 +2469,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_api_key() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
         assert!(config.api_key.is_none());
 
@@ -2477,6 +2482,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_api_key_fallback() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::remove_var("ZERO_BOT_API_KEY");
@@ -2489,6 +2495,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_provider() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::set_var("ZERO_BOT_PROVIDER", "anthropic");
@@ -2500,6 +2507,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_provider_fallback() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::remove_var("ZERO_BOT_PROVIDER");
@@ -2512,6 +2520,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_model() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::set_var("ZERO_BOT_MODEL", "gpt-4o");
@@ -2523,6 +2532,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_workspace() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::set_var("ZERO_BOT_WORKSPACE", "/custom/workspace");
@@ -2534,6 +2544,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_empty_values_ignored() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
         let original_provider = config.default_provider.clone();
 
@@ -2546,6 +2557,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_gateway_port() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
         assert_eq!(config.gateway.port, 3000);
 
@@ -2558,6 +2570,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_port_fallback() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::remove_var("ZERO_BOT_GATEWAY_PORT");
@@ -2570,6 +2583,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_gateway_host() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
         assert_eq!(config.gateway.host, "127.0.0.1");
 
@@ -2582,6 +2596,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_host_fallback() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::remove_var("ZERO_BOT_GATEWAY_HOST");
@@ -2594,6 +2609,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_temperature() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
 
         std::env::set_var("ZERO_BOT_TEMPERATURE", "0.5");
@@ -2605,9 +2621,10 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_temperature_out_of_range_ignored() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         // Clean up any leftover env vars from other tests
         std::env::remove_var("ZERO_BOT_TEMPERATURE");
-        
+
         let mut config = Config::default();
         let original_temp = config.default_temperature;
 
@@ -2624,6 +2641,7 @@ default_temperature = 0.7
 
     #[test]
     fn env_override_invalid_port_ignored() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let mut config = Config::default();
         let original_port = config.gateway.port;
 

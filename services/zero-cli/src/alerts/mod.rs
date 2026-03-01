@@ -232,6 +232,7 @@ pub struct MetricsSnapshot {
 
 /// State for a single rule (tracks when condition first became true).
 #[derive(Debug, Clone)]
+#[derive(Default)]
 struct RuleState {
     /// When the condition first became true.
     condition_start: Option<DateTime<Utc>>,
@@ -239,14 +240,6 @@ struct RuleState {
     last_alert: Option<DateTime<Utc>>,
 }
 
-impl Default for RuleState {
-    fn default() -> Self {
-        Self {
-            condition_start: None,
-            last_alert: None,
-        }
-    }
-}
 
 /// Alert fired event.
 #[derive(Debug, Clone, Serialize)]
@@ -283,7 +276,7 @@ impl AlertEngine {
 
     /// Fetch metrics from a service.
     async fn fetch_metrics(&self, _service: &str, port: u16) -> Option<MetricsSnapshot> {
-        let url = format!("http://127.0.0.1:{}/api/v1/metrics", port);
+        let url = format!("http://127.0.0.1:{port}/api/v1/metrics");
         match self.http_client.get(&url).timeout(std::time::Duration::from_secs(2)).send().await {
             Ok(resp) if resp.status().is_success() => {
                 resp.json::<MetricsSnapshot>().await.ok()
@@ -369,8 +362,7 @@ impl AlertEngine {
                         if elapsed >= rule.duration_secs {
                             // Check silence period
                             let should_alert = state.last_alert
-                                .map(|last| (now - last).num_seconds() >= self.config.silence_duration_secs)
-                                .unwrap_or(true);
+                                .is_none_or(|last| (now - last).num_seconds() >= self.config.silence_duration_secs);
 
                             if should_alert {
                                 let message = format_alert_message(
@@ -470,31 +462,27 @@ fn format_alert_message(
     match condition {
         ConditionType::ErrorRate => {
             format!(
-                "Error rate for {} is {:.1}% (threshold: {:.1}%)",
-                service, value, threshold
+                "Error rate for {service} is {value:.1}% (threshold: {threshold:.1}%)"
             )
         }
         ConditionType::P99Latency => {
             format!(
-                "P99 latency for {} is {:.0}ms (threshold: {:.0}ms)",
-                service, value, threshold
+                "P99 latency for {service} is {value:.0}ms (threshold: {threshold:.0}ms)"
             )
         }
         ConditionType::P95Latency => {
             format!(
-                "P95 latency for {} is {:.0}ms (threshold: {:.0}ms)",
-                service, value, threshold
+                "P95 latency for {service} is {value:.0}ms (threshold: {threshold:.0}ms)"
             )
         }
         ConditionType::ServiceDown => {
-            format!("Service {} is DOWN (unreachable)", service)
+            format!("Service {service} is DOWN (unreachable)")
         }
         ConditionType::MemoryUsage => {
             let value_mb = value / 1_048_576.0;
             let threshold_mb = threshold / 1_048_576.0;
             format!(
-                "Memory usage for {} is {:.0}MB (threshold: {:.0}MB)",
-                service, value_mb, threshold_mb
+                "Memory usage for {service} is {value_mb:.0}MB (threshold: {threshold_mb:.0}MB)"
             )
         }
     }

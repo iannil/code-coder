@@ -1,4 +1,4 @@
-//! Provider system for ZeroBot.
+//! Provider system for `ZeroBot`.
 //!
 //! This module provides LLM provider abstractions with retry and fallback support.
 //! Provider implementations are imported from `zero-gateway` and adapted to the local trait.
@@ -112,7 +112,7 @@ impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P>
 
         match self.inner.chat(request).await {
             Ok(response) => Ok(response.content),
-            Err(e) => anyhow::bail!("{}", e),
+            Err(e) => anyhow::bail!("{e}"),
         }
     }
 
@@ -122,8 +122,8 @@ impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P>
     }
 }
 
-/// Implement zero_agent::Provider for GatewayProviderAdapter.
-/// This allows CLI providers to be used with AgentExecutor.
+/// Implement `zero_agent::Provider` for `GatewayProviderAdapter`.
+/// This allows CLI providers to be used with `AgentExecutor`.
 #[async_trait]
 impl<P: zero_gateway::Provider + 'static> zero_agent::Provider for GatewayProviderAdapter<P> {
     fn name(&self) -> &str {
@@ -229,7 +229,7 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
     anyhow::anyhow!("{provider} API error ({status}): {sanitized}")
 }
 
-/// Create a gateway provider (returns Arc for use with ResilientProvider).
+/// Create a gateway provider (returns Arc for use with `ResilientProvider`).
 fn create_gateway_provider(
     name: &str,
     api_key: Option<&str>,

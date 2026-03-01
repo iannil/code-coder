@@ -1,4 +1,4 @@
-//! Channel adapters for ZeroBot messaging.
+//! Channel adapters for `ZeroBot` messaging.
 //!
 //! This module provides the core business logic for routing messages between
 //! IM channels and the agent executor.
@@ -369,8 +369,8 @@ pub fn handle_command(command: crate::ChannelCommands, config: &Config) -> Resul
 /// This verifies:
 /// - Telegram: bot token format and API connectivity
 /// - Feishu: app credentials format
-/// - WeChat Work: corp_id and secret format
-/// - DingTalk: app key/secret format
+/// - `WeChat` Work: `corp_id` and secret format
+/// - `DingTalk`: app key/secret format
 #[allow(clippy::too_many_lines)]
 pub async fn doctor_channels(config: Config) -> Result<()> {
     use std::time::Duration;
@@ -404,7 +404,7 @@ pub async fn doctor_channels(config: Config) -> Result<()> {
                         all_healthy = false;
                     }
                     Err(e) => {
-                        println!("⚠️  Network error: {}", e);
+                        println!("⚠️  Network error: {e}");
                         all_healthy = false;
                     }
                 }
@@ -496,10 +496,10 @@ pub async fn doctor_channels(config: Config) -> Result<()> {
         print!("  iMessage: ");
         #[cfg(target_os = "macos")]
         {
-            if !im.allowed_contacts.is_empty() {
-                println!("✅ Configured ({} contacts)", im.allowed_contacts.len());
-            } else {
+            if im.allowed_contacts.is_empty() {
                 println!("⚠️  No allowed contacts configured");
+            } else {
+                println!("✅ Configured ({} contacts)", im.allowed_contacts.len());
             }
         }
         #[cfg(not(target_os = "macos"))]
@@ -594,10 +594,10 @@ fn to_common_config(config: &Config) -> zero_common::config::Config {
 /// This function starts the zero-channels HTTP server which handles:
 /// - Telegram webhook/polling for bot messages
 /// - Feishu event callbacks
-/// - WeChat Work (企业微信) message callbacks
-/// - DingTalk (钉钉) robot callbacks
+/// - `WeChat` Work (企业微信) message callbacks
+/// - `DingTalk` (钉钉) robot callbacks
 ///
-/// Messages are forwarded to the CodeCoder API for processing.
+/// Messages are forwarded to the `CodeCoder` API for processing.
 #[allow(clippy::too_many_lines)]
 pub async fn start_channels(config: Config) -> Result<()> {
     println!("🐦‍🔥 ZeroBot Channel Server");

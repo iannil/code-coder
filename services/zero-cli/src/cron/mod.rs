@@ -135,9 +135,7 @@ pub fn handle_command(command: crate::CronCommands, config: &crate::config::Conf
         crate::CronCommands::List => {
             let jobs = client.list_tasks().map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to list tasks: {}. Is the workflow service running at {}?",
-                    e,
-                    workflow_endpoint
+                    "Failed to list tasks: {e}. Is the workflow service running at {workflow_endpoint}?"
                 )
             })?;
 
@@ -169,30 +167,26 @@ pub fn handle_command(command: crate::CronCommands, config: &crate::config::Conf
         } => {
             let id = client.add_task(&expression, &command).map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to add task: {}. Is the workflow service running at {}?",
-                    e,
-                    workflow_endpoint
+                    "Failed to add task: {e}. Is the workflow service running at {workflow_endpoint}?"
                 )
             })?;
 
-            println!("✅ Added cron job {}", id);
-            println!("  Expr: {}", expression);
-            println!("  Cmd : {}", command);
+            println!("✅ Added cron job {id}");
+            println!("  Expr: {expression}");
+            println!("  Cmd : {command}");
             Ok(())
         }
         crate::CronCommands::Remove { id } => {
             let removed = client.remove_task(&id).map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to remove task: {}. Is the workflow service running at {}?",
-                    e,
-                    workflow_endpoint
+                    "Failed to remove task: {e}. Is the workflow service running at {workflow_endpoint}?"
                 )
             })?;
 
             if removed {
-                println!("✅ Removed cron job {}", id);
+                println!("✅ Removed cron job {id}");
             } else {
-                anyhow::bail!("Cron job '{}' not found", id);
+                anyhow::bail!("Cron job '{id}' not found");
             }
             Ok(())
         }

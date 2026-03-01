@@ -7,6 +7,8 @@ use std::process::Stdio;
 use tokio::process::Command;
 use zero_common::{build_client, ClientCategory};
 
+use crate::dsl::{evaluate_expression, EvalContext};
+
 /// Workflow definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Workflow {
@@ -210,7 +212,62 @@ impl WorkflowExecutor {
         for step in &workflow.steps {
             let step_start = std::time::Instant::now();
 
-            // TODO: Evaluate condition using step_outputs
+            // Evaluate condition if specified
+            if let Some(ref condition) = step.condition {
+                let eval_context = build_eval_context(&context, &step_outputs, &workflow.vars);
+
+                match evaluate_expression(condition, &eval_context) {
+                    Ok(value) => {
+                        let should_run = match value {
+                            serde_json::Value::Bool(b) => b,
+                            serde_json::Value::Null => false,
+                            serde_json::Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+                            serde_json::Value::String(s) => !s.is_empty(),
+                            serde_json::Value::Array(a) => !a.is_empty(),
+                            serde_json::Value::Object(o) => !o.is_empty(),
+                        };
+
+                        if !should_run {
+                            tracing::info!(
+                                workflow = %workflow.name,
+                                step = %step.name,
+                                condition = %condition,
+                                "Skipping step: condition evaluated to false"
+                            );
+
+                            step_results.push(StepResult {
+                                name: step.name.clone(),
+                                status: ExecutionStatus::Success,
+                                output: Some(serde_json::json!({ "skipped": true, "reason": "condition_false" })),
+                                error: None,
+                                duration_ms: step_start.elapsed().as_millis() as u64,
+                            });
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            workflow = %workflow.name,
+                            step = %step.name,
+                            condition = %condition,
+                            error = %e,
+                            "Failed to evaluate step condition"
+                        );
+
+                        if !step.continue_on_error {
+                            overall_status = ExecutionStatus::Failed;
+                            step_results.push(StepResult {
+                                name: step.name.clone(),
+                                status: ExecutionStatus::Failed,
+                                output: None,
+                                error: Some(format!("Condition evaluation failed: {}", e)),
+                                duration_ms: step_start.elapsed().as_millis() as u64,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
 
             tracing::info!(
                 workflow = %workflow.name,
@@ -456,6 +513,30 @@ impl WorkflowExecutor {
     }
 }
 
+/// Build an evaluation context from the current execution state.
+fn build_eval_context(
+    event: &serde_json::Value,
+    step_outputs: &HashMap<String, serde_json::Value>,
+    vars: &HashMap<String, serde_json::Value>,
+) -> EvalContext {
+    let mut steps_map = serde_json::Map::new();
+    for (k, v) in step_outputs {
+        steps_map.insert(k.clone(), v.clone());
+    }
+
+    let mut vars_map = serde_json::Map::new();
+    for (k, v) in vars {
+        vars_map.insert(k.clone(), v.clone());
+    }
+
+    EvalContext {
+        event: event.clone(),
+        steps: serde_json::Value::Object(steps_map),
+        vars: serde_json::Value::Object(vars_map),
+        loop_vars: serde_json::Value::Null,
+    }
+}
+
 impl Default for WorkflowExecutor {
     fn default() -> Self {
         Self::new()
@@ -534,5 +615,62 @@ steps:
             .await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_workflow_condition_skip() {
+        let yaml = r#"
+name: conditional-workflow
+trigger:
+  type: manual
+steps:
+  - name: always-run
+    type: shell
+    command: "echo 'always'"
+  - name: skip-this
+    type: shell
+    command: "echo 'skipped'"
+    condition: "$event.should_run == true"
+  - name: run-this
+    type: shell
+    command: "echo 'conditional'"
+    condition: "$event.should_run == false"
+"#;
+
+        let workflow: Workflow = serde_yaml::from_str(yaml).unwrap();
+        let executor = WorkflowExecutor::new();
+        let context = serde_json::json!({ "should_run": false });
+
+        let result = executor.execute(&workflow, context).await.unwrap();
+
+        assert_eq!(result.status, ExecutionStatus::Success);
+        assert_eq!(result.steps.len(), 3);
+
+        // First step should run normally
+        assert_eq!(result.steps[0].status, ExecutionStatus::Success);
+        assert!(result.steps[0].output.as_ref().unwrap()["stdout"].as_str().unwrap().contains("always"));
+
+        // Second step should be skipped (condition false)
+        assert_eq!(result.steps[1].status, ExecutionStatus::Success);
+        assert!(result.steps[1].output.as_ref().unwrap()["skipped"].as_bool().unwrap());
+
+        // Third step should run (condition true)
+        assert_eq!(result.steps[2].status, ExecutionStatus::Success);
+        assert!(result.steps[2].output.as_ref().unwrap()["stdout"].as_str().unwrap().contains("conditional"));
+    }
+
+    #[test]
+    fn test_build_eval_context() {
+        let event = serde_json::json!({ "type": "push", "branch": "main" });
+        let mut step_outputs = HashMap::new();
+        step_outputs.insert("step1".to_string(), serde_json::json!({ "status": "success" }));
+        let mut vars = HashMap::new();
+        vars.insert("version".to_string(), serde_json::json!("1.0.0"));
+
+        let ctx = build_eval_context(&event, &step_outputs, &vars);
+
+        assert_eq!(ctx.event["type"], "push");
+        assert_eq!(ctx.steps["step1"]["status"], "success");
+        assert_eq!(ctx.vars["version"], "1.0.0");
     }
 }

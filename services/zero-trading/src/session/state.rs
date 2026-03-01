@@ -422,7 +422,7 @@ impl StateStore {
                 FROM positions WHERE id = ?1
                 "#,
                 params![id],
-                |row| Self::row_to_position(row),
+                Self::row_to_position,
             )
             .optional()?;
 
@@ -444,7 +444,7 @@ impl StateStore {
         )?;
 
         let positions = stmt
-            .query_map(params![session_id], |row| Self::row_to_position(row))?
+            .query_map(params![session_id], Self::row_to_position)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(positions)
@@ -465,7 +465,7 @@ impl StateStore {
         )?;
 
         let positions = stmt
-            .query_map(params![session_id], |row| Self::row_to_position(row))?
+            .query_map(params![session_id], Self::row_to_position)?
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(positions)

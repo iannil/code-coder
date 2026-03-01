@@ -132,9 +132,7 @@ pub async fn run_orchestrator(
     }
 
     // Start alert worker
-    let config_dir = config.config_path.parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".codecoder"));
+    let config_dir = config.config_path.parent().map_or_else(|| dirs::home_dir().unwrap_or_default().join(".codecoder"), std::path::Path::to_path_buf);
     handles.push(spawn_component_supervisor(
         "alerts",
         initial_backoff,
@@ -255,11 +253,11 @@ pub async fn run_orchestrator(
     };
 
     println!("🧠 ZeroBot daemon started (process orchestrator)");
-    println!("   Management API: http://{}:{}", host, MANAGEMENT_API_PORT);
+    println!("   Management API: http://{host}:{MANAGEMENT_API_PORT}");
     println!("   Managed services:");
-    println!("     • zero-gateway:  http://{}:{}", host, gateway_port);
-    println!("     • zero-channels: http://{}:{}", host, channels_port);
-    println!("     • zero-workflow: http://{}:{}", host, workflow_port);
+    println!("     • zero-gateway:  http://{host}:{gateway_port}");
+    println!("     • zero-channels: http://{host}:{channels_port}");
+    println!("     • zero-workflow: http://{host}:{workflow_port}");
     println!("   Components: state-writer{mcp_status}{heartbeat_status}");
     println!("   Press Ctrl+C to stop");
 

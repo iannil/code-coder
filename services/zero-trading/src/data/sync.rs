@@ -94,7 +94,7 @@ impl DataSynchronizer {
 
             // Only sync during reasonable hours (don't sync at 3am)
             let hour = Local::now().hour();
-            if hour >= 6 && hour <= 23 {
+            if (6..=23).contains(&hour) {
                 self.sync_all().await;
             } else {
                 debug!(hour, "Skipping sync outside active hours");

@@ -18,7 +18,6 @@ use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 use zero_common::config::Config;
 use zero_common::{build_client, ClientCategory};
 
@@ -623,7 +622,7 @@ impl MacroFilter {
         data: &MacroDataResponse,
     ) -> TradingBias {
         // High uncertainty - avoid trading
-        if risk_appetite < 20.0 || risk_appetite > 80.0 {
+        if !(20.0..=80.0).contains(&risk_appetite) {
             return TradingBias::AvoidTrading;
         }
 

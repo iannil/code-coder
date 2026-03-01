@@ -37,6 +37,46 @@ export namespace Filesystem {
     return !relative(parent, child).startsWith("..")
   }
 
+  /**
+   * Safely check if a child path is contained within a parent directory.
+   * Unlike `contains`, this resolves symlinks to prevent escape attacks.
+   *
+   * Security: Resolves both paths to their canonical form before comparison.
+   * - Prevents symlink escape (project symlink pointing outside)
+   * - Handles Windows cross-drive paths correctly
+   *
+   * @param parent - The parent directory (container)
+   * @param child - The child path to check
+   * @returns true if child is safely contained within parent
+   */
+  export async function containsSafe(parent: string, child: string): Promise<boolean> {
+    try {
+      // Resolve both paths to their canonical form
+      // This follows symlinks and normalizes the path
+      const [realParent, realChild] = await Promise.all([
+        fs.realpath(parent).catch(() => parent),
+        fs.realpath(child).catch(() => child),
+      ])
+
+      // On Windows, check for cross-drive access
+      if (process.platform === "win32") {
+        const parentDrive = realParent.match(/^([a-zA-Z]:)/)?.[1]?.toLowerCase()
+        const childDrive = realChild.match(/^([a-zA-Z]:)/)?.[1]?.toLowerCase()
+        if (parentDrive && childDrive && parentDrive !== childDrive) {
+          return false
+        }
+      }
+
+      // Check containment using the resolved paths
+      const rel = relative(realParent, realChild)
+      return !rel.startsWith("..") && !rel.startsWith("/")
+    } catch {
+      // If we can't resolve paths, fall back to lexical check
+      // This can happen if the file doesn't exist yet (write operations)
+      return contains(parent, child)
+    }
+  }
+
   export async function findUp(target: string, start: string, stop?: string) {
     let current = start
     const result = []

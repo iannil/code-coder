@@ -1,4 +1,4 @@
-//! Agent system for ZeroBot.
+//! Agent system for `ZeroBot`.
 //!
 //! This module provides the agent loop and context management.
 //! Core agent execution is imported from `zero-agent`.

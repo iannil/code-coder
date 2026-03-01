@@ -41,18 +41,15 @@ use serde::{Deserialize, Serialize};
 
 /// Trading mode for the loop
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum TradingMode {
     /// Paper trading (simulation)
+    #[default]
     Paper,
     /// Live trading (real orders)
     Live,
 }
 
-impl Default for TradingMode {
-    fn default() -> Self {
-        Self::Paper
-    }
-}
 
 /// A position being monitored by the trading loop
 #[derive(Debug, Clone, Serialize, Deserialize)]

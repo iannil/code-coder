@@ -203,7 +203,7 @@ impl ZeroClient {
     }
 
     async fn check_service_health(&self, endpoint: &str) -> Result<bool> {
-        let url = format!("{}/health", endpoint);
+        let url = format!("{endpoint}/health");
         let response = self.http.get(&url).send().await?;
         Ok(response.status().is_success())
     }

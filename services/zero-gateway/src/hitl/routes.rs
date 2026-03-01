@@ -114,16 +114,18 @@ async fn create_request(
     }
 
     // Check if renderer exists for the channel
-    let renderer = service.get_renderer(&request.channel);
-    if renderer.is_none() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ApprovalResponse::error(format!(
-                "Unsupported channel: {}",
-                request.channel
-            ))),
-        ));
-    }
+    let renderer = match service.get_renderer(&request.channel) {
+        Some(r) => r,
+        None => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ApprovalResponse::error(format!(
+                    "Unsupported channel: {}",
+                    request.channel
+                ))),
+            ));
+        }
+    };
 
     // Generate request ID and timestamps
     let now = Utc::now();
@@ -155,7 +157,6 @@ async fn create_request(
     }
 
     // Send approval card to IM channel
-    let renderer = renderer.unwrap();
     match renderer.send_approval_card(&approval, &request.channel).await {
         Ok(message_id) => {
             // Update the stored request with message ID

@@ -12,19 +12,19 @@
 //!
 //! The trait is designed to support additional runtimes when needed:
 //!
-//! - **DockerRuntime**: For sandboxed execution of untrusted agent code.
+//! - **`DockerRuntime`**: For sandboxed execution of untrusted agent code.
 //!   Would have restricted shell access and isolated filesystem.
 //!
-//! - **WorkersRuntime**: For Cloudflare Workers deployment.
+//! - **`WorkersRuntime`**: For Cloudflare Workers deployment.
 //!   No shell or filesystem access, limited memory budget.
 //!
-//! - **EmbeddedRuntime**: For resource-constrained devices.
+//! - **`EmbeddedRuntime`**: For resource-constrained devices.
 //!   Strict memory budgets, no long-running process support.
 //!
 //! # When to Add New Runtimes
 //!
 //! Add a new runtime implementation when:
-//! 1. Sandboxing untrusted agent code is required (DockerRuntime)
+//! 1. Sandboxing untrusted agent code is required (`DockerRuntime`)
 //! 2. Deploying to a new platform with different capabilities
 //! 3. Implementing resource isolation for multi-tenant scenarios
 

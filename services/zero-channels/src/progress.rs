@@ -515,7 +515,7 @@ impl ImProgressHandler {
             // WebSearch results
             if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
                 if results.is_empty() {
-                    return format!("🌐 搜索完成，未找到结果");
+                    return "🌐 搜索完成，未找到结果".to_string();
                 }
 
                 let mut text = String::from("## 搜索结果\n\n");
@@ -572,7 +572,7 @@ impl ImProgressHandler {
         // Use send_direct to avoid the pending entry being removed
         let result = self
             .router
-            .send_direct(msg.channel_type.clone(), msg.channel_id.clone(), content)
+            .send_direct(msg.channel_type, msg.channel_id.clone(), content)
             .await;
 
         if !result.success {
@@ -772,7 +772,7 @@ impl ProgressHandler for ImProgressHandler {
         let result = self
             .router
             .send_direct(
-                msg.channel_type.clone(),
+                msg.channel_type,
                 msg.channel_id.clone(),
                 OutgoingContent::Text { text: display_thought },
             )
@@ -928,7 +928,7 @@ impl ProgressHandler for ImProgressHandler {
         let content = OutgoingContent::Text { text };
         let result = self
             .router
-            .send_direct(msg.channel_type.clone(), msg.channel_id.clone(), content)
+            .send_direct(msg.channel_type, msg.channel_id.clone(), content)
             .await;
 
         // Track send result
@@ -1145,7 +1145,7 @@ impl ProgressHandler for ImProgressHandler {
         // Use send_direct to avoid pending entry issues
         let result = self
             .router
-            .send_direct(msg.channel_type.clone(), msg.channel_id.clone(), content)
+            .send_direct(msg.channel_type, msg.channel_id.clone(), content)
             .await;
 
         // Log final state before cleanup

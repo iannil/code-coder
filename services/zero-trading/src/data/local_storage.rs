@@ -713,10 +713,8 @@ impl LocalStorage {
 
         let rows = stmt.query_map(params![symbol, years * 4], Self::row_to_financial)?;
         let mut results = Vec::new();
-        for row in rows {
-            if let Ok(data) = row {
-                results.push(data);
-            }
+        for data in rows.flatten() {
+            results.push(data);
         }
         Ok(results)
     }
@@ -899,10 +897,8 @@ impl LocalStorage {
         })?;
 
         let mut results = Vec::new();
-        for row in rows {
-            if let Ok(data) = row {
-                results.push(data);
-            }
+        for data in rows.flatten() {
+            results.push(data);
         }
         Ok(results)
     }
@@ -1211,10 +1207,8 @@ impl LocalStorage {
 
         let rows = stmt.query_map([], Self::row_to_stock_info)?;
         let mut stocks = Vec::new();
-        for row in rows {
-            if let Ok(stock) = row {
-                stocks.push(stock);
-            }
+        for stock in rows.flatten() {
+            stocks.push(stock);
         }
         Ok(stocks)
     }
@@ -1256,10 +1250,8 @@ impl LocalStorage {
         let rows = stmt.query_map([], Self::row_to_stock_info)?;
 
         let mut stocks = Vec::new();
-        for row in rows {
-            if let Ok(stock) = row {
-                stocks.push(stock);
-            }
+        for stock in rows.flatten() {
+            stocks.push(stock);
         }
         Ok(stocks)
     }
@@ -1470,10 +1462,8 @@ impl LocalStorage {
         let rows = stmt.query_map([], Self::row_to_financial_statement)?;
 
         let mut results = Vec::new();
-        for row in rows {
-            if let Ok(data) = row {
-                results.push(data);
-            }
+        for data in rows.flatten() {
+            results.push(data);
         }
         Ok(results)
     }
@@ -1488,10 +1478,8 @@ impl LocalStorage {
 
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut symbols: Vec<String> = Vec::new();
-        for row in rows {
-            if let Ok(symbol) = row {
-                symbols.push(symbol);
-            }
+        for symbol in rows.flatten() {
+            symbols.push(symbol);
         }
         Ok(symbols)
     }
@@ -1680,10 +1668,8 @@ impl LocalStorage {
         let rows = stmt.query_map([], Self::row_to_valuation_metrics)?;
 
         let mut results = Vec::new();
-        for row in rows {
-            if let Ok(data) = row {
-                results.push(data);
-            }
+        for data in rows.flatten() {
+            results.push(data);
         }
         Ok(results)
     }
@@ -1698,10 +1684,8 @@ impl LocalStorage {
 
         let rows = stmt.query_map([], |row| row.get(0))?;
         let mut symbols: Vec<String> = Vec::new();
-        for row in rows {
-            if let Ok(symbol) = row {
-                symbols.push(symbol);
-            }
+        for symbol in rows.flatten() {
+            symbols.push(symbol);
         }
         Ok(symbols)
     }
@@ -1831,7 +1815,7 @@ impl LocalStorage {
         let db = self.db.lock().await;
 
         let date_filter = if let Some(d) = date {
-            format!("AND date = '{}'", d.to_string())
+            format!("AND date = '{}'", d)
         } else {
             String::new()
         };
@@ -1905,10 +1889,8 @@ impl LocalStorage {
         let rows = stmt.query_map(params![symbol], Self::row_to_valuation_statistics)?;
 
         let mut results = Vec::new();
-        for row in rows {
-            if let Ok(stats) = row {
-                results.push(stats);
-            }
+        for stats in rows.flatten() {
+            results.push(stats);
         }
         Ok(results)
     }

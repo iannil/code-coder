@@ -1801,7 +1801,7 @@ impl LixinAdapter {
                 .cloned()
                 .unwrap_or_else(|| format!("{}.UNKNOWN", item.stock_code));
 
-            let date = NaiveDate::parse_from_str(&item.date.split('T').next().unwrap_or(&item.date), "%Y-%m-%d")
+            let date = NaiveDate::parse_from_str(item.date.split('T').next().unwrap_or(&item.date), "%Y-%m-%d")
                 .unwrap_or(target_date);
 
             results.push(ValuationMetrics {
@@ -2665,9 +2665,9 @@ impl ValuationMetrics {
     /// Check if valuation is attractive based on common thresholds
     pub fn is_value_attractive(&self) -> bool {
         // Simple value screen: PE < 15, PB < 2, dividend yield > 3%
-        let pe_ok = self.pe_ttm.map_or(false, |pe| pe > 0.0 && pe < 15.0);
-        let pb_ok = self.pb.map_or(false, |pb| pb > 0.0 && pb < 2.0);
-        let div_ok = self.dividend_yield.map_or(false, |dy| dy > 3.0);
+        let pe_ok = self.pe_ttm.is_some_and(|pe| pe > 0.0 && pe < 15.0);
+        let pb_ok = self.pb.is_some_and(|pb| pb > 0.0 && pb < 2.0);
+        let div_ok = self.dividend_yield.is_some_and(|dy| dy > 3.0);
 
         pe_ok && pb_ok && div_ok
     }
@@ -2747,12 +2747,12 @@ pub struct ValuationStatistics {
 impl ValuationStatistics {
     /// Check if current value is in low valuation zone (bottom 20%)
     pub fn is_low_valuation(&self) -> bool {
-        self.percentile.map_or(false, |p| p < 20.0)
+        self.percentile.is_some_and(|p| p < 20.0)
     }
 
     /// Check if current value is in high valuation zone (top 20%)
     pub fn is_high_valuation(&self) -> bool {
-        self.percentile.map_or(false, |p| p > 80.0)
+        self.percentile.is_some_and(|p| p > 80.0)
     }
 
     /// Get valuation zone description
@@ -2959,12 +2959,12 @@ pub struct BlockDeal {
 impl BlockDeal {
     /// Returns true if the trade was at a discount (below market price)
     pub fn is_discount(&self) -> bool {
-        self.discount_rate.map_or(false, |r| r > 0.0)
+        self.discount_rate.is_some_and(|r| r > 0.0)
     }
 
     /// Returns true if the trade was at a premium (above market price)
     pub fn is_premium(&self) -> bool {
-        self.discount_rate.map_or(false, |r| r < 0.0)
+        self.discount_rate.is_some_and(|r| r < 0.0)
     }
 
     /// Get discount/premium percentage as absolute value

@@ -129,7 +129,7 @@ impl ScreenerReport {
                 fr.stage, fr.passed, fr.eliminated, fr.elimination_rate
             ));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         // Top stocks table
         md.push_str("## 优选股票\n\n");
@@ -150,7 +150,7 @@ impl ScreenerReport {
                 stock.financials.dividend_yield.unwrap_or(0.0),
             ));
         }
-        md.push_str("\n");
+        md.push('\n');
 
         // Deep analysis results (if any)
         let with_deep: Vec<_> = self.result.stocks.iter()
@@ -175,7 +175,7 @@ impl ScreenerReport {
                     ));
                 }
             }
-            md.push_str("\n");
+            md.push('\n');
         }
 
         // Footer
@@ -210,7 +210,7 @@ impl ScreenerReport {
         msg.push_str("*🏆 优选股票 TOP 20*\n\n");
 
         for (i, stock) in self.result.stocks.iter().take(max_stocks).enumerate() {
-            let deep_indicator = if stock.deep_analysis.as_ref().map_or(false, |d| d.is_printing_machine) {
+            let deep_indicator = if stock.deep_analysis.as_ref().is_some_and(|d| d.is_printing_machine) {
                 " 🖨️"
             } else {
                 ""

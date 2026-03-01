@@ -14,6 +14,8 @@ import { jsonResponse, errorResponse } from "../middleware"
 import { Provider } from "../../../provider/provider"
 import { generateText } from "ai"
 import { randomUUID } from "node:crypto"
+import os from "os"
+import path from "path"
 
 // ============================================================================
 // Types
@@ -103,12 +105,92 @@ interface VoteRequest {
 }
 
 // ============================================================================
-// In-memory History Storage (for development)
-// TODO: Persist to file or database for production
+// File-backed History Storage
 // ============================================================================
 
-const comparisonHistory: Map<string, ComparisonHistoryEntry> = new Map()
 const MAX_HISTORY_SIZE = 100
+const HISTORY_FILE_NAME = "compare-history.json"
+
+/** Get the path to the history file */
+function getHistoryFilePath(): string {
+  const dataDir = path.join(os.homedir(), ".codecoder", "data")
+  return path.join(dataDir, HISTORY_FILE_NAME)
+}
+
+/** In-memory cache of comparison history */
+let comparisonHistoryCache: Map<string, ComparisonHistoryEntry> | null = null
+let historyLoadPromise: Promise<void> | null = null
+
+/** Load history from disk (lazy, cached) */
+async function loadHistory(): Promise<Map<string, ComparisonHistoryEntry>> {
+  if (comparisonHistoryCache !== null) {
+    return comparisonHistoryCache
+  }
+
+  // Avoid concurrent loads
+  if (historyLoadPromise) {
+    await historyLoadPromise
+    return comparisonHistoryCache!
+  }
+
+  historyLoadPromise = (async () => {
+    comparisonHistoryCache = new Map()
+    const filePath = getHistoryFilePath()
+
+    try {
+      const file = Bun.file(filePath)
+      if (await file.exists()) {
+        const data = await file.json()
+        if (Array.isArray(data)) {
+          for (const entry of data) {
+            comparisonHistoryCache.set(entry.id, entry)
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Failed to load comparison history:", error)
+    }
+  })()
+
+  await historyLoadPromise
+  historyLoadPromise = null
+  return comparisonHistoryCache!
+}
+
+/** Save history to disk */
+async function saveHistory(): Promise<void> {
+  const history = await loadHistory()
+  const filePath = getHistoryFilePath()
+  const dataDir = path.dirname(filePath)
+
+  try {
+    // Ensure data directory exists
+    await Bun.write(
+      path.join(dataDir, ".keep"),
+      ""
+    ).catch(() => {})
+
+    // Convert Map to array for JSON serialization
+    const entries = Array.from(history.values())
+    await Bun.write(filePath, JSON.stringify(entries, null, 2))
+  } catch (error) {
+    console.error("Failed to save comparison history:", error)
+  }
+}
+
+/** Add entry to history with persistence */
+async function addToHistory(entry: ComparisonHistoryEntry): Promise<void> {
+  const history = await loadHistory()
+
+  // Enforce max history size (remove oldest entries)
+  if (history.size >= MAX_HISTORY_SIZE) {
+    const oldestKey = history.keys().next().value
+    if (oldestKey) history.delete(oldestKey)
+  }
+
+  history.set(entry.id, entry)
+  await saveHistory()
+}
 
 // ============================================================================
 // Request Body Reader
@@ -251,13 +333,8 @@ export async function compare(req: HttpRequest, _params: RouteParams): Promise<H
       ratings: {},
     }
 
-    // Enforce max history size (remove oldest entries)
-    if (comparisonHistory.size >= MAX_HISTORY_SIZE) {
-      const oldestKey = comparisonHistory.keys().next().value
-      if (oldestKey) comparisonHistory.delete(oldestKey)
-    }
-
-    comparisonHistory.set(historyEntry.id, historyEntry)
+    // Add to history with persistence
+    await addToHistory(historyEntry)
 
     return jsonResponse({
       success: true,
@@ -349,8 +426,10 @@ export async function getCompareHistory(req: HttpRequest, _params: RouteParams):
     const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 100)
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10)
 
+    const history = await loadHistory()
+
     // Convert to array and sort by timestamp (newest first)
-    const entries = Array.from(comparisonHistory.values())
+    const entries = Array.from(history.values())
       .sort((a, b) => b.timestamp - a.timestamp)
       .slice(offset, offset + limit)
 
@@ -371,7 +450,7 @@ export async function getCompareHistory(req: HttpRequest, _params: RouteParams):
       success: true,
       data: {
         items,
-        total: comparisonHistory.size,
+        total: history.size,
         limit,
         offset,
       },
@@ -394,7 +473,8 @@ export async function getCompareEntry(req: HttpRequest, params: RouteParams): Pr
       return errorResponse("Comparison ID is required", 400)
     }
 
-    const entry = comparisonHistory.get(id)
+    const history = await loadHistory()
+    const entry = history.get(id)
     if (!entry) {
       return errorResponse("Comparison not found", 404)
     }
@@ -425,7 +505,8 @@ export async function voteForModel(req: HttpRequest, params: RouteParams): Promi
       return errorResponse("Comparison ID is required", 400)
     }
 
-    const entry = comparisonHistory.get(id)
+    const history = await loadHistory()
+    const entry = history.get(id)
     if (!entry) {
       return errorResponse("Comparison not found", 404)
     }
@@ -454,8 +535,9 @@ export async function voteForModel(req: HttpRequest, params: RouteParams): Promi
       entry.ratings[input.model].push(rating)
     }
 
-    // Update the entry
-    comparisonHistory.set(id, entry)
+    // Update the entry and persist
+    history.set(id, entry)
+    await saveHistory()
 
     return jsonResponse({
       success: true,
@@ -484,11 +566,13 @@ export async function deleteCompareEntry(req: HttpRequest, params: RouteParams):
       return errorResponse("Comparison ID is required", 400)
     }
 
-    if (!comparisonHistory.has(id)) {
+    const history = await loadHistory()
+    if (!history.has(id)) {
       return errorResponse("Comparison not found", 404)
     }
 
-    comparisonHistory.delete(id)
+    history.delete(id)
+    await saveHistory()
 
     return jsonResponse({
       success: true,

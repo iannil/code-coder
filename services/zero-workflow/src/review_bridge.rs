@@ -16,7 +16,6 @@ use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
 use crate::github::{self, GitHubClient};
 use crate::gitlab::{self, GitLabClient};

@@ -11,8 +11,9 @@
 //!
 //! # Example
 //!
-//! ```no_run
-//! use zero_workflow::hands::autonomous_bridge::{AutonomousBridge, AutonomousRequest, AutonomyLevel, ResourceBudget};
+//! ```ignore
+//! use zero_workflow::hands::autonomous_bridge::{AutonomousBridge, AutonomousRequest, ResourceBudget};
+//! use zero_workflow::hands::AutonomyLevel;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let bridge = AutonomousBridge::new("http://127.0.0.1:4400".to_string());

@@ -108,6 +108,20 @@ export const Instance = {
     if (Instance.worktree === "/") return false
     return Filesystem.contains(Instance.worktree, filepath)
   },
+  /**
+   * Safely check if a path is within the project boundary.
+   * Unlike containsPath, this resolves symlinks to prevent escape attacks
+   * and correctly handles Windows cross-drive paths.
+   *
+   * Use this for security-critical file operations (read, write, list).
+   */
+  async containsPathSafe(filepath: string): Promise<boolean> {
+    if (await Filesystem.containsSafe(Instance.directory, filepath)) return true
+    // Non-git projects set worktree to "/" which would match ANY absolute path.
+    // Skip worktree check in this case to preserve external_directory permissions.
+    if (Instance.worktree === "/") return false
+    return Filesystem.containsSafe(Instance.worktree, filepath)
+  },
   state<S>(init: () => S, dispose?: (state: Awaited<S>) => Promise<void>): () => S {
     return State.create(() => Instance.directory, init, dispose)
   },

@@ -152,7 +152,7 @@ impl StockDeepDiveReport {
             for highlight in &self.highlights {
                 md.push_str(&format!("- {}\n", highlight));
             }
-            md.push_str("\n");
+            md.push('\n');
         }
 
         // Financial Quality
@@ -205,7 +205,7 @@ impl StockDeepDiveReport {
             for risk in &self.risks {
                 md.push_str(&format!("- ⚠️ {}\n", risk));
             }
-            md.push_str("\n");
+            md.push('\n');
         }
 
         // Recommendation
@@ -312,7 +312,7 @@ impl PortfolioReviewReport {
             for trim in &self.allocation.trim_candidates {
                 md.push_str(&format!("- {}: 减仓{}% ({})\n", trim.symbol, trim.trim_pct as u32, trim.reason));
             }
-            md.push_str("\n");
+            md.push('\n');
         }
 
         if !self.allocation.add_candidates.is_empty() {
@@ -320,7 +320,7 @@ impl PortfolioReviewReport {
             for add in &self.allocation.add_candidates {
                 md.push_str(&format!("- {}: 加仓{:.0} ({})\n", add.symbol, add.suggested_amount, add.reason));
             }
-            md.push_str("\n");
+            md.push('\n');
         }
 
         // Observations

@@ -631,8 +631,8 @@ impl CodeCoderBridge {
         // Use cleaned_text for all further processing (debug flag removed)
         let text = cleaned_text.as_str();
 
-        // Check if this is a capture request (highest priority for capture-related messages)
-        if let Some(ref capture_bridge) = self.capture_bridge {
+        // Check if capture bridge is configured (highest priority for capture-related messages)
+        if self.capture_bridge.is_some() {
             tracing::info!(
                 message_id = %message.id,
                 chat_id = %message.channel_id,
@@ -645,14 +645,14 @@ impl CodeCoderBridge {
 
         // Check if this is a capture request (highest priority for capture-related messages)
         if let Some(ref capture_bridge) = self.capture_bridge {
-            if capture_bridge.is_capturable(&message) && capture_bridge.is_capture_request(&message)
+            if capture_bridge.is_capturable(message) && capture_bridge.is_capture_request(message)
             {
                 tracing::info!(
                     message_id = %message.id,
                     "Detected capture request, processing asset capture"
                 );
 
-                match capture_bridge.capture(&message).await {
+                match capture_bridge.capture(message).await {
                     Ok(asset) => {
                         let formatted = capture_bridge.format_capture_response(&asset);
                         let content = OutgoingContent::Markdown { text: formatted };
@@ -681,13 +681,13 @@ impl CodeCoderBridge {
         }
 
         // Check if this is a feasibility question
-        if Self::is_feasibility_question(&text) {
+        if Self::is_feasibility_question(text) {
             tracing::info!(
                 message_id = %message.id,
                 "Detected feasibility question, routing to assessment API"
             );
 
-            match self.call_feasibility(&text).await {
+            match self.call_feasibility(text).await {
                 Ok(resp) if resp.success && resp.data.is_some() => {
                     let data = resp.data.unwrap();
                     let formatted = Self::format_feasibility_response(&data);
@@ -717,7 +717,7 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat_with_agent(&message, &text, None).await?;
+                    self.process_chat_with_agent(message, text, None).await?;
                 }
             }
 
@@ -725,7 +725,7 @@ impl CodeCoderBridge {
         }
 
         // Check if this is an A/B test request
-        if let Some((models, prompt)) = Self::is_ab_test_request(&text) {
+        if let Some((models, prompt)) = Self::is_ab_test_request(text) {
             tracing::info!(
                 message_id = %message.id,
                 models = ?models,
@@ -761,7 +761,7 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat_with_agent(&message, &text, None).await?;
+                    self.process_chat_with_agent(message, text, None).await?;
                 }
             }
 
@@ -769,7 +769,7 @@ impl CodeCoderBridge {
         }
 
         // Check if this is a knowledge base query
-        if let Some(query) = Self::is_knowledge_question(&text) {
+        if let Some(query) = Self::is_knowledge_question(text) {
             tracing::info!(
                 message_id = %message.id,
                 query = %query,
@@ -805,7 +805,7 @@ impl CodeCoderBridge {
 
                     // Fallback to regular chat
                     tracing::info!("Falling back to regular chat API");
-                    self.process_chat_with_agent(&message, &text, None).await?;
+                    self.process_chat_with_agent(message, text, None).await?;
                 }
             }
 
@@ -813,7 +813,7 @@ impl CodeCoderBridge {
         }
 
         // Check if this is a help request for available agents
-        if Self::is_agent_help_request(&text) {
+        if Self::is_agent_help_request(text) {
             tracing::info!(
                 message_id = %message.id,
                 "Detected agent help request, returning agent list"
@@ -835,7 +835,7 @@ impl CodeCoderBridge {
         }
 
         // Check if this is an agent command (@agent_name)
-        if let Some((agent, prompt)) = Self::parse_agent_command(&text) {
+        if let Some((agent, prompt)) = Self::parse_agent_command(text) {
             tracing::info!(
                 message_id = %message.id,
                 agent = %agent,
@@ -843,14 +843,14 @@ impl CodeCoderBridge {
             );
 
             // Use streaming for agent commands that are likely to be slow
-            if self.should_use_streaming(&message, Some(&agent)) {
-                return self.process_streaming_chat(&message, &prompt, Some(agent), debug_mode).await;
+            if self.should_use_streaming(message, Some(&agent)) {
+                return self.process_streaming_chat(message, &prompt, Some(agent), debug_mode).await;
             } else {
                 // For non-streaming, handle debug mode separately
                 if debug_mode {
-                    return self.process_chat_with_agent_debug(&message, &prompt, Some(agent)).await;
+                    return self.process_chat_with_agent_debug(message, &prompt, Some(agent)).await;
                 } else {
-                    return self.process_chat_with_agent(&message, &prompt, Some(agent)).await;
+                    return self.process_chat_with_agent(message, &prompt, Some(agent)).await;
                 }
             }
         }
@@ -862,7 +862,7 @@ impl CodeCoderBridge {
         // Auto-route to recommended agent if no explicit agent specified
         let recommended_agent = if agent_from_meta.is_none() {
             // No explicit agent, try to recommend based on message content
-            self.call_recommend_agent(&text).await
+            self.call_recommend_agent(text).await
         } else {
             // Explicit agent specified, skip recommendation
             None
@@ -882,14 +882,14 @@ impl CodeCoderBridge {
 
         // Check if streaming should be used
         // Note: debug_mode and text (cleaned) are already extracted at the start of the function
-        if self.should_use_streaming(&message, final_agent.as_deref()) {
-            self.process_streaming_chat(&message, text, final_agent, debug_mode).await
+        if self.should_use_streaming(message, final_agent.as_deref()) {
+            self.process_streaming_chat(message, text, final_agent, debug_mode).await
         } else {
             // For non-streaming mode, we still need to handle debug flag by appending it to the response
             if debug_mode {
-                self.process_chat_with_agent_debug(&message, text, final_agent).await
+                self.process_chat_with_agent_debug(message, text, final_agent).await
             } else {
-                self.process_chat_with_agent(&message, text, final_agent).await
+                self.process_chat_with_agent(message, text, final_agent).await
             }
         }
     }
@@ -1853,10 +1853,10 @@ impl CodeCoderBridge {
 
         match command {
             SessionCommand::New => {
-                self.call_clear_conversation(&message, &conversation_id).await
+                self.call_clear_conversation(message, &conversation_id).await
             }
             SessionCommand::Compact => {
-                self.call_compact_conversation(&message, &conversation_id).await
+                self.call_compact_conversation(message, &conversation_id).await
             }
         }
     }

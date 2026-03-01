@@ -412,9 +412,7 @@ impl PyramidPlan {
     /// Get next tranche to execute (if price condition met).
     pub fn next_tranche(&self, current_price: f64) -> Option<&PyramidTranche> {
         self.tranches
-            .iter()
-            .filter(|t| !t.executed && current_price <= t.trigger_price)
-            .next()
+            .iter().find(|t| !t.executed && current_price <= t.trigger_price)
     }
 }
 

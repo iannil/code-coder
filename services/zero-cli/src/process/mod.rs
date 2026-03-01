@@ -124,11 +124,11 @@ impl ManagedProcess {
             Some(child) => match child.try_wait() {
                 Ok(None) => true, // Still running
                 Ok(Some(status)) => {
-                    self.last_error = Some(format!("Process exited with {}", status));
+                    self.last_error = Some(format!("Process exited with {status}"));
                     false
                 }
                 Err(e) => {
-                    self.last_error = Some(format!("Failed to check process: {}", e));
+                    self.last_error = Some(format!("Failed to check process: {e}"));
                     false
                 }
             },
@@ -296,7 +296,7 @@ impl HealthChecker {
 
     /// Check if a service is healthy via HTTP.
     pub async fn check(&self, host: &str, port: u16) -> bool {
-        let url = format!("http://{}:{}/health", host, port);
+        let url = format!("http://{host}:{port}/health");
         match self.client.get(&url).send().await {
             Ok(resp) => resp.status().is_success(),
             Err(_) => false,

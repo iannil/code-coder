@@ -1,4 +1,4 @@
-//! Tool system for ZeroBot.
+//! Tool system for `ZeroBot`.
 //!
 //! This module provides the tool registry and unique tools.
 //! Core tool implementations are imported from `zero-tools`.

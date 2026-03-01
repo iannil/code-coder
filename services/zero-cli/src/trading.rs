@@ -379,7 +379,7 @@ pub async fn handle_command(command: TradingCommands, config: &Config) -> Result
 
     match command {
         TradingCommands::Start { host, port } => {
-            println!("Starting trading service on {}:{}", host, port);
+            println!("Starting trading service on {host}:{port}");
             println!();
             println!("Note: The trading service should be started via the daemon:");
             println!("  zero-cli daemon --trading-port {port}");
@@ -399,9 +399,7 @@ pub async fn handle_command(command: TradingCommands, config: &Config) -> Result
         TradingCommands::Status => {
             let status = client.service_status().await.map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to get service status: {}. Is the trading service running at {}?",
-                    e,
-                    trading_endpoint
+                    "Failed to get service status: {e}. Is the trading service running at {trading_endpoint}?"
                 )
             })?;
 
@@ -424,8 +422,8 @@ pub async fn handle_command(command: TradingCommands, config: &Config) -> Result
         TradingCommands::Backtest { start, end, capital } => {
             println!("Running backtest...");
             println!();
-            println!("Period:   {} to {}", start, end);
-            println!("Capital:  ${:.2}", capital);
+            println!("Period:   {start} to {end}");
+            println!("Capital:  ${capital:.2}");
             println!();
             println!("Note: Backtest functionality is not yet implemented.");
             println!("This will run the PO3+SMT strategy against historical data.");
@@ -457,22 +455,20 @@ async fn handle_paper_command(
                 .await
                 .map_err(|e| {
                     anyhow::anyhow!(
-                        "Failed to start paper trading: {}. Is the trading service running at {}?",
-                        e,
-                        endpoint
+                        "Failed to start paper trading: {e}. Is the trading service running at {endpoint}?"
                     )
                 })?;
 
             println!("Paper Trading Started");
             println!("=====================");
-            println!("Capital:        ${:.2}", capital);
-            println!("Max Positions:  {}", max_positions);
+            println!("Capital:        ${capital:.2}");
+            println!("Max Positions:  {max_positions}");
             println!(
                 "Notifications:  {}",
                 if no_notify { "Disabled" } else { "Enabled" }
             );
             if let Some(secs) = duration_secs {
-                println!("Duration:       {} seconds", secs);
+                println!("Duration:       {secs} seconds");
             } else {
                 println!("Duration:       Unlimited");
             }
@@ -484,9 +480,7 @@ async fn handle_paper_command(
         PaperCommands::Stop => {
             let result = client.paper_stop().await.map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to stop paper trading: {}. Is the trading service running at {}?",
-                    e,
-                    endpoint
+                    "Failed to stop paper trading: {e}. Is the trading service running at {endpoint}?"
                 )
             })?;
 
@@ -498,9 +492,7 @@ async fn handle_paper_command(
         PaperCommands::Status => {
             let status = client.paper_status().await.map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to get paper trading status: {}. Is the trading service running at {}?",
-                    e,
-                    endpoint
+                    "Failed to get paper trading status: {e}. Is the trading service running at {endpoint}?"
                 )
             })?;
 
@@ -518,7 +510,7 @@ async fn handle_paper_command(
                 println!("Started At:      {started}");
             }
             if let Some(remaining) = status.duration_remaining {
-                println!("Time Remaining:  {} seconds", remaining);
+                println!("Time Remaining:  {remaining} seconds");
             }
             Ok(())
         }
@@ -526,9 +518,7 @@ async fn handle_paper_command(
         PaperCommands::Trades => {
             let trades = client.paper_trades().await.map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to get trades: {}. Is the trading service running at {}?",
-                    e,
-                    endpoint
+                    "Failed to get trades: {e}. Is the trading service running at {endpoint}?"
                 )
             })?;
 
@@ -546,9 +536,7 @@ async fn handle_paper_command(
                     "OPEN"
                 };
                 let pnl_str = trade
-                    .pnl
-                    .map(|p| format!("${:.2}", p))
-                    .unwrap_or_else(|| "-".into());
+                    .pnl.map_or_else(|| "-".into(), |p| format!("${p:.2}"));
 
                 println!(
                     "  {} {} {} @ {:.4} | {} | P&L: {}",
@@ -561,9 +549,7 @@ async fn handle_paper_command(
         PaperCommands::Report => {
             let report = client.paper_report().await.map_err(|e| {
                 anyhow::anyhow!(
-                    "Failed to get report: {}. Is the trading service running at {}?",
-                    e,
-                    endpoint
+                    "Failed to get report: {e}. Is the trading service running at {endpoint}?"
                 )
             })?;
 

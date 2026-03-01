@@ -262,19 +262,11 @@ impl SmtDetector {
         swings
             .iter()
             .filter(|s| {
-                let diff = if s.index > target_index {
-                    s.index - target_index
-                } else {
-                    target_index - s.index
-                };
+                let diff = s.index.abs_diff(target_index);
                 diff <= tolerance
             })
             .min_by_key(|s| {
-                if s.index > target_index {
-                    s.index - target_index
-                } else {
-                    target_index - s.index
-                }
+                s.index.abs_diff(target_index)
             })
             .cloned()
     }

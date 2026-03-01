@@ -271,7 +271,7 @@ impl TaskDispatcher {
         // Use outbound router for sending acknowledgement
         let result = self.outbound
             .send_direct(
-                message.channel_type.clone(),
+                message.channel_type,
                 message.channel_id.clone(),
                 crate::message::OutgoingContent::Text { text: ack_text },
             )

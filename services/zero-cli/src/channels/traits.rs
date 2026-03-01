@@ -76,7 +76,7 @@ impl ChannelMessage {
     }
 }
 
-/// Convert from zero-channels ChannelMessage to local ChannelMessage
+/// Convert from zero-channels `ChannelMessage` to local `ChannelMessage`
 impl From<zero_channels::ChannelMessage> for ChannelMessage {
     fn from(msg: zero_channels::ChannelMessage) -> Self {
         // Extract values before moving fields
@@ -125,7 +125,7 @@ pub trait Channel: Send + Sync {
 // Adapters: Wrap zero-channels implementations to implement local Channel trait
 // ============================================================================
 
-/// Wrapper for zero_channels::CliChannel that implements the local Channel trait.
+/// Wrapper for `zero_channels::CliChannel` that implements the local Channel trait.
 pub struct CliChannelAdapter {
     inner: zero_channels::CliChannel,
 }
@@ -169,6 +169,6 @@ impl Channel for CliChannelAdapter {
         self.inner
             .listen(callback)
             .await
-            .map_err(|e| anyhow::anyhow!("{}", e))
+            .map_err(|e| anyhow::anyhow!("{e}"))
     }
 }

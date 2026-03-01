@@ -267,11 +267,10 @@ impl QuantitativeFilter {
         // Missing debt ratio is OK - we allow it
 
         // Check cash flow DNA
-        if self.config.healthy_cash_flow_dna {
-            if !self.has_healthy_cash_flow(data) {
+        if self.config.healthy_cash_flow_dna
+            && !self.has_healthy_cash_flow(data) {
                 return false;
             }
-        }
 
         true
     }

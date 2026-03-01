@@ -15,17 +15,14 @@
 //! - `tasks:events:{task_id}` - Per-task event stream (event sourcing)
 //! - `tasks:state:{task_id}` - Task state projection (Redis Hash)
 
-use async_trait::async_trait;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
-use std::time::Duration;
 use thiserror::Error;
 
 #[cfg(feature = "redis-backend")]
 use redis::aio::ConnectionManager;
 #[cfg(feature = "redis-backend")]
-use redis::{AsyncCommands, FromRedisValue, RedisResult, ToRedisArgs, Value};
+use redis::{AsyncCommands, RedisResult, Value};
 
 // ============================================================================
 // Error Types

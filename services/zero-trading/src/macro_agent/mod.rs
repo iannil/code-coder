@@ -191,7 +191,8 @@ mod tests {
         let agent_config = create_agent_config(&config);
 
         assert_eq!(agent_config.codecoder_endpoint, config.codecoder_endpoint());
-        assert_eq!(agent_config.timeout, std::time::Duration::from_secs(30));
+        // Default LLM timeout is 300 seconds (5 minutes) for long-running AI calls
+        assert_eq!(agent_config.timeout, std::time::Duration::from_secs(300));
     }
 
     #[test]

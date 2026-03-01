@@ -239,10 +239,12 @@ impl LabeledCounters {
 }
 
 #[derive(Debug, Default)]
+#[allow(dead_code)] // Infrastructure code for future labeled gauge metrics
 struct LabeledGauges {
     gauges: HashMap<String, (Labels, Gauge)>,
 }
 
+#[allow(dead_code)] // Infrastructure code for future labeled gauge metrics
 impl LabeledGauges {
     fn get_or_create(&mut self, labels: Labels) -> &mut Gauge {
         let key = labels_to_key(&labels);

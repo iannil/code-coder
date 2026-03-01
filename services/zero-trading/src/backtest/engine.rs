@@ -156,11 +156,10 @@ impl BacktestEngine {
             // Check for exits (T+1 compliant)
             let mut to_close: Vec<String> = Vec::new();
             for (symbol, pos) in &positions {
-                if pos.can_sell(*date) {
-                    if pos.should_stop_loss() || pos.should_take_profit() {
+                if pos.can_sell(*date)
+                    && (pos.should_stop_loss() || pos.should_take_profit()) {
                         to_close.push(symbol.clone());
                     }
-                }
             }
 
             // Execute exits

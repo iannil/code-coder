@@ -24,8 +24,10 @@ use serde::{Deserialize, Serialize};
 /// Sensitivity level for content classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SensitivityLevel {
     /// No sensitive data detected
+    #[default]
     None,
     /// Low sensitivity (general business data)
     Low,
@@ -37,11 +39,6 @@ pub enum SensitivityLevel {
     Critical,
 }
 
-impl Default for SensitivityLevel {
-    fn default() -> Self {
-        Self::None
-    }
-}
 
 impl std::str::FromStr for SensitivityLevel {
     type Err = String;

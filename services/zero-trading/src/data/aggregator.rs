@@ -161,12 +161,12 @@ impl MarketDataAggregator {
             })
             .unwrap_or_default();
 
-        let router = Arc::new(DataProviderRouter::with_config(router_config));
+        
 
         // We need to register providers asynchronously
         // This is handled in the async initialization
 
-        router
+        Arc::new(DataProviderRouter::with_config(router_config))
     }
 
     /// Initialize the aggregator (register providers and start health checks).
