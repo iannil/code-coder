@@ -50,27 +50,37 @@
    - `packages/ccode/src/autonomous/*.ts`
 
 ### 5. Break Down Oversized Files
-- **Status:** Analysis complete, implementation pending
+- **Status:** Phase 1 complete, continuing...
 - **Target files:**
   - `document.ts` (2858 lines) - 15+ command groups extractable
   - `prompt.ts` (1787 lines) - Prompt building logic extractable
   - `config.ts` (1820 lines) - Loader/validator/defaults extractable
   - `server.ts` (2046 lines) - LSP handlers extractable
 
-**Recommended decomposition for document.ts:**
+**Phase 1 Complete - document.ts decomposition:**
+- **Commit:** `b3afb36 refactor(document): extract command modules`
+- **Extracted modules (~1000 lines):**
+  - `proofread.ts` - 8 proofreading commands (~500 lines)
+  - `snapshot.ts` - 4 version control commands (~210 lines)
+  - `volume.ts` - 4 volume management commands (~200 lines)
+  - `entity.ts` - 4 entity management commands (~240 lines)
+  - `index.ts` - Re-exports all modules
+
+**Remaining for document.ts:**
 ```
 packages/ccode/src/cli/cmd/document/
-  ├── index.ts          # Main exports and command composition
-  ├── create.ts         # DocumentCreateCommand
-  ├── template.ts       # Template commands
-  ├── outline.ts        # Outline commands
-  ├── write.ts          # Write commands
-  ├── manage.ts         # CRUD operations
-  ├── chapter.ts        # Chapter commands
-  ├── entity.ts         # Entity extraction
-  ├── snapshot.ts       # Version control
-  ├── volume.ts         # Volume management
-  └── proofread.ts      # Proofreading commands
+  ├── index.ts          # ✅ Done
+  ├── proofread.ts      # ✅ Done
+  ├── snapshot.ts       # ✅ Done
+  ├── volume.ts         # ✅ Done
+  ├── entity.ts         # ✅ Done
+  ├── create.ts         # 🔨 Pending
+  ├── template.ts       # 🔨 Pending
+  ├── outline.ts        # 🔨 Pending
+  ├── write.ts          # 🔨 Pending
+  ├── manage.ts         # 🔨 Pending
+  ├── chapter.ts        # 🔨 Pending
+  └── check.ts          # 🔨 Pending
 ```
 
 ---

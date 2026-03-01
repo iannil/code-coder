@@ -4,6 +4,16 @@
  * Re-exports all document-related commands from their individual modules.
  */
 
+// Chapter commands
+export {
+  ChapterCommand,
+  ChapterListCommand,
+  ChapterShowCommand,
+  ChapterResetCommand,
+  ChapterEditCommand,
+  ChapterStatsCommand,
+} from "./chapter"
+
 // Proofread commands
 export {
   ProofreadCommand,
