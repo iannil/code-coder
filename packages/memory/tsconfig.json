@@ -3,7 +3,7 @@
   "extends": "@tsconfig/bun/tsconfig.json",
   "compilerOptions": {
     "lib": ["ESNext"],
-    "noUncheckedIndexedAccess": false,
+    "noUncheckedIndexedAccess": true,
     "paths": {
       "@/*": ["./src/*"]
     }
