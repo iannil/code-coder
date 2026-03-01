@@ -314,6 +314,56 @@
   - 文件命名规范化: 为无日期文件添加日期前缀
 - **结果**: docs/progress/ 目录已清空，所有已完成工作可追溯
 
+### 2026-03-01: 技术债务 P0-P1 完结
+
+- **决策**: 完成所有 P0-P1 技术债务修复
+- **P0 完成项**:
+  - 覆盖率阈值启用 (line 80%, branch 75%, function 85%)
+  - 10 个原子提交 (TypeScript/Rust 代码质量改进)
+  - GitHub Actions CI 工作流 (.github/workflows/test.yml)
+- **P1 完成项**:
+  - document.ts 拆分 (2858 → 80 行入口 + 13 模块)
+  - 结构化日志替换 (19 个 console 语句)
+  - @ai-sdk/* 升级至 v3/v4 (17 个包)
+  - Web 包测试 (295 新增，覆盖率 43.91% → 74.93%)
+  - Rust 单元测试验证 (145 测试通过)
+- **延迟项**: prompt.ts, config.ts, server.ts 因重构复杂度高暂缓
+
+### 2026-03-01: Web 包测试基础设施建立
+
+- **决策**: 为 packages/web 建立完整测试基础设施
+- **覆盖范围**: 10 个 store 模块全覆盖
+- **测试模式**: vi.mock() + beforeEach 重置 + 完整状态覆盖
+- **覆盖阈值**: statements 60%, branches 60%, functions 55%, lines 60%
+- **影响**: 从 0% 到 74.93% 的测试覆盖率飞跃
+
+### 2026-03-01: TypeScript 类型安全增强
+
+- **决策**: 启用 `noUncheckedIndexedAccess` 严格模式
+- **理由**: 防止数组/对象索引访问时的潜在 undefined 错误
+- **影响**: 需要显式处理可能为 undefined 的数组元素访问
+- **配套**: 添加非空断言注释说明安全访问场景
+
+### 2026-03-01: AI SDK 现代化升级
+
+- **决策**: 升级 @ai-sdk/* 至最新 v3/v4 版本
+- **理由**: 保持与上游 Vercel AI SDK 同步，获取最新功能
+- **影响**: 17 个提供商包更新，修复 API 重命名
+- **破坏性变更**: `createProviderDefinedToolFactoryWithOutputSchema` → `createProviderToolFactoryWithOutputSchema`
+
+### 2026-03-01: IM 事件溯源架构实现
+
+- **决策**: 使用 Redis Streams 实现 IM 任务的事件溯源
+- **理由**: 支持任务恢复、断点续传、可靠消息传递
+- **实现内容**:
+  - Redis Streams 客户端 (Rust + TypeScript)
+  - 14 种事件类型定义
+  - 任务调度器和消费者
+  - 心跳超时策略
+  - 断点续传支持
+  - ImProgressHandler 重构
+- **配置**: taskQueue 块 (backend, consumerGroup, timeouts)
+
 ## 经验教训
 
 ### 代码清理
