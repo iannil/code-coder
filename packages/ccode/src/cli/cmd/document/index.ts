@@ -20,6 +20,17 @@ export { CheckCommand, CheckStyleCommand } from "./check"
 // Context commands
 export { ContextCommand, SummaryGlobalCommand } from "./context"
 
+// Core document commands
+export {
+  DocumentCreateCommand,
+  DocumentListCommand,
+  DocumentShowCommand,
+  DocumentExportCommand,
+  DocumentDeleteCommand,
+  DocumentUpdateCommand,
+  DocumentSetContentCommand,
+} from "./core"
+
 // Edit commands
 export { SearchReplaceCommand, PolishCommand, ExpandCommand, CompressCommand } from "./edit"
 
@@ -31,6 +42,9 @@ export {
   EntityShowCommand,
   EntityDuplicatesCommand,
 } from "./entity"
+
+// Outline commands
+export { DocumentOutlineCommand } from "./outline"
 
 // Proofread commands
 export {
@@ -54,6 +68,13 @@ export {
   SnapshotDiffCommand,
 } from "./snapshot"
 
+// Template commands
+export {
+  DocumentTemplateCommand,
+  TemplateListCommand,
+  TemplateUseCommand,
+} from "./template"
+
 // Volume commands
 export {
   VolumeCommand,
@@ -62,3 +83,9 @@ export {
   VolumeSummaryCommand,
   VolumeAutoCommand,
 } from "./volume"
+
+// Write commands
+export {
+  DocumentWriteCommand,
+  DocumentWriteAllCommand,
+} from "./write"
