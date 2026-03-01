@@ -2,7 +2,7 @@
 
 **Started:** 2026-03-01
 **Status:** In Progress
-**Last Updated:** 2026-03-01 (Session 2)
+**Last Updated:** 2026-03-01 (Session 3)
 
 ---
 
@@ -96,18 +96,18 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 
 ## Pending Items (P1-P2)
 
-### 7. Upgrade @ai-sdk/* packages to v3
-- **Status:** Analysis complete, requires separate feature branch
-- **Scope:** 17 packages with mixed major versions:
+### 7. Upgrade @ai-sdk/* packages to v3 ✅ COMPLETE
+- **Status:** Completed
+- **Branch:** `feat/ai-sdk-v3-upgrade`
+- **Commit:** `b894377 feat: upgrade @ai-sdk/* packages to v3/v4`
+- **Scope:** 17 packages upgraded:
   - v1.x → v3.x: cerebras, deepinfra, openai-compatible, togetherai, vercel
   - v2.x → v3.x: anthropic, azure, cohere, gateway, google, groq, mistral, openai, perplexity, provider, xai
-  - Already v3.x: amazon-bedrock, google-vertex, provider-utils
-- **Risk:** Major version breaking changes in AI SDK API
-- **Approach:**
-  1. Create feature branch `feat/ai-sdk-v3`
-  2. Upgrade one provider at a time
-  3. Run full test suite after each
-  4. Document breaking changes encountered
+  - v3.x → v4.x: amazon-bedrock, google-vertex, provider-utils
+
+**Breaking change fixed:**
+- `createProviderDefinedToolFactoryWithOutputSchema` renamed to `createProviderToolFactoryWithOutputSchema`
+- Fixed in 4 files: file-search.ts, image-generation.ts, local-shell.ts, code-interpreter.ts
 
 ### 8. Type Safety Cleanup
 - **Status:** Partially addressed
@@ -130,6 +130,8 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 ## Git Log Summary
 
 ```
+b894377 feat: upgrade @ai-sdk/* packages to v3/v4
+a9b552c docs: update progress with ai-sdk analysis
 1acd2c6 docs: update progress with structured logging completion
 fdc3d54 refactor: convert console statements to structured logging in API handlers
 673073f docs: update technical debt progress with document.ts completion
