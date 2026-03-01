@@ -63,23 +63,21 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 
 ## In Progress Items (P1)
 
-### 5. Replace console.log with Structured Logging
-- **Status:** Analysis complete, implementation pending
-- **Findings:**
-  - 666 total console statements across 42 files
-  - Top offenders: `document.ts` (410), `trace.ts` (72), `memory.ts` (29)
-  - Many are intentional CLI output (not bugs)
-  - Existing infrastructure: `Log.create()` and `Observability` module
+### 5. Replace console.log with Structured Logging ✅ COMPLETE
+- **Status:** Completed (API handlers converted)
+- **Commit:** `fdc3d54 refactor: convert console statements to structured logging`
 
-**Recommended approach:**
-1. Categorize console statements:
-   - CLI output (keep as-is)
-   - Debug logging (convert to `Log`)
-   - Template content (keep as-is)
-2. Priority files for conversion:
-   - `packages/ccode/src/provider/provider.ts`
-   - `packages/ccode/src/session/*.ts`
-   - `packages/ccode/src/autonomous/*.ts`
+**Files converted:**
+- `compare.ts` - 8 statements → Log.error/warn
+- `registry.ts` - 6 statements → Log.error
+- `autonomous.ts` - 2 statements → Log.error/warn
+- `knowledge.ts` - 2 statements → Log.error/warn
+- `wasm-sandbox.ts` - 1 statement → Log.warn
+
+**Appropriate console statements retained:**
+- CLI command output (~600 statements) - Intentional user feedback
+- ODD-compliant JSON logging (middleware.ts, chat.ts) - Structured infrastructure output
+- CLI entry point error handling - User-facing error messages
 
 ### 6. Break Down Other Oversized Files
 - **Status:** Planning
