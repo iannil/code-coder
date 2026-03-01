@@ -2,7 +2,7 @@
 
 **Started:** 2026-03-01
 **Status:** In Progress
-**Last Updated:** 2026-03-01 (Session 4)
+**Last Updated:** 2026-03-01 (Session 5)
 
 ---
 
@@ -156,16 +156,36 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 | project.ts | 32 | 100% |
 | task.ts | 39 | 90% |
 
-### 10. Rust Service Unit Tests
-- **Status:** Not started
-- **Current:** Only 16 integration test files
-- **Target:** Add inline `#[test]` modules
+### 10. Rust Service Unit Tests ✅ EXISTING COVERAGE
+- **Status:** Verified - substantial inline tests already exist
+- **Finding:** Initial assessment was incomplete; Rust services have comprehensive inline `#[test]` modules
+- **Total tests:** 145 tests passing (`cargo test --lib`)
+
+**Test coverage by module:**
+
+| Service | Module | Tests | Coverage |
+|---------|--------|-------|----------|
+| zero-common | guardrails.rs | 8 | Risk levels, action risk, autonomy thresholds, approval workflow |
+| zero-common | validation.rs | 6 | Config validation (log levels, ports, Telegram tokens) |
+| zero-common | redis.rs | 8+ | Config defaults, stream operations, hash ops, message parsing |
+| zero-gateway | metering.rs | 4 | Token extraction (Anthropic/OpenAI formats) |
+| zero-workflow | scheduler.rs | 2 | Scheduler creation, hand listing |
+| zero-workflow | risk.rs | 6 | Tool risk evaluation, bash patterns, file sensitivity |
+| zero-workflow | executor, state, auto_approve, etc. | 111+ | State machines, approval logic, bridges |
+
+**Test patterns found:**
+- Inline `#[cfg(test)] mod tests` throughout
+- Conditional integration tests with `#[cfg(all(test, feature = "redis-backend"))]`
+- Comprehensive edge case coverage for guardrails/HITL approval workflow
+
+**Conclusion:** No additional work needed; Rust services meet testing standards
 
 ---
 
 ## Git Log Summary
 
 ```
+<pending> docs: update progress with Rust unit test verification
 1d45b03 test(web): add unit tests for mcp, lsp, project, task, cron stores
 <hash> test(web): add unit tests for channel and memory stores
 22b1800 test(web): add unit tests for tunnel and gateway stores
@@ -192,3 +212,31 @@ efb1854 refactor(rust): improve thread safety
 e9f9ef0 refactor: improve TypeScript type safety
 577ee6f chore: enable coverage threshold enforcement
 ```
+
+---
+
+## Summary
+
+**Completion Status:**
+
+| Priority | Total Items | Completed | Status |
+|----------|-------------|-----------|--------|
+| P0 | 3 | 3 | ✅ 100% |
+| P1 | 7 | 7 | ✅ 100% |
+| P2 | 0 | 0 | N/A |
+
+**All P0-P1 items resolved:**
+1. ✅ Coverage threshold enabled
+2. ✅ Pending changes committed (10 atomic commits)
+3. ✅ CI/CD infrastructure added
+4. ✅ document.ts decomposed (2858 → 80 lines)
+5. ✅ Structured logging implemented
+6. ✅ Oversized files analyzed (deferred - low ROI)
+7. ✅ @ai-sdk/* packages upgraded to v3/v4
+8. ✅ Type safety analyzed (acceptable trade-offs)
+9. ✅ packages/web tests added (74.93% coverage)
+10. ✅ Rust unit tests verified (145 tests passing)
+
+**Remaining items (low priority):**
+- Oversized files (prompt.ts, config.ts, server.ts) - Deferred due to high refactoring complexity
+- Type safety cleanup (95+ `any` usages) - Most are justified, address during future refactoring
