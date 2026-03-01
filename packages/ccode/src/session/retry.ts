@@ -82,7 +82,9 @@ export namespace SessionRetry {
         ) {
           return "Provider Server Error"
         }
-      } catch {}
+      } catch {
+        // JSON parse failed - body is not valid JSON, skip
+      }
     }
 
     return undefined

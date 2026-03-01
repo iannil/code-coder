@@ -67,6 +67,9 @@ if (version !== CACHE_VERSION) {
         }),
       ),
     )
-  } catch (e) {}
+  } catch (e) {
+    // Cache clearing is non-critical; log but continue
+    console.warn("[global] Failed to clear cache:", e instanceof Error ? e.message : String(e))
+  }
   await Bun.file(path.join(Global.Path.cache, "version")).write(CACHE_VERSION)
 }

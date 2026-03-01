@@ -71,7 +71,7 @@ export namespace Provider {
     "@ai-sdk/togetherai": createTogetherAI,
     "@ai-sdk/perplexity": createPerplexity,
     "@ai-sdk/vercel": createVercel,
-    // @ts-ignore (TODO: kill this code so we dont have to maintain it)
+    // @ts-ignore - Experimental: github-copilot SDK not yet stable, will be removed
     "@ai-sdk/github-copilot": createGitHubCopilotOpenAICompatible,
   }
 
@@ -1144,7 +1144,7 @@ export namespace Provider {
 
         return fetchFn(input, {
           ...opts,
-          // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+          // @ts-ignore - Bun-specific: timeout option not in fetch types (bun#16682)
           timeout: false,
         })
       }

@@ -737,7 +737,9 @@ export namespace MessageV2 {
             if (errMsg && typeof errMsg === "string") {
               return `${msg}: ${errMsg}`
             }
-          } catch {}
+          } catch {
+            // JSON parse failed - responseBody is not valid JSON
+          }
 
           return `${msg}: ${e.responseBody}`
         }).trim()

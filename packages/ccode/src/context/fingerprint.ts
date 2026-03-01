@@ -341,7 +341,9 @@ export namespace Fingerprint {
       try {
         const content = await Bun.file(path.join(worktree, name)).text()
         return JSON.parse(content)
-      } catch {}
+      } catch {
+        // File doesn't exist or is not valid JSON - try next
+      }
     }
     return undefined
   }
@@ -358,7 +360,9 @@ export namespace Fingerprint {
         const pkg = await readPackageJson(worktree)
         if (pkg?.devDependencies?.typescript) version = pkg.devDependencies.typescript
         else if (pkg?.dependencies?.typescript) version = pkg.dependencies.typescript
-      } catch {}
+      } catch {
+        // Version detection failed - use default "unknown"
+      }
       return { language: "typescript", hasTypeScript: true, version }
     }
 
@@ -429,7 +433,9 @@ export namespace Fingerprint {
             })
           }
         }
-      } catch {}
+      } catch {
+        // Glob pattern may fail on some filesystems - skip and continue
+      }
     }
 
     return configs

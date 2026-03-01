@@ -76,7 +76,9 @@ export namespace Pty {
       for (const session of sessions.values()) {
         try {
           session.process.kill()
-        } catch {}
+        } catch {
+          // Process may already be dead - ignore
+        }
         for (const ws of session.subscribers) {
           ws.close()
         }
@@ -184,7 +186,9 @@ export namespace Pty {
     log.info("removing session", { id })
     try {
       session.process.kill()
-    } catch {}
+    } catch {
+      // Process may already be dead - ignore
+    }
     for (const ws of session.subscribers) {
       ws.close()
     }
