@@ -123,9 +123,19 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 - **Recommendation:** Focus on critical paths (provider, session) when refactoring; current usages are acceptable trade-offs
 
 ### 9. Add Tests for packages/web
-- **Status:** Not started
-- **Coverage:** Currently 0%
-- **Target:** Basic unit tests for React components
+- **Status:** In progress
+- **Coverage:** 43.91% → 46.21% (+2.3% lines)
+- **Tests added:** 41 new tests (468 total)
+- **Commit:** `22b1800 test(web): add unit tests for tunnel and gateway stores`
+
+**New test files:**
+- `tunnel.test.ts` - 21 tests (tunnel store: 0% → 88%)
+- `gateway.test.ts` - 20 tests (gateway store: 0% → 85%)
+
+**Remaining to reach 60% threshold:**
+- channel.ts, credential.ts, cron.ts, lsp.ts, mcp.ts, memory.ts, project.ts, task.ts stores
+- use-sse.ts hook
+- lib/api.ts
 
 ### 10. Rust Service Unit Tests
 - **Status:** Not started
@@ -137,6 +147,8 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 ## Git Log Summary
 
 ```
+22b1800 test(web): add unit tests for tunnel and gateway stores
+0f3637d docs: update progress with type safety and oversized file analysis
 41e5053 docs: update progress with ai-sdk v3 upgrade completion
 b894377 feat: upgrade @ai-sdk/* packages to v3/v4
 a9b552c docs: update progress with ai-sdk analysis
