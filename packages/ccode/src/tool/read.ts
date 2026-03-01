@@ -8,7 +8,12 @@ import DESCRIPTION from "./read.txt"
 import { Instance } from "../project/instance"
 import { Identifier } from "../id/id"
 import { assertExternalDirectory } from "./external-directory"
-import { point } from "@/observability"
+import {
+  point,
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+} from "@/observability"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -22,7 +27,15 @@ export const ReadTool = Tool.define("read", {
     limit: z.coerce.number().describe("The number of lines to read (defaults to 2000)").optional(),
   }),
   async execute(params, ctx) {
-    point("read_execute", { filePath: params.filePath, offset: params.offset, limit: params.limit })
+    return runWithChildSpanAsync(async () => {
+      const startTime = Date.now()
+      functionStart("ReadTool.execute", {
+        filePath: params.filePath,
+        offset: params.offset,
+        limit: params.limit,
+      })
+      point("read_execute", { filePath: params.filePath, offset: params.offset, limit: params.limit })
+
     let filepath = params.filePath
     if (!path.isAbsolute(filepath)) {
       filepath = path.join(process.cwd(), filepath)
@@ -140,6 +153,11 @@ export const ReadTool = Tool.define("read", {
     LSP.touchFile(filepath, false)
     FileTime.read(ctx.sessionID, filepath)
 
+    functionEnd("ReadTool.execute", {
+      linesRead: raw.length,
+      truncated,
+    }, Date.now() - startTime)
+
     return {
       title,
       output,
@@ -148,6 +166,7 @@ export const ReadTool = Tool.define("read", {
         truncated,
       },
     }
+    }) // end runWithChildSpanAsync
   },
 })
 

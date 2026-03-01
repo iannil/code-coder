@@ -172,10 +172,22 @@ impl ITickAdapter {
 
     /// Create with custom priority and rate limit
     pub fn with_rate_limit(api_key: impl Into<String>, priority: u8, rate_limit_rpm: u32) -> Self {
+        // API timeout: 30s is appropriate for external API calls
+        let api_timeout = Duration::from_secs(30);
+        let connect_timeout = Duration::from_secs(10);
+
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
+            .connect_timeout(connect_timeout)
+            .timeout(api_timeout)
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .unwrap_or_else(|_| {
+                // Fallback with same timeouts to avoid hung requests
+                reqwest::Client::builder()
+                    .connect_timeout(connect_timeout)
+                    .timeout(api_timeout)
+                    .build()
+                    .expect("Failed to build fallback HTTP client")
+            });
 
         let rate_limiter = Arc::new(RateLimiter::new("itick", rate_limit_rpm));
 

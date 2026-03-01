@@ -63,6 +63,10 @@ regex = { workspace = true }
 # HTTP client (for HitL client)
 reqwest = { workspace = true, optional = true }
 
+# Axum (for tracing middleware)
+axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+
 # Redis (optional)
 redis = { workspace = true, optional = true }
 
@@ -74,7 +78,14 @@ default = []
 redis-backend = ["redis", "futures-util"]
 hitl-client = ["reqwest"]
 guardrails = ["reqwest"]
+http-client = ["reqwest"]
+blocking = ["reqwest/blocking"]
+axum = ["dep:axum", "dep:tower"]
+testing = []
 
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.14"
+mockall = { workspace = true }
+proptest = { workspace = true }
+test-case = { workspace = true }

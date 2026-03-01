@@ -45,6 +45,7 @@ import { LLM } from "./llm"
 import { iife } from "@/util/iife"
 import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
+import { point } from "@/observability"
 
 // @ts-ignore
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -267,6 +268,7 @@ export namespace SessionPrompt {
     using _ = defer(() => cancel(sessionID))
 
     let step = 0
+    let previousAgent: string | undefined
     const session = await Session.get(sessionID)
     while (true) {
       SessionStatus.set(sessionID, { type: "busy" })
@@ -495,6 +497,18 @@ export namespace SessionPrompt {
 
       // normal processing
       const agent = await Agent.get(lastUser.agent)
+
+      // Track agent switching
+      if (previousAgent && previousAgent !== agent.name) {
+        point("agent_switch", {
+          sessionID,
+          from: previousAgent,
+          to: agent.name,
+          step,
+        })
+      }
+      previousAgent = agent.name
+
       const maxSteps = agent.steps ?? Infinity
       const isLastStep = step >= maxSteps
       msgs = await insertReminders({
@@ -612,15 +626,20 @@ export namespace SessionPrompt {
         })
       }
 
-      // Gemini models need synthetic user message after tool calls to prompt continuation
-      // Similar to the subtask synthetic message pattern (lines 438-461)
-      const isGeminiModel = model.providerID === "google" || model.api.id.includes("gemini")
-      if (isGeminiModel && result === "continue") {
+      // Debug: log processor result
+      log.info("processor result", { sessionID, result, step })
+
+      // Some models need synthetic user message after tool calls to prompt continuation.
+      // This was originally for Gemini, but other models (like zhipu-ai/glm-5) also benefit.
+      // Adding this for ALL models when result is "continue" and there are completed tool calls.
+      if (result === "continue") {
         const lastParts = await MessageV2.parts(processor.message.id)
         const hasToolCalls = lastParts.some(
           (p) => p.type === "tool" && (p.state.status === "completed" || p.state.status === "error"),
         )
+        log.info("checking tool calls for synthetic message", { sessionID, hasToolCalls, partsCount: lastParts.length })
         if (hasToolCalls) {
+          log.info("adding synthetic user message", { sessionID })
           const continueUserMsg: MessageV2.User = {
             id: Identifier.ascending("message"),
             sessionID,

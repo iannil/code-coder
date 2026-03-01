@@ -135,21 +135,23 @@ git push origin v0.0.1
 ### 日志位置
 
 - 开发日志: 控制台输出
-- 用户日志: `~/.codecoder/logs/` 或 `~/.codecoder/logs/`
+- 用户日志: `~/.codecoder/logs/`
 - 系统日志: 系统日志服务
 - 缓存目录: `~/.codecoder/cache/` (包含版本标记)
-- 配置目录: `~/.codecoder/` 或 `~/.codecoder/`
+- 配置目录: `~/.codecoder/`
 
 ### 数据目录结构
 
 ```
-~/.codecoder/                    # 主配置目录
-~/.codecoder/logs/               # 日志文件
-~/.local/share/ccode/        # XDG 数据目录
-~/.local/share/ccode/bin/    # 可执行文件
-~/.local/share/ccode/log/    # 运行时日志
-~/.cache/ccode/              # 缓存目录
-~/.local/state/ccode/        # 状态文件
+~/.codecoder/                # 主配置目录
+├── logs/                    # 日志文件 (统一)
+├── data/                    # 数据目录
+│   ├── storage/             # 会话存储
+│   ├── memory/              # 记忆数据库
+│   └── snapshot/            # 快照
+├── bin/                     # 可执行文件
+├── cache/                   # 缓存目录
+└── state/                   # 状态文件
 ```
 
 ### 健康检查

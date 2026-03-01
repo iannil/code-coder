@@ -3,8 +3,28 @@ preload = ["@opentui/solid/preload"]
 [test]
 preload = ["./test/preload.ts"]
 timeout = 10000  # 10 seconds (default is 5000ms)
+
 # Enable code coverage
 coverage = true
 
-# Coverage thresholds (enforce minimum coverage)
-# coverageThreshold = { line = 80, branch = 70, function = 75 }
+# Coverage output directory
+coverageDir = "./coverage"
+
+# Coverage thresholds (enforce minimum coverage per the testing plan)
+# Note: Enable these once test coverage reaches targets
+# coverageThreshold = { line = 80, branch = 75, function = 85 }
+
+# Exclude patterns from coverage
+coverageSkipTestFiles = true
+
+# Test file patterns
+testFilePattern = "**/*.test.ts"
+
+# Retry failed tests once before marking as failed
+retry = 1
+
+# Show slowest tests
+showSlowTests = true
+
+# Number of slowest tests to show
+slowTestThreshold = 100

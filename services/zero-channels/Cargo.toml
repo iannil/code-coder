@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Internal
-zero-common = { workspace = true }
+zero-common = { workspace = true, features = ["axum", "http-client", "redis-backend"] }
 
 # Async runtime
 tokio = { workspace = true }
@@ -91,3 +91,5 @@ pdf-extract = "0.8"
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.14"
+wiremock = "0.6"
+async-trait = { workspace = true }

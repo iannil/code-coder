@@ -16,13 +16,23 @@ import {
   handleClose as wsClose,
   generateSubscriptionId,
 } from "./handlers/executive-ws"
+import {
+  handleTraceOpen,
+  handleTraceMessage,
+  handleTraceClose,
+  generateTraceSubscriptionId,
+  type TraceWebSocketData,
+} from "./handlers/trace-ws"
 import { ConversationStore } from "./store/conversation"
 
-// WebSocket data type
-interface WebSocketData {
+// WebSocket data type - union of all WebSocket types
+interface ExecutiveWebSocketData {
   subscriptionId: string
   userId?: string
+  type?: "executive"
 }
+
+type WebSocketData = ExecutiveWebSocketData | TraceWebSocketData
 
 // ============================================================================
 // Server State
@@ -141,7 +151,22 @@ function createRequestHandler() {
       const userId = url.searchParams.get("userId") ?? undefined
 
       const upgraded = server.upgrade(req, {
-        data: { subscriptionId, userId } as WebSocketData,
+        data: { subscriptionId, userId, type: "executive" } as WebSocketData,
+      })
+
+      if (upgraded) {
+        return undefined as unknown as Response // Bun handles the upgrade
+      }
+
+      return new Response("WebSocket upgrade failed", { status: 400 })
+    }
+
+    // Handle WebSocket upgrade for trace log streaming
+    if (url.pathname === "/api/v1/trace/ws" && req.headers.get("upgrade") === "websocket") {
+      const subscriptionId = generateTraceSubscriptionId()
+
+      const upgraded = server.upgrade(req, {
+        data: { subscriptionId, type: "trace" } as WebSocketData,
       })
 
       if (upgraded) {
@@ -262,9 +287,27 @@ export async function start(options: StartOptions = {}): Promise<void> {
     idleTimeout: 0,
     fetch: createRequestHandler(),
     websocket: {
-      open: wsOpen,
-      message: wsMessage,
-      close: wsClose,
+      open: (ws: ServerWebSocket<WebSocketData>) => {
+        if (ws.data.type === "trace") {
+          handleTraceOpen(ws as ServerWebSocket<TraceWebSocketData>)
+        } else {
+          wsOpen(ws as ServerWebSocket<ExecutiveWebSocketData>)
+        }
+      },
+      message: (ws: ServerWebSocket<WebSocketData>, message: string | Buffer) => {
+        if (ws.data.type === "trace") {
+          handleTraceMessage(ws as ServerWebSocket<TraceWebSocketData>, message)
+        } else {
+          wsMessage(ws as ServerWebSocket<ExecutiveWebSocketData>, message)
+        }
+      },
+      close: (ws: ServerWebSocket<WebSocketData>) => {
+        if (ws.data.type === "trace") {
+          handleTraceClose(ws as ServerWebSocket<TraceWebSocketData>)
+        } else {
+          wsClose(ws as ServerWebSocket<ExecutiveWebSocketData>)
+        }
+      },
     },
   })
 

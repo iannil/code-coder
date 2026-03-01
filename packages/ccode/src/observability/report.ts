@@ -43,6 +43,41 @@ export interface ApiCallEntry {
   success?: boolean
 }
 
+/**
+ * Helper to get function name from LogEntry
+ */
+function getFunctionName(entry: LogEntry): string | undefined {
+  return entry.payload?.function as string | undefined
+}
+
+/**
+ * Helper to get duration from LogEntry
+ */
+function getDurationMs(entry: LogEntry): number | undefined {
+  return entry.payload?.duration_ms as number | undefined
+}
+
+/**
+ * Helper to get stack trace from LogEntry
+ */
+function getStackTrace(entry: LogEntry): string | undefined {
+  return entry.payload?.stack_trace as string | undefined
+}
+
+/**
+ * Normalize event type for backwards compatibility
+ */
+function normalizeEventType(eventType: string): string {
+  const mapping: Record<string, string> = {
+    function_start: "Function_Start",
+    function_end: "Function_End",
+    branch: "Branch",
+    error: "Error",
+    api_call: "API_Call",
+  }
+  return mapping[eventType] ?? eventType
+}
+
 export function generateReport(entries?: LogEntry[]): ExecutionReport | null {
   const ctx = getContext()
   const logEntries = entries ?? getEntries()
@@ -54,16 +89,24 @@ export function generateReport(entries?: LogEntry[]): ExecutionReport | null {
   const firstEntry = logEntries[0]
   const lastEntry = logEntries[logEntries.length - 1]
 
-  const startTime = new Date(firstEntry.timestamp)
-  const endTime = new Date(lastEntry.timestamp)
+  const startTime = new Date(firstEntry.ts)
+  const endTime = new Date(lastEntry.ts)
   const durationMs = endTime.getTime() - startTime.getTime()
 
   const summary = {
     totalEntries: logEntries.length,
-    functionCalls: logEntries.filter((e) => e.event_type === "Function_Start").length,
-    apiCalls: logEntries.filter((e) => e.event_type === "API_Call_Start").length,
-    errors: logEntries.filter((e) => e.event_type === "Error").length,
-    branches: logEntries.filter((e) => e.event_type === "Branch").length,
+    functionCalls: logEntries.filter((e) =>
+      e.event_type === "Function_Start" || e.event_type === "function_start"
+    ).length,
+    apiCalls: logEntries.filter((e) =>
+      e.event_type === "API_Call_Start" || e.event_type === "api_call"
+    ).length,
+    errors: logEntries.filter((e) =>
+      e.event_type === "Error" || e.event_type === "error"
+    ).length,
+    branches: logEntries.filter((e) =>
+      e.event_type === "Branch" || e.event_type === "branch"
+    ).length,
     loops: logEntries.filter((e) => e.event_type === "Loop").length,
   }
 
@@ -71,49 +114,54 @@ export function generateReport(entries?: LogEntry[]): ExecutionReport | null {
   const timeline: TimelineEntry[] = []
 
   for (const entry of logEntries) {
-    if (entry.event_type === "Function_Start") {
+    const eventType = normalizeEventType(entry.event_type)
+
+    if (eventType === "Function_Start") {
       spanStack.push(entry.span_id)
     }
 
     timeline.push({
-      timestamp: entry.timestamp,
+      timestamp: entry.ts,
       eventType: entry.event_type,
-      functionName: entry.function_name,
-      durationMs: entry.duration_ms,
+      functionName: getFunctionName(entry),
+      durationMs: getDurationMs(entry),
       depth: spanStack.length,
     })
 
-    if (entry.event_type === "Function_End" || entry.event_type === "Error") {
+    if (eventType === "Function_End" || eventType === "Error") {
       spanStack.pop()
     }
   }
 
   const errors: ErrorEntry[] = logEntries
-    .filter((e) => e.event_type === "Error")
+    .filter((e) => e.event_type === "Error" || e.event_type === "error")
     .map((e) => ({
-      timestamp: e.timestamp,
-      functionName: e.function_name,
-      message: String(e.payload.error ?? "Unknown error"),
-      stackTrace: e.stack_trace,
+      timestamp: e.ts,
+      functionName: getFunctionName(e),
+      message: String(e.payload?.error ?? "Unknown error"),
+      stackTrace: getStackTrace(e),
     }))
 
   const apiCallStarts = new Map<string, LogEntry>()
   const apiCalls: ApiCallEntry[] = []
 
   for (const entry of logEntries) {
-    if (entry.event_type === "API_Call_Start" && entry.function_name) {
-      apiCallStarts.set(entry.function_name + entry.timestamp, entry)
+    const funcName = getFunctionName(entry)
+    const eventType = normalizeEventType(entry.event_type)
+
+    if ((eventType === "API_Call_Start" || entry.event_type === "api_call") && funcName) {
+      apiCallStarts.set(funcName + entry.ts, entry)
     }
-    if (entry.event_type === "API_Call_End" && entry.function_name) {
-      const startKey = Array.from(apiCallStarts.keys()).find((k) => k.startsWith(entry.function_name!))
+    if (eventType === "API_Call_End" && funcName) {
+      const startKey = Array.from(apiCallStarts.keys()).find((k) => k.startsWith(funcName))
       const startEntry = startKey ? apiCallStarts.get(startKey) : undefined
 
       apiCalls.push({
-        functionName: entry.function_name,
-        startTime: startEntry?.timestamp ?? entry.timestamp,
-        endTime: entry.timestamp,
-        durationMs: entry.duration_ms,
-        success: entry.payload.success as boolean | undefined,
+        functionName: funcName,
+        startTime: startEntry?.ts ?? entry.ts,
+        endTime: entry.ts,
+        durationMs: getDurationMs(entry),
+        success: entry.payload?.success as boolean | undefined,
       })
 
       if (startKey) {
@@ -123,17 +171,20 @@ export function generateReport(entries?: LogEntry[]): ExecutionReport | null {
   }
 
   for (const [, entry] of apiCallStarts) {
-    apiCalls.push({
-      functionName: entry.function_name!,
-      startTime: entry.timestamp,
-    })
+    const funcName = getFunctionName(entry)
+    if (funcName) {
+      apiCalls.push({
+        functionName: funcName,
+        startTime: entry.ts,
+      })
+    }
   }
 
   return {
     traceId: ctx?.traceId ?? firstEntry.trace_id,
     service: ctx?.service ?? firstEntry.service,
-    startTime: firstEntry.timestamp,
-    endTime: lastEntry.timestamp,
+    startTime: firstEntry.ts,
+    endTime: lastEntry.ts,
     durationMs,
     summary,
     timeline,

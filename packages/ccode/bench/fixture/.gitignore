@@ -1,0 +1,8 @@
+# Generated fixtures - do not commit
+*.txt
+*.ts
+!index.ts
+*.tsx
+*.json
+nested/
+src/

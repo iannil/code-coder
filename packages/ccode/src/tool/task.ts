@@ -12,6 +12,12 @@ import { defer } from "@/util/defer"
 import { Config } from "../config/config"
 import { PermissionNext } from "@/permission/next"
 import { WriterStatsMonitor } from "@/agent/writer-stats-monitor"
+import {
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+  point,
+} from "@/observability"
 
 const parameters = z.object({
   description: z.string().describe("A short (3-5 words) description of the task"),
@@ -40,6 +46,18 @@ export const TaskTool = Tool.define("task", async (ctx) => {
     description,
     parameters,
     async execute(params: z.infer<typeof parameters>, ctx) {
+      return runWithChildSpanAsync(async () => {
+        const startTime = Date.now()
+        functionStart("TaskTool.execute", {
+          subagent_type: params.subagent_type,
+          description: params.description,
+          parentSessionID: ctx.sessionID,
+        })
+        point("subagent_spawn", {
+          subagent_type: params.subagent_type,
+          description: params.description,
+        })
+
       const config = await Config.get()
 
       // Skip permission check when user explicitly invoked via @ or command subtask
@@ -196,6 +214,16 @@ export const TaskTool = Tool.define("task", async (ctx) => {
 
       const output = text + "\n\n" + ["<task_metadata>", `session_id: ${session.id}`, "</task_metadata>"].join("\n")
 
+      point("subagent_complete", {
+        subagent_type: params.subagent_type,
+        sessionId: session.id,
+      })
+      functionEnd("TaskTool.execute", {
+        subagent_type: params.subagent_type,
+        sessionId: session.id,
+        toolCount: summary.length,
+      }, Date.now() - startTime)
+
       return {
         title: params.description,
         metadata: {
@@ -205,6 +233,7 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         },
         output,
       }
+      }) // end runWithChildSpanAsync
     },
   }
 })

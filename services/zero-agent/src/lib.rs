@@ -32,8 +32,8 @@ pub mod provider;
 pub use confirmation::{
     get_confirmation_registry, get_notification_sink, handle_confirmation_response,
     handle_confirmation_response_with_type, init_confirmation_registry, notify,
-    request_confirmation_and_wait, set_notification_sink, ConfirmationHandler,
-    ConfirmationRegistry, ConfirmationResponse, NotificationSink, PendingConfirmation,
+    request_confirmation_and_wait, set_notification_sink, ConfirmationRegistry,
+    ConfirmationResponse, NotificationSink, PendingConfirmation,
 };
 pub use context::ToolContext;
 pub use executor::{AgentExecutor, ToolCall};

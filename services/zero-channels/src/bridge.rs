@@ -7,12 +7,16 @@
 //! 4. Route response back to original channel
 
 use crate::capture_bridge::CaptureBridge;
+use crate::checkpoint::CheckpointManager;
 use crate::debug::extract_debug_flag;
 use crate::message::{ChannelMessage, MessageContent, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::progress::{ImProgressHandler, ProgressHandler};
+use crate::safe_truncate;
 use crate::sse::{CreateTaskRequest, CreateTaskResponse, SseClientConfig, SseTaskClient, TaskContext};
+use crate::task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, detect_agent};
 use crate::telegram::TelegramChannel;
+use crate::timeout::{TimeoutConfig as TaskTimeoutConfig, TimeoutMonitor, TaskTimeoutState};
 use anyhow::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -21,6 +25,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use zero_common::config::CaptureConfig;
 use zero_common::logging::{generate_span_id, LifecycleEventType, RequestContext};
+use zero_common::{build_client_with_timeout, TimeoutConfig};
+use zero_common::{stream_keys, RedisStreamClient, StreamEvent, TaskEvent as StreamTaskEvent};
 
 // ============================================================================
 // CodeCoder API Types
@@ -352,6 +358,12 @@ pub struct CodeCoderBridge {
     streaming_enabled: bool,
     /// Throttle interval for progress updates in milliseconds
     progress_throttle_ms: u64,
+    /// Task dispatcher for Redis Streams mode (optional)
+    task_dispatcher: Option<Arc<tokio::sync::RwLock<TaskDispatcher>>>,
+    /// Use Redis Streams queue instead of HTTP/SSE
+    use_redis_queue: bool,
+    /// Redis client for event subscription
+    redis_client: Option<Arc<RedisStreamClient>>,
 }
 
 // ============================================================================
@@ -379,21 +391,24 @@ impl std::fmt::Display for SessionCommand {
 impl CodeCoderBridge {
     /// Create a new bridge.
     pub fn new(endpoint: impl Into<String>, router: Arc<OutboundRouter>) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(1800)) // LLM calls can run long (30 min default)
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // CodeCoder LLM calls can take 30+ minutes for complex tasks
+        // Use a generous timeout that exceeds the LLM category default
+        let timeout_config = TimeoutConfig::default();
+        let timeout_secs = 1800; // 30 minutes for CodeCoder calls
+        let client = build_client_with_timeout(&timeout_config, timeout_secs);
 
         Self {
             client,
             endpoint: endpoint.into(),
             router,
-            timeout: Duration::from_secs(1800),
+            timeout: Duration::from_secs(timeout_secs),
             capture_bridge: None,
             telegram: None,
             streaming_enabled: true, // Enabled by default
             progress_throttle_ms: 1000, // 1 second default
+            task_dispatcher: None,
+            use_redis_queue: false,
+            redis_client: None,
         }
     }
 
@@ -428,6 +443,49 @@ impl CodeCoderBridge {
     pub fn with_progress_throttle(mut self, ms: u64) -> Self {
         self.progress_throttle_ms = ms;
         self
+    }
+
+    /// Enable Redis Streams queue mode.
+    ///
+    /// When enabled, tasks are dispatched to Redis Streams instead of
+    /// direct HTTP calls, and events are consumed from the stream.
+    pub fn with_redis_queue(mut self, enabled: bool) -> Self {
+        self.use_redis_queue = enabled;
+        self
+    }
+
+    /// Set the task dispatcher for Redis Streams mode.
+    pub fn with_task_dispatcher(mut self, dispatcher: TaskDispatcher) -> Self {
+        self.task_dispatcher = Some(Arc::new(tokio::sync::RwLock::new(dispatcher)));
+        self
+    }
+
+    /// Set the Redis client for event subscription.
+    pub fn with_redis_client(mut self, client: RedisStreamClient) -> Self {
+        self.redis_client = Some(Arc::new(client));
+        self
+    }
+
+    /// Initialize Redis Streams mode asynchronously.
+    ///
+    /// This should be called after construction if using Redis Streams.
+    pub async fn init_redis_streams(&mut self) -> Result<()> {
+        if !self.use_redis_queue {
+            return Ok(());
+        }
+
+        let config = TaskDispatcherConfig::default();
+        let mut dispatcher = TaskDispatcher::new(config, self.router.clone());
+
+        if let Some(ref telegram) = self.telegram {
+            dispatcher = dispatcher.with_telegram(telegram.clone());
+        }
+
+        dispatcher.init().await?;
+        self.task_dispatcher = Some(Arc::new(tokio::sync::RwLock::new(dispatcher)));
+
+        tracing::info!("CodeCoderBridge: Redis Streams mode initialized");
+        Ok(())
     }
 
     /// Get the capture bridge (if configured).
@@ -1145,6 +1203,27 @@ impl CodeCoderBridge {
         agent: Option<String>,
         debug_mode: bool,
     ) -> Result<()> {
+        // Create request context for tracing
+        let ctx = RequestContext {
+            trace_id: message.trace_id.clone(),
+            span_id: generate_span_id(),
+            parent_span_id: Some(message.span_id.clone()),
+            service: "zero-channels".to_string(),
+            user_id: Some(message.user_id.clone()),
+            baggage: std::collections::HashMap::new(),
+        };
+
+        // Dispatch to Redis Streams or HTTP/SSE based on configuration
+        if self.use_redis_queue && self.task_dispatcher.is_some() {
+            tracing::info!(
+                message_id = %message.id,
+                mode = "redis_streams",
+                "Using Redis Streams mode for task processing"
+            );
+            return self.process_streaming_redis(message, text, agent, debug_mode, &ctx).await;
+        }
+
+        // Fall through to HTTP/SSE mode
         let start = Instant::now();
 
         tracing::info!(
@@ -1152,7 +1231,8 @@ impl CodeCoderBridge {
             agent = ?agent,
             streaming = true,
             debug_mode = debug_mode,
-            "Processing message via streaming task API"
+            mode = "http_sse",
+            "Processing message via streaming task API (HTTP/SSE mode)"
         );
 
         // Create a modified message with debug_mode in metadata
@@ -1213,11 +1293,38 @@ impl CodeCoderBridge {
         let (mut rx, handle) = sse_client.subscribe(&task_id).await?;
 
         // Step 4: Process events
+        let mut received_finish = false;
+        let mut event_count = 0u32;
+
         while let Some(event) = rx.recv().await {
+            event_count += 1;
             let finished = progress_handler.handle_event(&message_with_debug, event).await?;
             if finished {
+                received_finish = true;
                 break;
             }
+        }
+
+        // Protection: If loop exited without finish event, send error notification
+        if !received_finish {
+            tracing::error!(
+                message_id = %message.id,
+                task_id = %task_id,
+                event_count = event_count,
+                "❌ SSE stream ended without finish event"
+            );
+
+            // Send error message to user
+            use crate::sse::FinishData;
+            let error_event = FinishData {
+                success: false,
+                output: None,
+                error: Some(format!(
+                    "处理异常中断 (收到 {} 个事件后连接断开)。请重试。",
+                    event_count
+                )),
+            };
+            let _ = progress_handler.on_finish(&message_with_debug, &error_event).await;
         }
 
         // Wait for the SSE task to complete
@@ -1277,6 +1384,344 @@ impl CodeCoderBridge {
         }
 
         Ok(task_response)
+    }
+
+    // ========================================================================
+    // Redis Streams Processing (Event Sourcing Mode)
+    // ========================================================================
+
+    /// Process a chat message using Redis Streams for task dispatch and event consumption.
+    ///
+    /// This method:
+    /// 1. Dispatches task to Redis Stream (tasks:pending)
+    /// 2. Subscribes to task events from Redis Stream (tasks:events:{id})
+    /// 3. Sends progress updates to the IM channel
+    /// 4. Sends the final response when complete
+    ///
+    /// Benefits over HTTP/SSE:
+    /// - Persistent: Tasks survive worker restarts
+    /// - Reliable: Events are not lost on reconnection
+    /// - Scalable: Multiple workers can process tasks
+    async fn process_streaming_redis(
+        &self,
+        message: &ChannelMessage,
+        text: &str,
+        agent: Option<String>,
+        debug_mode: bool,
+        ctx: &RequestContext,
+    ) -> Result<()> {
+        let start = Instant::now();
+
+        tracing::info!(
+            message_id = %message.id,
+            agent = ?agent,
+            mode = "redis_streams",
+            debug_mode = debug_mode,
+            "Processing message via Redis Streams"
+        );
+
+        // Get task dispatcher
+        let dispatcher = self.task_dispatcher.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Task dispatcher not initialized"))?;
+
+        // Determine agent
+        let agent_name = agent
+            .or_else(|| message.metadata.get("agent").cloned())
+            .unwrap_or_else(|| detect_agent(text, "build").to_string());
+
+        // Dispatch task to Redis Stream
+        let task_id = {
+            let dispatcher_guard = dispatcher.read().await;
+            dispatcher_guard.dispatch(message, &agent_name, ctx).await?
+        };
+
+        tracing::info!(
+            message_id = %message.id,
+            task_id = %task_id,
+            agent = %agent_name,
+            "Task dispatched to Redis Stream"
+        );
+
+        // Create progress handler
+        let mut message_with_debug = message.clone();
+        if debug_mode {
+            message_with_debug
+                .metadata
+                .insert("debug_mode".to_string(), "true".to_string());
+        }
+
+        let progress_handler = ImProgressHandler::new(self.router.clone(), self.telegram.clone())
+            .with_throttle(Duration::from_millis(self.progress_throttle_ms))
+            .with_debug_mode(debug_mode);
+
+        // Send start notification
+        progress_handler.on_start(&message_with_debug, &task_id).await?;
+
+        // Initialize timeout monitoring
+        let timeout_config = TaskTimeoutConfig::default();
+        let timeout_monitor = TimeoutMonitor::new(timeout_config);
+        let mut timeout_state = TaskTimeoutState::new(&task_id);
+
+        // Subscribe to events from Redis Stream
+        let redis_client = self.redis_client.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Redis client not initialized"))?;
+
+        // Initialize checkpoint manager for resume support
+        let checkpoint_manager = CheckpointManager::new(redis_client.clone());
+
+        // Load checkpoint to resume from last position
+        let checkpoint = checkpoint_manager.load(&task_id).await.unwrap_or_default();
+        let mut last_id = checkpoint.last_id;
+        let resume_from_checkpoint = last_id != "0";
+
+        if resume_from_checkpoint {
+            tracing::info!(
+                task_id = %task_id,
+                last_id = %last_id,
+                event_count = checkpoint.event_count,
+                "Resuming from checkpoint"
+            );
+        }
+
+        let event_stream_key = stream_keys::task_events(&task_id);
+        let mut received_finish = false;
+        let mut event_count = checkpoint.event_count as u32;
+        let mut warned_no_progress = false;
+        let mut checkpoint_counter = 0u32; // For periodic checkpoint saves
+
+        // Poll for events with timeout monitoring
+        loop {
+            // Check for timeout
+            if let Some(reason) = timeout_monitor.check_timeout(&timeout_state) {
+                tracing::warn!(
+                    task_id = %task_id,
+                    reason = %reason,
+                    "Task timed out"
+                );
+
+                use crate::sse::FinishData;
+                let error_event = FinishData {
+                    success: false,
+                    output: None,
+                    error: Some(reason.to_string()),
+                };
+                let _ = progress_handler.on_finish(&message_with_debug, &error_event).await;
+                break;
+            }
+
+            // Check for progress warning
+            if !warned_no_progress && timeout_monitor.should_warn_no_progress(&timeout_state) {
+                warned_no_progress = true;
+                tracing::warn!(
+                    task_id = %task_id,
+                    "No progress for extended period"
+                );
+                // Could send a warning to user here
+            }
+
+            // Poll events with 5 second timeout
+            let messages = redis_client
+                .xread(&event_stream_key, &last_id, 10, Some(5000))
+                .await?;
+
+            for msg in messages {
+                event_count += 1;
+                checkpoint_counter += 1;
+                last_id = msg.id.clone();
+
+                // Parse event
+                let envelope: StreamEvent = match msg.parse_payload() {
+                    Ok(e) => e,
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            "Failed to parse stream event"
+                        );
+                        continue;
+                    }
+                };
+
+                // Update timeout state based on event type
+                match &envelope.event {
+                    StreamTaskEvent::Heartbeat(_) => {
+                        timeout_state.update_heartbeat();
+                    }
+                    StreamTaskEvent::Progress(_) => {
+                        timeout_state.update_progress();
+                        warned_no_progress = false; // Reset warning flag
+                    }
+                    StreamTaskEvent::ToolUse(data) => {
+                        if data.result.is_none() {
+                            // Tool started
+                            timeout_state.start_tool(&data.tool);
+                        } else {
+                            // Tool completed
+                            timeout_state.end_tool();
+                        }
+                    }
+                    StreamTaskEvent::TaskCompleted(_) | StreamTaskEvent::TaskFailed(_) => {
+                        received_finish = true;
+                    }
+                    _ => {
+                        // Other events also indicate activity
+                        timeout_state.update_heartbeat();
+                    }
+                }
+
+                // Periodic checkpoint save (every 10 events)
+                if checkpoint_counter >= 10 {
+                    checkpoint_counter = 0;
+                    if let Err(e) = checkpoint_manager.update(&task_id, &last_id, false).await {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            "Failed to save checkpoint"
+                        );
+                    }
+                }
+
+                // Convert to SSE event format for ImProgressHandler
+                let sse_event = Self::stream_event_to_sse(&envelope.event);
+
+                if let Some(event) = sse_event {
+                    let finished = progress_handler.handle_event(&message_with_debug, event).await?;
+                    if finished {
+                        received_finish = true;
+                        break;
+                    }
+                }
+            }
+
+            if received_finish {
+                break;
+            }
+        }
+
+        // Handle checkpoint based on completion status
+        if received_finish {
+            // Task completed successfully, clear checkpoint
+            if let Err(e) = checkpoint_manager.clear(&task_id).await {
+                tracing::warn!(
+                    task_id = %task_id,
+                    error = %e,
+                    "Failed to clear checkpoint"
+                );
+            }
+        } else {
+            // Task interrupted, save checkpoint for resume
+            if let Err(e) = checkpoint_manager.update(&task_id, &last_id, false).await {
+                tracing::warn!(
+                    task_id = %task_id,
+                    error = %e,
+                    "Failed to save checkpoint on interruption"
+                );
+            }
+            tracing::error!(
+                message_id = %message.id,
+                task_id = %task_id,
+                event_count = event_count,
+                last_id = %last_id,
+                "❌ Redis Stream polling ended without finish event (checkpoint saved)"
+            );
+        }
+
+        let duration_ms = start.elapsed().as_millis() as u64;
+        tracing::info!(
+            message_id = %message.id,
+            task_id = %task_id,
+            duration_ms = duration_ms,
+            event_count = event_count,
+            received_finish = received_finish,
+            "Redis Streams chat processing completed"
+        );
+
+        Ok(())
+    }
+
+    /// Convert a stream event to SSE event format.
+    fn stream_event_to_sse(event: &StreamTaskEvent) -> Option<crate::sse::TaskEvent> {
+        use crate::sse::{
+            ConfirmationData, DebugInfoData, FinishData, ProgressData, TaskEvent, ToolUseData,
+        };
+
+        match event {
+            StreamTaskEvent::Thought(data) => {
+                Some(TaskEvent::Thought(data.content.clone()))
+            }
+            StreamTaskEvent::ToolUse(data) => {
+                Some(TaskEvent::ToolUse(ToolUseData {
+                    tool: data.tool.clone(),
+                    args: data.args.clone(),
+                    result: data.result.clone(),
+                }))
+            }
+            StreamTaskEvent::Progress(data) => {
+                Some(TaskEvent::Progress(ProgressData {
+                    stage: data.stage.clone(),
+                    message: data.message.clone(),
+                    percentage: data.percentage.map(|p| p as u32),
+                }))
+            }
+            StreamTaskEvent::Output(data) => {
+                Some(TaskEvent::Output(data.content.clone()))
+            }
+            StreamTaskEvent::Confirmation(data) => {
+                Some(TaskEvent::Confirmation(ConfirmationData {
+                    request_id: data.request_id.clone(),
+                    tool: data.tool.clone(),
+                    description: data.description.clone(),
+                    args: data.args.clone(),
+                    actions: data.actions.clone(),
+                }))
+            }
+            StreamTaskEvent::DebugInfo(data) => {
+                Some(TaskEvent::DebugInfo(DebugInfoData {
+                    model: data.model.clone(),
+                    provider: data.provider.clone(),
+                    input_tokens: data.input_tokens,
+                    output_tokens: data.output_tokens,
+                    total_tokens: data.total_tokens,
+                    duration_ms: data.duration_ms,
+                    request_bytes: data.request_bytes,
+                    response_bytes: data.response_bytes,
+                }))
+            }
+            StreamTaskEvent::TaskCompleted(data) => {
+                Some(TaskEvent::Finish(FinishData {
+                    success: true,
+                    output: Some(data.output.clone()),
+                    error: None,
+                }))
+            }
+            StreamTaskEvent::TaskFailed(data) => {
+                Some(TaskEvent::Finish(FinishData {
+                    success: false,
+                    output: None,
+                    error: Some(data.error.clone()),
+                }))
+            }
+            StreamTaskEvent::AgentInfo(data) => {
+                Some(TaskEvent::AgentInfo(crate::sse::AgentInfoData {
+                    agent: data.agent.clone(),
+                    display_name: data.display_name.clone(),
+                    is_primary: Some(data.is_primary),
+                    duration_ms: data.duration_ms,
+                }))
+            }
+            StreamTaskEvent::SkillUse(data) => {
+                Some(TaskEvent::SkillUse(crate::sse::SkillUseData {
+                    skill: data.skill.clone(),
+                    args: data.args.clone(),
+                    duration_ms: data.duration_ms,
+                }))
+            }
+            // Events without SSE equivalent (internal lifecycle events)
+            StreamTaskEvent::TaskCreated(_) |
+            StreamTaskEvent::TaskStarted(_) |
+            StreamTaskEvent::Heartbeat(_) |
+            StreamTaskEvent::AgentSwitch(_) => None,
+        }
     }
 
     /// Check if streaming mode should be used for this message.
@@ -2140,7 +2585,7 @@ impl CodeCoderBridge {
             } else {
                 // Truncate content for IM display
                 let content = if result.content.len() > 1000 {
-                    format!("{}...\n\n*[内容已截断]*", &result.content[..1000])
+                    format!("{}...\n\n*[内容已截断]*", safe_truncate(&result.content, 1000))
                 } else {
                     result.content.clone()
                 };
@@ -2250,7 +2695,7 @@ impl CodeCoderBridge {
 
             // Truncate content for IM display
             let content = if result.content.len() > 500 {
-                format!("{}...", &result.content[..500])
+                format!("{}...", safe_truncate(&result.content, 500))
             } else {
                 result.content.clone()
             };

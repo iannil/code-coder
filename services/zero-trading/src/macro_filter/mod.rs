@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use zero_common::config::Config;
+use zero_common::{build_client, ClientCategory};
 
 use crate::data::LocalStorage;
 
@@ -243,10 +244,8 @@ impl MacroFilter {
                 cache_duration_secs: 3600,
             });
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use http_client factory for API calls to zero-workflow
+        let client = build_client(&config.timeout, ClientCategory::Api);
 
         Self {
             config: filter_config,

@@ -16,7 +16,7 @@ import { Filesystem } from "@/util/filesystem"
 import { Instance } from "../project/instance"
 import { Snapshot } from "@/snapshot"
 import { assertExternalDirectory } from "./external-directory"
-import { point } from "@/observability"
+import { point, runWithChildSpanAsync, functionStart, functionEnd, functionError } from "@/observability"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 
@@ -33,6 +33,14 @@ export const EditTool = Tool.define("edit", {
     replaceAll: z.boolean().optional().describe("Replace all occurrences of oldString (default false)"),
   }),
   async execute(params, ctx) {
+    return runWithChildSpanAsync(async () => {
+      const startTime = Date.now()
+      functionStart("EditTool.execute", {
+        filePath: params.filePath,
+        oldStringLength: params.oldString.length,
+        newStringLength: params.newString.length,
+        replaceAll: params.replaceAll,
+      })
     point("edit_execute", {
       filePath: params.filePath,
       oldStringLength: params.oldString.length,
@@ -140,6 +148,11 @@ export const EditTool = Tool.define("edit", {
       output += `\n\nLSP errors detected in this file, please fix:\n<diagnostics file="${filePath}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
     }
 
+    functionEnd("EditTool.execute", {
+      filepath: filePath,
+      hasErrors: errors.length > 0,
+    }, Date.now() - startTime)
+
     return {
       metadata: {
         diagnostics,
@@ -149,6 +162,7 @@ export const EditTool = Tool.define("edit", {
       title: `${path.relative(Instance.worktree, filePath)}`,
       output,
     }
+    }) // end runWithChildSpanAsync
   },
 })
 

@@ -2,16 +2,19 @@
 //!
 //! Coordinates between the fast rule engine and the LLM-powered macro agent
 //! to provide intelligent macro-economic trading guidance.
+//!
+//! This module implements the `HybridDecisionMaker` trait from `zero_common`,
+//! providing a concrete example of the hybrid decision making pattern.
 
 use anyhow::Result;
+use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+use zero_common::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
 
 use super::bridge::{AgentBridge, AgentBridgeConfig};
-use super::types::{
-    AnalysisTrigger, DecisionSource, MacroContext, MacroDecision,
-};
+use super::types::{AnalysisTrigger, MacroContext, MacroDecision};
 use crate::macro_filter::{MacroEnvironment, MacroFilter, TradingBias};
 
 /// Configuration for the macro orchestrator.
@@ -371,6 +374,133 @@ impl MacroOrchestrator {
     /// Check if the agent bridge is available.
     pub async fn is_agent_available(&self) -> bool {
         self.agent_bridge.health_check().await
+    }
+}
+
+// ============================================================================
+// HybridDecisionMaker Trait Implementation
+// ============================================================================
+
+/// Implementation of HybridDecisionMaker from zero_common.
+///
+/// This formalizes the hybrid decision making pattern already implemented
+/// by MacroOrchestrator, making it compatible with the generic framework.
+#[async_trait]
+impl HybridDecisionMaker for MacroOrchestrator {
+    type Context = MacroContext;
+    type RuleResult = MacroEnvironment;
+    type AgentResult = super::types::AgentAnalysis;
+    type Decision = MacroDecision;
+    type Trigger = AnalysisTrigger;
+
+    async fn rule_evaluate(&self, _context: &Self::Context) -> Result<Self::RuleResult> {
+        // Note: MacroFilter doesn't use context, it fetches data internally
+        self.rule_engine.get_environment().await
+    }
+
+    fn check_triggers(&self, rule_result: &Self::RuleResult) -> Vec<Self::Trigger> {
+        // Delegate to the existing method
+        let mut triggers = Vec::new();
+
+        if rule_result.risk_appetite < self.config.extreme_risk_low
+            || rule_result.risk_appetite > self.config.extreme_risk_high
+        {
+            triggers.push(AnalysisTrigger::ExtremeRiskAppetite);
+        }
+
+        if rule_result.trading_bias == TradingBias::AvoidTrading {
+            triggers.push(AnalysisTrigger::AvoidTradingSignal);
+        }
+
+        if rule_result.position_multiplier < self.config.position_reduction_threshold {
+            triggers.push(AnalysisTrigger::SignificantPositionReduction);
+        }
+
+        if let Some(pmi) = rule_result.pmi {
+            if pmi < self.config.pmi_low_threshold || pmi > self.config.pmi_high_threshold {
+                triggers.push(AnalysisTrigger::ExtremePmi);
+            }
+        }
+
+        if self.check_indicator_divergence(rule_result) {
+            triggers.push(AnalysisTrigger::IndicatorDivergence);
+        }
+
+        triggers
+    }
+
+    async fn agent_analyze(&self, context: &Self::Context) -> Result<Self::AgentResult> {
+        self.agent_bridge.analyze(context).await
+    }
+
+    fn rule_to_decision(
+        &self,
+        rule_result: Self::RuleResult,
+        source: DecisionSource,
+    ) -> Self::Decision {
+        MacroDecision {
+            source,
+            cycle_phase: rule_result.cycle_phase,
+            position_multiplier: rule_result.position_multiplier,
+            trading_bias: rule_result.trading_bias,
+            risk_appetite: rule_result.risk_appetite,
+            risk_warnings: Vec::new(),
+            summary: rule_result.notes,
+            confidence: match source {
+                DecisionSource::RuleEngine => 0.7,
+                DecisionSource::Fallback => 0.5,
+                _ => 0.7,
+            },
+        }
+    }
+
+    fn merge_decisions(
+        &self,
+        rule: Self::RuleResult,
+        agent: Self::AgentResult,
+        triggers: Vec<Self::Trigger>,
+    ) -> Self::Decision {
+        let cycle_phase = agent.cycle_phase;
+        let position_multiplier = (rule.position_multiplier * 0.3 + agent.position_advice * 0.7)
+            .clamp(0.3, 1.5);
+        let trading_bias = self.more_conservative_bias(rule.trading_bias, agent.trading_bias);
+
+        let mut risk_warnings = agent.risk_warnings;
+        for trigger in &triggers {
+            risk_warnings.push(format!("触发条件: {}", trigger));
+        }
+
+        let summary = format!(
+            "{}判断: {:?} | 仓位建议: {:.0}% | 方向: {:?}\n分析: {}",
+            if triggers.is_empty() { "规则引擎" } else { "智能体分析" },
+            cycle_phase,
+            position_multiplier * 100.0,
+            trading_bias,
+            agent.reasoning
+        );
+
+        MacroDecision {
+            source: DecisionSource::Merged,
+            cycle_phase,
+            position_multiplier,
+            trading_bias,
+            risk_appetite: rule.risk_appetite,
+            risk_warnings,
+            summary,
+            confidence: agent.confidence,
+        }
+    }
+
+    fn config(&self) -> &HybridConfig {
+        // Convert OrchestratorConfig to HybridConfig
+        // Note: This is a simplification; in production you might want to
+        // store a HybridConfig directly or implement lazy conversion
+        static DEFAULT_CONFIG: HybridConfig = HybridConfig {
+            agent_enabled: true,
+            min_agent_confidence: 0.6,
+            cache_duration_secs: 3600,
+        };
+        &DEFAULT_CONFIG
     }
 }
 

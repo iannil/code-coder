@@ -14,7 +14,17 @@ import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
 import { PermissionNext } from "@/permission/next"
 import { Question } from "@/question"
-import { branch, point, loop } from "@/observability"
+import {
+  branch,
+  point,
+  loop,
+  runWithNewContextAsync,
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+  functionError,
+  getTraceId,
+} from "@/observability"
 import { TaskEmitter } from "@/api/task"
 
 export namespace SessionProcessor {
@@ -63,12 +73,13 @@ export namespace SessionProcessor {
       }
     }
 
-    // Helper: truncate tool args for display
+    // Helper: truncate tool args for display (returns string for large args)
     const truncateArgs = (args: unknown): unknown => {
       if (args === null || args === undefined) return args
       const str = JSON.stringify(args)
       if (str.length > 200) {
-        return JSON.parse(str.slice(0, 200) + "...")
+        // Return truncated string directly - don't try to parse invalid JSON
+        return str.slice(0, 200) + "..."
       }
       return args
     }
@@ -81,11 +92,20 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       async process(streamInput: LLM.StreamInput) {
-        log.info("process")
-        point("processor_start", { sessionID: input.sessionID })
-        needsCompaction = false
-        const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
-        let streamIteration = 0
+        // Wrap entire process in a trace context for distributed tracing
+        return runWithNewContextAsync("session-processor", async () => {
+          const startTime = Date.now()
+          functionStart("SessionProcessor.process", {
+            sessionID: input.sessionID,
+            agent: input.assistantMessage.agent,
+            model: input.model.id,
+          })
+
+          log.info("process", { traceId: getTraceId() })
+          point("processor_start", { sessionID: input.sessionID, traceId: getTraceId() })
+          needsCompaction = false
+          const shouldBreak = (await Config.get()).experimental?.continue_loop_on_deny !== true
+          let streamIteration = 0
         while (true) {
           streamIteration++
           loop("process_stream", streamIteration)
@@ -262,6 +282,15 @@ export namespace SessionProcessor {
                         truncateArgs(toolArgs),
                         truncateArgs(value.output.output),
                       )
+
+                      // Emit skill_use event for Skill tool calls
+                      if (toolName.toLowerCase() === "skill" && value.output.metadata?.name) {
+                        const skillName = value.output.metadata.name as string
+                        const skillArgs = toolArgs && typeof toolArgs === "object" ? (toolArgs as any).args : undefined
+                        const duration = match.state.time?.start ? Date.now() - match.state.time.start : undefined
+                        TaskEmitter.skillUse(input.taskID, skillName, skillArgs, duration)
+                      }
+
                       lastToolCall = null
                     }
 
@@ -317,17 +346,17 @@ export namespace SessionProcessor {
                     metadata: value.providerMetadata,
                   })
 
-                  // Fix Gemini finishReason: if there are completed tool calls but finishReason is not "tool-calls",
-                  // force correct it for Gemini models to ensure the loop continues properly
+                  // Fix finishReason: if there are completed tool calls but finishReason is not "tool-calls",
+                  // force correct it to ensure the loop continues properly.
+                  // This applies to ALL models (Gemini, Claude, etc.) as some models may send "end-turn"
+                  // after tool calls when they should continue processing the tool results.
                   const hasCompletedToolCalls =
                     Object.keys(toolcalls).length > 0 ||
                     (await MessageV2.parts(input.assistantMessage.id)).some(
                       (p) => p.type === "tool" && (p.state.status === "completed" || p.state.status === "error"),
                     )
-                  const isGemini =
-                    input.model.providerID === "google" || input.model.api.id.includes("gemini")
 
-                  if (isGemini && hasCompletedToolCalls && value.finishReason !== "tool-calls") {
+                  if (hasCompletedToolCalls && value.finishReason !== "tool-calls") {
                     input.assistantMessage.finish = "tool-calls"
                   } else {
                     input.assistantMessage.finish = value.finishReason
@@ -495,20 +524,25 @@ export namespace SessionProcessor {
           input.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(input.assistantMessage)
           if (needsCompaction) {
+            functionEnd("SessionProcessor.process", { result: "compact" }, Date.now() - startTime)
             point("processor_end", { result: "compact", sessionID: input.sessionID })
             return "compact"
           }
           if (blocked) {
+            functionEnd("SessionProcessor.process", { result: "stop_blocked" }, Date.now() - startTime)
             point("processor_end", { result: "stop_blocked", sessionID: input.sessionID })
             return "stop"
           }
           if (input.assistantMessage.error) {
+            functionError("SessionProcessor.process", input.assistantMessage.error, Date.now() - startTime)
             point("processor_end", { result: "stop_error", sessionID: input.sessionID })
             return "stop"
           }
+          functionEnd("SessionProcessor.process", { result: "continue" }, Date.now() - startTime)
           point("processor_end", { result: "continue", sessionID: input.sessionID })
           return "continue"
         }
+        }) // end runWithNewContextAsync
       },
     }
     return result

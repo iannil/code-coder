@@ -6,8 +6,9 @@
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tracing::{debug, info, warn};
+use zero_common::{build_client_with_timeout, TimeoutConfig};
 
-use super::types::{AgentAnalysis, AgentRequest, AgentResponse, MacroContext, ReportType};
+use super::types::{AgentAnalysis, AgentRequest, AgentResponse, ChatResponseData, MacroContext, ReportType};
 use crate::macro_filter::{EconomicCyclePhase, TradingBias};
 
 /// Configuration for the agent bridge.
@@ -45,10 +46,10 @@ pub struct AgentBridge {
 impl AgentBridge {
     /// Create a new agent bridge with the given configuration.
     pub fn new(config: AgentBridgeConfig) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(config.timeout)
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use the http_client factory with the configured timeout
+        let timeout_secs = config.timeout.as_secs();
+        let timeout_config = TimeoutConfig::default();
+        let client = build_client_with_timeout(&timeout_config, timeout_secs);
 
         Self { config, client }
     }
@@ -69,7 +70,7 @@ impl AgentBridge {
         };
 
         let response = self.send_request(&request).await?;
-        self.parse_analysis_response(&response.content)
+        self.parse_analysis_response(&response.message)
     }
 
     /// Generate a periodic macro report.
@@ -85,11 +86,11 @@ impl AgentBridge {
         };
 
         let response = self.send_request(&request).await?;
-        Ok(response.content)
+        Ok(response.message)
     }
 
     /// Send a request to the CodeCoder API with retry logic.
-    async fn send_request(&self, request: &AgentRequest) -> Result<AgentResponse> {
+    async fn send_request(&self, request: &AgentRequest) -> Result<ChatResponseData> {
         let url = format!("{}/api/v1/chat", self.config.codecoder_endpoint);
 
         let mut last_error = None;
@@ -125,7 +126,7 @@ impl AgentBridge {
     }
 
     /// Try to send a single request.
-    async fn try_send(&self, url: &str, request: &AgentRequest) -> Result<AgentResponse> {
+    async fn try_send(&self, url: &str, request: &AgentRequest) -> Result<ChatResponseData> {
         debug!(url, agent = %request.agent, "Sending request to CodeCoder API");
 
         let response = self
@@ -142,12 +143,19 @@ impl AgentBridge {
             anyhow::bail!("CodeCoder API error: HTTP {} - {}", status, error_text);
         }
 
-        let agent_response: AgentResponse = response
+        let api_response: AgentResponse = response
             .json()
             .await
             .context("Failed to parse CodeCoder API response")?;
 
-        Ok(agent_response)
+        if !api_response.success {
+            let error = api_response.error.unwrap_or_else(|| "Unknown API error".to_string());
+            anyhow::bail!("CodeCoder API returned error: {}", error);
+        }
+
+        api_response
+            .data
+            .context("CodeCoder API returned success but no data")
     }
 
     /// Build the analysis prompt for the macro agent.

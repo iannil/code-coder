@@ -21,6 +21,7 @@ use std::time::Duration;
 use crate::github::{self, GitHubClient};
 use crate::gitlab::{self, GitLabClient};
 use zero_common::hitl_client::{ApprovalType, CreateApprovalRequest, HitLClient};
+use zero_common::{build_client, ClientCategory, TimeoutConfig};
 
 // ============================================================================
 // IM Notification Configuration
@@ -139,10 +140,8 @@ pub struct ReviewBridge {
 impl ReviewBridge {
     /// Create a new review bridge.
     pub fn new(codecoder_endpoint: impl Into<String>) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(300)) // 5 min timeout for LLM
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use LLM category for code review API calls (300s default timeout)
+        let client = build_client(&TimeoutConfig::default(), ClientCategory::Llm);
 
         Self {
             codecoder_endpoint: codecoder_endpoint.into(),

@@ -1,6 +1,16 @@
 /**
  * Task Event Emitter
  * Per-task SSE event streaming for ZeroBot integration
+ *
+ * ## Dual Output Mode
+ *
+ * The emitter supports two output modes:
+ * 1. **SSE (default)**: Direct streaming to connected clients
+ * 2. **Redis Streams**: Persistent event log for reliable delivery
+ *
+ * When Redis Streams is enabled, events are written to both:
+ * - `tasks:events:{task_id}` - Per-task event stream
+ * - `tasks:state:{task_id}` - State projection (Redis Hash)
  */
 
 import { Bus } from "@/bus"
@@ -9,6 +19,20 @@ import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
 import z from "zod"
 import type { TaskEvent } from "./types"
+import {
+  StreamTaskEvent,
+  StreamEventEnvelope,
+  createStreamEvent,
+  toStreamEvent,
+  applyEventToState,
+  stateToHashFields,
+  createInitialState,
+} from "./events"
+import {
+  RedisStreamClient,
+  streamKeys,
+  isRedisStreamsAvailable,
+} from "@/infrastructure/redis"
 
 export namespace TaskEmitter {
   const log = Log.create({ service: "task-emitter" })
@@ -58,13 +82,52 @@ export namespace TaskEmitter {
   interface TaskEmitterState {
     /** Map of taskID to set of stream controllers */
     streams: Map<string, Set<StreamController>>
+    /** Map of taskID to cached events (for late subscribers) */
+    eventCache: Map<string, TaskEvent[]>
+    /** Map of taskID to event sequence number */
+    eventSeq: Map<string, number>
+    /** Redis client for stream publishing */
+    redisClient: RedisStreamClient | null
+    /** Whether Redis Streams is available */
+    redisAvailable: boolean
   }
 
   const state = Instance.state((): TaskEmitterState => {
     return {
       streams: new Map(),
+      eventCache: new Map(),
+      eventSeq: new Map(),
+      redisClient: null,
+      redisAvailable: false,
     }
   })
+
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+
+  /**
+   * Initialize Redis Streams publishing (called during server startup).
+   */
+  export async function initRedisStreams(): Promise<void> {
+    const s = state()
+
+    try {
+      const available = await isRedisStreamsAvailable()
+      if (available) {
+        const { getRedisStreamClient } = await import("@/infrastructure/redis")
+        s.redisClient = await getRedisStreamClient()
+        s.redisAvailable = true
+        log.info("TaskEmitter: Redis Streams enabled")
+      } else {
+        log.info("TaskEmitter: Redis Streams not available, using SSE only")
+      }
+    } catch (error) {
+      log.warn("TaskEmitter: Failed to initialize Redis Streams", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
 
   // ============================================================================
   // Event Emission
@@ -73,12 +136,18 @@ export namespace TaskEmitter {
   /**
    * Emit an event for a specific task
    * This will be received by all SSE subscribers for that task
+   * and optionally published to Redis Streams
    */
-  export function emit(taskID: string, event: TaskEvent): void {
+  export async function emit(taskID: string, event: TaskEvent): Promise<void> {
     const s = state()
     const controllers = s.streams.get(taskID)
 
     log.info("emitting task event", { taskID, type: event.type })
+
+    // Cache the event for late subscribers
+    const cached = s.eventCache.get(taskID) ?? []
+    cached.push(event)
+    s.eventCache.set(taskID, cached)
 
     // Publish to Bus for other listeners
     Bus.publish(Event.TaskEvent, { taskID, event })
@@ -96,6 +165,65 @@ export namespace TaskEmitter {
         }
       }
     }
+
+    // Publish to Redis Streams if available
+    if (s.redisAvailable && s.redisClient) {
+      try {
+        await publishToStream(taskID, event)
+      } catch (error) {
+        log.warn("failed to publish to Redis Stream", {
+          taskID,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+
+  /**
+   * Publish event to Redis Stream.
+   */
+  async function publishToStream(
+    taskID: string,
+    event: TaskEvent,
+  ): Promise<void> {
+    const s = state()
+    if (!s.redisClient) return
+
+    // Get next sequence number
+    const seq = (s.eventSeq.get(taskID) ?? 0) + 1
+    s.eventSeq.set(taskID, seq)
+
+    // Convert to stream event format
+    const streamEvent = toStreamEvent(event)
+    const envelope = createStreamEvent(seq, streamEvent)
+
+    // Add to event stream
+    await s.redisClient.xadd(streamKeys.taskEvents(taskID), envelope)
+
+    // Update state projection
+    const stateKey = streamKeys.taskState(taskID)
+    const currentFields = await s.redisClient.hgetall(stateKey)
+
+    const currentState =
+      Object.keys(currentFields).length > 0
+        ? {
+            taskId: currentFields.taskId ?? taskID,
+            status: (currentFields.status as any) ?? "running",
+            currentAgent: currentFields.currentAgent,
+            progressPct: parseInt(currentFields.progressPct ?? "0", 10),
+            lastEventSeq: parseInt(currentFields.lastEventSeq ?? "0", 10),
+            outputBuffer: currentFields.outputBuffer,
+            startedAt: currentFields.startedAt,
+            updatedAt: currentFields.updatedAt ?? new Date().toISOString(),
+            lastHeartbeat: currentFields.lastHeartbeat,
+            error: currentFields.error,
+          }
+        : createInitialState(taskID)
+
+    const newState = applyEventToState(currentState, envelope)
+    const newFields = stateToHashFields(newState)
+
+    await s.redisClient.hset(stateKey, newFields)
   }
 
   /**
@@ -177,6 +305,38 @@ export namespace TaskEmitter {
   }
 
   /**
+   * Emit a skill use event
+   */
+  export function skillUse(taskID: string, skill: string, args?: string, duration_ms?: number): void {
+    emit(taskID, { type: "skill_use", data: { skill, args, duration_ms } })
+  }
+
+  /**
+   * Emit a heartbeat event (for timeout management)
+   */
+  export function heartbeat(taskID: string, elapsedMs: number, stage?: string): void {
+    const s = state()
+
+    // Only publish to Redis Streams, not SSE
+    if (s.redisAvailable && s.redisClient) {
+      const seq = (s.eventSeq.get(taskID) ?? 0) + 1
+      s.eventSeq.set(taskID, seq)
+
+      const envelope = createStreamEvent(seq, {
+        type: "heartbeat",
+        data: { elapsedMs, stage },
+      })
+
+      s.redisClient.xadd(streamKeys.taskEvents(taskID), envelope).catch((error) => {
+        log.warn("failed to publish heartbeat", {
+          taskID,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+    }
+  }
+
+  /**
    * Emit a finish event (success or failure)
    */
   export function finish(taskID: string, success: boolean, output?: string, error?: string): void {
@@ -187,6 +347,12 @@ export namespace TaskEmitter {
 
     // Publish completion event
     Bus.publish(Event.TaskCompleted, { taskID, success, output, error })
+
+    // Clean up sequence tracking
+    const s = state()
+    setTimeout(() => {
+      s.eventSeq.delete(taskID)
+    }, 30000)
   }
 
   // ============================================================================
@@ -196,6 +362,7 @@ export namespace TaskEmitter {
   /**
    * Subscribe to events for a specific task
    * Returns a ReadableStream that can be piped to SSE response
+   * Late subscribers will receive cached events first
    */
   export function subscribe(taskID: string): ReadableStream<TaskEvent> {
     const s = state()
@@ -204,12 +371,39 @@ export namespace TaskEmitter {
       start(controller) {
         log.info("new SSE subscriber for task", { taskID })
 
+        // First, send any cached events to catch up
+        const cachedEvents = s.eventCache.get(taskID)
+        if (cachedEvents && cachedEvents.length > 0) {
+          log.info("sending cached events to late subscriber", {
+            taskID,
+            cachedCount: cachedEvents.length,
+          })
+          for (const event of cachedEvents) {
+            try {
+              controller.enqueue(event)
+            } catch (error) {
+              log.warn("failed to send cached event", {
+                taskID,
+                error: error instanceof Error ? error.message : String(error),
+              })
+            }
+          }
+
+          // If the last cached event is a finish event, close the stream
+          const lastEvent = cachedEvents[cachedEvents.length - 1]
+          if (lastEvent && lastEvent.type === "finish") {
+            log.info("task already finished, closing stream after cached events", { taskID })
+            controller.close()
+            return
+          }
+        }
+
         const streamController: StreamController = {
           controller,
           taskID,
         }
 
-        // Add to streams map
+        // Add to streams map for future events
         const existing = s.streams.get(taskID) ?? new Set()
         existing.add(streamController)
         s.streams.set(taskID, existing)
@@ -220,6 +414,44 @@ export namespace TaskEmitter {
         // Cleanup is handled by unsubscribe or closeAllStreams
       },
     })
+  }
+
+  /**
+   * Subscribe to events from Redis Stream (for zero-channels).
+   * Returns events starting from the given sequence number.
+   */
+  export async function subscribeFromStream(
+    taskID: string,
+    fromSeq: number = 0,
+  ): Promise<StreamEventEnvelope[]> {
+    const s = state()
+    if (!s.redisClient) {
+      return []
+    }
+
+    // Read all events from the task's stream
+    const messages = await s.redisClient.xread(
+      streamKeys.taskEvents(taskID),
+      "0", // From beginning
+      1000, // Max 1000 events
+    )
+
+    const events: StreamEventEnvelope[] = []
+    for (const message of messages) {
+      try {
+        const envelope = s.redisClient.parsePayload<StreamEventEnvelope>(message)
+        if (envelope.seq > fromSeq) {
+          events.push(envelope)
+        }
+      } catch (error) {
+        log.warn("failed to parse stream event", {
+          taskID,
+          messageId: message.id,
+        })
+      }
+    }
+
+    return events
   }
 
   /**
@@ -264,6 +496,14 @@ export namespace TaskEmitter {
       s.streams.delete(taskID)
       log.info("closed all SSE streams for task", { taskID, count: controllers.size })
     }
+
+    // Delay cleanup of event cache to allow late subscribers to catch up
+    // Clean up after 30 seconds
+    setTimeout(() => {
+      const currentState = state()
+      currentState.eventCache.delete(taskID)
+      log.debug("cleaned up event cache for task", { taskID })
+    }, 30000)
   }
 
   /**
@@ -278,5 +518,12 @@ export namespace TaskEmitter {
    */
   export function hasSubscribers(taskID: string): boolean {
     return subscriberCount(taskID) > 0
+  }
+
+  /**
+   * Check if Redis Streams is available
+   */
+  export function isRedisEnabled(): boolean {
+    return state().redisAvailable
   }
 }

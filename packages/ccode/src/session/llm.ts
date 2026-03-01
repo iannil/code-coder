@@ -26,7 +26,7 @@ import { Bus } from "@/bus"
 import { TuiEvent } from "@/cli/cmd/tui/event"
 import {
   runWithNewContextAsync,
-  apiCall,
+  apiCallPoint as apiCall,
   point,
 } from "@/observability"
 

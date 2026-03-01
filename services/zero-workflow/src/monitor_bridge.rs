@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use zero_common::{build_client_with_timeout, TimeoutConfig};
 
 use zero_common::config::{MonitorNotificationConfig, MonitorSourceConfig, MonitorTask};
 
@@ -177,11 +178,17 @@ pub struct MonitorBridge {
 impl MonitorBridge {
     /// Create a new monitor bridge.
     pub fn new(codecoder_endpoint: impl Into<String>) -> Self {
+        let timeout_config = TimeoutConfig::default();
+        // Use API timeout for web scraping/RSS, but with custom user agent
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(timeout_config.connect_secs))
+            .timeout(Duration::from_secs(timeout_config.api_secs))
             .user_agent("Mozilla/5.0 ZeroBot Monitor/1.0")
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .unwrap_or_else(|_| {
+                // Fallback with same timeouts
+                build_client_with_timeout(&timeout_config, timeout_config.api_secs)
+            });
 
         Self {
             codecoder_endpoint: codecoder_endpoint.into(),

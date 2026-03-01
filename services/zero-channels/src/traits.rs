@@ -34,6 +34,50 @@ pub enum ChannelError {
 /// Channel adapter trait.
 ///
 /// Implement this trait to add support for a new messaging channel.
+///
+/// # Note on Object Safety
+///
+/// This trait is **NOT** dyn-compatible because `listen` uses a generic callback
+/// parameter. This is an intentional design choice for performance:
+///
+/// - **Performance**: Generic callbacks are monomorphized at compile time,
+///   avoiding virtual dispatch overhead in the hot path (message handling).
+/// - **Flexibility**: Allows callers to pass closures directly without boxing.
+///
+/// For runtime polymorphism (e.g., storing multiple channel types in a collection),
+/// see `zero-cli/src/channels/traits.rs` which defines a dyn-compatible version
+/// using `mpsc::Sender` instead of generic callbacks.
+///
+/// # Example
+///
+/// ```ignore
+/// use zero_channels::traits::{Channel, ChannelResult};
+///
+/// struct MyChannel { /* ... */ }
+///
+/// #[async_trait]
+/// impl Channel for MyChannel {
+///     fn name(&self) -> &'static str { "my-channel" }
+///
+///     async fn init(&mut self) -> ChannelResult<()> { Ok(()) }
+///
+///     async fn send(&self, message: OutgoingMessage) -> ChannelResult<String> {
+///         // Send message to external service
+///         Ok("msg-id-123".to_string())
+///     }
+///
+///     async fn listen<F>(&self, callback: F) -> ChannelResult<()>
+///     where
+///         F: Fn(ChannelMessage) + Send + Sync + 'static
+///     {
+///         // Start polling/webhook and call `callback` for each message
+///         Ok(())
+///     }
+///
+///     async fn health_check(&self) -> ChannelResult<()> { Ok(()) }
+///     async fn shutdown(&self) -> ChannelResult<()> { Ok(()) }
+/// }
+/// ```
 #[async_trait]
 pub trait Channel: Send + Sync {
     /// Get the channel name.

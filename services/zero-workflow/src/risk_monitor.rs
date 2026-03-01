@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use zero_common::{build_client, ClientCategory};
 
 // ============================================================================
 // Types
@@ -321,10 +322,8 @@ pub struct RiskMonitor {
 impl RiskMonitor {
     /// Create a new risk monitor.
     pub fn new(config: RiskMonitorConfig) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use Notification category for sending alerts to IM channels
+        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Notification);
 
         Self {
             client,

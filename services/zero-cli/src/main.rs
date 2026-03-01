@@ -13,6 +13,7 @@ use clap::{Parser, Subcommand};
 use tracing::{info, Level};
 
 mod agent;
+mod alerts;
 mod channels;
 mod config;
 mod credential;

@@ -107,6 +107,15 @@ pub struct Event {
     pub target: Option<String>,
     /// Correlation ID for request/response tracking.
     pub correlation_id: Option<String>,
+    /// Trace ID for distributed tracing (propagated across services).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    /// Current span ID for this event.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub span_id: Option<String>,
+    /// Parent span ID (if any).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_span_id: Option<String>,
     /// Event timestamp.
     pub timestamp: DateTime<Utc>,
     /// JSON payload.
@@ -125,6 +134,9 @@ impl Event {
             source: source.into(),
             target: None,
             correlation_id: None,
+            trace_id: None,
+            span_id: None,
+            parent_span_id: None,
             timestamp: Utc::now(),
             payload: serde_json::Value::Null,
             metadata: HashMap::new(),
@@ -150,10 +162,38 @@ impl Event {
         self
     }
 
+    /// Set the trace context for distributed tracing.
+    /// This should be called when creating events that need to be correlated
+    /// across services.
+    pub fn with_trace_context(
+        mut self,
+        trace_id: impl Into<String>,
+        span_id: impl Into<String>,
+        parent_span_id: Option<String>,
+    ) -> Self {
+        self.trace_id = Some(trace_id.into());
+        self.span_id = Some(span_id.into());
+        self.parent_span_id = parent_span_id;
+        self
+    }
+
+    /// Set trace context from a RequestContext.
+    pub fn with_request_context(mut self, ctx: &crate::logging::RequestContext) -> Self {
+        self.trace_id = Some(ctx.trace_id.clone());
+        self.span_id = Some(ctx.span_id.clone());
+        self.parent_span_id = ctx.parent_span_id.clone();
+        self
+    }
+
     /// Add metadata.
     pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.metadata.insert(key.into(), value.into());
         self
+    }
+
+    /// Check if this event has valid tracing context.
+    pub fn has_tracing(&self) -> bool {
+        self.trace_id.is_some() && self.span_id.is_some()
     }
 }
 
@@ -924,6 +964,38 @@ mod tests {
         // Test async factory with in-memory backend
         let bus = create_bus_async(BusBackend::Memory, None).await.unwrap();
         assert!(bus.is_healthy().await);
+    }
+
+    #[test]
+    fn test_event_with_trace_context() {
+        let event = Event::new("agent.request", "invoke", "codecoder")
+            .with_trace_context("trace-abc-123", "span-xyz", Some("parent-456".to_string()));
+
+        assert_eq!(event.trace_id, Some("trace-abc-123".to_string()));
+        assert_eq!(event.span_id, Some("span-xyz".to_string()));
+        assert_eq!(event.parent_span_id, Some("parent-456".to_string()));
+        assert!(event.has_tracing());
+    }
+
+    #[test]
+    fn test_event_without_trace_context() {
+        let event = Event::new("agent.request", "invoke", "codecoder");
+
+        assert!(event.trace_id.is_none());
+        assert!(event.span_id.is_none());
+        assert!(!event.has_tracing());
+    }
+
+    #[test]
+    fn test_event_trace_serialization() {
+        let event = Event::new("test.topic", "test.event", "test")
+            .with_trace_context("trace-123", "span-456", None);
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"trace_id\":\"trace-123\""));
+        assert!(json.contains("\"span_id\":\"span-456\""));
+        // parent_span_id should be skipped when None
+        assert!(!json.contains("parent_span_id"));
     }
 }
 

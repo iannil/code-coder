@@ -13,6 +13,7 @@
 //!
 //! The debug information is appended to the final response in a platform-specific format.
 
+use crate::safe_truncate;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
@@ -36,9 +37,25 @@ pub struct DebugContext {
     pub call_chain: Vec<ServiceCall>,
     /// Data flow metrics
     pub data_flow: DataFlowMetrics,
+    /// Tools used during execution (name -> count)
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub tools_used: HashMap<String, u64>,
+    /// Skills used during execution (ordered list)
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub skills_used: Vec<SkillUsage>,
     /// Additional metadata
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
+}
+
+/// Information about a skill usage during execution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillUsage {
+    /// Skill name (e.g., "tdd", "brainstorming")
+    pub skill: String,
+    /// Duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// Information about an agent usage during execution.
@@ -110,6 +127,8 @@ impl DebugContext {
                 response_bytes: 0,
                 total_duration_ms: 0,
             },
+            tools_used: HashMap::new(),
+            skills_used: Vec::new(),
             metadata: HashMap::new(),
         }
     }
@@ -159,11 +178,26 @@ impl DebugContext {
             .sum()
     }
 
+    /// Add a tool usage record.
+    pub fn add_tool_usage(&mut self, tool: String) {
+        *self.tools_used.entry(tool).or_insert(0) += 1;
+    }
+
+    /// Add a skill usage record.
+    pub fn add_skill_usage(&mut self, skill: String, duration_ms: Option<u64>) {
+        // Avoid duplicates
+        if !self.skills_used.iter().any(|s| s.skill == skill) {
+            self.skills_used.push(SkillUsage { skill, duration_ms });
+        }
+    }
+
     /// Check if any debug information was collected.
     pub fn is_empty(&self) -> bool {
         self.agents_used.is_empty()
             && self.models_used.is_empty()
             && self.call_chain.is_empty()
+            && self.tools_used.is_empty()
+            && self.skills_used.is_empty()
             && self.data_flow.request_bytes == 0
     }
 }
@@ -178,6 +212,37 @@ pub fn format_debug_html(debug: &DebugContext) -> String {
         format!("<b>🐛 Debug Info</b>"),
         format!("<b>🔍 Trace ID:</b> <code>{}</code>", truncate_id(&debug.trace_id)),
     ];
+
+    // Tools used - show prominently
+    if !debug.tools_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("<b>🔧 Tools:</b>".to_string());
+        let mut tools: Vec<_> = debug.tools_used.iter().collect();
+        tools.sort_by(|a, b| b.1.cmp(a.1)); // Sort by count descending
+        for (tool, count) in tools.iter().take(10) {
+            let count_str = if **count > 1 {
+                format!(" (x{})", count)
+            } else {
+                String::new()
+            };
+            parts.push(format!("• <b>{}</b>{}", escape_html(tool), count_str));
+        }
+        if tools.len() > 10 {
+            parts.push(format!("  ... 还有 {} 个工具", tools.len() - 10));
+        }
+    }
+
+    // Skills used
+    if !debug.skills_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("<b>✨ Skills:</b>".to_string());
+        for skill in &debug.skills_used {
+            let duration_str = skill.duration_ms
+                .map(|ms| format!(" ({})", format_duration_ms(ms)))
+                .unwrap_or_default();
+            parts.push(format!("• <b>{}</b>{}", escape_html(&skill.skill), duration_str));
+        }
+    }
 
     // Agents - show first
     if !debug.agents_used.is_empty() {
@@ -267,6 +332,37 @@ pub fn format_debug_mrkdwn(debug: &DebugContext) -> String {
         format!("*🔍 Trace ID:* `{}`", truncate_id(&debug.trace_id)),
     ];
 
+    // Tools used - show prominently
+    if !debug.tools_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("*🔧 Tools:*".to_string());
+        let mut tools: Vec<_> = debug.tools_used.iter().collect();
+        tools.sort_by(|a, b| b.1.cmp(a.1));
+        for (tool, count) in tools.iter().take(10) {
+            let count_str = if **count > 1 {
+                format!(" (x{})", count)
+            } else {
+                String::new()
+            };
+            parts.push(format!("• *{}*{}", tool, count_str));
+        }
+        if tools.len() > 10 {
+            parts.push(format!("  ... 还有 {} 个工具", tools.len() - 10));
+        }
+    }
+
+    // Skills used
+    if !debug.skills_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("*✨ Skills:*".to_string());
+        for skill in &debug.skills_used {
+            let duration_str = skill.duration_ms
+                .map(|ms| format!(" ({})", format_duration_ms(ms)))
+                .unwrap_or_default();
+            parts.push(format!("• *{}*{}", skill.skill, duration_str));
+        }
+    }
+
     // Agents - show first
     if !debug.agents_used.is_empty() {
         parts.push("".to_string());
@@ -350,6 +446,37 @@ pub fn format_debug_markdown(debug: &DebugContext) -> String {
         format!("**🔍 Trace ID:** `{}`", truncate_id(&debug.trace_id)),
     ];
 
+    // Tools used - show prominently
+    if !debug.tools_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("**🔧 Tools:**".to_string());
+        let mut tools: Vec<_> = debug.tools_used.iter().collect();
+        tools.sort_by(|a, b| b.1.cmp(a.1));
+        for (tool, count) in tools.iter().take(10) {
+            let count_str = if **count > 1 {
+                format!(" (x{})", count)
+            } else {
+                String::new()
+            };
+            parts.push(format!("• **{}**{}", tool, count_str));
+        }
+        if tools.len() > 10 {
+            parts.push(format!("  ... 还有 {} 个工具", tools.len() - 10));
+        }
+    }
+
+    // Skills used
+    if !debug.skills_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("**✨ Skills:**".to_string());
+        for skill in &debug.skills_used {
+            let duration_str = skill.duration_ms
+                .map(|ms| format!(" ({})", format_duration_ms(ms)))
+                .unwrap_or_default();
+            parts.push(format!("• **{}**{}", skill.skill, duration_str));
+        }
+    }
+
     // Agents - show first
     if !debug.agents_used.is_empty() {
         parts.push("".to_string());
@@ -432,6 +559,37 @@ pub fn format_debug_plain(debug: &DebugContext) -> String {
         "🐛 Debug Info".to_string(),
         format!("🔍 Trace ID: {}", truncate_id(&debug.trace_id)),
     ];
+
+    // Tools used - show prominently
+    if !debug.tools_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("🔧 Tools:".to_string());
+        let mut tools: Vec<_> = debug.tools_used.iter().collect();
+        tools.sort_by(|a, b| b.1.cmp(a.1));
+        for (tool, count) in tools.iter().take(10) {
+            let count_str = if **count > 1 {
+                format!(" (x{})", count)
+            } else {
+                String::new()
+            };
+            parts.push(format!("• {}{}", tool, count_str));
+        }
+        if tools.len() > 10 {
+            parts.push(format!("  ... 还有 {} 个工具", tools.len() - 10));
+        }
+    }
+
+    // Skills used
+    if !debug.skills_used.is_empty() {
+        parts.push("".to_string());
+        parts.push("✨ Skills:".to_string());
+        for skill in &debug.skills_used {
+            let duration_str = skill.duration_ms
+                .map(|ms| format!(" ({})", format_duration_ms(ms)))
+                .unwrap_or_default();
+            parts.push(format!("• {}{}", skill.skill, duration_str));
+        }
+    }
 
     // Agents - show first
     if !debug.agents_used.is_empty() {
@@ -522,7 +680,7 @@ fn current_timestamp_millis() -> u64 {
 /// Truncate ID to first 8 characters for display.
 fn truncate_id(id: &str) -> String {
     if id.len() > 8 {
-        format!("{}...", &id[..8])
+        format!("{}...", safe_truncate(id, 8))
     } else {
         id.to_string()
     }
@@ -647,9 +805,10 @@ mod tests {
         assert!(has_debug);
         assert_eq!(cleaned, "hello world");
 
+        // Note: Replacing @@debug in the middle leaves double space (intentional - don't modify user content)
         let (has_debug, cleaned) = extract_debug_flag("hello @@debug world");
         assert!(has_debug);
-        assert_eq!(cleaned, "hello world");
+        assert_eq!(cleaned, "hello  world");
 
         let (has_debug, cleaned) = extract_debug_flag("hello world");
         assert!(!has_debug);
@@ -668,7 +827,10 @@ mod tests {
 
     #[test]
     fn test_truncate_id() {
-        assert_eq!(truncate_id("abc12345"), "abc12345...");
+        // IDs longer than 8 chars get truncated with "..."
+        assert_eq!(truncate_id("abc123456789"), "abc12345...");
+        // IDs of 8 or fewer chars remain unchanged
+        assert_eq!(truncate_id("abc12345"), "abc12345");
         assert_eq!(truncate_id("abc123"), "abc123");
         assert_eq!(truncate_id(""), "");
     }

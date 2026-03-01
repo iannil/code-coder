@@ -1,5 +1,6 @@
 mod api;
 
+use crate::alerts;
 use crate::config::Config;
 use crate::process::{HealthChecker, ServiceConfig, ServiceManager};
 use crate::tools::ToolRegistry;
@@ -130,16 +131,26 @@ pub async fn run_orchestrator(
         ));
     }
 
+    // Start alert worker
+    let config_dir = config.config_path.parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".codecoder"));
+    handles.push(spawn_component_supervisor(
+        "alerts",
+        initial_backoff,
+        max_backoff,
+        move || {
+            let dir = config_dir.clone();
+            async move { alerts::run_alert_worker(dir).await }
+        },
+    ));
+
     // ── Find Rust binaries and create service manager ──────────
     let bin_dir = find_rust_bin_dir()?;
     tracing::info!("Using Rust binaries from: {}", bin_dir.display());
 
-    // Compute log directory (default: ../.logs from working dir, i.e., project_root/.logs)
-    let resolved_log_dir = log_dir.unwrap_or_else(|| {
-        std::env::current_dir()
-            .map(|cwd| cwd.join("../.logs"))
-            .unwrap_or_else(|_| PathBuf::from(".logs"))
-    });
+    // Compute log directory (default: ~/.codecoder/logs)
+    let resolved_log_dir = log_dir.unwrap_or_else(|| zero_common::config::config_dir().join("logs"));
     tracing::info!("Service logs directory: {}", resolved_log_dir.display());
 
     // Create service manager

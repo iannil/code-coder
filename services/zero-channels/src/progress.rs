@@ -14,7 +14,8 @@
 use crate::debug::{self, AgentUsage, DebugContext, ModelUsage};
 use crate::message::{ChannelMessage, ChannelType, OutgoingContent};
 use crate::outbound::OutboundRouter;
-use crate::sse::{AgentInfoData, DebugInfoData, FinishData, ProgressData, TaskEvent, ToolUseData};
+use crate::safe_truncate;
+use crate::sse::{AgentInfoData, DebugInfoData, FinishData, ProgressData, SkillUseData, TaskEvent, ToolUseData};
 use crate::telegram::TelegramChannel;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -46,6 +47,9 @@ pub trait ProgressHandler: Send + Sync {
     /// Called when a tool is being used.
     async fn on_tool_use(&self, msg: &ChannelMessage, event: &ToolUseData) -> Result<()>;
 
+    /// Called when a skill is being used.
+    async fn on_skill_use(&self, msg: &ChannelMessage, event: &SkillUseData) -> Result<()>;
+
     /// Called when debug information is available.
     async fn on_debug_info(&self, msg: &ChannelMessage, event: &DebugInfoData) -> Result<()>;
 
@@ -57,12 +61,52 @@ pub trait ProgressHandler: Send + Sync {
 }
 
 // ============================================================================
+// Message Lifecycle Tracking
+// ============================================================================
+
+/// Message processing lifecycle stages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageStage {
+    /// Message received, awaiting processing
+    Received,
+    /// Task created, SSE subscription started
+    Processing,
+    /// Receiving tool/thought events
+    Active,
+    /// Finish event received, sending final response
+    Finishing,
+    /// Processing complete (success or failure)
+    Completed,
+    /// Error occurred during processing
+    Failed,
+}
+
+impl MessageStage {
+    fn as_str(&self) -> &'static str {
+        match self {
+            MessageStage::Received => "received",
+            MessageStage::Processing => "processing",
+            MessageStage::Active => "active",
+            MessageStage::Finishing => "finishing",
+            MessageStage::Completed => "completed",
+            MessageStage::Failed => "failed",
+        }
+    }
+}
+
+// ============================================================================
 // Message Tracker
 // ============================================================================
 
 /// Tracks sent messages for editing/updating.
 #[derive(Debug, Clone)]
 struct MessageTracker {
+    /// Current lifecycle stage
+    stage: MessageStage,
+    /// Trace ID for distributed tracing
+    trace_id: String,
+    /// Task ID (if known)
+    task_id: Option<String>,
     /// Progress message ID (for editing)
     progress_message_id: Option<i64>,
     /// Last update timestamp (for throttling)
@@ -73,25 +117,78 @@ struct MessageTracker {
     task_start: Instant,
     /// Tool usage counts
     tools_used: HashMap<String, u64>,
+    /// Skill usage list (preserves order)
+    skills_used: Vec<String>,
     /// Last thought text (for deduplication)
     last_thought: String,
     /// Debug mode flag
     debug_mode: bool,
     /// Collected debug information
     debug_context: DebugContext,
+    /// Count of events received
+    events_received: u32,
+    /// Count of messages sent
+    messages_sent: u32,
+    /// Count of send failures
+    send_failures: u32,
 }
 
 impl MessageTracker {
     fn new(debug_mode: bool, trace_id: String) -> Self {
         Self {
+            stage: MessageStage::Received,
+            trace_id: trace_id.clone(),
+            task_id: None,
             progress_message_id: None,
             last_update: Instant::now(),
             current_text: String::new(),
             task_start: Instant::now(),
             tools_used: HashMap::new(),
+            skills_used: Vec::new(),
             last_thought: String::new(),
             debug_mode,
             debug_context: DebugContext::new(trace_id),
+            events_received: 0,
+            messages_sent: 0,
+            send_failures: 0,
+        }
+    }
+
+    /// Transition to a new stage with logging
+    fn transition_to(&mut self, new_stage: MessageStage) {
+        let old_stage = self.stage;
+        self.stage = new_stage;
+        tracing::info!(
+            trace_id = %self.trace_id,
+            task_id = ?self.task_id,
+            from_stage = old_stage.as_str(),
+            to_stage = new_stage.as_str(),
+            events_received = self.events_received,
+            messages_sent = self.messages_sent,
+            send_failures = self.send_failures,
+            elapsed_ms = self.task_start.elapsed().as_millis() as u64,
+            "📍 Message stage transition"
+        );
+    }
+
+    /// Record an event received
+    fn record_event(&mut self, event_type: &str) {
+        self.events_received += 1;
+        tracing::debug!(
+            trace_id = %self.trace_id,
+            event_type = event_type,
+            event_count = self.events_received,
+            stage = self.stage.as_str(),
+            "Event received"
+        );
+    }
+
+    /// Record a message send attempt
+    fn record_send(&mut self, success: bool) {
+        if success {
+            self.messages_sent += 1;
+        } else {
+            self.send_failures += 1;
         }
     }
 }
@@ -228,6 +325,241 @@ impl ImProgressHandler {
         }
     }
 
+    /// Check if a tool is a "result tool" - one whose output is the user's final goal.
+    /// These results should be accumulated to the final IM message.
+    ///
+    /// Examples: WebSearch (user wants search results), WebFetch (user wants page content)
+    fn is_result_tool(tool: &str) -> bool {
+        let lower = tool.to_lowercase();
+
+        // Web search and content fetching tools
+        if lower.contains("websearch") || lower.contains("web_search")
+            || lower.contains("webfetch") || lower.contains("web_fetch")
+            || lower.contains("mcp__web_search") {
+            return true;
+        }
+
+        // Content reaching tools (YouTube, Bilibili, RSS, etc.)
+        if lower.contains("reach_youtube") || lower.contains("reach_bilibili")
+            || lower.contains("reach_rss") || lower.contains("network_analyzer") {
+            return true;
+        }
+
+        false
+    }
+
+    /// Check if a tool is an "intermediate tool" - AI uses these for processing.
+    /// Results should NOT be accumulated; they're just for AI's internal work.
+    ///
+    /// Examples: Read (AI reads to analyze), Bash (AI runs commands to check things)
+    fn is_intermediate_tool(tool: &str) -> bool {
+        let lower = tool.to_lowercase();
+
+        // File operations
+        if lower.contains("read") || lower.contains("write")
+            || lower.contains("edit") || lower.contains("multiedit")
+            || lower.contains("apply_patch") || lower.ends_with("ls") {
+            return true;
+        }
+
+        // Code search tools
+        if lower.contains("grep") || lower.contains("glob")
+            || lower.contains("codesearch") || lower.contains("code_search") {
+            return true;
+        }
+
+        // System/execution tools
+        if lower.contains("bash") || lower.contains("batch")
+            || lower.contains("lsp") || lower.contains("language_server") {
+            return true;
+        }
+
+        // Task/agent management
+        if lower.contains("task") || lower.contains("plan")
+            || lower.contains("todo") || lower.contains("skill") {
+            return true;
+        }
+
+        false
+    }
+
+    /// Check if a tool is "sensitive" - results should NEVER be shown in IM.
+    ///
+    /// Examples: credential (passwords, tokens), secret management
+    fn is_sensitive_tool(tool: &str) -> bool {
+        let lower = tool.to_lowercase();
+        lower.contains("credential")
+            || lower.contains("secret")
+            || lower.contains("password")
+            || lower.contains("token")
+    }
+
+    /// Format search tool result for immediate display in tool notification.
+    fn format_search_result(&self, tool: &str, result: &serde_json::Value) -> String {
+        let tool_display = Self::format_tool_name(tool);
+
+        // Try to extract meaningful search results
+        if let Some(obj) = result.as_object() {
+            // WebSearch results typically have a "results" array
+            if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
+                if results.is_empty() {
+                    return format!("{} {}\n└ 无搜索结果", tool_display, tool);
+                }
+
+                let mut text = format!("{} {}\n\n", tool_display, tool);
+                for (i, item) in results.iter().take(5).enumerate() {
+                    if let Some(item_obj) = item.as_object() {
+                        let title = item_obj.get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("无标题");
+                        let url = item_obj.get("url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let snippet = item_obj.get("snippet")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+
+                        text.push_str(&format!("{}. {}\n", i + 1, title));
+                        if !url.is_empty() {
+                            text.push_str(&format!("   {}\n", url));
+                        }
+                        if !snippet.is_empty() {
+                            let truncated = if snippet.len() > 150 {
+                                format!("{}...", safe_truncate(snippet, 150))
+                            } else {
+                                snippet.to_string()
+                            };
+                            text.push_str(&format!("   {}\n", truncated));
+                        }
+                    }
+                }
+                if results.len() > 5 {
+                    text.push_str(&format!("... 还有 {} 条结果\n", results.len() - 5));
+                }
+                return text;
+            }
+
+            // WebFetch results
+            if tool.to_lowercase().contains("fetch") {
+                if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+                    let truncated = if content.len() > 300 {
+                        format!("{}...\n\n[内容已截断，完整内容将在最终输出中显示]", safe_truncate(content, 300))
+                    } else {
+                        content.to_string()
+                    };
+                    return format!("{} {}\n└ 内容: {}", tool_display, tool, truncated);
+                }
+            }
+        }
+
+        // Fallback: truncate result for display
+        let result_full = result.to_string();
+        let result_str = if result_full.len() > 200 {
+            format!("{}...", safe_truncate(&result_full, 200))
+        } else {
+            result_full
+        };
+        format!("{} {}\n└ 結果: {}", tool_display, tool, result_str)
+    }
+
+    /// Format tool result for accumulation to tracker.current_text.
+    /// This content will be included in the final finish event output.
+    ///
+    /// Only accumulates results for "result tools" - tools whose output
+    /// is the user's actual goal. Intermediate tools (Read, Bash, etc.)
+    /// are not accumulated since their output is just for AI processing.
+    fn format_tool_result_for_accumulation(&self, tool: &str, result: &serde_json::Value) -> String {
+        // Skip sensitive tools entirely - never accumulate their results
+        if Self::is_sensitive_tool(tool) {
+            return String::new();
+        }
+
+        // Skip intermediate tools - their results are for AI, not user
+        if Self::is_intermediate_tool(tool) {
+            return String::new();
+        }
+
+        let tool_display = Self::format_tool_name(tool);
+
+        // For result tools, format nicely
+        if Self::is_result_tool(tool) {
+            return self.format_search_result_for_accumulation(tool, result);
+        }
+
+        // For other tools, format with tool name and appropriately truncated result
+        let result_str = result.as_str()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| result.to_string());
+
+        // Truncate very large outputs to avoid message size limits
+        // Telegram has a 4096 character limit for messages
+        const MAX_OUTPUT_LENGTH: usize = 2000;
+
+        if result_str.len() > MAX_OUTPUT_LENGTH {
+            format!("{} {}\n\n```\n{}...\n```\n[输出已截断，共 {} 字符]",
+                tool_display,
+                tool,
+                &result_str[..MAX_OUTPUT_LENGTH],
+                result_str.len()
+            )
+        } else if result_str.is_empty() {
+            format!("{} {}\n[无输出]", tool_display, tool)
+        } else {
+            format!("{} {}\n\n```\n{}\n```", tool_display, tool, result_str)
+        }
+    }
+
+    /// Format search/web tool result for accumulation to final output.
+    fn format_search_result_for_accumulation(&self, tool: &str, result: &serde_json::Value) -> String {
+        if let Some(obj) = result.as_object() {
+            // WebSearch results
+            if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
+                if results.is_empty() {
+                    return format!("🌐 搜索完成，未找到结果");
+                }
+
+                let mut text = String::from("## 搜索结果\n\n");
+                for (i, item) in results.iter().enumerate() {
+                    if let Some(item_obj) = item.as_object() {
+                        let title = item_obj.get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("无标题");
+                        let url = item_obj.get("url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let snippet = item_obj.get("snippet")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+
+                        text.push_str(&format!("{}. [{}]", i + 1, title));
+                        if !url.is_empty() {
+                            text.push_str(&format!("({})", url));
+                        }
+                        text.push('\n');
+                        if !snippet.is_empty() {
+                            text.push_str(&format!("   {}\n", snippet));
+                        }
+                    }
+                }
+                return text;
+            }
+
+            // WebFetch results
+            if tool.to_lowercase().contains("fetch") {
+                if let Some(content) = obj.get("content").and_then(|v| v.as_str()) {
+                    return format!("## 网页内容\n\n{}", content);
+                }
+                if let Some(url) = obj.get("url").and_then(|v| v.as_str()) {
+                    return format!("## 已获取网页\n\nURL: {}", url);
+                }
+            }
+        }
+
+        // Fallback: JSON representation
+        format!("## 工具结果\n\n```json\n{}\n```",
+            serde_json::to_string_pretty(result).unwrap_or_else(|_| result.to_string()))
+    }
+
     /// Send a new message (for key milestones).
     ///
     /// Uses `send_direct` instead of `respond` because streaming mode sends multiple
@@ -294,14 +626,16 @@ impl ImProgressHandler {
 #[async_trait]
 impl ProgressHandler for ImProgressHandler {
     async fn on_start(&self, msg: &ChannelMessage, task_id: &str) -> Result<()> {
-        let text = "🚀 开始处理...";
+        // Include trace_id in the first message for user tracking
+        let text = format!("🚀 开始处理...\n📍 Trace: {}", &msg.trace_id);
 
         tracing::info!(
             message_id = %msg.id,
             task_id = %task_id,
+            trace_id = %msg.trace_id,
             channel_type = ?msg.channel_type,
             debug_mode = self.debug_mode,
-            "Starting progress tracking"
+            "📍 Starting progress tracking"
         );
 
         // Check if debug mode is requested (from message metadata or global setting)
@@ -310,20 +644,39 @@ impl ProgressHandler for ImProgressHandler {
 
         // Initialize tracker with fresh state
         // Use a marker for current_text to distinguish from actual accumulated content
-        self.trackers.insert(
-            msg.id.clone(),
-            Mutex::new(MessageTracker::new(debug_mode, msg.trace_id.clone())),
-        );
+        let mut tracker = MessageTracker::new(debug_mode, msg.trace_id.clone());
+        tracker.task_id = Some(task_id.to_string());
+        tracker.transition_to(MessageStage::Processing);
+
+        self.trackers.insert(msg.id.clone(), Mutex::new(tracker));
 
         // Send initial message and track it
-        if let Ok(Some(progress_msg_id)) = self.send_new_message(msg, text).await {
-            let tracker_ref = self.get_tracker(&msg.id);
-            let mut tracker = tracker_ref.lock().await;
-            tracker.progress_message_id = Some(progress_msg_id);
-            // Don't set current_text to the start message - use a marker instead
-            // This allows on_output to properly accumulate actual content
-            tracker.current_text = "[started]".to_string();
+        let send_result = self.send_new_message(msg, &text).await;
+        let tracker_ref = self.get_tracker(&msg.id);
+        let mut tracker = tracker_ref.lock().await;
+
+        match send_result {
+            Ok(Some(progress_msg_id)) => {
+                tracker.progress_message_id = Some(progress_msg_id);
+                tracker.record_send(true);
+            }
+            Ok(None) => {
+                tracker.record_send(true); // Sent but no message ID returned
+            }
+            Err(e) => {
+                tracker.record_send(false);
+                tracing::error!(
+                    trace_id = %msg.trace_id,
+                    task_id = %task_id,
+                    error = %e,
+                    "❌ Failed to send start message"
+                );
+            }
         }
+
+        // Don't set current_text to the start message - use a marker instead
+        // This allows on_output to properly accumulate actual content
+        tracker.current_text = "[started]".to_string();
 
         Ok(())
     }
@@ -388,7 +741,7 @@ impl ProgressHandler for ImProgressHandler {
 
         // Truncate thought for display (max 200 chars)
         let truncated = if thought.len() > 200 {
-            format!("{}...", &thought[..200])
+            format!("{}...", safe_truncate(thought, 200))
         } else {
             thought.to_string()
         };
@@ -416,7 +769,7 @@ impl ProgressHandler for ImProgressHandler {
         }
 
         // Fallback: send new message
-        let _ = self
+        let result = self
             .router
             .send_direct(
                 msg.channel_type.clone(),
@@ -424,6 +777,21 @@ impl ProgressHandler for ImProgressHandler {
                 OutgoingContent::Text { text: display_thought },
             )
             .await;
+
+        // Track send result
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.record_send(result.success);
+            if !result.success {
+                tracing::warn!(
+                    trace_id = %msg.trace_id,
+                    message_id = %msg.id,
+                    error = ?result.error,
+                    "⚠️ Failed to send thought message"
+                );
+            }
+        }
 
         Ok(())
     }
@@ -495,22 +863,31 @@ impl ProgressHandler for ImProgressHandler {
     }
 
     async fn on_tool_use(&self, msg: &ChannelMessage, event: &ToolUseData) -> Result<()> {
-        // Track tool usage for summary
+        // Track tool usage for summary and debug context
         {
             let tracker_ref = self.get_tracker(&msg.id);
             let mut tracker = tracker_ref.lock().await;
+            tracker.record_event("tool_use");
             *tracker.tools_used.entry(event.tool.clone()).or_insert(0) += 1;
+
+            // Also add to debug context if debug mode is enabled
+            if tracker.debug_mode {
+                tracker.debug_context.add_tool_usage(event.tool.clone());
+            }
         }
 
         let tool_display = Self::format_tool_name(&event.tool);
         let text = if let Some(ref result) = event.result {
-            // Truncate result for display
-            let result_str = if result.to_string().len() > 100 {
-                format!("{}...", &result.to_string()[..100])
+            // For result tools, show full results for immediate user feedback
+            if Self::is_result_tool(&event.tool) {
+                self.format_search_result(&event.tool, result)
+            } else if Self::is_sensitive_tool(&event.tool) {
+                // For sensitive tools, show only success (no content)
+                format!("{} {}\n✅ 已执行 (结果已隐藏)", tool_display, event.tool)
             } else {
-                result.to_string()
-            };
-            format!("{} {}\n└ 結果: {}", tool_display, event.tool, result_str)
+                // For intermediate tools, show brief confirmation
+                format!("{} {}\n✅ 执行中...", tool_display, event.tool)
+            }
         } else {
             format!("{} {}", tool_display, event.tool)
         };
@@ -518,16 +895,63 @@ impl ProgressHandler for ImProgressHandler {
         tracing::info!(
             message_id = %msg.id,
             tool = %event.tool,
+            has_result = event.result.is_some(),
             "Tool use notification"
         );
 
-        // Tool use is a key milestone - send a new message
-        // (Don't track this message, it's informational only)
+        // Scheme 1: Accumulate tool result to tracker for final output
+        // This ensures search results are included in the finish event
+        if let Some(ref result) = event.result {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+
+            let result_text = self.format_tool_result_for_accumulation(&event.tool, result);
+            if !result_text.is_empty() {
+                if tracker.current_text == "[started]" {
+                    tracker.current_text = result_text;
+                } else {
+                    tracker.current_text.push_str("\n\n");
+                    tracker.current_text.push_str(&result_text);
+                }
+
+                tracing::debug!(
+                    message_id = %msg.id,
+                    tool = %event.tool,
+                    accumulated_length = tracker.current_text.len(),
+                    "Accumulated tool result to tracker"
+                );
+            }
+        }
+
+        // Scheme 3: Send notification message with tool result
+        // For search tools, this provides immediate visibility
         let content = OutgoingContent::Text { text };
-        let _ = self
+        let result = self
             .router
             .send_direct(msg.channel_type.clone(), msg.channel_id.clone(), content)
             .await;
+
+        // Track send result
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.record_send(result.success);
+
+            // Transition to Active stage on first tool use
+            if tracker.stage == MessageStage::Processing {
+                tracker.transition_to(MessageStage::Active);
+            }
+
+            if !result.success {
+                tracing::warn!(
+                    trace_id = %msg.trace_id,
+                    message_id = %msg.id,
+                    tool = %event.tool,
+                    error = ?result.error,
+                    "⚠️ Failed to send tool use notification"
+                );
+            }
+        }
 
         Ok(())
     }
@@ -602,9 +1026,38 @@ impl ProgressHandler for ImProgressHandler {
         Ok(())
     }
 
+    async fn on_skill_use(&self, msg: &ChannelMessage, event: &SkillUseData) -> Result<()> {
+        let tracker_ref = self.get_tracker(&msg.id);
+        let mut tracker = tracker_ref.lock().await;
+
+        tracing::debug!(
+            message_id = %msg.id,
+            skill = %event.skill,
+            "Skill use received"
+        );
+
+        // Track skill usage (avoid duplicates)
+        if !tracker.skills_used.contains(&event.skill) {
+            tracker.skills_used.push(event.skill.clone());
+        }
+
+        // Add to debug context
+        tracker.debug_context.add_skill_usage(event.skill.clone(), event.duration_ms);
+
+        Ok(())
+    }
+
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()> {
+        // Transition to Finishing stage
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.transition_to(MessageStage::Finishing);
+        }
+
         tracing::info!(
             message_id = %msg.id,
+            trace_id = %msg.trace_id,
             success = event.success,
             has_output = event.output.is_some(),
             output_length = event.output.as_ref().map_or(0, |s| s.len()),
@@ -615,7 +1068,7 @@ impl ProgressHandler for ImProgressHandler {
         if let Some(ref output) = event.output {
             tracing::debug!(
                 message_id = %msg.id,
-                output_preview = &output[..output.len().min(200)],
+                output_preview = safe_truncate(output, 200),
                 "Finish event output preview"
             );
         }
@@ -625,7 +1078,7 @@ impl ProgressHandler for ImProgressHandler {
             let tracker_ref = self.get_tracker(&msg.id);
             let tracker = tracker_ref.lock().await;
             let summary = Self::generate_summary(&tracker);
-            let debug_info_text = if tracker.debug_mode && !tracker.debug_context.is_empty() {
+            let debug_info_text = if tracker.debug_mode {
                 Some(Self::format_debug_for_platform(&tracker.debug_context, &msg.channel_type))
             } else {
                 None
@@ -645,9 +1098,6 @@ impl ProgressHandler for ImProgressHandler {
             (summary, debug_info_text, accumulated)
         };
 
-        // Clean up tracker
-        self.remove_tracker(&msg.id);
-
         // Format final response with optional debug info
         // Use accumulated text from streaming if available, otherwise use event.output
         let content = if event.success {
@@ -662,6 +1112,9 @@ impl ProgressHandler for ImProgressHandler {
                 format!("✅ 处理完成\n\n{}", summary)
             };
 
+            // Add end marker to indicate completion
+            let with_end_marker = format!("{}\n\n─────────────────\n✅ 回复结束", base);
+
             tracing::info!(
                 message_id = %msg.id,
                 base_length = base.len(),
@@ -670,20 +1123,22 @@ impl ProgressHandler for ImProgressHandler {
 
             if let Some(debug_text) = debug_info_text {
                 OutgoingContent::Markdown {
-                    text: format!("{}\n\n{}", base, debug_text),
+                    text: format!("{}\n\n{}", with_end_marker, debug_text),
                 }
             } else {
-                OutgoingContent::Markdown { text: base }
+                OutgoingContent::Markdown { text: with_end_marker }
             }
         } else {
             let error_msg = event.error.as_deref().unwrap_or("Unknown error");
             let text = format!("❌ 处理失败: {}\n\n{}", error_msg, summary);
+            // Add end marker for error case too
+            let with_end_marker = format!("{}\n\n─────────────────\n❌ 回复结束", text);
             if let Some(debug_text) = debug_info_text {
                 OutgoingContent::Markdown {
-                    text: format!("{}\n\n{}", text, debug_text),
+                    text: format!("{}\n\n{}", with_end_marker, debug_text),
                 }
             } else {
-                OutgoingContent::Text { text }
+                OutgoingContent::Text { text: with_end_marker }
             }
         };
 
@@ -693,18 +1148,43 @@ impl ProgressHandler for ImProgressHandler {
             .send_direct(msg.channel_type.clone(), msg.channel_id.clone(), content)
             .await;
 
-        tracing::info!(
-            message_id = %msg.id,
-            success = result.success,
-            error = ?result.error,
-            "Finish response send result"
-        );
+        // Log final state before cleanup
+        {
+            if let Some(tracker_mutex) = self.trackers.get(&msg.id) {
+                let mut tracker = tracker_mutex.lock().await;
+                tracker.record_send(result.success);
+
+                let final_stage = if result.success && event.success {
+                    MessageStage::Completed
+                } else {
+                    MessageStage::Failed
+                };
+                tracker.transition_to(final_stage);
+
+                tracing::info!(
+                    trace_id = %tracker.trace_id,
+                    task_id = ?tracker.task_id,
+                    total_events = tracker.events_received,
+                    total_sent = tracker.messages_sent,
+                    send_failures = tracker.send_failures,
+                    tools_used = ?tracker.tools_used.keys().collect::<Vec<_>>(),
+                    skills_used = ?tracker.skills_used,
+                    duration_ms = tracker.task_start.elapsed().as_millis() as u64,
+                    final_stage = final_stage.as_str(),
+                    "📍 Message processing complete"
+                );
+            }
+        }
+
+        // Clean up tracker
+        self.remove_tracker(&msg.id);
 
         if !result.success {
             tracing::error!(
                 message_id = %msg.id,
+                trace_id = %msg.trace_id,
                 error = ?result.error,
-                "Failed to send finish response"
+                "❌ Failed to send finish response"
             );
         }
 
@@ -748,6 +1228,10 @@ impl ImProgressHandler {
                 self.on_agent_info(msg, &data).await?;
                 Ok(false)
             }
+            TaskEvent::SkillUse(data) => {
+                self.on_skill_use(msg, &data).await?;
+                Ok(false)
+            }
             TaskEvent::Confirmation(_) => {
                 // TODO: Implement confirmation handling via inline buttons
                 tracing::warn!(
@@ -767,19 +1251,437 @@ impl ImProgressHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::{ChannelMessage, ChannelType, MessageContent};
+    use std::collections::HashMap;
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Helper Functions
+    // ────────────────────────────────────────────────────────────────────────────
+
+    fn create_test_message() -> ChannelMessage {
+        ChannelMessage {
+            id: "test-msg-123".into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456789".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: "trace-abc".into(),
+            span_id: "span-xyz".into(),
+            parent_span_id: None,
+        }
+    }
+
+    fn create_tracker_with_tools(tools: &[(&str, u64)]) -> MessageTracker {
+        let mut tracker = MessageTracker::new(false, "test-trace".to_string());
+        for (tool, count) in tools {
+            tracker.tools_used.insert(tool.to_string(), *count);
+        }
+        tracker
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // format_tool_name Tests
+    // ────────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn test_format_tool_name() {
         assert_eq!(ImProgressHandler::format_tool_name("Read"), "📄 读取文件");
+        assert_eq!(ImProgressHandler::format_tool_name("read"), "📄 读取文件");
+        assert_eq!(ImProgressHandler::format_tool_name("file_read"), "📄 读取文件");
+
+        assert_eq!(ImProgressHandler::format_tool_name("Write"), "✏️ 写入文件");
+        assert_eq!(ImProgressHandler::format_tool_name("write"), "✏️ 写入文件");
+
+        assert_eq!(ImProgressHandler::format_tool_name("Edit"), "🔧 编辑文件");
+        assert_eq!(ImProgressHandler::format_tool_name("edit"), "🔧 编辑文件");
+
         assert_eq!(ImProgressHandler::format_tool_name("Bash"), "💻 执行命令");
+        assert_eq!(ImProgressHandler::format_tool_name("bash"), "💻 执行命令");
+        assert_eq!(ImProgressHandler::format_tool_name("shell"), "💻 执行命令");
+
+        assert_eq!(ImProgressHandler::format_tool_name("Grep"), "🔍 搜索代码");
+        assert_eq!(ImProgressHandler::format_tool_name("grep"), "🔍 搜索代码");
+        assert_eq!(ImProgressHandler::format_tool_name("search"), "🔍 搜索代码");
+
+        assert_eq!(ImProgressHandler::format_tool_name("Glob"), "📁 查找文件");
+        assert_eq!(ImProgressHandler::format_tool_name("glob"), "📁 查找文件");
+
         assert_eq!(ImProgressHandler::format_tool_name("WebSearch"), "🌐 网络搜索");
+        assert_eq!(ImProgressHandler::format_tool_name("web_search"), "🌐 网络搜索");
+
+        assert_eq!(ImProgressHandler::format_tool_name("WebFetch"), "🌐 获取网页");
+        assert_eq!(ImProgressHandler::format_tool_name("web_fetch"), "🌐 获取网页");
+
+        assert_eq!(ImProgressHandler::format_tool_name("Task"), "🤖 启动子任务");
+        assert_eq!(ImProgressHandler::format_tool_name("task"), "🤖 启动子任务");
+
         assert_eq!(ImProgressHandler::format_tool_name("unknown_tool"), "⚡ 执行工具");
+        assert_eq!(ImProgressHandler::format_tool_name("CustomTool"), "⚡ 执行工具");
     }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // MessageTracker Tests
+    // ────────────────────────────────────────────────────────────────────────────
 
     #[test]
     fn test_message_tracker_new() {
-        let tracker = MessageTracker::new();
+        let tracker = MessageTracker::new(false, "test-trace".to_string());
         assert!(tracker.progress_message_id.is_none());
         assert!(tracker.current_text.is_empty());
+        assert!(!tracker.debug_mode);
+        assert!(tracker.tools_used.is_empty());
+        assert!(tracker.last_thought.is_empty());
+    }
+
+    #[test]
+    fn test_message_tracker_debug_mode() {
+        let tracker = MessageTracker::new(true, "test-trace".to_string());
+        assert!(tracker.debug_mode);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // is_result_tool Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_result_tool() {
+        // Web search and fetch tools
+        assert!(ImProgressHandler::is_result_tool("WebSearch"));
+        assert!(ImProgressHandler::is_result_tool("web_search"));
+        assert!(ImProgressHandler::is_result_tool("webfetch"));
+        assert!(ImProgressHandler::is_result_tool("WebFetch"));
+        assert!(ImProgressHandler::is_result_tool("mcp__web_search__websearch"));
+
+        // Content reaching tools
+        assert!(ImProgressHandler::is_result_tool("reach_youtube"));
+        assert!(ImProgressHandler::is_result_tool("reach_bilibili"));
+        assert!(ImProgressHandler::is_result_tool("reach_rss"));
+        assert!(ImProgressHandler::is_result_tool("network_analyzer"));
+
+        // Intermediate tools should NOT be result tools
+        assert!(!ImProgressHandler::is_result_tool("Read"));
+        assert!(!ImProgressHandler::is_result_tool("Bash"));
+        assert!(!ImProgressHandler::is_result_tool("Grep"));
+        assert!(!ImProgressHandler::is_result_tool("Glob"));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // is_intermediate_tool Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_intermediate_tool() {
+        // File operations
+        assert!(ImProgressHandler::is_intermediate_tool("Read"));
+        assert!(ImProgressHandler::is_intermediate_tool("Write"));
+        assert!(ImProgressHandler::is_intermediate_tool("Edit"));
+        assert!(ImProgressHandler::is_intermediate_tool("Multiedit"));
+        assert!(ImProgressHandler::is_intermediate_tool("apply_patch"));
+        assert!(ImProgressHandler::is_intermediate_tool("ls"));
+
+        // Code search
+        assert!(ImProgressHandler::is_intermediate_tool("Grep"));
+        assert!(ImProgressHandler::is_intermediate_tool("Glob"));
+        assert!(ImProgressHandler::is_intermediate_tool("CodeSearch"));
+        assert!(ImProgressHandler::is_intermediate_tool("code_search"));
+
+        // System tools
+        assert!(ImProgressHandler::is_intermediate_tool("Bash"));
+        assert!(ImProgressHandler::is_intermediate_tool("batch"));
+        assert!(ImProgressHandler::is_intermediate_tool("Lsp"));
+        assert!(ImProgressHandler::is_intermediate_tool("language_server"));
+
+        // Task management
+        assert!(ImProgressHandler::is_intermediate_tool("Task"));
+        assert!(ImProgressHandler::is_intermediate_tool("plan"));
+        assert!(ImProgressHandler::is_intermediate_tool("todo"));
+        assert!(ImProgressHandler::is_intermediate_tool("skill"));
+
+        // Result tools should NOT be intermediate
+        assert!(!ImProgressHandler::is_intermediate_tool("WebSearch"));
+        assert!(!ImProgressHandler::is_intermediate_tool("reach_youtube"));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // is_sensitive_tool Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_sensitive_tool() {
+        assert!(ImProgressHandler::is_sensitive_tool("credential"));
+        assert!(ImProgressHandler::is_sensitive_tool("get_credential"));
+        assert!(ImProgressHandler::is_sensitive_tool("Credential"));
+        assert!(ImProgressHandler::is_sensitive_tool("secret_manager"));
+        assert!(ImProgressHandler::is_sensitive_tool("get_secret"));
+        assert!(ImProgressHandler::is_sensitive_tool("password_vault"));
+        assert!(ImProgressHandler::is_sensitive_tool("token_store"));
+
+        // Non-sensitive tools
+        assert!(!ImProgressHandler::is_sensitive_tool("WebSearch"));
+        assert!(!ImProgressHandler::is_sensitive_tool("Read"));
+        assert!(!ImProgressHandler::is_sensitive_tool("Bash"));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // generate_summary Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_summary_no_tools() {
+        let tracker = MessageTracker::new(false, "test-trace".to_string());
+        let summary = ImProgressHandler::generate_summary(&tracker);
+
+        assert!(summary.contains("📊 执行摘要"));
+        assert!(summary.contains("⏱ 耗时:"));
+        assert!(!summary.contains("🔧 工具调用"));
+    }
+
+    #[test]
+    fn test_generate_summary_with_tools() {
+        let tracker = create_tracker_with_tools(&[
+            ("Read", 5),
+            ("Write", 3),
+            ("Bash", 2),
+        ]);
+        let summary = ImProgressHandler::generate_summary(&tracker);
+
+        assert!(summary.contains("📊 执行摘要"));
+        assert!(summary.contains("🔧 工具调用: 10 次"));
+        assert!(summary.contains("Read: 5"));
+        assert!(summary.contains("Write: 3"));
+        assert!(summary.contains("Bash: 2"));
+    }
+
+    #[test]
+    fn test_generate_summary_tool_sorting() {
+        // Tools should be sorted by usage count (descending)
+        let tracker = create_tracker_with_tools(&[
+            ("Read", 10),
+            ("Write", 5),
+            ("Bash", 15),
+            ("Grep", 3),
+        ]);
+        let summary = ImProgressHandler::generate_summary(&tracker);
+
+        // Bash should come first (15), then Read (10), then Write (5), then Grep (3)
+        let bash_pos = summary.find("Bash").unwrap();
+        let read_pos = summary.find("Read").unwrap();
+        let write_pos = summary.find("Write").unwrap();
+        let grep_pos = summary.find("Grep").unwrap();
+
+        assert!(bash_pos < read_pos);
+        assert!(read_pos < write_pos);
+        assert!(write_pos < grep_pos);
+    }
+
+    #[test]
+    fn test_generate_summary_max_five_tools() {
+        let tracker = create_tracker_with_tools(&[
+            ("Read", 10),
+            ("Write", 9),
+            ("Bash", 8),
+            ("Grep", 7),
+            ("Glob", 6),
+            ("Edit", 5),      // This should not appear
+            ("WebSearch", 4), // This should not appear
+        ]);
+        let summary = ImProgressHandler::generate_summary(&tracker);
+
+        // First 5 tools by count should be shown
+        assert!(summary.contains("Read"));
+        assert!(summary.contains("Write"));
+        assert!(summary.contains("Bash"));
+        assert!(summary.contains("Grep"));
+        assert!(summary.contains("Glob"));
+
+        // 6th and 7th tools should not appear in summary (only top 5)
+        // Note: Edit with 5 and WebSearch with 4 might appear if sorted order differs
+        // Let's just verify we have exactly 5 bullet points
+        let bullet_count = summary.matches("• ").count();
+        assert_eq!(bullet_count, 5);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Tool Result Formatting Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_format_tool_result_for_accumulation_sensitive() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({"api_key": "secret-key-123"});
+        let formatted = handler.format_tool_result_for_accumulation("credential", &result);
+
+        // Sensitive tool results should be empty
+        assert!(formatted.is_empty());
+    }
+
+    #[test]
+    fn test_format_tool_result_for_accumulation_intermediate() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({"content": "file contents here"});
+        let formatted = handler.format_tool_result_for_accumulation("Read", &result);
+
+        // Intermediate tool results should be empty (not accumulated)
+        assert!(formatted.is_empty());
+    }
+
+    #[test]
+    fn test_format_search_result_with_results() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({
+            "results": [
+                {
+                    "title": "Test Result 1",
+                    "url": "https://example.com/1",
+                    "snippet": "This is a test result snippet"
+                },
+                {
+                    "title": "Test Result 2",
+                    "url": "https://example.com/2",
+                    "snippet": "Another test result"
+                }
+            ]
+        });
+
+        let formatted = handler.format_search_result("WebSearch", &result);
+
+        assert!(formatted.contains("Test Result 1"));
+        assert!(formatted.contains("https://example.com/1"));
+        assert!(formatted.contains("Test Result 2"));
+    }
+
+    #[test]
+    fn test_format_search_result_empty() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({
+            "results": []
+        });
+
+        let formatted = handler.format_search_result("WebSearch", &result);
+
+        assert!(formatted.contains("无搜索结果"));
+    }
+
+    #[test]
+    fn test_format_search_result_for_accumulation() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({
+            "results": [
+                {
+                    "title": "Test",
+                    "url": "https://example.com",
+                    "snippet": "Description"
+                }
+            ]
+        });
+
+        let formatted = handler.format_search_result_for_accumulation("WebSearch", &result);
+
+        assert!(formatted.contains("## 搜索结果"));
+        assert!(formatted.contains("Test"));
+        assert!(formatted.contains("https://example.com"));
+    }
+
+    #[test]
+    fn test_format_webfetch_result_for_accumulation() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        let result = serde_json::json!({
+            "content": "This is the page content",
+            "url": "https://example.com/page"
+        });
+
+        let formatted = handler.format_search_result_for_accumulation("WebFetch", &result);
+
+        assert!(formatted.contains("## 网页内容"));
+        assert!(formatted.contains("This is the page content"));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Handler Builder Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_handler_builder_methods() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None)
+            .with_debug_mode(true)
+            .with_throttle(Duration::from_millis(500))
+            .with_thought_throttle(Duration::from_millis(200));
+
+        assert!(handler.debug_mode);
+        assert_eq!(handler.throttle_interval, Duration::from_millis(500));
+        assert_eq!(handler.thought_throttle_interval, Duration::from_millis(200));
+    }
+
+    #[test]
+    fn test_handler_default_throttle() {
+        let router = Arc::new(OutboundRouter::new());
+        let handler = ImProgressHandler::new(router, None);
+
+        assert_eq!(handler.throttle_interval, Duration::from_millis(1000));
+        assert_eq!(handler.thought_throttle_interval, Duration::from_millis(500));
+        assert!(!handler.debug_mode);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Debug Format Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_format_debug_for_platform() {
+        use crate::debug::{ModelUsage, AgentUsage, ServiceCall};
+
+        // Create debug context with some data
+        let mut debug = DebugContext::new("test-trace-123".to_string());
+        debug.models_used.push(ModelUsage {
+            model: "claude-opus-4.5".into(),
+            provider: Some("anthropic".into()),
+            input_tokens: 100,
+            output_tokens: 200,
+            total_tokens: Some(300),
+            duration_ms: 1500,
+        });
+        debug.agents_used.push(AgentUsage {
+            agent: "build".into(),
+            display_name: Some("Build Agent".into()),
+            invocations: 1,
+            duration_ms: 2000,
+            is_primary: true,
+        });
+
+        // Each platform should return a formatted string
+        let telegram = ImProgressHandler::format_debug_for_platform(&debug, &ChannelType::Telegram);
+        let slack = ImProgressHandler::format_debug_for_platform(&debug, &ChannelType::Slack);
+        let discord = ImProgressHandler::format_debug_for_platform(&debug, &ChannelType::Discord);
+        let cli = ImProgressHandler::format_debug_for_platform(&debug, &ChannelType::Cli);
+
+        // All should produce output with debug info when data is available
+        assert!(!telegram.is_empty(), "Telegram format should produce output");
+        assert!(!slack.is_empty(), "Slack format should produce output");
+        assert!(!discord.is_empty(), "Discord format should produce output");
+        assert!(!cli.is_empty(), "CLI format should produce output");
+
+        // Verify some content is present (model or agent info)
+        // The exact format depends on the implementation
+        let has_expected = telegram.contains("claude") || telegram.contains("build") ||
+                           telegram.contains("100") || telegram.contains("200");
+        assert!(has_expected, "Telegram should contain some debug info");
     }
 }

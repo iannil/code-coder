@@ -1,9 +1,17 @@
 /**
  * HTTP API Server Middleware
- * Handles CORS, authentication, JSON parsing, and error responses
+ * Handles CORS, authentication, JSON parsing, tracing, and error responses
  */
 
 import type { ServerConfig, HttpRequest, HttpResponse } from "./types"
+import {
+  fromHeaders,
+  toHeaders,
+  runWithHeaderContextAsync,
+  getContext,
+  httpRequest,
+  httpResponse,
+} from "@/observability"
 
 // ============================================================================
 // Configuration
@@ -28,8 +36,8 @@ const ALLOWED_ORIGINS = ["http://localhost:*", "http://127.0.0.1:*"]
 export function handleCors(origin: string | null): Headers {
   const headers = new Headers({
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
-    "Access-Control-Expose-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-Trace-Id, X-Span-Id, X-Parent-Span-Id",
+    "Access-Control-Expose-Headers": "Content-Type, X-Trace-Id, X-Span-Id",
   })
 
   if (!origin) {
@@ -181,19 +189,68 @@ export const authMiddleware: MiddlewareFn = async (ctx, next) => {
   return next()
 }
 
+/**
+ * Trace context middleware - extracts trace headers and creates context.
+ * Should be the first middleware in the chain.
+ */
+export const traceMiddleware: MiddlewareFn = async (ctx, next) => {
+  const start = Date.now()
+  const method = ctx.req.method
+  const path = ctx.req.url.pathname
+
+  // Run handler within trace context extracted from headers
+  return runWithHeaderContextAsync(ctx.req.headers, "ccode-api", async () => {
+    // Log request start
+    httpRequest(method, path, {
+      query: Object.fromEntries(ctx.req.url.searchParams.entries()),
+    })
+
+    try {
+      const response = await next()
+      const duration = Date.now() - start
+
+      // Log response
+      httpResponse(method, path, response.status, duration)
+
+      // Inject trace headers into response
+      const responseHeaders = new Headers(response.headers)
+      toHeaders(responseHeaders)
+
+      return {
+        ...response,
+        headers: responseHeaders,
+      }
+    } catch (error) {
+      const duration = Date.now() - start
+      httpResponse(method, path, 500, duration, {
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  })
+}
+
 export const loggingMiddleware: MiddlewareFn = async (ctx, next) => {
   const start = Date.now()
+  const traceCtx = getContext()
 
   const response = await next()
 
   const duration = Date.now() - start
   console.log(
     JSON.stringify({
-      timestamp: new Date().toISOString(),
-      method: ctx.req.method,
-      path: ctx.req.url.pathname,
-      status: response.status,
-      duration,
+      ts: new Date().toISOString(),
+      trace_id: traceCtx?.traceId ?? "no-trace",
+      span_id: traceCtx?.spanId ?? "no-span",
+      service: "ccode-api",
+      event_type: "http_response",
+      level: "info",
+      payload: {
+        method: ctx.req.method,
+        path: ctx.req.url.pathname,
+        status: response.status,
+        duration_ms: duration,
+      },
     }),
   )
 

@@ -109,15 +109,17 @@ pub fn create_report_generator(
 fn create_agent_config(config: &Config) -> AgentBridgeConfig {
     let trading = config.trading.as_ref();
 
+    // Priority: trading.macro_agent.timeout_secs > timeout.llm_secs > 300s hardcoded
+    let timeout_secs = trading
+        .and_then(|t| t.macro_agent.as_ref())
+        .map(|m| m.timeout_secs)
+        .filter(|&t| t > 0)
+        .unwrap_or(config.timeout.llm_secs);
+
     AgentBridgeConfig {
         // Use centralized codecoder_endpoint from Config
         codecoder_endpoint: config.codecoder_endpoint(),
-        timeout: std::time::Duration::from_secs(
-            trading
-                .and_then(|t| t.macro_agent.as_ref())
-                .map(|m| m.timeout_secs)
-                .unwrap_or(30),
-        ),
+        timeout: std::time::Duration::from_secs(timeout_secs),
         max_retries: 2,
         retry_backoff: std::time::Duration::from_secs(1),
     }

@@ -1437,6 +1437,46 @@ export namespace Config {
       zerobot: ZeroBot.optional().describe("ZeroBot daemon and channel configuration"),
       llm: Llm.optional().describe("LLM configuration shared with Rust services"),
       secrets: Secrets.optional().describe("API secrets for providers and services"),
+      taskQueue: z
+        .object({
+          backend: z
+            .enum(["redis", "memory"])
+            .optional()
+            .default("memory")
+            .describe("Task queue backend: redis for persistent queue, memory for in-process"),
+          consumerGroup: z
+            .string()
+            .optional()
+            .default("ccode-workers")
+            .describe("Redis consumer group name"),
+          pendingTimeoutMs: z
+            .number()
+            .optional()
+            .default(300000)
+            .describe("Timeout in ms for pending tasks before auto-claim (default: 5 min)"),
+          heartbeatIntervalMs: z
+            .number()
+            .optional()
+            .default(30000)
+            .describe("Heartbeat interval in ms to keep task alive (default: 30s)"),
+          maxRetries: z
+            .number()
+            .optional()
+            .default(3)
+            .describe("Maximum retry attempts before moving to dead letter queue"),
+          toolTimeoutMs: z
+            .number()
+            .optional()
+            .default(60000)
+            .describe("Per-tool execution timeout in ms (default: 1 min)"),
+          globalTimeoutMs: z
+            .number()
+            .optional()
+            .default(1800000)
+            .describe("Global task timeout in ms (default: 30 min)"),
+        })
+        .optional()
+        .describe("Task queue configuration for IM → Task → IM flow"),
     })
     .passthrough() // Allow unknown keys for Rust services (gateway, channels, workflow, codecoder)
     .meta({

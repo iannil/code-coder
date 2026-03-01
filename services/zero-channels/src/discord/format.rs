@@ -12,6 +12,7 @@
 //!
 //! This module provides intelligent conversion and message splitting.
 
+use crate::floor_char_boundary;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -176,18 +177,22 @@ pub fn split_message(text: &str) -> Vec<String> {
 }
 
 /// Find a good point to split text (preferring spaces, punctuation).
+/// Safely handles UTF-8 character boundaries.
 fn find_split_point(text: &str, max_len: usize) -> usize {
     if text.len() <= max_len {
         return text.len();
     }
 
-    // Look for last space before max_len
-    if let Some(pos) = text[..max_len].rfind(' ') {
+    // Find safe char boundary first
+    let safe_max = floor_char_boundary(text, max_len);
+
+    // Look for last space before safe_max
+    if let Some(pos) = text[..safe_max].rfind(' ') {
         return pos + 1;
     }
 
-    // Fall back to hard split
-    max_len
+    // Fall back to safe boundary
+    safe_max
 }
 
 /// Create a Discord embed-like format (text-based fallback).

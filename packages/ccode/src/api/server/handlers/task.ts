@@ -79,6 +79,171 @@ function formatSSEEvent(event: string, data: string, id?: string): string {
   return output
 }
 
+/**
+ * Check if a tool is a "result tool" - one whose output is the user's final goal.
+ * These results should be accumulated to the final IM message.
+ *
+ * Examples: WebSearch (user wants search results), WebFetch (user wants page content)
+ */
+function isResultTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase()
+
+  // Web search and content fetching tools
+  if (lower.includes("websearch") || lower.includes("web_search")
+    || lower.includes("webfetch") || lower.includes("web_fetch")
+    || lower.includes("mcp__web_search")) {
+    return true
+  }
+
+  // Content reaching tools (YouTube, Bilibili, RSS, etc.)
+  if (lower.includes("reach_youtube") || lower.includes("reach_bilibili")
+    || lower.includes("reach_rss") || lower.includes("network_analyzer")) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Check if a tool is an "intermediate tool" - AI uses these for processing.
+ * Results should NOT be accumulated; they're just for AI's internal work.
+ *
+ * Examples: Read (AI reads to analyze), Bash (AI runs commands to check things)
+ */
+function isIntermediateTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase()
+
+  // File operations
+  if (lower.includes("read") || lower.includes("write")
+    || lower.includes("edit") || lower.includes("multiedit")
+    || lower.includes("apply_patch") || lower === "ls") {
+    return true
+  }
+
+  // Code search tools
+  if (lower.includes("grep") || lower.includes("glob")
+    || lower.includes("codesearch") || lower.includes("code_search")) {
+    return true
+  }
+
+  // System/execution tools
+  if (lower.includes("bash") || lower.includes("batch")
+    || lower.includes("lsp") || lower.includes("language_server")) {
+    return true
+  }
+
+  // Task/agent management
+  if (lower.includes("task") || lower.includes("plan")
+    || lower.includes("todo") || lower.includes("skill")) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * Check if a tool is "sensitive" - results should NEVER be shown in IM.
+ *
+ * Examples: credential (passwords, tokens), secret management
+ */
+function isSensitiveTool(toolName: string): boolean {
+  const lower = toolName.toLowerCase()
+  return lower.includes("credential")
+    || lower.includes("secret")
+    || lower.includes("password")
+    || lower.includes("token")
+}
+
+/**
+ * Format tool result for inclusion in task output.
+ * Used when AI only uses tools without generating text.
+ *
+ * Only accumulates results from "result tools" - tools whose output
+ * is the user's actual goal. Intermediate tools (Read, Bash, etc.)
+ * are not accumulated since their output is just for AI processing.
+ */
+function formatToolResult(toolName: string, result: string): string | null {
+  // Skip sensitive tools entirely
+  if (isSensitiveTool(toolName)) {
+    return null
+  }
+
+  // Skip intermediate tools - their results are for AI, not user
+  if (isIntermediateTool(toolName)) {
+    return null
+  }
+
+  const normalizedTool = toolName.toLowerCase()
+  const MAX_OUTPUT_LENGTH = 2000
+
+  // For WebSearch results, try to parse and format nicely
+  if (normalizedTool.includes("search")) {
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.results && Array.isArray(parsed.results)) {
+        if (parsed.results.length === 0) {
+          return "🌐 搜索完成，未找到结果"
+        }
+        let formatted = "## 搜索结果\n\n"
+        for (let i = 0; i < parsed.results.length && i < 10; i++) {
+          const item = parsed.results[i]
+          formatted += `${i + 1}. [${item.title || "无标题"}]`
+          if (item.url) formatted += `(${item.url})`
+          formatted += "\n"
+          if (item.snippet) formatted += `   ${item.snippet}\n`
+        }
+        return formatted
+      }
+    } catch {
+      // Not JSON, continue to general formatting
+    }
+  }
+
+  // For WebFetch results
+  if (normalizedTool.includes("fetch")) {
+    try {
+      const parsed = JSON.parse(result)
+      if (parsed.content) {
+        return `## 网页内容\n\n${parsed.content}`
+      }
+      if (parsed.url) {
+        return `## 已获取网页\n\nURL: ${parsed.url}`
+      }
+    } catch {
+      // Not JSON, continue to general formatting
+    }
+  }
+
+  // For result tools, format with truncation for large outputs
+  const toolDisplay = formatToolDisplayName(toolName)
+  if (result.length > MAX_OUTPUT_LENGTH) {
+    return `${toolDisplay} ${toolName}\n\n\`\`\`\n${result.slice(0, MAX_OUTPUT_LENGTH)}...\n\`\`\`\n[输出已截断，共 ${result.length} 字符]`
+  } else if (result.length === 0) {
+    return `${toolDisplay} ${toolName}\n[无输出]`
+  } else {
+    return `${toolDisplay} ${toolName}\n\n\`\`\`\n${result}\n\`\`\``
+  }
+}
+
+/**
+ * Format tool display name from tool name.
+ */
+function formatToolDisplayName(toolName: string): string {
+  const displayNames: Record<string, string> = {
+    read: "📄 读取文件",
+    write: "✏️ 写入文件",
+    edit: "🔧 编辑文件",
+    bash: "💻 执行命令",
+    grep: "🔍 搜索代码",
+    glob: "📁 查找文件",
+    websearch: "🌐 网络搜索",
+    webfetch: "🌐 获取网页",
+    task: "🤖 启动子任务",
+  }
+  const normalized = toolName.toLowerCase()
+  return displayNames[normalized] || "⚡ 执行工具"
+}
+
 // ============================================================================
 // Handler Functions
 // ============================================================================
@@ -344,24 +509,57 @@ async function executeTask(
         })
       : []
 
-    log.info("task: filtered text parts", {
+    // Filter tool result parts (for cases where AI only used tools without text output)
+    const toolResultParts = lastAssistantMessage
+      ? lastAssistantMessage.parts.filter((c) => {
+          if (c.type !== "tool-invocation") return false
+          const invocation = (c as { toolInvocation: { state: string } }).toolInvocation
+          return invocation.state === "result"
+        })
+      : []
+
+    log.info("task: filtered text and tool parts", {
       taskID,
       textPartsCount: textParts.length,
+      toolResultPartsCount: toolResultParts.length,
       hasError,
       errorName: assistantError?.name,
     })
 
-    // Generate output from text parts or error information
+    // Generate output from text parts, tool results, or error information
     let output: string
     if (textParts.length > 0) {
+      // Prefer text parts if available
       output = textParts.map((c) => (c as { text: string }).text).join("\n")
     } else if (hasError) {
       // Extract error information
-      const errorMsg = (assistantError as any)?.data?.message || (assistantError as any)?.message || assistantError.name || "Unknown error"
+      const errorMsg =
+        (assistantError as any)?.data?.message ||
+        (assistantError as any)?.message ||
+        assistantError.name ||
+        "Unknown error"
       output = `❌ 处理失败: ${errorMsg}`
       log.warn("task: using error message as output", { taskID, error: errorMsg })
+    } else if (toolResultParts.length > 0) {
+      // Scheme 2: If no text parts but tool results exist, format tool results
+      // This handles cases where AI only uses tools (e.g., WebSearch) without text output
+      const formattedToolResults = toolResultParts
+        .map((part) => {
+          const invocation = (part as { toolInvocation: { toolName: string; result: string } })
+            .toolInvocation
+          return formatToolResult(invocation.toolName, invocation.result)
+        })
+        .filter(Boolean)
+        .join("\n\n")
+
+      output = formattedToolResults || "✅ 处理完成"
+      log.info("task: using tool results as output", {
+        taskID,
+        toolCount: toolResultParts.length,
+        outputLength: output.length,
+      })
     } else {
-      output = "Task completed"
+      output = "✅ 处理完成"
     }
 
     const elapsedMs = Date.now() - startTime

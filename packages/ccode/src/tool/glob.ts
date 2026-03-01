@@ -5,6 +5,11 @@ import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
 import { Instance } from "../project/instance"
 import { assertExternalDirectory } from "./external-directory"
+import {
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+} from "@/observability"
 
 export const GlobTool = Tool.define("glob", {
   description: DESCRIPTION,
@@ -18,6 +23,13 @@ export const GlobTool = Tool.define("glob", {
       ),
   }),
   async execute(params, ctx) {
+    return runWithChildSpanAsync(async () => {
+      const startTime = Date.now()
+      functionStart("GlobTool.execute", {
+        pattern: params.pattern,
+        path: params.path,
+      })
+
     await ctx.ask({
       permission: "glob",
       patterns: [params.pattern],
@@ -65,6 +77,11 @@ export const GlobTool = Tool.define("glob", {
       }
     }
 
+    functionEnd("GlobTool.execute", {
+      count: files.length,
+      truncated,
+    }, Date.now() - startTime)
+
     return {
       title: path.relative(Instance.worktree, search),
       metadata: {
@@ -73,5 +90,6 @@ export const GlobTool = Tool.define("glob", {
       },
       output: output.join("\n"),
     }
+    }) // end runWithChildSpanAsync
   },
 })

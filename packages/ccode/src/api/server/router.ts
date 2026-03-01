@@ -780,6 +780,11 @@ export async function registerRoutes(): Promise<void> {
   router.post("/api/v1/autonomous/execute", executeAutonomous)
   router.get("/api/v1/autonomous/health", autonomousHealth)
   router.get("/api/v1/autonomous/thresholds", getThresholdsInfo)
+
+  // Metrics routes (for observability)
+  const { metricsHandler, metricsJsonHandler } = await import("./handlers/metrics")
+  router.get("/metrics", metricsHandler)
+  router.get("/api/v1/metrics", metricsJsonHandler)
 }
 
 // ============================================================================

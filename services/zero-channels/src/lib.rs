@@ -27,7 +27,9 @@
 
 pub mod bridge;
 pub mod capture_bridge;
+pub mod checkpoint;
 pub mod cli;
+pub mod event_consumer;
 pub mod debug;
 pub mod dingtalk;
 pub mod discord;
@@ -42,7 +44,9 @@ pub mod routes;
 pub mod slack;
 pub mod sse;
 pub mod stt;
+pub mod task_dispatcher;
 pub mod telegram;
+pub mod timeout;
 pub mod traits;
 pub mod tts;
 pub mod wecom;
@@ -85,10 +89,44 @@ pub use sse::{
     SseClientConfig, SseTaskClient, TaskContext, TaskData, TaskEvent, ToolUseData,
 };
 
+// Task Dispatcher (Redis Streams)
+pub use task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, TaskRequest, detect_agent};
+
+// Event Consumer (Redis Streams)
+pub use event_consumer::{convert_to_sse_event, EventConsumer, EventConsumerConfig};
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use zero_common::config::Config;
+use zero_common::TracingExt;
+
+/// Find the largest valid UTF-8 character boundary at or before `index`.
+///
+/// This is essential when truncating strings that may contain multi-byte UTF-8
+/// characters (like Chinese, emoji, etc.) to avoid panics from slicing in the
+/// middle of a character.
+#[inline]
+pub fn floor_char_boundary(s: &str, index: usize) -> usize {
+    if index >= s.len() {
+        s.len()
+    } else {
+        let mut i = index;
+        while i > 0 && !s.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    }
+}
+
+/// Safely truncate a string to a maximum byte length, respecting UTF-8 boundaries.
+///
+/// Returns a slice that is at most `max_len` bytes, but always ends at a valid
+/// character boundary.
+#[inline]
+pub fn safe_truncate(s: &str, max_len: usize) -> &str {
+    &s[..floor_char_boundary(s, max_len)]
+}
 
 /// Build the channels router with CORS middleware and outbound router.
 pub fn build_channels_router(
@@ -225,6 +263,9 @@ pub fn build_channels_router(
 
     let codecoder_endpoint = config.codecoder_endpoint();
 
+    // Initialize metrics registry
+    let metrics = Arc::new(zero_common::MetricsRegistry::new("zero-channels"));
+
     // Create state with all channels including WhatsApp
     let (tx, rx) = tokio::sync::mpsc::channel(100);
     let tx_clone = tx.clone();
@@ -238,8 +279,11 @@ pub fn build_channels_router(
         codecoder_endpoint,
         outbound: Some(outbound.clone()),
         capture: None,
+        metrics: Some(metrics),
     });
-    let router = build_router(state).layer(cors);
+    let router = build_router(state)
+        .layer(cors)
+        .with_tracing("zero-channels");
 
     (router, rx, outbound, email, telegram, tx_clone)
 }

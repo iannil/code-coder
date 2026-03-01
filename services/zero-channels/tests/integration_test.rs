@@ -7,6 +7,7 @@ use axum::{
     http::{header, Method, Request, StatusCode},
 };
 use serde_json::{json, Value};
+use std::sync::Arc;
 use tower::ServiceExt;
 use zero_channels::{build_router, create_state, ChannelMessage};
 
@@ -481,7 +482,6 @@ async fn test_outbound_router_respond_without_pending() {
 // Bridge Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-use std::sync::Arc;
 use zero_channels::CodeCoderBridge;
 
 #[tokio::test]
@@ -572,4 +572,332 @@ fn test_chat_response_data_without_usage() {
     let response: ChatResponseData = serde_json::from_str(json).unwrap();
     assert_eq!(response.message, "Simple response");
     assert!(response.usage.is_none());
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Concurrent Webhook Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_concurrent_webhooks() {
+    let (app, mut rx) = create_test_app();
+    let app = Arc::new(app);
+
+    // Send multiple requests concurrently
+    let mut handles = vec![];
+    for i in 0..5 {
+        let app = app.clone();
+        handles.push(tokio::spawn(async move {
+            let payload = json!({
+                "channel": "telegram",
+                "user_id": format!("user{}", i),
+                "message": format!("Message {}", i)
+            });
+
+            let request = Request::builder()
+                .method(Method::POST)
+                .uri("/webhook/generic")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_string(&payload).unwrap()))
+                .unwrap();
+
+            let router: axum::Router = (*app).clone();
+            router.oneshot(request).await
+        }));
+    }
+
+    // Wait for all requests
+    let mut results = Vec::new();
+    for handle in handles {
+        results.push(handle.await);
+    }
+
+    // All should succeed
+    for result in results {
+        let response = result.unwrap().unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    // Should receive all 5 messages
+    let mut received = vec![];
+    while let Ok(msg) = rx.try_recv() {
+        received.push(msg);
+    }
+    assert_eq!(received.len(), 5);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Progress Handler Integration Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+use zero_channels::ImProgressHandler;
+
+#[tokio::test]
+async fn test_progress_handler_creation() {
+    let router = Arc::new(OutboundRouter::new());
+    let _handler = ImProgressHandler::new(router.clone(), None);
+
+    // Handler should be created successfully
+    // Private fields cannot be accessed from integration tests
+}
+
+#[tokio::test]
+async fn test_progress_handler_with_settings() {
+    let router = Arc::new(OutboundRouter::new());
+    let _handler = ImProgressHandler::new(router.clone(), None)
+        .with_debug_mode(true)
+        .with_throttle(std::time::Duration::from_millis(500));
+
+    // Handler should be created with builder pattern
+    // Verify it compiles and doesn't panic
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SSE Task Event Integration Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+use zero_channels::{TaskEvent, TaskContext, CreateTaskRequest};
+
+#[test]
+fn test_all_task_event_types() {
+    // Test that all event types can be parsed
+    let events = vec![
+        (r#"{"type": "thought", "data": "Thinking..."}"#, "thought"),
+        (r#"{"type": "output", "data": "Output text"}"#, "output"),
+        (r#"{"type": "tool_use", "data": {"tool": "Read", "args": {}}}"#, "tool_use"),
+        (r#"{"type": "progress", "data": {"stage": "init", "message": "Starting"}}"#, "progress"),
+        (r#"{"type": "finish", "data": {"success": true}}"#, "finish"),
+        (r#"{"type": "debug_info", "data": {"model": "test"}}"#, "debug_info"),
+        (r#"{"type": "agent_info", "data": {"agent": "build"}}"#, "agent_info"),
+        (r#"{"type": "confirmation", "data": {"requestID": "1", "tool": "Bash", "description": "test", "args": {}, "actions": ["allow"]}}"#, "confirmation"),
+    ];
+
+    for (json, event_type) in events {
+        let result: Result<TaskEvent, _> = serde_json::from_str(json);
+        assert!(result.is_ok(), "Failed to parse {} event: {:?}", event_type, result);
+    }
+}
+
+#[test]
+fn test_task_context_for_all_platforms() {
+    let platforms = ["telegram", "discord", "slack", "feishu", "whatsapp", "email"];
+
+    for platform in platforms {
+        let ctx = TaskContext::new("user1", "channel1", platform);
+        assert_eq!(ctx.platform, platform);
+        assert_eq!(ctx.source, "remote");
+        assert!(ctx.conversation_id.is_some());
+        assert!(ctx.conversation_id.unwrap().starts_with(platform));
+    }
+}
+
+#[test]
+fn test_create_task_request_complete() {
+    let ctx = TaskContext::new("user1", "chat1", "telegram");
+    let request = CreateTaskRequest {
+        agent: "macro".into(),
+        prompt: "Analyze data".into(),
+        context: ctx,
+        session_id: Some("session-123".into()),
+        model: Some("claude-opus-4.5".into()),
+    };
+
+    let json = serde_json::to_string(&request).unwrap();
+
+    // Verify all fields are serialized
+    assert!(json.contains("\"agent\":\"macro\""));
+    assert!(json.contains("\"prompt\":\"Analyze data\""));
+    assert!(json.contains("\"session_id\":\"session-123\""));
+    assert!(json.contains("\"model\":\"claude-opus-4.5\""));
+    assert!(json.contains("\"source\":\"remote\""));
+    assert!(json.contains("\"conversationId\":\"telegram:chat1\""));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Message Lifecycle Integration Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_message_lifecycle_webhook_to_pending() {
+    let (app, mut rx) = create_test_app();
+    let router = Arc::new(OutboundRouter::new());
+
+    // Send a webhook
+    let payload = json!({
+        "channel": "telegram",
+        "user_id": "test_user",
+        "message": "Test message"
+    });
+
+    let (status, _) = request_json(&app, Method::POST, "/webhook/generic", Some(payload)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Get the message from channel
+    let msg = rx.try_recv().unwrap();
+    assert_eq!(msg.user_id, "test_user");
+
+    // Register it as pending
+    router.register_pending(msg.clone()).await;
+    assert_eq!(router.pending_count().await, 1);
+
+    // Verify we can retrieve it
+    let pending = router.take_pending(&msg.id).await;
+    assert!(pending.is_some());
+    assert_eq!(pending.unwrap().original_message.user_id, "test_user");
+}
+
+#[tokio::test]
+async fn test_multiple_pending_lifecycle() {
+    let router = Arc::new(OutboundRouter::new());
+
+    // Register multiple pending messages
+    for i in 0..10 {
+        let msg = ChannelMessage {
+            id: format!("msg-{}", i),
+            channel_type: ChannelType::Telegram,
+            channel_id: "123456".into(),
+            user_id: format!("user{}", i),
+            content: MessageContent::Text {
+                text: format!("Message {}", i),
+            },
+            attachments: vec![],
+            metadata: std::collections::HashMap::new(),
+            timestamp: 1234567890000 + i as i64,
+            trace_id: format!("trace-{}", i),
+            span_id: format!("span-{}", i),
+            parent_span_id: None,
+        };
+        router.register_pending(msg).await;
+    }
+
+    assert_eq!(router.pending_count().await, 10);
+
+    // Take some messages
+    for i in 0..5 {
+        let taken = router.take_pending(&format!("msg-{}", i)).await;
+        assert!(taken.is_some());
+    }
+
+    assert_eq!(router.pending_count().await, 5);
+
+    // Cleanup remaining
+    router.cleanup_stale(0).await;
+    assert_eq!(router.pending_count().await, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tracing Context Integration Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_tracing_context_propagation() {
+    let router = Arc::new(OutboundRouter::new());
+
+    let msg = ChannelMessage {
+        id: "traced-msg".into(),
+        channel_type: ChannelType::Telegram,
+        channel_id: "123456".into(),
+        user_id: "user1".into(),
+        content: MessageContent::Text {
+            text: "Traced message".into(),
+        },
+        attachments: vec![],
+        metadata: std::collections::HashMap::new(),
+        timestamp: 1234567890000,
+        trace_id: "trace-abc-123".into(),
+        span_id: "span-xyz-789".into(),
+        parent_span_id: Some("parent-span-456".into()),
+    };
+
+    // Message should have tracing
+    assert!(msg.has_tracing());
+
+    // Register as pending
+    router.register_pending(msg.clone()).await;
+
+    // Take and verify tracing context
+    let pending = router.take_pending("traced-msg").await.unwrap();
+    assert!(pending.trace_context.is_some());
+
+    let (trace_id, span_id) = pending.trace_context.unwrap();
+    assert_eq!(trace_id, "trace-abc-123");
+    assert_eq!(span_id, "span-xyz-789");
+
+    // Verify original message is preserved
+    assert_eq!(pending.original_message.parent_span_id, Some("parent-span-456".into()));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Format Module Integration Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_cross_platform_format_consistency() {
+    // Test that the same input produces reasonable output across platforms
+    let input = "## Summary\n\n- Point 1\n- Point 2\n\n**Bold** and _italic_ text";
+
+    // Note: Format modules are tested individually in their respective unit tests
+    // This test verifies basic functionality works from external crate perspective
+
+    // Telegram HTML conversion
+    let telegram = zero_channels::telegram::format::convert_to_telegram_html(input);
+    assert!(telegram.contains("Summary") || telegram.contains("summary"));
+    assert!(telegram.contains("<b>") || telegram.contains("<i>"));
+
+    // Discord Markdown conversion
+    let discord = zero_channels::discord::format::convert_to_discord_markdown(input);
+    assert!(discord.contains("Summary") || discord.contains("summary"));
+    assert!(discord.contains("**") || discord.contains("__"));
+
+    // Slack mrkdwn conversion
+    let slack = zero_channels::slack::format::convert_to_slack_mrkdwn(input);
+    assert!(slack.contains("Summary") || slack.contains("summary"));
+    assert!(slack.contains("*") || slack.contains("_"));
+}
+
+#[test]
+fn test_message_splitting_consistency() {
+    let long_text = "Word ".repeat(1000);
+
+    let discord_chunks = zero_channels::discord::format::split_message(&long_text);
+    let slack_chunks = zero_channels::slack::format::split_message(&long_text);
+
+    // Both should split into multiple chunks
+    assert!(discord_chunks.len() > 1);
+    assert!(slack_chunks.len() > 1);
+
+    // Each chunk should respect platform limits
+    for chunk in &discord_chunks {
+        assert!(chunk.len() <= 2000);
+    }
+    for chunk in &slack_chunks {
+        assert!(chunk.len() <= 3000);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Token Usage Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+use zero_channels::TokenUsage;
+
+#[test]
+fn test_token_usage_deserialization() {
+    let json = r#"{"input_tokens": 100, "output_tokens": 200, "total_tokens": 300}"#;
+    let usage: TokenUsage = serde_json::from_str(json).unwrap();
+
+    assert_eq!(usage.input_tokens, 100);
+    assert_eq!(usage.output_tokens, 200);
+    assert_eq!(usage.total_tokens, 300);
+}
+
+#[test]
+fn test_token_usage_with_default_total() {
+    // total_tokens has #[serde(default)], so it should default to 0 if missing
+    let json = r#"{"input_tokens": 50, "output_tokens": 75}"#;
+    let usage: TokenUsage = serde_json::from_str(json).unwrap();
+
+    assert_eq!(usage.input_tokens, 50);
+    assert_eq!(usage.output_tokens, 75);
+    assert_eq!(usage.total_tokens, 0);
 }

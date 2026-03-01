@@ -66,12 +66,12 @@ export namespace Log {
     if (options.level) level = options.level
     if (options.print) {
       // Still cleanup log directory to avoid accumulation, but don't set up file logging
-      cleanup(Global.Path.log).catch(() => {})
+      cleanup(Global.Path.logs).catch(() => {})
       return
     }
-    await cleanup(Global.Path.log)
+    await cleanup(Global.Path.logs)
     logpath = path.join(
-      Global.Path.log,
+      Global.Path.logs,
       options.dev ? "dev.log" : new Date().toISOString().split(".")[0].replace(/:/g, "") + ".log",
     )
     const logfile = Bun.file(logpath)

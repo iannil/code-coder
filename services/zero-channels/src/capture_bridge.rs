@@ -25,6 +25,7 @@
 //! ```
 
 use crate::message::{ChannelMessage, ChannelType, MessageContent};
+use crate::safe_truncate;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use regex::Regex;
@@ -446,7 +447,7 @@ impl NotionClient {
 
         // Build page properties
         let title = if asset.summary.len() > 50 {
-            format!("{}...", &asset.summary[..47])
+            format!("{}...", safe_truncate(&asset.summary, 47))
         } else {
             asset.summary.clone()
         };
@@ -561,7 +562,7 @@ impl NotionClient {
         }));
 
         let truncated_content = if asset.raw_content.len() > 2000 {
-            format!("{}...\n\n[Content truncated]", &asset.raw_content[..2000])
+            format!("{}...\n\n[Content truncated]", safe_truncate(&asset.raw_content, 2000))
         } else {
             asset.raw_content.clone()
         };

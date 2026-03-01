@@ -1,16 +1,12 @@
 import fs from "fs/promises"
-import { xdgData, xdgCache, xdgConfig, xdgState } from "xdg-basedir"
 import path from "path"
 import os from "os"
-
-const app = "ccode"
 
 // Helper to get home directory, respecting test override
 const getHome = () => process.env.CCODE_TEST_HOME || os.homedir()
 
-const data = path.join(xdgData!, app)
-const cache = path.join(xdgCache!, app)
-const state = path.join(xdgState!, app)
+// All runtime paths are now unified under ~/.codecoder/
+const configDir = () => path.join(getHome(), ".codecoder")
 
 export namespace Global {
   export const Path = {
@@ -18,23 +14,39 @@ export namespace Global {
     get home() {
       return getHome()
     },
-    data,
-    bin: path.join(data, "bin"),
-    log: path.join(data, "log"),
-    cache,
-    // Config path respects CCODE_TEST_HOME for test isolation
+    // All runtime data under ~/.codecoder/
     get config() {
-      return path.join(getHome(), ".codecoder")
+      return configDir()
     },
-    state,
+    // Data directory for storage, memory, snapshots, reports
+    get data() {
+      return path.join(configDir(), "data")
+    },
+    // LSP and tool binaries
+    get bin() {
+      return path.join(configDir(), "bin")
+    },
+    // Unified log directory for TS and Rust services
+    get logs() {
+      return path.join(configDir(), "logs")
+    },
+    // Cache for models.json, package.json, node_modules
+    get cache() {
+      return path.join(configDir(), "cache")
+    },
+    // State files (kv.json, prompt-history.jsonl)
+    get state() {
+      return path.join(configDir(), "state")
+    },
   }
 }
 
 await Promise.all([
-  fs.mkdir(Global.Path.data, { recursive: true }),
   fs.mkdir(Global.Path.config, { recursive: true }),
+  fs.mkdir(Global.Path.data, { recursive: true }),
+  fs.mkdir(Global.Path.cache, { recursive: true }),
   fs.mkdir(Global.Path.state, { recursive: true }),
-  fs.mkdir(Global.Path.log, { recursive: true }),
+  fs.mkdir(Global.Path.logs, { recursive: true }),
   fs.mkdir(Global.Path.bin, { recursive: true }),
 ])
 

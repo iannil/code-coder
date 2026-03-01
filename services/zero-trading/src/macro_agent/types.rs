@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::macro_filter::{EconomicCyclePhase, TradingBias};
 
+// Re-export DecisionSource from zero_common for unified usage
+pub use zero_common::hybrid::DecisionSource;
+
 /// Request to the CodeCoder API chat endpoint.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentRequest {
@@ -23,29 +26,47 @@ pub struct AgentRequest {
     pub stream: bool,
 }
 
-/// Response from the CodeCoder API chat endpoint.
+/// Response wrapper from the CodeCoder API.
 #[derive(Debug, Clone, Deserialize)]
-pub struct AgentResponse {
-    /// Response content from the agent
-    pub content: String,
-    /// Optional metadata
-    #[serde(default)]
-    pub metadata: Option<AgentMetadata>,
+pub struct ApiResponse<T> {
+    /// Whether the request was successful
+    pub success: bool,
+    /// Response data
+    pub data: Option<T>,
+    /// Error message if failed
+    pub error: Option<String>,
 }
 
-/// Metadata from agent response.
-#[derive(Debug, Clone, Deserialize, Default)]
-pub struct AgentMetadata {
-    /// Model used
+/// Chat response data from the CodeCoder API.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatResponseData {
+    /// Response message from the agent
+    pub message: String,
+    /// Conversation ID for follow-up messages
+    pub conversation_id: String,
+    /// Agent used for this response
+    pub agent: String,
+    /// Token usage information
     #[serde(default)]
-    pub model: Option<String>,
+    pub usage: Option<TokenUsage>,
+}
+
+/// Token usage information.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TokenUsage {
     /// Input tokens used
     #[serde(default)]
-    pub input_tokens: Option<u32>,
+    pub input_tokens: u32,
     /// Output tokens used
     #[serde(default)]
-    pub output_tokens: Option<u32>,
+    pub output_tokens: u32,
+    /// Total tokens used
+    #[serde(default)]
+    pub total_tokens: u32,
 }
+
+/// Type alias for chat API response
+pub type AgentResponse = ApiResponse<ChatResponseData>;
 
 /// Context for macro analysis request.
 #[derive(Debug, Clone, Serialize)]
@@ -150,17 +171,41 @@ pub struct MacroDecision {
     pub confidence: f64,
 }
 
-/// Source of macro decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum DecisionSource {
-    /// Decision from rule engine only
-    RuleEngine,
-    /// Decision from agent analysis
-    AgentAnalysis,
-    /// Merged decision from both sources
-    Merged,
-    /// Default fallback decision
-    Fallback,
+// ============================================================================
+// Trait Implementations for HybridDecisionMaker
+// ============================================================================
+
+/// Implement AnalysisTrigger trait from zero_common
+impl zero_common::hybrid::AnalysisTrigger for AnalysisTrigger {
+    fn description(&self) -> &str {
+        match self {
+            AnalysisTrigger::ExtremeRiskAppetite => "极端风险偏好",
+            AnalysisTrigger::AvoidTradingSignal => "避免交易信号",
+            AnalysisTrigger::SignificantPositionReduction => "大幅降仓建议",
+            AnalysisTrigger::ExtremePmi => "PMI极端值",
+            AnalysisTrigger::IndicatorDivergence => "指标背离",
+            AnalysisTrigger::ScheduledAnalysis => "定期分析",
+            AnalysisTrigger::ManualTrigger => "手动触发",
+        }
+    }
+}
+
+/// Implement AgentResult trait from zero_common
+impl zero_common::hybrid::AgentResult for AgentAnalysis {
+    fn confidence(&self) -> f64 {
+        self.confidence
+    }
+}
+
+/// Implement HybridDecision trait from zero_common
+impl zero_common::hybrid::HybridDecision for MacroDecision {
+    fn source(&self) -> DecisionSource {
+        self.source
+    }
+
+    fn confidence(&self) -> f64 {
+        self.confidence
+    }
 }
 
 /// Report type for scheduled reports.

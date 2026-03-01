@@ -10,6 +10,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
+use zero_common::{build_client, ClientCategory, TimeoutConfig};
 
 use crate::github::GitHubClient;
 
@@ -166,11 +167,8 @@ pub struct TicketBridge {
 impl TicketBridge {
     /// Create a new ticket bridge.
     pub fn new(codecoder_endpoint: impl Into<String>) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use LLM category for ticket classification calls (300s default)
+        let client = build_client(&TimeoutConfig::default(), ClientCategory::Llm);
 
         Self {
             codecoder_endpoint: codecoder_endpoint.into(),

@@ -11,6 +11,11 @@ import { Filesystem } from "@/util/filesystem"
 import { Instance } from "../project/instance"
 import { trimDiff } from "./edit"
 import { assertExternalDirectory } from "./external-directory"
+import {
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+} from "@/observability"
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 const MAX_PROJECT_DIAGNOSTICS_FILES = 5
@@ -22,6 +27,13 @@ export const WriteTool = Tool.define("write", {
     filePath: z.string().optional().describe("The absolute path to file to write (must be absolute, not relative). Defaults to output.md in working directory if not provided."),
   }),
   async execute(params, ctx) {
+    return runWithChildSpanAsync(async () => {
+      const startTime = Date.now()
+      functionStart("WriteTool.execute", {
+        filePath: params.filePath,
+        contentLength: params.content.length,
+      })
+
     let filepath = params.filePath ?? path.join(Instance.worktree, "output.md")
     if (!path.isAbsolute(filepath)) {
       filepath = path.join(Instance.directory, filepath)
@@ -70,6 +82,11 @@ export const WriteTool = Tool.define("write", {
       output += `\n\nLSP errors detected in other files:\n<diagnostics file="${file}">\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</diagnostics>`
     }
 
+    functionEnd("WriteTool.execute", {
+      filepath,
+      exists: exists,
+    }, Date.now() - startTime)
+
     return {
       title: path.relative(Instance.worktree, filepath),
       metadata: {
@@ -79,5 +96,6 @@ export const WriteTool = Tool.define("write", {
       },
       output,
     }
+    }) // end runWithChildSpanAsync
   },
 })

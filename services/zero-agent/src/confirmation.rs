@@ -4,11 +4,13 @@
 //! this module handles sending confirmation requests to the appropriate
 //! channel and waiting for user response.
 
-use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{oneshot, Mutex, RwLock};
+
+// Import NotificationSink from zero-common (unified trait)
+pub use zero_common::NotificationSink;
 
 /// Confirmation response type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,32 +43,6 @@ static CONFIRMATION_REGISTRY: RwLock<Option<Arc<ConfirmationRegistry>>> = RwLock
 
 /// Default timeout for confirmation requests (2 minutes).
 const DEFAULT_CONFIRMATION_TIMEOUT_SECS: u64 = 120;
-
-/// Trait for sending notifications to channels.
-#[async_trait]
-pub trait NotificationSink: Send + Sync {
-    /// Send a simple text notification.
-    async fn send_notification(&self, channel: &str, user_id: &str, message: &str);
-
-    /// Send a confirmation request with approve/reject buttons.
-    async fn send_confirmation_request(
-        &self,
-        channel: &str,
-        user_id: &str,
-        request_id: &str,
-        permission: &str,
-        message: &str,
-    ) -> anyhow::Result<()>;
-
-    /// Update a confirmation message after user responds.
-    async fn update_confirmation_result(
-        &self,
-        channel: &str,
-        user_id: &str,
-        approved: bool,
-        message: &str,
-    ) -> anyhow::Result<()>;
-}
 
 /// Register a notification sink.
 pub async fn set_notification_sink(sink: Arc<dyn NotificationSink>) {
@@ -197,23 +173,6 @@ pub struct PendingConfirmation {
     pub permission: String,
     pub message: String,
     pub responder: oneshot::Sender<ConfirmationResponse>,
-}
-
-/// Confirmation handler trait - implement for each channel type.
-#[async_trait]
-pub trait ConfirmationHandler: Send + Sync {
-    /// Request confirmation from user.
-    /// Returns true if approved, false if rejected.
-    async fn request_confirmation(
-        &self,
-        sender_id: &str,
-        request_id: &str,
-        permission: &str,
-        message: &str,
-    ) -> anyhow::Result<bool>;
-
-    /// Send a message to the user (for status updates).
-    async fn send_message(&self, sender_id: &str, message: &str) -> anyhow::Result<()>;
 }
 
 /// Registry for pending confirmations.

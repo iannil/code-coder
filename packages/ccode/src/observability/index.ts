@@ -1,5 +1,6 @@
 // Types
-export type { EventType, LogEntry, TraceContext, TrackerOptions, ObservabilityConfig } from "./types"
+export type { EventType, LogEntry, LegacyLogEntry, TraceContext, TrackerOptions, ObservabilityConfig, LogLevel } from "./types"
+export { TraceHeaders } from "./types"
 
 // Trace Context Management
 export {
@@ -14,6 +15,11 @@ export {
   runWithContextAsync,
   runWithNewContextAsync,
   runWithChildSpanAsync,
+  // HTTP header helpers for cross-service propagation
+  fromHeaders,
+  toHeaders,
+  runWithHeaderContext,
+  runWithHeaderContextAsync,
 } from "./trace-context"
 
 // Structured Logging
@@ -27,13 +33,17 @@ export {
   functionStart,
   functionEnd,
   functionError,
+  // New unified logging functions
+  httpRequest,
+  httpResponse,
+  apiCall,
 } from "./structured-log"
 
 // Lifecycle Tracking
 export { tracked, trackedAsync, createTracker } from "./lifecycle-tracker"
 
 // Point (Instrumentation)
-export { branch, loop, apiCall, point } from "./point"
+export { branch, loop, apiCall as apiCallPoint, point } from "./point"
 
 // Report Generation
 export {

@@ -1423,6 +1423,503 @@ clean_files() {
     esac
 }
 
+# ============================================================================
+# 可观测性命令 (Observability)
+# ============================================================================
+
+# 服务端口映射 (用于 metrics)
+METRICS_ENDPOINTS=(
+    "ccode-api:4400"
+    "zero-gateway:4430"
+    "zero-channels:4431"
+)
+
+# 获取单个服务的指标
+fetch_service_metrics() {
+    local service="$1"
+    local port="$2"
+    local url="http://127.0.0.1:${port}/api/v1/metrics"
+
+    # 尝试获取 JSON 格式指标
+    local metrics_json
+    metrics_json=$(curl -s --connect-timeout 2 "${url}" 2>/dev/null || echo "")
+
+    if [ -n "${metrics_json}" ] && echo "${metrics_json}" | grep -q '"service"'; then
+        echo "${metrics_json}"
+    else
+        # 返回空 JSON 表示服务不可用
+        echo '{"service":"'"${service}"'","total_requests":0,"error_requests":0,"error_rate":0,"p50_ms":0,"p95_ms":0,"p99_ms":0,"active_connections":0,"memory_bytes":0,"uptime_secs":0,"status":"offline"}'
+    fi
+}
+
+# 格式化内存大小
+format_memory() {
+    local bytes="$1"
+    if [ "${bytes}" -ge 1073741824 ]; then
+        echo "$(echo "scale=1; ${bytes}/1073741824" | bc)GB"
+    elif [ "${bytes}" -ge 1048576 ]; then
+        echo "$(echo "scale=0; ${bytes}/1048576" | bc)MB"
+    elif [ "${bytes}" -ge 1024 ]; then
+        echo "$(echo "scale=0; ${bytes}/1024" | bc)KB"
+    else
+        echo "${bytes}B"
+    fi
+}
+
+# 格式化持续时间
+format_duration() {
+    local ms="$1"
+    if [ "$(echo "${ms} >= 1000" | bc)" -eq 1 ]; then
+        echo "$(echo "scale=1; ${ms}/1000" | bc)s"
+    else
+        echo "${ms}ms"
+    fi
+}
+
+# 显示服务指标
+show_metrics() {
+    local target="${1:-all}"
+    local watch_mode="${2:-false}"
+
+    # 单次显示或 watch 模式
+    show_metrics_once() {
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════════════════╗"
+        echo "║                           CodeCoder 服务指标                                ║"
+        echo "╠════════════════════════════════════════════════════════════════════════════╣"
+        printf "║ %-16s │ %8s │ %6s │ %7s │ %7s │ %7s │ %7s ║\n" "服务" "请求数" "错误率" "p50" "p95" "p99" "内存"
+        echo "╠════════════════════════════════════════════════════════════════════════════╣"
+
+        local has_metrics=false
+
+        for endpoint in "${METRICS_ENDPOINTS[@]}"; do
+            local service="${endpoint%%:*}"
+            local port="${endpoint##*:}"
+
+            # 如果指定了单个服务，只显示该服务
+            if [ "${target}" != "all" ] && [ "${target}" != "${service}" ]; then
+                continue
+            fi
+
+            local metrics_json
+            metrics_json=$(fetch_service_metrics "${service}" "${port}")
+
+            # 解析 JSON
+            local total_requests error_rate p50 p95 p99 memory_bytes status
+            if command -v jq &> /dev/null; then
+                total_requests=$(echo "${metrics_json}" | jq -r '.total_requests // 0')
+                error_rate=$(echo "${metrics_json}" | jq -r '.error_rate // 0')
+                p50=$(echo "${metrics_json}" | jq -r '.p50_ms // 0')
+                p95=$(echo "${metrics_json}" | jq -r '.p95_ms // 0')
+                p99=$(echo "${metrics_json}" | jq -r '.p99_ms // 0')
+                memory_bytes=$(echo "${metrics_json}" | jq -r '.memory_bytes // 0')
+                status=$(echo "${metrics_json}" | jq -r '.status // "online"')
+            else
+                # 简单的 grep 解析
+                total_requests=$(echo "${metrics_json}" | grep -o '"total_requests":[0-9]*' | grep -o '[0-9]*' || echo "0")
+                error_rate=$(echo "${metrics_json}" | grep -o '"error_rate":[0-9.]*' | grep -o '[0-9.]*' || echo "0")
+                p50=$(echo "${metrics_json}" | grep -o '"p50_ms":[0-9.]*' | grep -o '[0-9.]*' || echo "0")
+                p95=$(echo "${metrics_json}" | grep -o '"p95_ms":[0-9.]*' | grep -o '[0-9.]*' || echo "0")
+                p99=$(echo "${metrics_json}" | grep -o '"p99_ms":[0-9.]*' | grep -o '[0-9.]*' || echo "0")
+                memory_bytes=$(echo "${metrics_json}" | grep -o '"memory_bytes":[0-9]*' | grep -o '[0-9]*' || echo "0")
+                status=$(echo "${metrics_json}" | grep -o '"status":"[^"]*"' | sed 's/"status":"//;s/"//' || echo "online")
+            fi
+
+            # 格式化输出
+            local memory_str
+            memory_str=$(format_memory "${memory_bytes}")
+            local error_rate_str
+            error_rate_str=$(printf "%.1f%%" "${error_rate}")
+            local p50_str p95_str p99_str
+            p50_str=$(format_duration "${p50}")
+            p95_str=$(format_duration "${p95}")
+            p99_str=$(format_duration "${p99}")
+
+            # 状态颜色
+            local status_color="${GREEN}"
+            if [ "${status}" = "offline" ]; then
+                status_color="${RED}"
+                error_rate_str="-"
+                p50_str="-"
+                p95_str="-"
+                p99_str="-"
+                memory_str="-"
+            fi
+
+            printf "║ ${status_color}%-16s${NC} │ %8s │ %6s │ %7s │ %7s │ %7s │ %7s ║\n" \
+                "${service}" "${total_requests}" "${error_rate_str}" "${p50_str}" "${p95_str}" "${p99_str}" "${memory_str}"
+
+            has_metrics=true
+        done
+
+        echo "╚════════════════════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        if [ "${has_metrics}" = false ]; then
+            log_warn "未找到任何运行中的服务"
+        fi
+
+        # 显示时间戳
+        echo -e "${CYAN}最后更新: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+    }
+
+    if [ "${watch_mode}" = "true" ]; then
+        # Watch 模式：每 2 秒刷新
+        log_info "实时指标监控 (Ctrl+C 退出)"
+        while true; do
+            clear
+            show_metrics_once
+            sleep 2
+        done
+    else
+        show_metrics_once
+    fi
+}
+
+# 可视化显示调用链路
+show_trace() {
+    local trace_id="$1"
+
+    if [ -z "${trace_id}" ]; then
+        log_error "请提供 trace_id"
+        echo "  用法: ./ops.sh trace <trace_id>"
+        return 1
+    fi
+
+    log_info "搜索 trace_id: ${trace_id}"
+    echo ""
+
+    # 收集所有匹配的日志条目
+    local all_entries=""
+    local services_found=""
+
+    for log_file in "${LOG_DIR}"/*.log; do
+        if [ -f "${log_file}" ]; then
+            local matches
+            matches=$(grep "${trace_id}" "${log_file}" 2>/dev/null || true)
+            if [ -n "${matches}" ]; then
+                local service_name
+                service_name=$(basename "${log_file}" .log)
+                services_found="${services_found} ${service_name}"
+                all_entries="${all_entries}${matches}"$'\n'
+            fi
+        fi
+    done
+
+    if [ -z "${services_found}" ]; then
+        log_warn "未找到 trace_id: ${trace_id} 的日志条目"
+        return 1
+    fi
+
+    # 显示 trace 概览
+    echo "╔════════════════════════════════════════════════════════════════════════════╗"
+    echo "║                              Trace 详情                                     ║"
+    echo "╠════════════════════════════════════════════════════════════════════════════╣"
+    echo "║ Trace ID: ${trace_id}"
+    echo "║ 涉及服务:${services_found}"
+    echo "╠════════════════════════════════════════════════════════════════════════════╣"
+    echo "║                              Timeline                                       ║"
+    echo "╠════════════════════════════════════════════════════════════════════════════╣"
+
+    # 解析并排序日志条目 (按时间戳)
+    # 格式: timestamp | service | event | duration
+    echo "${all_entries}" | while IFS= read -r line; do
+        if [ -z "${line}" ]; then
+            continue
+        fi
+
+        # 提取时间戳和服务
+        local timestamp
+        timestamp=$(extract_timestamp "${line}")
+        local service=""
+        local event=""
+        local duration=""
+
+        # 尝试从日志路径推断服务
+        for log_file in "${LOG_DIR}"/*.log; do
+            if grep -q "${line}" "${log_file}" 2>/dev/null; then
+                service=$(basename "${log_file}" .log)
+                break
+            fi
+        done
+
+        # 尝试从 JSON 提取事件类型
+        if echo "${line}" | grep -qE '"event_type"'; then
+            if command -v jq &> /dev/null; then
+                event=$(echo "${line}" | jq -r '.event_type // .event // "unknown"' 2>/dev/null || echo "unknown")
+                duration=$(echo "${line}" | jq -r '.duration_ms // ""' 2>/dev/null || echo "")
+            else
+                event=$(echo "${line}" | grep -oE '"event_type":"[^"]*"' | sed 's/"event_type":"//;s/"$//' || echo "unknown")
+            fi
+        else
+            # 从消息中提取关键词
+            if echo "${line}" | grep -qiE 'request|start'; then
+                event="request_start"
+            elif echo "${line}" | grep -qiE 'response|end|finish'; then
+                event="request_end"
+            elif echo "${line}" | grep -qiE 'error|fail'; then
+                event="error"
+            else
+                event="log"
+            fi
+        fi
+
+        # 获取服务颜色
+        local color
+        color=$(get_service_color "${service}")
+
+        # 格式化输出
+        if [ -n "${duration}" ]; then
+            printf "║ %-12s │ ${color}%-14s${NC} │ %-20s │ %8sms ║\n" \
+                "${timestamp}" "${service}" "${event}" "${duration}"
+        else
+            printf "║ %-12s │ ${color}%-14s${NC} │ %-20s │          ║\n" \
+                "${timestamp}" "${service}" "${event}"
+        fi
+    done
+
+    echo "╚════════════════════════════════════════════════════════════════════════════╝"
+    echo ""
+}
+
+# 显示慢请求
+show_slow_requests() {
+    local threshold="${1:-1000}"  # 默认 1000ms
+    local live_mode="${2:-false}"
+
+    show_slow_once() {
+        echo ""
+        echo "╔════════════════════════════════════════════════════════════════════════════╗"
+        echo "║                      慢请求 (> ${threshold}ms)                                    ║"
+        echo "╠════════════════════════════════════════════════════════════════════════════╣"
+        printf "║ %-12s │ %-14s │ %-6s │ %-20s │ %8s ║\n" "时间" "服务" "状态" "路径" "延迟"
+        echo "╠════════════════════════════════════════════════════════════════════════════╣"
+
+        local found=false
+
+        # 搜索所有日志文件
+        for log_file in "${LOG_DIR}"/*.log; do
+            if [ ! -f "${log_file}" ]; then
+                continue
+            fi
+
+            local service_name
+            service_name=$(basename "${log_file}" .log)
+            local color
+            color=$(get_service_color "${service_name}")
+
+            # 搜索包含 duration 字段且超过阈值的日志
+            grep -E '"duration_ms":[0-9]+' "${log_file}" 2>/dev/null | while IFS= read -r line; do
+                local duration
+                if command -v jq &> /dev/null; then
+                    duration=$(echo "${line}" | jq -r '.duration_ms // 0' 2>/dev/null || echo "0")
+                else
+                    duration=$(echo "${line}" | grep -oE '"duration_ms":[0-9]+' | grep -oE '[0-9]+' || echo "0")
+                fi
+
+                # 检查是否超过阈值
+                if [ "${duration}" -ge "${threshold}" ]; then
+                    local timestamp path status
+                    timestamp=$(extract_timestamp "${line}")
+
+                    if command -v jq &> /dev/null; then
+                        path=$(echo "${line}" | jq -r '.path // .url // "-"' 2>/dev/null | head -c 20)
+                        status=$(echo "${line}" | jq -r '.status // .status_code // "-"' 2>/dev/null)
+                    else
+                        path=$(echo "${line}" | grep -oE '"path":"[^"]*"' | sed 's/"path":"//;s/"$//' | head -c 20 || echo "-")
+                        status=$(echo "${line}" | grep -oE '"status":[0-9]+' | grep -oE '[0-9]+' || echo "-")
+                    fi
+
+                    local duration_str
+                    duration_str=$(format_duration "${duration}")
+
+                    printf "║ %-12s │ ${color}%-14s${NC} │ %-6s │ %-20s │ %8s ║\n" \
+                        "${timestamp}" "${service_name}" "${status}" "${path}" "${duration_str}"
+
+                    found=true
+                fi
+            done
+        done
+
+        echo "╚════════════════════════════════════════════════════════════════════════════╝"
+
+        if [ "${found}" = false ]; then
+            log_info "没有找到超过 ${threshold}ms 的请求"
+        fi
+
+        echo ""
+        echo -e "${CYAN}阈值: ${threshold}ms | 最后更新: $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+    }
+
+    if [ "${live_mode}" = "true" ]; then
+        # 实时模式
+        log_info "实时监控慢请求 (Ctrl+C 退出)"
+        while true; do
+            clear
+            show_slow_once
+            sleep 5
+        done
+    else
+        show_slow_once
+    fi
+}
+
+# ============================================================================
+# TUI Dashboard
+# ============================================================================
+
+# 实时仪表盘
+show_dashboard() {
+    local refresh_interval="${1:-2}"
+
+    # 清理函数
+    cleanup_dashboard() {
+        tput cnorm  # 显示光标
+        tput sgr0   # 重置颜色
+        echo ""
+        log_info "仪表盘已关闭"
+        exit 0
+    }
+
+    trap cleanup_dashboard SIGINT SIGTERM
+
+    # 隐藏光标
+    tput civis
+
+    while true; do
+        # 清屏并移动光标到顶部
+        tput clear
+        tput cup 0 0
+
+        local term_width
+        term_width=$(tput cols)
+        local term_height
+        term_height=$(tput lines)
+
+        # 标题
+        echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════════════════╗${NC}"
+        echo -e "${CYAN}║${NC}                       ${GREEN}CodeCoder 实时仪表盘${NC}                                  ${CYAN}║${NC}"
+        echo -e "${CYAN}║${NC}                       $(date '+%Y-%m-%d %H:%M:%S')                                   ${CYAN}║${NC}"
+        echo -e "${CYAN}╠══════════════════════════════════════════════════════════════════════════════╣${NC}"
+
+        # 服务状态面板
+        echo -e "${CYAN}║${NC} ${YELLOW}服务状态${NC}                                                                      ${CYAN}║${NC}"
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+
+        # 检查每个服务
+        local services_line=""
+        for service in api zero-gateway zero-channels whisper redis; do
+            local status_icon
+            local port
+
+            case "${service}" in
+                api) port=4400 ;;
+                zero-gateway) port=4430 ;;
+                zero-channels) port=4431 ;;
+                whisper) port=4403 ;;
+                redis) port="${REDIS_PORT}" ;;
+            esac
+
+            if check_port "${port}"; then
+                status_icon="${GREEN}●${NC}"
+            else
+                status_icon="${RED}○${NC}"
+            fi
+
+            services_line="${services_line}  ${status_icon} ${service}"
+        done
+        # Use echo -e to interpret ANSI escape sequences in color codes
+        # Fixed padding since ANSI codes affect printf width calculation
+        echo -e "${CYAN}║${NC}${services_line}                ${CYAN}║${NC}"
+
+        # 指标面板
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}实时指标${NC}                                                                      ${CYAN}║${NC}"
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+
+        printf "${CYAN}║${NC} %-14s │ %8s │ %6s │ %7s │ %7s │ %7s │ %7s ${CYAN}║${NC}\n" \
+            "服务" "请求数" "错误率" "p50" "p95" "p99" "内存"
+        echo -e "${CYAN}║${NC}────────────────┼──────────┼────────┼─────────┼─────────┼─────────┼─────────${CYAN}║${NC}"
+
+        for endpoint in "${METRICS_ENDPOINTS[@]}"; do
+            local service="${endpoint%%:*}"
+            local port="${endpoint##*:}"
+            local metrics_json
+            metrics_json=$(fetch_service_metrics "${service}" "${port}")
+
+            if command -v jq &> /dev/null; then
+                local total_requests error_rate p50 p95 p99 memory_bytes
+                total_requests=$(echo "${metrics_json}" | jq -r '.total_requests // 0')
+                error_rate=$(echo "${metrics_json}" | jq -r '.error_rate // 0')
+                p50=$(echo "${metrics_json}" | jq -r '.p50_ms // 0')
+                p95=$(echo "${metrics_json}" | jq -r '.p95_ms // 0')
+                p99=$(echo "${metrics_json}" | jq -r '.p99_ms // 0')
+                memory_bytes=$(echo "${metrics_json}" | jq -r '.memory_bytes // 0')
+
+                local memory_str
+                memory_str=$(format_memory "${memory_bytes}")
+                local error_rate_str
+                error_rate_str=$(printf "%.1f%%" "${error_rate}")
+
+                local color="${GREEN}"
+                if [ "$(echo "${error_rate} > 5" | bc 2>/dev/null || echo 0)" -eq 1 ]; then
+                    color="${RED}"
+                elif [ "$(echo "${error_rate} > 1" | bc 2>/dev/null || echo 0)" -eq 1 ]; then
+                    color="${YELLOW}"
+                fi
+
+                printf "${CYAN}║${NC} ${color}%-14s${NC} │ %8s │ %6s │ %7.0f │ %7.0f │ %7.0f │ %7s ${CYAN}║${NC}\n" \
+                    "${service}" "${total_requests}" "${error_rate_str}" "${p50}" "${p95}" "${p99}" "${memory_str}"
+            else
+                printf "${CYAN}║${NC} %-14s │ %8s │ %6s │ %7s │ %7s │ %7s │ %7s ${CYAN}║${NC}\n" \
+                    "${service}" "-" "-" "-" "-" "-" "-"
+            fi
+        done
+
+        # 最近错误面板
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+        echo -e "${CYAN}║${NC} ${YELLOW}最近错误 (最后 5 条)${NC}                                                         ${CYAN}║${NC}"
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+
+        # 搜索所有日志中的错误
+        local error_count=0
+        for log_file in "${LOG_DIR}"/*.log; do
+            if [ -f "${log_file}" ] && [ "${error_count}" -lt 5 ]; then
+                local service_name
+                service_name=$(basename "${log_file}" .log)
+                local color
+                color=$(get_service_color "${service_name}")
+
+                grep -iE '"level":"ERROR"|ERROR|error' "${log_file}" 2>/dev/null | tail -n 3 | while IFS= read -r line; do
+                    local timestamp
+                    timestamp=$(extract_timestamp "${line}")
+                    local message
+                    if command -v jq &> /dev/null; then
+                        message=$(echo "${line}" | jq -r '.message // .error // "Unknown error"' 2>/dev/null | head -c 50)
+                    else
+                        message=$(echo "${line}" | grep -oE '"message":"[^"]*"' | sed 's/"message":"//;s/"$//' | head -c 50 || echo "Error")
+                    fi
+
+                    printf "${CYAN}║${NC} ${RED}%-8s${NC} [${color}%-12s${NC}] %-45s ${CYAN}║${NC}\n" \
+                        "${timestamp}" "${service_name}" "${message}"
+                done
+                error_count=$((error_count + 1))
+            fi
+        done
+
+        if [ "${error_count}" -eq 0 ]; then
+            printf "${CYAN}║${NC} ${GREEN}%-76s${NC} ${CYAN}║${NC}\n" "No recent errors"
+        fi
+
+        # 底部
+        echo -e "${CYAN}╠──────────────────────────────────────────────────────────────────────────────╣${NC}"
+        echo -e "${CYAN}║${NC} 按 ${YELLOW}Ctrl+C${NC} 退出 | 刷新间隔: ${refresh_interval}s                                          ${CYAN}║${NC}"
+        echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════════════════╝${NC}"
+
+        sleep "${refresh_interval}"
+    done
+}
+
 # 显示帮助信息
 show_help() {
     echo ""
@@ -1436,6 +1933,9 @@ show_help() {
     echo "  restart [service]  重启服务"
     echo "  status             查看所有服务状态"
     echo "  health             检查服务健康状态"
+    echo "  metrics [service]  查看服务指标 (p50/p95/p99 延迟、错误率等)"
+    echo "  trace <trace_id>   可视化显示完整调用链路"
+    echo "  slow [threshold]   显示慢请求 (默认 > 1000ms)"
     echo "  logs <service>     查看服务日志 (最后 50 行)"
     echo "  logs all [n]       查看所有服务日志 (最后 n 行，默认 20)"
     echo "  logs trace <id>    按 trace_id 搜索并聚合所有服务日志"
@@ -1446,6 +1946,16 @@ show_help() {
     echo "  build [target]     构建服务 (rust|all)"
     echo "  clean [target]     清理临时文件 (pids|logs|all)"
     echo "  help               显示此帮助信息"
+    echo ""
+    echo "可观测性命令:"
+    echo "  metrics            显示所有服务的实时指标"
+    echo "  metrics <service>  显示单个服务的指标"
+    echo "  metrics --watch    持续刷新指标 (每 2 秒)"
+    echo "  trace <trace_id>   可视化显示完整调用链 (跨服务)"
+    echo "  slow               显示慢请求 (默认 > 1000ms)"
+    echo "  slow <ms>          显示延迟超过指定毫秒的请求"
+    echo "  slow --live        实时监控慢请求"
+    echo "  dashboard [secs]   启动实时仪表盘 (默认每 2 秒刷新)"
     echo ""
     echo "tail 命令选项:"
     echo "  --raw              显示全部日志 (不过滤 hyper/h2/rustls 等底层库噪音)"
@@ -1487,6 +1997,10 @@ show_help() {
     echo "  ./ops.sh build rust             # 构建 Rust 服务"
     echo "  ./ops.sh status                 # 查看状态"
     echo "  ./ops.sh health                 # 健康检查 (含 Redis PING)"
+    echo "  ./ops.sh metrics                # 查看所有服务指标"
+    echo "  ./ops.sh metrics --watch        # 实时监控指标"
+    echo "  ./ops.sh trace abc123           # 查看 trace_id 为 abc123 的调用链"
+    echo "  ./ops.sh slow 500               # 显示 > 500ms 的请求"
     echo "  ./ops.sh logs redis             # 查看 Redis 日志"
     echo "  ./ops.sh logs zero-daemon       # 查看 Daemon 日志"
     echo "  ./ops.sh logs zero-channels     # 查看 Rust 微服务日志"
@@ -1568,6 +2082,40 @@ main() {
             ;;
         health)
             health_all
+            ;;
+        metrics)
+            # 检查参数
+            local watch_mode="false"
+            local target="all"
+            for arg in "${@:2}"; do
+                if [ "${arg}" = "--watch" ] || [ "${arg}" = "-w" ]; then
+                    watch_mode="true"
+                elif [ "${arg}" != "" ]; then
+                    target="${arg}"
+                fi
+            done
+            show_metrics "${target}" "${watch_mode}"
+            ;;
+        trace)
+            show_trace "${2:-}"
+            ;;
+        slow)
+            # 检查参数
+            local threshold="1000"
+            local live_mode="false"
+            for arg in "${@:2}"; do
+                if [ "${arg}" = "--live" ] || [ "${arg}" = "-l" ]; then
+                    live_mode="true"
+                elif [[ "${arg}" =~ ^[0-9]+$ ]]; then
+                    threshold="${arg}"
+                fi
+            done
+            show_slow_requests "${threshold}" "${live_mode}"
+            ;;
+        dashboard)
+            # 启动实时仪表盘
+            local refresh="${2:-2}"
+            show_dashboard "${refresh}"
             ;;
         logs)
             if [ "${service}" = "all" ] || [ "${service}" = "core" ]; then

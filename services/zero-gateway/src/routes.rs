@@ -14,7 +14,7 @@ use axum::{
     extract::{Extension, Path, Query, State},
     http::StatusCode,
     middleware,
-    response::Json,
+    response::{IntoResponse, Json},
     routing::{any, get, post},
     Router,
 };
@@ -22,6 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use zero_common::config::Config;
+use zero_common::metrics::MetricsRegistry;
 use zero_common::security::rbac::{check_permission, Permission};
 
 /// Shared application state.
@@ -31,6 +32,7 @@ pub struct AppState {
     pub user_store: Arc<UserStore>,
     pub sandbox: Arc<Sandbox>,
     pub metering: MeteringState,
+    pub metrics: Arc<MetricsRegistry>,
 }
 
 /// Login request body.
@@ -158,11 +160,15 @@ pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Ro
     // Initialize metering
     let metering = MeteringState::new().expect("Failed to initialize metering");
 
+    // Initialize metrics registry
+    let metrics = Arc::new(MetricsRegistry::new("zero-gateway"));
+
     let app_state = AppState {
         auth: auth_state.clone(),
         user_store,
         sandbox,
         metering: metering.clone(),
+        metrics: metrics.clone(),
     };
 
     let proxy_state = ProxyState::new(&config.codecoder_endpoint());
@@ -288,6 +294,7 @@ pub fn build_all_routes_with_db(config: &Config, db_path: Option<PathBuf>) -> Ro
         .merge(proxy_routes)
         .merge(parallel_router)
         .merge(health_routes())
+        .merge(metrics_routes(metrics))
 }
 
 /// Build authentication routes (legacy, for backward compatibility).
@@ -307,12 +314,14 @@ pub fn auth_routes() -> Router {
 
     let sandbox = Arc::new(Sandbox::new(SandboxConfig::default()));
     let metering = MeteringState::new().expect("Failed to initialize metering");
+    let metrics = Arc::new(MetricsRegistry::new("zero-gateway"));
 
     let app_state = AppState {
         auth: auth_state.clone(),
         user_store,
         sandbox,
         metering,
+        metrics,
     };
 
     Router::new()
@@ -352,6 +361,14 @@ pub fn health_routes() -> Router {
     Router::new()
         .route("/health", get(health_handler))
         .route("/api/v1/health", get(health_handler))
+}
+
+/// Build metrics routes.
+pub fn metrics_routes(registry: Arc<MetricsRegistry>) -> Router {
+    Router::new()
+        .route("/metrics", get(metrics_handler))
+        .route("/api/v1/metrics", get(metrics_json_handler))
+        .with_state(registry)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1216,4 +1233,29 @@ async fn health_handler() -> Json<HealthResponse> {
         version: env!("CARGO_PKG_VERSION").into(),
         service: "zero-gateway".into(),
     })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Metrics Handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Metrics response in Prometheus text format.
+async fn metrics_handler(
+    State(registry): State<Arc<MetricsRegistry>>,
+) -> impl axum::response::IntoResponse {
+    registry.update_memory().await;
+    let body = registry.render().await;
+    (
+        StatusCode::OK,
+        [("content-type", "text/plain; charset=utf-8")],
+        body,
+    )
+}
+
+/// Metrics response in JSON format.
+async fn metrics_json_handler(
+    State(registry): State<Arc<MetricsRegistry>>,
+) -> Json<zero_common::metrics::MetricsSnapshot> {
+    registry.update_memory().await;
+    Json(registry.snapshot().await)
 }

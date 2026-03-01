@@ -21,6 +21,7 @@ pub use zero_memory;
 pub use zero_tools;
 
 pub mod agent;
+pub mod alerts;
 pub mod channels;
 pub mod client;
 pub mod config;

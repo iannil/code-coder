@@ -16,7 +16,14 @@ import { Shell } from "@/shell/shell"
 
 import { BashArity } from "@/permission/arity"
 import { Truncate } from "./truncation"
-import { point, apiCall } from "@/observability"
+import {
+  point,
+  apiCallPoint as apiCall,
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+  functionError,
+} from "@/observability"
 
 const MAX_METADATA_LENGTH = 30_000
 const DEFAULT_TIMEOUT = Flag.CCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
@@ -76,11 +83,19 @@ export const BashTool = Tool.define("bash", async () => {
         ),
     }),
     async execute(params, ctx) {
-      const bashCall = apiCall("BashTool.execute", {
-        command: params.command.slice(0, 100),
-        description: params.description,
-      })
-      point("bash_execute_start", { command: params.command.slice(0, 200) })
+      // Wrap tool execution in a child span for tracing
+      return runWithChildSpanAsync(async () => {
+        const startTime = Date.now()
+        functionStart("BashTool.execute", {
+          command: params.command.slice(0, 100),
+          description: params.description,
+        })
+
+        const bashCall = apiCall("BashTool.execute", {
+          command: params.command.slice(0, 100),
+          description: params.description,
+        })
+        point("bash_execute_start", { command: params.command.slice(0, 200) })
 
       const cwd = params.workdir || Instance.directory
       if (params.timeout !== undefined && params.timeout < 0) {
@@ -259,6 +274,12 @@ export const BashTool = Tool.define("bash", async () => {
         outputLength: output.length,
       })
 
+      functionEnd("BashTool.execute", {
+        exitCode: proc.exitCode,
+        timedOut,
+        aborted,
+      }, Date.now() - startTime)
+
       return {
         title: params.description,
         metadata: {
@@ -268,6 +289,7 @@ export const BashTool = Tool.define("bash", async () => {
         },
         output,
       }
+      }) // end runWithChildSpanAsync
     },
   }
 })

@@ -16,6 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use zero_common::config::Config;
+use zero_common::{build_client, ClientCategory};
 
 use crate::macro_filter::{MacroEnvironment, TradingBias};
 use crate::strategy::{SignalStrength, TradingSignal};
@@ -287,10 +288,8 @@ impl NotificationClient {
         // Use centralized channels_endpoint from Config
         let channels_endpoint = config.channels_endpoint();
 
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use http_client factory for proper timeout configuration
+        let client = build_client(&config.timeout, ClientCategory::Notification);
 
         // Initialize retry queue with persistence path
         let persist_path = dirs::data_local_dir()

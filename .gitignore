@@ -42,3 +42,4 @@ services/zero-bot/target/
 .pids/
 .logs/
 .reports/
+**/.benchmarks/

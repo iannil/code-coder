@@ -159,6 +159,16 @@ export const AgentInfoEvent = z.object({
 })
 export type AgentInfoEvent = z.infer<typeof AgentInfoEvent>
 
+export const SkillUseEvent = z.object({
+  type: z.literal("skill_use"),
+  data: z.object({
+    skill: z.string(),
+    args: z.string().optional(),
+    duration_ms: z.number().optional(),
+  }),
+})
+export type SkillUseEvent = z.infer<typeof SkillUseEvent>
+
 export const TaskEvent = z.discriminatedUnion("type", [
   ThoughtEvent,
   ToolUseEvent,
@@ -168,6 +178,7 @@ export const TaskEvent = z.discriminatedUnion("type", [
   ProgressEvent,
   DebugInfoEvent,
   AgentInfoEvent,
+  SkillUseEvent,
 ])
 export type TaskEvent = z.infer<typeof TaskEvent>
 

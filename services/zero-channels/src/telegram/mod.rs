@@ -9,6 +9,7 @@ use crate::message::{Attachment, AttachmentType, ChannelMessage, ChannelType, Me
 use crate::stt::SpeechToText;
 use crate::tts::TextToSpeech;
 use crate::traits::{Channel, ChannelError, ChannelResult};
+use crate::{floor_char_boundary, safe_truncate};
 use async_trait::async_trait;
 use reqwest::multipart::{Form, Part};
 use std::path::Path;
@@ -293,7 +294,7 @@ impl TelegramChannel {
             }
             Some(text) => {
                 let truncated = if text.len() > 2000 {
-                    format!("{}...\n[Content truncated, {size_str} total]", &text[..2000])
+                    format!("{}...\n[Content truncated, {size_str} total]", safe_truncate(&text, 2000))
                 } else {
                     text
                 };
@@ -634,6 +635,7 @@ impl TelegramChannel {
 }
 
 /// Split a message into chunks that fit within Telegram's limit.
+/// Handles UTF-8 strings safely by respecting character boundaries.
 fn split_message(message: &str, max_len: usize) -> Vec<String> {
     if message.len() <= max_len {
         return vec![message.to_string()];
@@ -648,15 +650,19 @@ fn split_message(message: &str, max_len: usize) -> Vec<String> {
             break;
         }
 
-        let chunk = &remaining[..max_len];
+        // Find safe char boundary at or before max_len
+        let safe_max = floor_char_boundary(remaining, max_len);
+        let chunk = &remaining[..safe_max];
+
+        // Try to find a natural break point within the safe chunk
         let split_pos = chunk
             .rfind("\n\n")
             .or_else(|| chunk.rfind('\n'))
             .or_else(|| chunk.rfind(". "))
             .or_else(|| chunk.rfind(' '))
-            .unwrap_or(max_len);
+            .unwrap_or(safe_max);
 
-        let actual_split = if split_pos == 0 { max_len } else { split_pos };
+        let actual_split = if split_pos == 0 { safe_max } else { split_pos };
 
         chunks.push(remaining[..actual_split].to_string());
         remaining = remaining[actual_split..].trim_start();

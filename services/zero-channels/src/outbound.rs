@@ -456,6 +456,10 @@ mod tests {
     use super::*;
     use crate::message::MessageContent;
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // Helper Functions
+    // ────────────────────────────────────────────────────────────────────────────
+
     fn create_test_message() -> ChannelMessage {
         ChannelMessage {
             id: "test-123".into(),
@@ -474,6 +478,62 @@ mod tests {
         }
     }
 
+    fn create_test_message_with_id(id: &str) -> ChannelMessage {
+        ChannelMessage {
+            id: id.into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456789".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: std::collections::HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: format!("trace-{}", id),
+            span_id: format!("span-{}", id),
+            parent_span_id: None,
+        }
+    }
+
+    fn create_test_message_no_tracing() -> ChannelMessage {
+        ChannelMessage {
+            id: "test-no-trace".into(),
+            channel_type: ChannelType::Telegram,
+            channel_id: "456789".into(),
+            user_id: "user1".into(),
+            content: MessageContent::Text {
+                text: "Hello".into(),
+            },
+            attachments: vec![],
+            metadata: std::collections::HashMap::new(),
+            timestamp: 1234567890000,
+            trace_id: String::new(),
+            span_id: String::new(),
+            parent_span_id: None,
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // OutboundRouter Creation Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_new_router() {
+        let router = OutboundRouter::new();
+        assert_eq!(router.pending_count().await, 0);
+    }
+
+    #[tokio::test]
+    async fn test_default_router() {
+        let router = OutboundRouter::default();
+        assert_eq!(router.pending_count().await, 0);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Pending Registration Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
     #[tokio::test]
     async fn test_register_pending() {
         let router = OutboundRouter::new();
@@ -483,6 +543,66 @@ mod tests {
 
         assert_eq!(router.pending_count().await, 1);
     }
+
+    #[tokio::test]
+    async fn test_register_pending_with_tracing() {
+        let router = OutboundRouter::new();
+        let msg = create_test_message();
+
+        router.register_pending(msg.clone()).await;
+
+        let pending = router.take_pending("test-123").await.unwrap();
+        assert!(pending.trace_context.is_some());
+
+        let (trace_id, span_id) = pending.trace_context.unwrap();
+        assert_eq!(trace_id, "trace-abc-123");
+        assert_eq!(span_id, "span-xyz");
+    }
+
+    #[tokio::test]
+    async fn test_register_pending_without_tracing() {
+        let router = OutboundRouter::new();
+        let msg = create_test_message_no_tracing();
+
+        router.register_pending(msg.clone()).await;
+
+        let pending = router.take_pending("test-no-trace").await.unwrap();
+        assert!(pending.trace_context.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_register_multiple_pending() {
+        let router = OutboundRouter::new();
+
+        router.register_pending(create_test_message_with_id("msg-1")).await;
+        router.register_pending(create_test_message_with_id("msg-2")).await;
+        router.register_pending(create_test_message_with_id("msg-3")).await;
+
+        assert_eq!(router.pending_count().await, 3);
+    }
+
+    #[tokio::test]
+    async fn test_register_pending_overwrites_same_id() {
+        let router = OutboundRouter::new();
+
+        let mut msg1 = create_test_message();
+        msg1.user_id = "user-first".into();
+        router.register_pending(msg1).await;
+
+        let mut msg2 = create_test_message();
+        msg2.user_id = "user-second".into();
+        router.register_pending(msg2).await;
+
+        // Should still have only 1 pending (overwritten)
+        assert_eq!(router.pending_count().await, 1);
+
+        let pending = router.take_pending("test-123").await.unwrap();
+        assert_eq!(pending.original_message.user_id, "user-second");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Take Pending Tests
+    // ────────────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_take_pending() {
@@ -497,6 +617,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_take_pending_nonexistent() {
+        let router = OutboundRouter::new();
+
+        let taken = router.take_pending("nonexistent").await;
+        assert!(taken.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_take_pending_twice() {
+        let router = OutboundRouter::new();
+        let msg = create_test_message();
+
+        router.register_pending(msg).await;
+
+        let first = router.take_pending("test-123").await;
+        let second = router.take_pending("test-123").await;
+
+        assert!(first.is_some());
+        assert!(second.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_take_specific_pending() {
+        let router = OutboundRouter::new();
+
+        router.register_pending(create_test_message_with_id("msg-1")).await;
+        router.register_pending(create_test_message_with_id("msg-2")).await;
+        router.register_pending(create_test_message_with_id("msg-3")).await;
+
+        let taken = router.take_pending("msg-2").await;
+        assert!(taken.is_some());
+        assert_eq!(taken.unwrap().original_message.id, "msg-2");
+
+        // Other messages should still be pending
+        assert_eq!(router.pending_count().await, 2);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Cleanup Stale Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
     async fn test_cleanup_stale() {
         let router = OutboundRouter::new();
         let msg = create_test_message();
@@ -508,6 +670,32 @@ mod tests {
 
         assert_eq!(router.pending_count().await, 0);
     }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_preserves_fresh() {
+        let router = OutboundRouter::new();
+        let msg = create_test_message();
+
+        router.register_pending(msg).await;
+
+        // With a long TTL, the message should not be cleaned up
+        router.cleanup_stale(60_000_000).await; // 1000 minutes
+
+        assert_eq!(router.pending_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_stale_empty_router() {
+        let router = OutboundRouter::new();
+
+        // Should not panic on empty router
+        router.cleanup_stale(0).await;
+        assert_eq!(router.pending_count().await, 0);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Send Tests
+    // ────────────────────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_send_without_channel() {
@@ -525,5 +713,203 @@ mod tests {
 
         assert!(!result.success);
         assert!(result.error.is_some());
+        assert!(result.error.unwrap().contains("not configured"));
+    }
+
+    #[tokio::test]
+    async fn test_send_unsupported_channel() {
+        let router = OutboundRouter::new();
+
+        // CLI and other channels are not supported for outbound
+        let msg = OutgoingMessage {
+            channel_type: ChannelType::Cli,
+            channel_id: "123".into(),
+            reply_to: None,
+            content: OutgoingContent::Text {
+                text: "Test".into(),
+            },
+        };
+
+        let result = router.send(msg).await;
+
+        assert!(!result.success);
+        assert!(result.error.is_some());
+        assert!(result.error.unwrap().contains("Unsupported channel type"));
+    }
+
+    #[tokio::test]
+    async fn test_send_all_channel_types_unconfigured() {
+        let router = OutboundRouter::new();
+
+        // Test each channel type returns proper error when not configured
+        let channel_types = [
+            (ChannelType::Telegram, "Telegram"),
+            (ChannelType::Feishu, "Feishu"),
+            (ChannelType::WeCom, "WeChat Work"),
+            (ChannelType::DingTalk, "DingTalk"),
+            (ChannelType::WhatsApp, "WhatsApp"),
+            (ChannelType::Email, "Email"),
+        ];
+
+        for (channel_type, name) in channel_types {
+            let result = router
+                .send_direct(
+                    channel_type,
+                    "123".into(),
+                    OutgoingContent::Text { text: "Test".into() },
+                )
+                .await;
+
+            assert!(!result.success, "Expected failure for {}", name);
+            assert!(
+                result.error.as_ref().unwrap().contains("not configured"),
+                "Expected 'not configured' error for {}, got: {:?}",
+                name,
+                result.error
+            );
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Respond Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_respond_without_pending() {
+        let router = OutboundRouter::new();
+
+        let result = router
+            .respond(
+                "nonexistent-msg",
+                OutgoingContent::Text {
+                    text: "Response".into(),
+                },
+            )
+            .await;
+
+        assert!(!result.success);
+        assert!(result.error.is_some());
+        assert!(result.error.unwrap().contains("No pending response"));
+    }
+
+    #[tokio::test]
+    async fn test_respond_with_pending_no_channel() {
+        let router = OutboundRouter::new();
+        let msg = create_test_message();
+
+        router.register_pending(msg).await;
+
+        let result = router
+            .respond(
+                "test-123",
+                OutgoingContent::Text {
+                    text: "Response".into(),
+                },
+            )
+            .await;
+
+        // Should fail because no Telegram channel is configured
+        assert!(!result.success);
+        assert!(result.error.is_some());
+        assert!(result.error.unwrap().contains("not configured"));
+
+        // Pending should NOT be removed on failure
+        // (respond only removes on success)
+        assert_eq!(router.pending_count().await, 1);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // PendingResponse Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_pending_response_timestamp() {
+        let router = OutboundRouter::new();
+
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        router.register_pending(create_test_message()).await;
+
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64;
+
+        let pending = router.take_pending("test-123").await.unwrap();
+
+        assert!(pending.requested_at >= before);
+        assert!(pending.requested_at <= after);
+    }
+
+    #[tokio::test]
+    async fn test_pending_response_preserves_original() {
+        let router = OutboundRouter::new();
+        let mut msg = create_test_message();
+        msg.metadata.insert("custom_key".into(), "custom_value".into());
+
+        router.register_pending(msg).await;
+
+        let pending = router.take_pending("test-123").await.unwrap();
+
+        assert_eq!(pending.original_message.id, "test-123");
+        assert_eq!(pending.original_message.channel_type, ChannelType::Telegram);
+        assert_eq!(pending.original_message.channel_id, "456789");
+        assert_eq!(
+            pending.original_message.metadata.get("custom_key"),
+            Some(&"custom_value".to_string())
+        );
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Concurrent Access Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_concurrent_register() {
+        let router = Arc::new(OutboundRouter::new());
+        let mut handles = vec![];
+
+        for i in 0..10 {
+            let router = router.clone();
+            handles.push(tokio::spawn(async move {
+                router.register_pending(create_test_message_with_id(&format!("msg-{}", i))).await;
+            }));
+        }
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        assert_eq!(router.pending_count().await, 10);
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_take() {
+        let router = Arc::new(OutboundRouter::new());
+
+        // Register a single message
+        router.register_pending(create_test_message()).await;
+
+        // Try to take it from multiple concurrent tasks
+        let mut handles = vec![];
+        for _ in 0..5 {
+            let router = router.clone();
+            handles.push(tokio::spawn(async move {
+                router.take_pending("test-123").await
+            }));
+        }
+
+        let results: Vec<_> = futures_util::future::join_all(handles)
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+
+        // Exactly one should succeed
+        let successes = results.iter().filter(|r| r.is_some()).count();
+        assert_eq!(successes, 1);
     }
 }

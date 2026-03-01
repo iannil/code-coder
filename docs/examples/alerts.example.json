@@ -1,0 +1,43 @@
+{
+  "default_channel": "telegram",
+  "silence_duration_secs": 300,
+  "channels_endpoint": "http://127.0.0.1:4431",
+  "rules": [
+    {
+      "name": "high_error_rate",
+      "condition": "error_rate",
+      "threshold": 5.0,
+      "duration_secs": 60,
+      "severity": "critical",
+      "services": [],
+      "enabled": true
+    },
+    {
+      "name": "high_latency",
+      "condition": "p99_latency",
+      "threshold": 2000.0,
+      "duration_secs": 30,
+      "severity": "warning",
+      "services": [],
+      "enabled": true
+    },
+    {
+      "name": "service_down",
+      "condition": "service_down",
+      "threshold": 0.0,
+      "duration_secs": 10,
+      "severity": "critical",
+      "services": [],
+      "enabled": true
+    },
+    {
+      "name": "high_memory",
+      "condition": "memory_usage",
+      "threshold": 536870912,
+      "duration_secs": 120,
+      "severity": "warning",
+      "services": [],
+      "enabled": false
+    }
+  ]
+}

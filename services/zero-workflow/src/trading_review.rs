@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use zero_common::{build_client, ClientCategory};
 
 // ============================================================================
 // Types
@@ -525,10 +526,8 @@ pub struct TradingReviewSystem {
 impl TradingReviewSystem {
     /// Create a new trading review system.
     pub fn new(codecoder_endpoint: impl Into<String>, storage_path: impl Into<PathBuf>) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        // Use LLM category for pattern analysis via CodeCoder
+        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Llm);
 
         Self {
             client,

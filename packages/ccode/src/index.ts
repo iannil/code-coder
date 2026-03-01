@@ -22,6 +22,7 @@ import { GetStartedCommand } from "./cli/cmd/get-started"
 import { AutonomousCommand } from "./cli/cmd/autonomous"
 import { ServeCommand } from "./cli/cmd/serve"
 import { WebCommand } from "./cli/cmd/web"
+import { TraceCommand } from "./cli/cmd/trace"
 import { GlobalErrorHandler } from "./util/global-error-handler"
 
 // Initialize global error handler early (writes to project dev.log)
@@ -95,6 +96,7 @@ const cli = yargs(hideBin(process.argv))
   .command(AutonomousCommand)
   .command(ServeCommand as any)
   .command(WebCommand as any)
+  .command(TraceCommand as any)
   .command(ChapterCommand)
   .fail((msg, err) => {
     if (

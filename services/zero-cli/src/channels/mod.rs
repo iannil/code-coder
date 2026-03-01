@@ -26,26 +26,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-/// Notification sink trait for sending notifications to channels
-#[async_trait]
-pub trait NotificationSink: Send + Sync {
-    async fn send_notification(&self, channel: &str, user_id: &str, message: &str);
-    async fn send_confirmation_request(
-        &self,
-        channel: &str,
-        user_id: &str,
-        request_id: &str,
-        permission: &str,
-        message: &str,
-    ) -> anyhow::Result<()>;
-    async fn update_confirmation_result(
-        &self,
-        channel: &str,
-        user_id: &str,
-        approved: bool,
-        message: &str,
-    ) -> anyhow::Result<()>;
-}
+// Import NotificationSink from zero-common (unified trait)
+pub use zero_common::NotificationSink;
 
 /// Notification sink that routes notifications to the appropriate channel
 struct ChannelNotificationSink {
@@ -55,7 +37,7 @@ struct ChannelNotificationSink {
 }
 
 impl ChannelNotificationSink {
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for daemon initialization - will be called when channels are registered
     fn new() -> Self {
         Self {
             channels: RwLock::new(HashMap::new()),
@@ -63,7 +45,7 @@ impl ChannelNotificationSink {
         }
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for daemon initialization - will be called when channels are registered
     async fn register_channel(&self, name: &str, channel: Arc<dyn Channel>) {
         self.channels
             .write()
@@ -71,7 +53,7 @@ impl ChannelNotificationSink {
             .insert(name.to_string(), channel);
     }
 
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for daemon initialization - Telegram needs special handling for inline keyboards
     async fn register_telegram_channel(&self, channel: Arc<TelegramChannel>) {
         *self.telegram_channel.write().await = Some(channel);
     }

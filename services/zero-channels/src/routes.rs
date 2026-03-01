@@ -20,6 +20,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use zero_common::metrics::MetricsRegistry;
 
 use crate::capture_bridge::CaptureBridge;
 use crate::dingtalk::{self, DingTalkChannel};
@@ -53,6 +54,8 @@ pub struct ChannelsState {
     pub outbound: Option<Arc<OutboundRouter>>,
     /// Capture bridge for asset capture (if configured)
     pub capture: Option<Arc<CaptureBridge>>,
+    /// Metrics registry for observability
+    pub metrics: Option<Arc<MetricsRegistry>>,
 }
 
 // ============================================================================
@@ -114,6 +117,57 @@ async fn ready(State(state): State<Arc<ChannelsState>>) -> impl IntoResponse {
             version: env!("CARGO_PKG_VERSION"),
         }),
     )
+}
+
+// ============================================================================
+// Metrics Routes
+// ============================================================================
+
+async fn metrics_handler(State(state): State<Arc<ChannelsState>>) -> impl IntoResponse {
+    if let Some(ref registry) = state.metrics {
+        registry.update_memory().await;
+        let body = registry.render().await;
+        (
+            StatusCode::OK,
+            [("content-type", "text/plain; charset=utf-8")],
+            body,
+        )
+    } else {
+        // Return basic metrics if no registry configured
+        (
+            StatusCode::OK,
+            [("content-type", "text/plain; charset=utf-8")],
+            format!(
+                "# zero-channels basic metrics\nprocess_start_time_seconds{{service=\"zero-channels\"}} {}\n",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+            ),
+        )
+    }
+}
+
+async fn metrics_json_handler(State(state): State<Arc<ChannelsState>>) -> impl IntoResponse {
+    if let Some(ref registry) = state.metrics {
+        registry.update_memory().await;
+        let snapshot = registry.snapshot().await;
+        Json(snapshot)
+    } else {
+        // Return basic JSON response if no registry configured
+        Json(zero_common::metrics::MetricsSnapshot {
+            service: "zero-channels".to_string(),
+            total_requests: 0,
+            error_requests: 0,
+            error_rate: 0.0,
+            p50_ms: 0.0,
+            p95_ms: 0.0,
+            p99_ms: 0.0,
+            active_connections: 0,
+            memory_bytes: 0,
+            uptime_secs: 0,
+        })
+    }
 }
 
 // ============================================================================
@@ -1018,6 +1072,9 @@ pub fn build_router(state: Arc<ChannelsState>) -> Router {
         // Health endpoints
         .route("/health", get(health))
         .route("/ready", get(ready))
+        // Metrics endpoint
+        .route("/metrics", get(metrics_handler))
+        .route("/api/v1/metrics", get(metrics_json_handler))
         // Channel webhooks
         .route("/webhook/feishu", post(feishu_webhook))
         .route("/webhook/telegram/:token", post(telegram_webhook))
@@ -1053,6 +1110,7 @@ pub fn create_state(
         codecoder_endpoint,
         outbound: None,
         capture: None,
+        metrics: None,
     });
 
     (state, rx)
@@ -1077,6 +1135,7 @@ pub fn create_state_extended(
         codecoder_endpoint,
         outbound: None,
         capture: None,
+        metrics: None,
     });
 
     (state, rx)
@@ -1102,6 +1161,7 @@ pub fn create_state_with_outbound(
         codecoder_endpoint,
         outbound: Some(outbound),
         capture: None,
+        metrics: None,
     });
 
     (state, rx)
@@ -1128,6 +1188,7 @@ pub fn create_state_with_capture(
         codecoder_endpoint,
         outbound: Some(outbound),
         capture: Some(capture),
+        metrics: None,
     });
 
     (state, rx)

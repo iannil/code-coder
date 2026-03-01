@@ -6,6 +6,11 @@ import DESCRIPTION from "./grep.txt"
 import { Instance } from "../project/instance"
 import path from "path"
 import { assertExternalDirectory } from "./external-directory"
+import {
+  runWithChildSpanAsync,
+  functionStart,
+  functionEnd,
+} from "@/observability"
 
 const MAX_LINE_LENGTH = 2000
 
@@ -17,6 +22,14 @@ export const GrepTool = Tool.define("grep", {
     include: z.string().optional().describe('File pattern to include in the search (e.g. "*.js", "*.{ts,tsx}")'),
   }),
   async execute(params, ctx) {
+    return runWithChildSpanAsync(async () => {
+      const startTime = Date.now()
+      functionStart("GrepTool.execute", {
+        pattern: params.pattern,
+        path: params.path,
+        include: params.include,
+      })
+
     if (!params.pattern) {
       throw new Error("pattern is required")
     }
@@ -142,6 +155,11 @@ export const GrepTool = Tool.define("grep", {
       outputLines.push("(Some paths were inaccessible and skipped)")
     }
 
+    functionEnd("GrepTool.execute", {
+      matches: finalMatches.length,
+      truncated,
+    }, Date.now() - startTime)
+
     return {
       title: params.pattern,
       metadata: {
@@ -150,5 +168,6 @@ export const GrepTool = Tool.define("grep", {
       },
       output: outputLines.join("\n"),
     }
+    }) // end runWithChildSpanAsync
   },
 })

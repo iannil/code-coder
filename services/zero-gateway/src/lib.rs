@@ -60,6 +60,7 @@ use axum::Router;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
 use zero_common::config::Config;
+use zero_common::TracingExt;
 
 /// Build the gateway router with all routes and middleware.
 pub fn build_router(config: &Config) -> Router {
@@ -86,7 +87,9 @@ pub fn build_router(config: &Config) -> Router {
     let webhook_state = WebhookState::new(&config.codecoder_endpoint());
     let router = router.merge(webhook_routes(webhook_state));
 
-    router.layer(cors)
+    router
+        .layer(cors)
+        .with_tracing("zero-gateway")
 }
 
 /// Build the gateway router using legacy separate route builders (for backward compatibility).

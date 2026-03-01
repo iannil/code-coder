@@ -1,5 +1,5 @@
 // IMPORTANT: Set env vars BEFORE any imports from src/ directory
-// xdg-basedir reads env vars at import time, so we must set these first
+// Paths are now derived from CCODE_TEST_HOME, so we must set this first
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
@@ -13,19 +13,22 @@ afterAll(() => {
 })
 // Set test home directory to isolate tests from user's actual home directory
 // This prevents tests from picking up real user configs/skills from ~/.claude/skills
+// All paths (data, cache, state, log, bin) are now derived from ~/.codecoder/
+// which is based on CCODE_TEST_HOME when set
 const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["CCODE_TEST_HOME"] = testHome
 
-process.env["XDG_DATA_HOME"] = path.join(dir, "share")
-process.env["XDG_CACHE_HOME"] = path.join(dir, "cache")
-process.env["XDG_CONFIG_HOME"] = path.join(dir, "config")
-process.env["XDG_STATE_HOME"] = path.join(dir, "state")
+// Create the unified ~/.codecoder/ directory structure for tests
+const codeCoderDir = path.join(testHome, ".codecoder")
+await fs.mkdir(path.join(codeCoderDir, "cache"), { recursive: true })
+await fs.mkdir(path.join(codeCoderDir, "data"), { recursive: true })
+await fs.mkdir(path.join(codeCoderDir, "state"), { recursive: true })
+await fs.mkdir(path.join(codeCoderDir, "log"), { recursive: true })
+await fs.mkdir(path.join(codeCoderDir, "bin"), { recursive: true })
 
 // Write the cache version file to prevent global/index.ts from clearing the cache
-const cacheDir = path.join(dir, "cache", "ccode")
-await fs.mkdir(cacheDir, { recursive: true })
-await fs.writeFile(path.join(cacheDir, "version"), "14")
+await fs.writeFile(path.join(codeCoderDir, "cache", "version"), "18")
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

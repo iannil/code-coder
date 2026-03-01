@@ -58,6 +58,10 @@ pub enum TaskEvent {
     #[serde(rename = "agent_info")]
     AgentInfo(AgentInfoData),
 
+    /// Skill use event (which skills were invoked)
+    #[serde(rename = "skill_use")]
+    SkillUse(SkillUseData),
+
     /// Task completion event (success or failure)
     #[serde(rename = "finish")]
     Finish(FinishData),
@@ -147,6 +151,19 @@ pub struct AgentInfoData {
     pub duration_ms: Option<u64>,
 }
 
+/// Skill use event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillUseData {
+    /// Skill name (e.g., "tdd", "brainstorming", "frontend-design")
+    pub skill: String,
+    /// Arguments passed to the skill
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<String>,
+    /// Duration in milliseconds
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
 // ============================================================================
 // SSE Client
 // ============================================================================
@@ -220,6 +237,13 @@ impl SseTaskClient {
         let initial_backoff = self.config.initial_backoff;
         let task_id_owned = task_id.to_string();
 
+        tracing::info!(
+            task_id = %task_id,
+            endpoint = %self.config.endpoint,
+            max_retries = max_retries,
+            "📡 Starting SSE subscription"
+        );
+
         let handle = tokio::spawn(async move {
             let mut retries = 0;
             let mut backoff = initial_backoff;
@@ -228,7 +252,7 @@ impl SseTaskClient {
                 match Self::connect_and_stream(&url, &tx).await {
                     Ok(finished) => {
                         if finished {
-                            tracing::info!(task_id = %task_id_owned, "SSE stream finished normally");
+                            tracing::info!(task_id = %task_id_owned, "📡 SSE stream finished normally");
                             return Ok(());
                         }
                         // Stream ended without finish event, try reconnecting
@@ -283,16 +307,20 @@ impl SseTaskClient {
     /// Ok(false) if the stream ended without a finish event,
     /// Err if there was a connection error.
     async fn connect_and_stream(url: &str, tx: &mpsc::Sender<TaskEvent>) -> Result<bool> {
+        tracing::debug!(url = %url, "Connecting to SSE endpoint");
+
         let client = eventsource_client::ClientBuilder::for_url(url)
             .context("Failed to create SSE client")?
             .build();
 
         let mut stream = client.stream();
         let mut finished = false;
+        let mut event_count = 0u32;
 
         while let Some(event) = stream.next().await {
             match event {
                 Ok(SSE::Event(ev)) => {
+                    event_count += 1;
                     // Parse the event data
                     match serde_json::from_str::<TaskEvent>(&ev.data) {
                         Ok(task_event) => {
@@ -303,11 +331,20 @@ impl SseTaskClient {
 
                             // Send to channel, stop if receiver is dropped
                             if tx.send(task_event).await.is_err() {
-                                tracing::debug!("SSE event receiver dropped");
+                                tracing::warn!(
+                                    url = %url,
+                                    event_count = event_count,
+                                    "⚠️ SSE event receiver dropped, closing stream"
+                                );
                                 return Ok(finished);
                             }
 
                             if finished {
+                                tracing::debug!(
+                                    url = %url,
+                                    event_count = event_count,
+                                    "SSE stream completed with finish event"
+                                );
                                 return Ok(true);
                             }
                         }
@@ -432,11 +469,50 @@ pub struct TaskData {
 mod tests {
     use super::*;
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // TaskEvent Parsing Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
     #[test]
     fn test_parse_thought_event() {
         let json = r#"{"type": "thought", "data": "Analyzing the PMI data..."}"#;
         let event: TaskEvent = serde_json::from_str(json).unwrap();
         assert!(matches!(event, TaskEvent::Thought(s) if s == "Analyzing the PMI data..."));
+    }
+
+    #[test]
+    fn test_parse_thought_event_empty() {
+        let json = r#"{"type": "thought", "data": ""}"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, TaskEvent::Thought(s) if s.is_empty()));
+    }
+
+    #[test]
+    fn test_parse_thought_event_chinese() {
+        let json = r#"{"type": "thought", "data": "我正在分析数据..."}"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, TaskEvent::Thought(s) if s == "我正在分析数据..."));
+    }
+
+    #[test]
+    fn test_parse_output_event() {
+        let json = r#"{"type": "output", "data": "Here is the result..."}"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        assert!(matches!(event, TaskEvent::Output(s) if s == "Here is the result..."));
+    }
+
+    #[test]
+    fn test_parse_output_event_multiline() {
+        let json = r#"{"type": "output", "data": "Line 1\nLine 2\nLine 3"}"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::Output(s) => {
+                assert!(s.contains("Line 1"));
+                assert!(s.contains("Line 2"));
+                assert!(s.contains("Line 3"));
+            }
+            _ => panic!("Expected Output event"),
+        }
     }
 
     #[test]
@@ -453,6 +529,29 @@ mod tests {
         match event {
             TaskEvent::ToolUse(data) => {
                 assert_eq!(data.tool, "web_search");
+                assert!(data.result.is_none());
+            }
+            _ => panic!("Expected ToolUse event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_tool_use_event_with_result() {
+        let json = r#"{
+            "type": "tool_use",
+            "data": {
+                "tool": "Read",
+                "args": {"file_path": "/path/to/file.txt"},
+                "result": {"content": "file contents here"}
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::ToolUse(data) => {
+                assert_eq!(data.tool, "Read");
+                assert!(data.result.is_some());
+                let result = data.result.unwrap();
+                assert_eq!(result["content"], "file contents here");
             }
             _ => panic!("Expected ToolUse event"),
         }
@@ -472,6 +571,7 @@ mod tests {
         match event {
             TaskEvent::Progress(data) => {
                 assert_eq!(data.stage, "processing");
+                assert_eq!(data.message, "Processing with macro agent...");
                 assert_eq!(data.percentage, Some(50));
             }
             _ => panic!("Expected Progress event"),
@@ -479,31 +579,47 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_finish_event() {
+    fn test_parse_progress_event_without_percentage() {
         let json = r#"{
-            "type": "finish",
+            "type": "progress",
             "data": {
-                "success": true,
-                "output": "PMI analysis complete...",
-                "error": null
+                "stage": "starting",
+                "message": "Initializing..."
             }
         }"#;
         let event: TaskEvent = serde_json::from_str(json).unwrap();
         match event {
-            TaskEvent::Finish(data) => {
-                assert!(data.success);
-                assert!(data.output.is_some());
+            TaskEvent::Progress(data) => {
+                assert_eq!(data.stage, "starting");
+                assert!(data.percentage.is_none());
             }
-            _ => panic!("Expected Finish event"),
+            _ => panic!("Expected Progress event"),
         }
     }
 
     #[test]
-    fn test_create_task_context() {
-        let ctx = TaskContext::new("user123", "channel456", "telegram");
-        assert_eq!(ctx.user_id, "user123");
-        assert_eq!(ctx.platform, "telegram");
-        assert_eq!(ctx.source, "remote");
+    fn test_parse_confirmation_event() {
+        let json = r#"{
+            "type": "confirmation",
+            "data": {
+                "requestID": "req-123",
+                "tool": "Bash",
+                "description": "Execute rm -rf command",
+                "args": {"command": "rm -rf /tmp/test"},
+                "actions": ["allow", "deny", "always_allow"]
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::Confirmation(data) => {
+                assert_eq!(data.request_id, "req-123");
+                assert_eq!(data.tool, "Bash");
+                assert_eq!(data.description, "Execute rm -rf command");
+                assert_eq!(data.actions.len(), 3);
+                assert!(data.actions.contains(&"allow".to_string()));
+            }
+            _ => panic!("Expected Confirmation event"),
+        }
     }
 
     #[test]
@@ -525,8 +641,344 @@ mod tests {
                 assert_eq!(data.provider, Some("anthropic".to_string()));
                 assert_eq!(data.input_tokens, Some(1234));
                 assert_eq!(data.output_tokens, Some(567));
+                assert_eq!(data.duration_ms, Some(1250));
             }
             _ => panic!("Expected DebugInfo event"),
         }
+    }
+
+    #[test]
+    fn test_parse_debug_info_event_minimal() {
+        let json = r#"{
+            "type": "debug_info",
+            "data": {}
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::DebugInfo(data) => {
+                assert!(data.model.is_none());
+                assert!(data.provider.is_none());
+                assert!(data.input_tokens.is_none());
+                assert!(data.output_tokens.is_none());
+            }
+            _ => panic!("Expected DebugInfo event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_debug_info_event_with_bytes() {
+        let json = r#"{
+            "type": "debug_info",
+            "data": {
+                "model": "claude-sonnet-4.5",
+                "request_bytes": 5000,
+                "response_bytes": 10000,
+                "total_tokens": 2000
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::DebugInfo(data) => {
+                assert_eq!(data.model, Some("claude-sonnet-4.5".to_string()));
+                assert_eq!(data.request_bytes, Some(5000));
+                assert_eq!(data.response_bytes, Some(10000));
+                assert_eq!(data.total_tokens, Some(2000));
+            }
+            _ => panic!("Expected DebugInfo event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_agent_info_event() {
+        let json = r#"{
+            "type": "agent_info",
+            "data": {
+                "agent": "macro",
+                "display_name": "Macro Economist",
+                "is_primary": true,
+                "duration_ms": 5000
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::AgentInfo(data) => {
+                assert_eq!(data.agent, "macro");
+                assert_eq!(data.display_name, Some("Macro Economist".to_string()));
+                assert_eq!(data.is_primary, Some(true));
+                assert_eq!(data.duration_ms, Some(5000));
+            }
+            _ => panic!("Expected AgentInfo event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_agent_info_event_minimal() {
+        let json = r#"{
+            "type": "agent_info",
+            "data": {
+                "agent": "build"
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::AgentInfo(data) => {
+                assert_eq!(data.agent, "build");
+                assert!(data.display_name.is_none());
+                assert!(data.is_primary.is_none());
+                assert!(data.duration_ms.is_none());
+            }
+            _ => panic!("Expected AgentInfo event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_finish_event() {
+        let json = r#"{
+            "type": "finish",
+            "data": {
+                "success": true,
+                "output": "PMI analysis complete...",
+                "error": null
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::Finish(data) => {
+                assert!(data.success);
+                assert!(data.output.is_some());
+                assert!(data.error.is_none());
+            }
+            _ => panic!("Expected Finish event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_finish_event_failure() {
+        let json = r#"{
+            "type": "finish",
+            "data": {
+                "success": false,
+                "output": null,
+                "error": "Rate limit exceeded"
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::Finish(data) => {
+                assert!(!data.success);
+                assert!(data.output.is_none());
+                assert_eq!(data.error, Some("Rate limit exceeded".to_string()));
+            }
+            _ => panic!("Expected Finish event"),
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // TaskContext Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_task_context() {
+        let ctx = TaskContext::new("user123", "channel456", "telegram");
+        assert_eq!(ctx.user_id, "user123");
+        assert_eq!(ctx.platform, "telegram");
+        assert_eq!(ctx.source, "remote");
+    }
+
+    #[test]
+    fn test_task_context_conversation_id() {
+        let ctx = TaskContext::new("user123", "channel456", "telegram");
+        assert_eq!(ctx.conversation_id, Some("telegram:channel456".to_string()));
+    }
+
+    #[test]
+    fn test_task_context_different_platforms() {
+        let telegram = TaskContext::new("user1", "chat1", "telegram");
+        assert_eq!(telegram.conversation_id, Some("telegram:chat1".to_string()));
+
+        let discord = TaskContext::new("user2", "guild#channel", "discord");
+        assert_eq!(discord.conversation_id, Some("discord:guild#channel".to_string()));
+
+        let slack = TaskContext::new("user3", "C123456", "slack");
+        assert_eq!(slack.conversation_id, Some("slack:C123456".to_string()));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // SseClientConfig Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_sse_client_config_default() {
+        let config = SseClientConfig::default();
+        assert_eq!(config.endpoint, "http://127.0.0.1:4400");
+        assert_eq!(config.connect_timeout, Duration::from_secs(10));
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_backoff, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_sse_task_client_with_endpoint() {
+        let client = SseTaskClient::with_endpoint("http://localhost:8080");
+        assert_eq!(client.config.endpoint, "http://localhost:8080");
+        // Other config values should be default
+        assert_eq!(client.config.max_retries, 3);
+    }
+
+    #[test]
+    fn test_sse_task_client_new() {
+        let config = SseClientConfig {
+            endpoint: "https://api.example.com".to_string(),
+            connect_timeout: Duration::from_secs(30),
+            max_retries: 5,
+            initial_backoff: Duration::from_secs(2),
+        };
+        let client = SseTaskClient::new(config);
+        assert_eq!(client.config.endpoint, "https://api.example.com");
+        assert_eq!(client.config.max_retries, 5);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // CreateTaskRequest Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_task_request_serialization() {
+        let request = CreateTaskRequest {
+            agent: "macro".into(),
+            prompt: "Analyze PMI data".into(),
+            context: TaskContext::new("user1", "chat1", "telegram"),
+            session_id: None,
+            model: None,
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"agent\":\"macro\""));
+        assert!(json.contains("\"prompt\":\"Analyze PMI data\""));
+        assert!(json.contains("\"source\":\"remote\""));
+        assert!(!json.contains("\"session_id\""));
+        assert!(!json.contains("\"model\""));
+    }
+
+    #[test]
+    fn test_create_task_request_with_session() {
+        let request = CreateTaskRequest {
+            agent: "build".into(),
+            prompt: "Fix the bug".into(),
+            context: TaskContext::new("user1", "chat1", "telegram"),
+            session_id: Some("session-abc-123".into()),
+            model: Some("claude-opus-4.5".into()),
+        };
+
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"session_id\":\"session-abc-123\""));
+        assert!(json.contains("\"model\":\"claude-opus-4.5\""));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // CreateTaskResponse Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_task_response_success() {
+        let json = r#"{
+            "success": true,
+            "data": {
+                "id": "task-123",
+                "sessionID": "session-456",
+                "status": "pending",
+                "agent": "macro",
+                "prompt": "Test prompt",
+                "createdAt": "2026-02-28T12:00:00Z",
+                "updatedAt": "2026-02-28T12:00:00Z"
+            }
+        }"#;
+
+        let response: CreateTaskResponse = serde_json::from_str(json).unwrap();
+        assert!(response.success);
+        assert!(response.data.is_some());
+        assert!(response.error.is_none());
+
+        let data = response.data.unwrap();
+        assert_eq!(data.id, "task-123");
+        assert_eq!(data.session_id, "session-456");
+        assert_eq!(data.status, "pending");
+        assert_eq!(data.agent, "macro");
+    }
+
+    #[test]
+    fn test_create_task_response_error() {
+        let json = r#"{
+            "success": false,
+            "error": "Invalid agent name"
+        }"#;
+
+        let response: CreateTaskResponse = serde_json::from_str(json).unwrap();
+        assert!(!response.success);
+        assert!(response.data.is_none());
+        assert_eq!(response.error, Some("Invalid agent name".to_string()));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // Data Structure Serialization Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_tool_use_data_serialization() {
+        let data = ToolUseData {
+            tool: "Read".into(),
+            args: serde_json::json!({"file_path": "/test.txt"}),
+            result: None,
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"tool\":\"Read\""));
+        assert!(json.contains("\"file_path\""));
+        assert!(!json.contains("\"result\""));
+
+        let data_with_result = ToolUseData {
+            tool: "Read".into(),
+            args: serde_json::json!({"file_path": "/test.txt"}),
+            result: Some(serde_json::json!({"content": "file data"})),
+        };
+
+        let json = serde_json::to_string(&data_with_result).unwrap();
+        assert!(json.contains("\"result\""));
+    }
+
+    #[test]
+    fn test_progress_data_serialization() {
+        let data = ProgressData {
+            stage: "processing".into(),
+            message: "Working...".into(),
+            percentage: Some(75),
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(json.contains("\"stage\":\"processing\""));
+        assert!(json.contains("\"percentage\":75"));
+    }
+
+    #[test]
+    fn test_finish_data_serialization() {
+        let success_data = FinishData {
+            success: true,
+            output: Some("Done!".into()),
+            error: None,
+        };
+
+        let json = serde_json::to_string(&success_data).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"output\":\"Done!\""));
+        assert!(!json.contains("\"error\""));
+
+        let error_data = FinishData {
+            success: false,
+            output: None,
+            error: Some("Failed".into()),
+        };
+
+        let json = serde_json::to_string(&error_data).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("\"error\":\"Failed\""));
     }
 }

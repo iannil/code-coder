@@ -7,6 +7,7 @@ use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use zero_common::{build_client, ClientCategory};
 
 use crate::hands::state::ExecutionStatus;
 use zero_common::config::HandNotificationConfig;
@@ -49,10 +50,8 @@ pub struct NotificationBridge {
 impl NotificationBridge {
     /// Create a new notification bridge.
     pub fn new(channels_endpoint: String) -> Self {
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .unwrap_or_else(|_| Client::new());
+        // Use Notification category for IM channel calls
+        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Notification);
 
         Self {
             client,
