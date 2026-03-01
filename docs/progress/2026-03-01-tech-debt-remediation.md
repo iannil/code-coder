@@ -2,7 +2,7 @@
 
 **Started:** 2026-03-01
 **Status:** In Progress
-**Last Updated:** 2026-03-01 (Session 3)
+**Last Updated:** 2026-03-01 (Session 4)
 
 ---
 
@@ -122,23 +122,39 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
     - **Memory stats**: Return type interfaces could be typed but low impact
 - **Recommendation:** Focus on critical paths (provider, session) when refactoring; current usages are acceptable trade-offs
 
-### 9. Add Tests for packages/web
-- **Status:** In progress
-- **Coverage:** 43.91% → 49.57% (+5.66% lines)
-- **Tests added:** 66 new tests (493 total)
+### 9. Add Tests for packages/web ✅ COMPLETE
+- **Status:** Completed - all coverage thresholds met
+- **Coverage:** 43.91% → 74.93% (+31.02% statements)
+- **Tests added:** 295 new tests (722 total)
 - **Commits:**
   - `22b1800 test(web): add unit tests for tunnel and gateway stores`
   - `3e8d300 test(web): add unit tests for credential store`
+  - `<hash> test(web): add unit tests for channel and memory stores`
+  - `1d45b03 test(web): add unit tests for mcp, lsp, project, task, cron stores`
 
-**New test files:**
-- `tunnel.test.ts` - 21 tests (tunnel store: 0% → 88%)
-- `gateway.test.ts` - 20 tests (gateway store: 0% → 85%)
-- `credential.test.ts` - 25 tests (credential store: 0% → 100%)
+**Final coverage (all thresholds met):**
 
-**Remaining to reach 60% threshold:**
-- channel.ts, cron.ts, lsp.ts, mcp.ts, memory.ts, project.ts, task.ts stores
-- use-sse.ts hook
-- lib/api.ts
+| Metric | Before | After | Threshold |
+|--------|--------|-------|-----------|
+| Statements | 43.91% | 74.93% | 60% ✅ |
+| Branches | 38.21% | 62.15% | 60% ✅ |
+| Functions | 41.18% | 65.77% | 55% ✅ |
+| Lines | 42.67% | 73.46% | 60% ✅ |
+
+**Store coverage (0% → 94.35%):**
+
+| Store | Tests | Coverage |
+|-------|-------|----------|
+| tunnel.ts | 21 | 88% |
+| gateway.ts | 20 | 85% |
+| credential.ts | 25 | 100% |
+| channel.ts | 25 | 95% |
+| memory.ts | 32 | 98% |
+| cron.ts | 20 | 87% |
+| mcp.ts | 37 | 97% |
+| lsp.ts | 44 | 91% |
+| project.ts | 32 | 100% |
+| task.ts | 39 | 90% |
 
 ### 10. Rust Service Unit Tests
 - **Status:** Not started
@@ -150,6 +166,8 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 ## Git Log Summary
 
 ```
+1d45b03 test(web): add unit tests for mcp, lsp, project, task, cron stores
+<hash> test(web): add unit tests for channel and memory stores
 22b1800 test(web): add unit tests for tunnel and gateway stores
 0f3637d docs: update progress with type safety and oversized file analysis
 41e5053 docs: update progress with ai-sdk v3 upgrade completion
