@@ -2,6 +2,7 @@
 
 **Started:** 2026-03-01
 **Status:** In Progress
+**Last Updated:** 2026-03-01 (Session 2)
 
 ---
 
@@ -29,9 +30,40 @@
 
 ---
 
+## Completed Items (P1)
+
+### 4. Break Down document.ts ✅ COMPLETE
+- **Original:** 2858 lines (357% over 800-line limit)
+- **Final:** 80-line entry point + 13 focused modules
+- **Total commits:** 4
+
+**Module breakdown:**
+
+| Module | Lines | Purpose |
+|--------|-------|---------|
+| document.ts | 80 | Entry point (imports and re-exports) |
+| index.ts | 91 | Module index |
+| chapter.ts | 306 | Chapter CRUD commands (5 commands) |
+| check.ts | 95 | Consistency check commands (2 commands) |
+| context.ts | 167 | Context and summary commands (2 commands) |
+| core.ts | 479 | Document CRUD (7 commands) |
+| edit.ts | 222 | Edit commands (4 commands) |
+| entity.ts | 275 | Entity commands (4 commands) |
+| outline.ts | 105 | Outline generation (1 command) |
+| proofread.ts | 548 | Proofreading commands (8 commands) |
+| snapshot.ts | 243 | Version control commands (4 commands) |
+| template.ts | 119 | Template commands (3 commands) |
+| volume.ts | 222 | Volume commands (4 commands) |
+| write.ts | 320 | Write commands (2 commands) |
+| **Total** | **3272** | **46 commands** |
+
+All modules now under 800-line limit (largest: proofread.ts at 548 lines).
+
+---
+
 ## In Progress Items (P1)
 
-### 4. Replace console.log with Structured Logging
+### 5. Replace console.log with Structured Logging
 - **Status:** Analysis complete, implementation pending
 - **Findings:**
   - 666 total console statements across 42 files
@@ -49,85 +81,63 @@
    - `packages/ccode/src/session/*.ts`
    - `packages/ccode/src/autonomous/*.ts`
 
-### 5. Break Down Oversized Files
-- **Status:** Phase 1 complete, continuing...
-- **Target files:**
-  - `document.ts` (2858 lines) - 15+ command groups extractable
-  - `prompt.ts` (1787 lines) - Prompt building logic extractable
-  - `config.ts` (1820 lines) - Loader/validator/defaults extractable
-  - `server.ts` (2046 lines) - LSP handlers extractable
+### 6. Break Down Other Oversized Files
+- **Status:** Planning
 
-**Phase 1 Complete - document.ts decomposition:**
-- **Commit:** `b3afb36 refactor(document): extract command modules`
-- **Extracted modules (~1000 lines):**
-  - `proofread.ts` - 8 proofreading commands (~500 lines)
-  - `snapshot.ts` - 4 version control commands (~210 lines)
-  - `volume.ts` - 4 volume management commands (~200 lines)
-  - `entity.ts` - 4 entity management commands (~240 lines)
-  - `index.ts` - Re-exports all modules
+**Remaining oversized files:**
 
-**Remaining for document.ts:**
-```
-packages/ccode/src/cli/cmd/document/
-  ├── index.ts          # ✅ Done
-  ├── proofread.ts      # ✅ Done
-  ├── snapshot.ts       # ✅ Done
-  ├── volume.ts         # ✅ Done
-  ├── entity.ts         # ✅ Done
-  ├── create.ts         # 🔨 Pending
-  ├── template.ts       # 🔨 Pending
-  ├── outline.ts        # 🔨 Pending
-  ├── write.ts          # 🔨 Pending
-  ├── manage.ts         # 🔨 Pending
-  ├── chapter.ts        # 🔨 Pending
-  └── check.ts          # 🔨 Pending
-```
+| File | Lines | Over limit |
+|------|-------|------------|
+| `prompt.ts` | 1787 | 223% |
+| `config.ts` | 1820 | 228% |
+| `server.ts` | 2046 | 256% |
+
+**Note:** `prompt.ts` has tightly coupled functions in a namespace pattern. Decomposition requires careful dependency analysis.
 
 ---
 
 ## Pending Items (P1-P2)
 
-### 6. Upgrade @ai-sdk/* packages to v3
+### 7. Upgrade @ai-sdk/* packages to v3
 - **Status:** Not started
 - **Scope:** 17 packages need major version upgrades
 - **Risk:** Breaking changes in API
 - **Approach:** Create feature branch, upgrade incrementally, test thoroughly
 
-### 7. Type Safety Cleanup
+### 8. Type Safety Cleanup
 - **Status:** Partially addressed
 - **Remaining:**
   - 95+ `any` type usages
   - Some `@ts-ignore` directives
 
-### 8. TODO/FIXME Cleanup
+### 9. Add Tests for packages/web
 - **Status:** Not started
-- **Scope:** 5 HIGH, 11 MEDIUM, 40+ LOW priority items
+- **Coverage:** Currently 0%
+- **Target:** Basic unit tests for React components
+
+### 10. Rust Service Unit Tests
+- **Status:** Not started
+- **Current:** Only 16 integration test files
+- **Target:** Add inline `#[test]` modules
 
 ---
 
-## Verification Commands
+## Git Log Summary
 
-```bash
-# Check file line counts
-find packages/ccode/src -name "*.ts" -exec wc -l {} \; | sort -rn | head -20
-
-# Count TODO/FIXME
-grep -r "TODO\|FIXME\|HACK" packages/ccode/src --include="*.ts" | wc -l
-
-# Count any types
-grep -r ": any" packages/ccode/src --include="*.ts" | wc -l
-
-# Count console.log
-grep -r "console\." packages/ccode/src --include="*.ts" | wc -l
-
-# Run tests with coverage
-cd packages/ccode && bun test --coverage
 ```
-
----
-
-## Next Session Priorities
-
-1. **Document.ts decomposition** - High impact, reduces cognitive load
-2. **Console.log audit** - Create categorized list, convert debug logging
-3. **@ai-sdk upgrade** - Plan migration strategy, test on feature branch
+de2a7fc refactor(document): complete modular decomposition of document.ts
+b5efef3 refactor(document): extract check, context, edit command modules
+c8e1b12 refactor(document): extract chapter command module
+b3afb36 refactor(document): extract command modules
+8a1a0b5 docs: add technical debt remediation progress
+a2813a8 ci: add GitHub Actions test workflow
+3e13a72 refactor(rust): apply idiomatic patterns
+95b51b5 test: add test infrastructure for util and memory packages
+2fd2a5a refactor: add non-null assertions for strict array access
+8e33f4b chore: enable noUncheckedIndexedAccess
+23fba8c refactor(tui): improve global error handler
+1f8c56b docs: document empty catch blocks
+efb1854 refactor(rust): improve thread safety
+e9f9ef0 refactor: improve TypeScript type safety
+577ee6f chore: enable coverage threshold enforcement
+```
