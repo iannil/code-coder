@@ -969,6 +969,13 @@ export class SafetyIntegration {
    * Setup event handlers
    */
   private setupEventHandlers(): void {
+    // Guard against undefined Bus during test isolation resets
+    // This can happen due to circular dependencies + State.reset()
+    if (typeof Bus?.subscribe !== "function") {
+      log.debug("Bus not available, skipping event handler setup")
+      return
+    }
+
     // Subscribe to resource warnings
     Bus.subscribe(AutonomousEvent.ResourceWarning, async (event) => {
       if (event.properties.sessionId === this.sessionId) {

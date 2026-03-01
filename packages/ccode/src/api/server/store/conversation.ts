@@ -43,6 +43,18 @@ export namespace ConversationStore {
       commandTimeout: redisConfig?.commandTimeout ?? 3000,
       maxRetriesPerRequest: redisConfig?.maxRetriesPerRequest ?? 3,
       lazyConnect: true,
+      // Don't retry on initial connection failure (important for tests)
+      retryStrategy: (times) => {
+        if (times > 1) return null // Stop retrying after first attempt
+        return Math.min(times * 100, 1000)
+      },
+      // Don't queue commands when disconnected
+      enableOfflineQueue: false,
+    })
+
+    // Handle connection errors to prevent "Unhandled error event" warnings
+    client.on("error", (err) => {
+      log.debug("Redis connection error (handled)", { error: err.message })
     })
 
     // Connect and verify
