@@ -14,6 +14,24 @@ export {
   ChapterStatsCommand,
 } from "./chapter"
 
+// Check commands
+export { CheckCommand, CheckStyleCommand } from "./check"
+
+// Context commands
+export { ContextCommand, SummaryGlobalCommand } from "./context"
+
+// Edit commands
+export { SearchReplaceCommand, PolishCommand, ExpandCommand, CompressCommand } from "./edit"
+
+// Entity commands
+export {
+  EntityCommand,
+  EntityExtractCommand,
+  EntityListCommand,
+  EntityShowCommand,
+  EntityDuplicatesCommand,
+} from "./entity"
+
 // Proofread commands
 export {
   ProofreadCommand,
@@ -44,12 +62,3 @@ export {
   VolumeSummaryCommand,
   VolumeAutoCommand,
 } from "./volume"
-
-// Entity commands
-export {
-  EntityCommand,
-  EntityExtractCommand,
-  EntityListCommand,
-  EntityShowCommand,
-  EntityDuplicatesCommand,
-} from "./entity"
