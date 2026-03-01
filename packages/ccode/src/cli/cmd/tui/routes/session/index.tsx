@@ -19,17 +19,26 @@ import { SplitBorder } from "@tui/component/border"
 import { useTheme } from "@tui/context/theme"
 import { safeText } from "@tui/util/safe-text"
 
-// Global error handler to capture all errors
-onerror = function(err: any) {
-  console.error("[GLOBAL ERROR]", err instanceof Error ? err.message : String(err))
-  console.error("Stack:", err instanceof Error ? err.stack : String(err))
-  try {
-    const fs = require("fs")
-    const logPath = process.cwd() + "/dev.log"
-    const timestamp = new Date().toISOString()
-    const logEntry = `[${timestamp}] ${err instanceof Error ? err.message : String(err)}\n`
-    fs.appendFileSync(logPath, logEntry)
-  } catch {}
+// Global error handler using Node.js/Bun standard APIs
+if (typeof process !== "undefined") {
+  const logError = (err: unknown, type: string) => {
+    console.error(`[${type}]`, err instanceof Error ? err.message : String(err))
+    if (err instanceof Error && err.stack) {
+      console.error("Stack:", err.stack)
+    }
+    try {
+      const fs = require("fs")
+      const logPath = process.cwd() + "/dev.log"
+      const timestamp = new Date().toISOString()
+      const logEntry = `[${timestamp}] [${type}] ${err instanceof Error ? err.message : String(err)}\n`
+      fs.appendFileSync(logPath, logEntry)
+    } catch {
+      // Logging failed - ignore
+    }
+  }
+
+  process.on("uncaughtException", (err) => logError(err, "UNCAUGHT EXCEPTION"))
+  process.on("unhandledRejection", (err) => logError(err, "UNHANDLED REJECTION"))
 }
 import {
   BoxRenderable,
