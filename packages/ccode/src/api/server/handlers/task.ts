@@ -30,6 +30,50 @@ const log = Log.create({ service: "task-handler" })
 const TASK_TIMEOUT_MS = 5 * 60 * 1000
 
 // ============================================================================
+// Type Definitions
+// ============================================================================
+
+/**
+ * Error information from assistant message info object.
+ */
+interface AssistantError {
+  name?: string
+  message?: string
+  data?: { message?: string }
+}
+
+/**
+ * Tool invocation structure in message parts.
+ */
+interface ToolInvocationPart {
+  type: "tool"
+  toolInvocation: {
+    state: string
+    toolName: string
+    result: string
+  }
+}
+
+/**
+ * Type guard to check if a message part is a tool invocation.
+ */
+function isToolInvocationPart(part: unknown): part is ToolInvocationPart {
+  if (typeof part !== "object" || part === null) return false
+  const p = part as Record<string, unknown>
+  if (p.type !== "tool") return false
+  if (typeof p.toolInvocation !== "object" || p.toolInvocation === null) return false
+  return true
+}
+
+/**
+ * Type guard to check if a value is an AssistantError.
+ */
+function isAssistantError(value: unknown): value is AssistantError {
+  if (typeof value !== "object" || value === null) return false
+  return true
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -496,8 +540,9 @@ async function executeTask(
     }
 
     // Check for errors in assistant message (error is in info object)
-    const assistantError = lastAssistantMessage?.info?.error
-    const hasError = assistantError && typeof assistantError === "object" && assistantError !== undefined
+    const assistantInfo = lastAssistantMessage?.info as { error?: unknown } | undefined
+    const assistantError = isAssistantError(assistantInfo?.error) ? assistantInfo.error : undefined
+    const hasError = assistantError !== undefined
 
     // Filter text parts, excluding synthetic ones (like tool call summaries)
     const textParts = lastAssistantMessage
@@ -512,9 +557,8 @@ async function executeTask(
     // Filter tool result parts (for cases where AI only used tools without text output)
     const toolResultParts = lastAssistantMessage
       ? lastAssistantMessage.parts.filter((c) => {
-          if (c.type !== "tool-invocation") return false
-          const invocation = (c as { toolInvocation: { state: string } }).toolInvocation
-          return invocation.state === "result"
+          if (!isToolInvocationPart(c)) return false
+          return c.toolInvocation.state === "result"
         })
       : []
 
@@ -531,11 +575,11 @@ async function executeTask(
     if (textParts.length > 0) {
       // Prefer text parts if available
       output = textParts.map((c) => (c as { text: string }).text).join("\n")
-    } else if (hasError) {
-      // Extract error information
+    } else if (hasError && assistantError) {
+      // Extract error information using typed interface
       const errorMsg =
-        (assistantError as any)?.data?.message ||
-        (assistantError as any)?.message ||
+        assistantError.data?.message ||
+        assistantError.message ||
         assistantError.name ||
         "Unknown error"
       output = `❌ 处理失败: ${errorMsg}`
@@ -545,9 +589,9 @@ async function executeTask(
       // This handles cases where AI only uses tools (e.g., WebSearch) without text output
       const formattedToolResults = toolResultParts
         .map((part) => {
-          const invocation = (part as { toolInvocation: { toolName: string; result: string } })
-            .toolInvocation
-          return formatToolResult(invocation.toolName, invocation.result)
+          // Type guard ensures part has toolInvocation
+          if (!isToolInvocationPart(part)) return null
+          return formatToolResult(part.toolInvocation.toolName, part.toolInvocation.result)
         })
         .filter(Boolean)
         .join("\n\n")

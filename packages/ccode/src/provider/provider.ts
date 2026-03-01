@@ -39,6 +39,15 @@ import { ProviderTransform } from "./transform"
 export namespace Provider {
   const log = Log.create({ service: "provider" })
 
+  /**
+   * Provider factory function type.
+   * Uses explicit any for options since each provider has different settings types.
+   * The return type is also any since provider implementations vary.
+   * Type safety is maintained at the usage site where specific provider types are known.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type ProviderFactory = (options?: any) => any
+
   function isGpt5OrLater(modelID: string): boolean {
     const match = /^gpt-(\d+)/.exec(modelID)
     if (!match) {
@@ -51,7 +60,7 @@ export namespace Provider {
     return isGpt5OrLater(modelID) && !modelID.startsWith("gpt-5-mini")
   }
 
-  const BUNDLED_PROVIDERS: Record<string, (options: any) => SDK> = {
+  const BUNDLED_PROVIDERS: Record<string, ProviderFactory> = {
     "@ai-sdk/amazon-bedrock": createAmazonBedrock,
     "@ai-sdk/anthropic": createAnthropic,
     "@ai-sdk/azure": createAzure,

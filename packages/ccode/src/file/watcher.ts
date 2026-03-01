@@ -36,7 +36,16 @@ export namespace FileWatcher {
       const binding = require(
         `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${CCODE_LIBC || "glibc"}` : ""}`,
       )
-      return createWrapper(binding) as typeof import("@parcel/watcher")
+      // createWrapper returns a synchronous wrapper object, but TypeScript incorrectly
+      // infers it as Promise due to missing/incorrect type declarations.
+      // The cast is safe because createWrapper is verified to be synchronous in wrapper.js
+      const wrapper = createWrapper(binding) as unknown as typeof import("@parcel/watcher")
+      // Runtime validation to ensure wrapper has expected methods
+      if (typeof wrapper?.subscribe !== "function" || typeof wrapper?.unsubscribe !== "function") {
+        log.error("watcher binding missing required methods")
+        return
+      }
+      return wrapper
     } catch (error) {
       log.error("failed to load watcher binding", { error })
       return

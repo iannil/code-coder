@@ -7,11 +7,14 @@
 
 export {
   RedisStreamClient,
-  RedisStreamConfig,
-  StreamMessage,
-  PendingMessage,
   streamKeys,
   getRedisStreamClient,
   closeRedisStreamClient,
   isRedisStreamsAvailable,
+} from "./redis"
+
+export type {
+  RedisStreamConfig,
+  StreamMessage,
+  PendingMessage,
 } from "./redis"

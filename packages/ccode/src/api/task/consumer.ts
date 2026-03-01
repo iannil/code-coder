@@ -20,8 +20,8 @@ import { Log } from "@/util/log"
 import {
   RedisStreamClient,
   streamKeys,
-  StreamMessage,
 } from "@/infrastructure/redis"
+import type { StreamMessage } from "@/infrastructure/redis"
 import {
   StreamEventEnvelope,
   StreamTaskEvent,
@@ -353,6 +353,7 @@ export class TaskConsumer {
     const task = await TaskStore.create({
       agent: request.agent,
       prompt: request.prompt,
+      sessionID: request.taskId,
       context: {
         userID: request.userId,
         platform: request.channel,

@@ -533,5 +533,7 @@ export function fromStreamEvent(event: StreamTaskEvent): BaseTaskEvent | null {
     case "heartbeat":
     case "agent_switch":
       return null
+    default:
+      return null
   }
 }

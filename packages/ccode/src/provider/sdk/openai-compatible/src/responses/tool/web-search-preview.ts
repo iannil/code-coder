@@ -1,19 +1,5 @@
-import { createProviderToolFactoryWithOutputSchema } from "@ai-sdk/provider-utils"
+import { createProviderDefinedToolFactory } from "@ai-sdk/provider-utils"
 import { z } from "zod/v4"
-
-// Output schema for web search preview results
-export const webSearchPreviewOutputSchema = z.object({
-  results: z
-    .array(
-      z.object({
-        title: z.string(),
-        url: z.string(),
-        snippet: z.string().optional(),
-        content: z.string().optional(),
-      }),
-    )
-    .nullable(),
-})
 
 // Args validation schema
 export const webSearchPreviewArgsSchema = z.object({
@@ -54,37 +40,9 @@ export const webSearchPreviewArgsSchema = z.object({
     .optional(),
 })
 
-export const webSearchPreview = createProviderToolFactoryWithOutputSchema<
+export const webSearchPreview = createProviderDefinedToolFactory<
   {
     // Web search doesn't take input parameters - it's controlled by the prompt
-  },
-  {
-    /**
-     * The results of the web search preview.
-     */
-    results:
-      | null
-      | {
-          /**
-           * The title of the search result.
-           */
-          title: string
-
-          /**
-           * The URL of the search result.
-           */
-          url: string
-
-          /**
-           * A snippet from the search result.
-           */
-          snippet?: string
-
-          /**
-           * The full content of the page (if retrieved).
-           */
-          content?: string
-        }[]
   },
   {
     /**
@@ -143,5 +101,4 @@ export const webSearchPreview = createProviderToolFactoryWithOutputSchema<
       ])
       .nullish(),
   }),
-  outputSchema: webSearchPreviewOutputSchema,
 })
