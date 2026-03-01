@@ -14,6 +14,7 @@ use chrono::Utc;
 use cron::Schedule;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -236,11 +237,17 @@ impl HandsScheduler {
 
                         // Periodically reload hands (every hour)
                         // This allows picking up new/modified HAND.md files
-                        static mut LAST_RELOAD: i64 = 0;
+                        static LAST_RELOAD: AtomicI64 = AtomicI64::new(0);
                         let now_ts = now.timestamp();
-                        unsafe {
-                            if now_ts - LAST_RELOAD > 3600 {
-                                LAST_RELOAD = now_ts;
+                        let last = LAST_RELOAD.load(Ordering::Relaxed);
+                        if now_ts - last > 3600 {
+                            // Use compare_exchange to avoid race condition
+                            if LAST_RELOAD.compare_exchange(
+                                last,
+                                now_ts,
+                                Ordering::SeqCst,
+                                Ordering::Relaxed
+                            ).is_ok() {
                                 if let Err(e) = Self::reload_hands_static(
                                     &manifests,
                                     &next_runs,

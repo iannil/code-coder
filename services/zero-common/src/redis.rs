@@ -52,6 +52,30 @@ pub enum RedisStreamError {
 pub type StreamResult<T> = Result<T, RedisStreamError>;
 
 // ============================================================================
+// Type Aliases for Redis Streams Response Structures
+// ============================================================================
+
+/// Key-value pairs in a stream entry's fields
+/// Structure: [(field_name, field_value), ...]
+#[cfg(feature = "redis-backend")]
+type StreamEntryFields = Vec<(String, String)>;
+
+/// A single entry in a stream
+/// Structure: (entry_id, fields)
+#[cfg(feature = "redis-backend")]
+type StreamEntry = (String, StreamEntryFields);
+
+/// All entries for a single stream
+/// Structure: (stream_name, entries)
+#[cfg(feature = "redis-backend")]
+type StreamEntries = (String, Vec<StreamEntry>);
+
+/// Response from XREAD/XREADGROUP commands
+/// Structure: [(stream_name, [(entry_id, [(field, value), ...]), ...]), ...]
+#[cfg(feature = "redis-backend")]
+type XReadResponse = Vec<StreamEntries>;
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -274,7 +298,7 @@ impl RedisStreamClient {
 
         cmd.arg("STREAMS").arg(&key).arg(last_id);
 
-        let result: Option<Vec<(String, Vec<(String, Vec<(String, String)>)>)>> = cmd
+        let result: Option<XReadResponse> = cmd
             .query_async(&mut conn)
             .await
             .map_err(|e| RedisStreamError::StreamOperation(e.to_string()))?;
@@ -359,7 +383,7 @@ impl RedisStreamClient {
             .arg(&key)
             .arg(last_id);
 
-        let result: Option<Vec<(String, Vec<(String, Vec<(String, String)>)>)>> = cmd
+        let result: Option<XReadResponse> = cmd
             .query_async(&mut conn)
             .await
             .map_err(|e| RedisStreamError::StreamOperation(e.to_string()))?;
