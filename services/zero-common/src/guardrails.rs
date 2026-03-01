@@ -240,13 +240,13 @@ impl Action {
         }
 
         // Elevate risk based on action type
-        let elevated = match self.action_type.to_lowercase().as_str() {
-            "delete" | "remove" | "destroy" => true,
-            "purchase" | "buy" | "pay" => true,
-            "execute" | "run" | "eval" => true,
-            "publish" | "deploy" | "release" => true,
-            _ => false,
-        };
+        let elevated = matches!(
+            self.action_type.to_lowercase().as_str(),
+            "delete" | "remove" | "destroy" |
+            "purchase" | "buy" | "pay" |
+            "execute" | "run" | "eval" |
+            "publish" | "deploy" | "release"
+        );
 
         if elevated && base.value() < RiskLevel::High.value() {
             return RiskLevel::High;

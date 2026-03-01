@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Risk level for an operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
     /// Read-only, no side effects
@@ -21,6 +21,7 @@ pub enum RiskLevel {
     /// Read-only, may have network requests
     Low = 1,
     /// Limited write operations
+    #[default]
     Medium = 2,
     /// Destructive write operations
     High = 3,
@@ -54,12 +55,6 @@ impl RiskLevel {
             RiskLevel::High => "🔴",
             RiskLevel::Critical => "💀",
         }
-    }
-}
-
-impl Default for RiskLevel {
-    fn default() -> Self {
-        RiskLevel::Medium
     }
 }
 

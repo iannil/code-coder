@@ -106,6 +106,8 @@ const INSURANCE_FUNDAMENTAL_ENDPOINT: &str = "/cn/company/fundamental/insurance"
 
 /// Bank financial statement endpoint
 /// API doc: https://www.lixinger.com/open/api/doc?api-key=cn/company/fs/bank
+/// Note: Reserved for future implementation
+#[allow(dead_code)]
 const BANK_FS_ENDPOINT: &str = "/cn/company/fs/bank";
 
 // ============================================================================
@@ -124,6 +126,8 @@ const COMPANY_INDICES_ENDPOINT: &str = "/cn/company/indices";
 
 /// Company major customers endpoint
 /// API doc: https://www.lixinger.com/open/api/doc?api-key=cn/company/customers
+/// Note: Reserved for future implementation
+#[allow(dead_code)]
 const COMPANY_CUSTOMERS_ENDPOINT: &str = "/cn/company/customers";
 
 // ============================================================================
@@ -144,6 +148,8 @@ const PLEDGE_ENDPOINT: &str = "/cn/company/pledge";
 
 /// Company operating data endpoint
 /// API doc: https://www.lixinger.com/open/api/doc?api-key=cn/company/operating-data
+/// Note: Reserved for future implementation
+#[allow(dead_code)]
 const OPERATING_DATA_ENDPOINT: &str = "/cn/company/operating-data";
 
 // ============================================================================
@@ -2063,6 +2069,7 @@ struct LixinError {
 
 /// Lixinger validation error detail
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields used by serde for deserialization
 struct LixinValidationError {
     /// Field path
     path: Option<Vec<String>>,
@@ -2313,6 +2320,7 @@ struct LixinFinancialRequest {
 
 /// Balance sheet data
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields used by serde for deserialization
 struct LixinBalanceSheet {
     #[serde(rename = "stockCode")]
     stock_code: String,
@@ -2348,6 +2356,7 @@ struct LixinBalanceSheet {
 
 /// Income statement data
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields used by serde for deserialization
 struct LixinIncomeStatement {
     #[serde(rename = "stockCode")]
     stock_code: String,
@@ -2372,6 +2381,7 @@ struct LixinIncomeStatement {
 
 /// Cash flow statement data
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields used by serde for deserialization
 struct LixinCashFlow {
     #[serde(rename = "stockCode")]
     stock_code: String,
@@ -2412,6 +2422,7 @@ struct LixinFsNonFinancialRequest {
 /// Response from unified financial statement endpoint
 /// Uses HashMap to capture dynamic metric field names
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)] // Fields used by serde for deserialization
 struct LixinFsNonFinancialData {
     #[serde(rename = "stockCode")]
     stock_code: String,

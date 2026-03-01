@@ -46,7 +46,7 @@ impl ManagedProcess {
     }
 
     /// Spawn the process.
-    pub fn spawn(&mut self, bin_dir: &PathBuf) -> Result<()> {
+    pub fn spawn(&mut self, bin_dir: &std::path::Path) -> Result<()> {
         let binary_path = bin_dir.join(&self.config.binary);
 
         if !binary_path.exists() {

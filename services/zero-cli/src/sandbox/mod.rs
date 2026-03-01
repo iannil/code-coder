@@ -10,5 +10,4 @@
 pub mod docker;
 pub mod types;
 
-pub use docker::DockerSandbox;
-pub use types::{ExecutionAttempt, ExecutionResult, Language, SandboxConfig};
+pub use types::{ExecutionAttempt, ExecutionResult, Language};

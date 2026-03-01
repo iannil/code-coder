@@ -38,7 +38,7 @@ use zero_common::config::{config_dir, workspace_hands_dir, HandNotificationConfi
 /// Autonomy level for CLOSE decision framework thresholds.
 ///
 /// Lower thresholds = more permissive (higher autonomy).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AutonomyLevel {
     /// Lunatic (90+) - Fully autonomous, no human intervention
@@ -46,6 +46,7 @@ pub enum AutonomyLevel {
     /// Insane (75-89) - Highly autonomous
     Insane,
     /// Crazy (60-74) - Significantly autonomous
+    #[default]
     Crazy,
     /// Wild (40-59) - Partially autonomous
     Wild,
@@ -93,14 +94,8 @@ impl AutonomyLevel {
     }
 }
 
-impl Default for AutonomyLevel {
-    fn default() -> Self {
-        AutonomyLevel::Crazy
-    }
-}
-
 /// Risk threshold for auto-approval.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum RiskThreshold {
     /// Only auto-approve safe operations
@@ -108,15 +103,10 @@ pub enum RiskThreshold {
     /// Auto-approve safe and low-risk operations
     Low,
     /// Auto-approve up to medium-risk operations
+    #[default]
     Medium,
     /// Auto-approve up to high-risk operations (dangerous)
     High,
-}
-
-impl Default for RiskThreshold {
-    fn default() -> Self {
-        RiskThreshold::Medium
-    }
 }
 
 impl RiskThreshold {

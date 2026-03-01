@@ -73,7 +73,7 @@ impl MeteringState {
     }
 
     /// Create a new metering state with a custom database path.
-    pub fn with_db_path(db_path: &PathBuf) -> anyhow::Result<Self> {
+    pub fn with_db_path(db_path: &std::path::Path) -> anyhow::Result<Self> {
         let quota_manager = QuotaManager::new(db_path)?;
         Ok(Self {
             quota_manager: Arc::new(quota_manager),
