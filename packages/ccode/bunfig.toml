@@ -11,8 +11,7 @@ coverage = true
 coverageDir = "./coverage"
 
 # Coverage thresholds (enforce minimum coverage per the testing plan)
-# Note: Enable these once test coverage reaches targets
-# coverageThreshold = { line = 80, branch = 75, function = 85 }
+coverageThreshold = { line = 80, branch = 75, function = 85 }
 
 # Exclude patterns from coverage
 coverageSkipTestFiles = true
