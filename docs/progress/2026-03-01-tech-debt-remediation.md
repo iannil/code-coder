@@ -124,16 +124,19 @@ All modules now under 800-line limit (largest: proofread.ts at 548 lines).
 
 ### 9. Add Tests for packages/web
 - **Status:** In progress
-- **Coverage:** 43.91% → 46.21% (+2.3% lines)
-- **Tests added:** 41 new tests (468 total)
-- **Commit:** `22b1800 test(web): add unit tests for tunnel and gateway stores`
+- **Coverage:** 43.91% → 49.57% (+5.66% lines)
+- **Tests added:** 66 new tests (493 total)
+- **Commits:**
+  - `22b1800 test(web): add unit tests for tunnel and gateway stores`
+  - `3e8d300 test(web): add unit tests for credential store`
 
 **New test files:**
 - `tunnel.test.ts` - 21 tests (tunnel store: 0% → 88%)
 - `gateway.test.ts` - 20 tests (gateway store: 0% → 85%)
+- `credential.test.ts` - 25 tests (credential store: 0% → 100%)
 
 **Remaining to reach 60% threshold:**
-- channel.ts, credential.ts, cron.ts, lsp.ts, mcp.ts, memory.ts, project.ts, task.ts stores
+- channel.ts, cron.ts, lsp.ts, mcp.ts, memory.ts, project.ts, task.ts stores
 - use-sse.ts hook
 - lib/api.ts
 
