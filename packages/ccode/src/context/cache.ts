@@ -149,7 +149,9 @@ export namespace Cache {
                 }
               }
               if (foundMethods.size > 0) methods = Array.from(foundMethods)
-            } catch {}
+            } catch {
+              // File read failed - methods remain undefined
+            }
           }
 
           routes.push({
@@ -159,7 +161,9 @@ export namespace Cache {
             methods,
           })
         }
-      } catch {}
+      } catch {
+        // Glob pattern may fail on some patterns - skip and continue
+      }
     }
 
     return routes
@@ -211,7 +215,9 @@ export namespace Cache {
             imports: imports.length > 0 ? imports : undefined,
           })
         }
-      } catch {}
+      } catch {
+        // Glob pattern may fail on some patterns - skip and continue
+      }
     }
 
     return components
@@ -264,7 +270,9 @@ export namespace Cache {
             parsed,
           })
         }
-      } catch {}
+      } catch {
+        // Glob pattern may fail on some patterns - skip and continue
+      }
     }
 
     return configs

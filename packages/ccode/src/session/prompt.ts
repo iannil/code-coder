@@ -47,8 +47,8 @@ import { Shell } from "@/shell/shell"
 import { Truncate } from "@/tool/truncation"
 import { point } from "@/observability"
 
-// @ts-ignore
-globalThis.AI_SDK_LOG_WARNINGS = false
+// Suppress AI SDK warnings in console
+;(globalThis as Record<string, unknown>).AI_SDK_LOG_WARNINGS = false
 
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
