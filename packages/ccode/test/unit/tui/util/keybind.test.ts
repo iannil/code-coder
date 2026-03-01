@@ -146,9 +146,9 @@ describe("Keybind Utility", () => {
     test("should be case-insensitive", () => {
       const result = Keybind.parse("CTRL+SHIFT+A")
       expect(result).toHaveLength(1)
-      expect(result[0].name).toBe("a")
-      expect(result[0].ctrl).toBe(true)
-      expect(result[0].shift).toBe(true)
+      expect(result[0]?.name).toBe("a")
+      expect(result[0]?.ctrl).toBe(true)
+      expect(result[0]?.shift).toBe(true)
     })
   })
 
@@ -433,10 +433,10 @@ describe("Keybind Utility", () => {
       const withLeader = Keybind.parse("<leader>a")
       const withoutLeader = Keybind.parse("a")
 
-      expect(Keybind.match(withLeader[0], withoutLeader[0])).toBe(false)
+      expect(withLeader[0] && withoutLeader[0] && Keybind.match(withLeader[0], withoutLeader[0])).toBe(false)
 
       const withLeaderParsed = Keybind.fromParsedKey(createParsedKey({}), true)
-      expect(Keybind.match(withLeader[0], withLeaderParsed)).toBe(true)
+      expect(withLeader[0] && Keybind.match(withLeader[0], withLeaderParsed)).toBe(true)
     })
 
     test("should handle multiple keybindings for same action", () => {

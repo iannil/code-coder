@@ -1,5 +1,18 @@
-import { createProviderDefinedToolFactory } from "@ai-sdk/provider-utils"
+import { createProviderToolFactoryWithOutputSchema } from "@ai-sdk/provider-utils"
 import { z } from "zod/v4"
+
+export const webSearchOutputSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        snippet: z.string().optional(),
+        content: z.string().optional(),
+      }),
+    )
+    .nullable(),
+})
 
 export const webSearchArgsSchema = z.object({
   filters: z
@@ -21,9 +34,37 @@ export const webSearchArgsSchema = z.object({
     .optional(),
 })
 
-export const webSearchToolFactory = createProviderDefinedToolFactory<
+export const webSearchToolFactory = createProviderToolFactoryWithOutputSchema<
   {
     // Web search doesn't take input parameters - it's controlled by the prompt
+  },
+  {
+    /**
+     * The results of the web search.
+     */
+    results:
+      | null
+      | {
+          /**
+           * The title of the search result.
+           */
+          title: string
+
+          /**
+           * The URL of the search result.
+           */
+          url: string
+
+          /**
+           * A snippet from the search result.
+           */
+          snippet?: string
+
+          /**
+           * The full content of the page (if retrieved).
+           */
+          content?: string
+        }[]
   },
   {
     /**
@@ -94,6 +135,7 @@ export const webSearchToolFactory = createProviderDefinedToolFactory<
       ])
       .nullish(),
   }),
+  outputSchema: webSearchOutputSchema,
 })
 
 export const webSearch = (

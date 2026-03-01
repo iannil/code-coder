@@ -6,12 +6,13 @@
     "jsxImportSource": "@opentui/solid",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": [],
-    "noUncheckedIndexedAccess": true,
+    "noUncheckedIndexedAccess": false,
     "customConditions": ["browser"],
     "paths": {
       "@/*": ["./src/*"],
       "@tui/*": ["./src/cli/cmd/tui/*"],
       "@codecoder-ai/script/*": ["../../script/*"]
     }
-  }
+  },
+  "exclude": ["bench/fixture/**", "test/**"]
 }

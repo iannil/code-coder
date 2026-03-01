@@ -47,9 +47,9 @@ describe("Terminal Utility", () => {
       const colorStr = "rgb:ffff/ffff/ffff"
       const parts = colorStr.substring(4).split("/")
 
-      const r = parseInt(parts[0], 16) >> 8
-      const g = parseInt(parts[1], 16) >> 8
-      const b = parseInt(parts[2], 16) >> 8
+      const r = parseInt(parts[0] ?? "0", 16) >> 8
+      const g = parseInt(parts[1] ?? "0", 16) >> 8
+      const b = parseInt(parts[2] ?? "0", 16) >> 8
 
       expect(r).toBe(255)
       expect(g).toBe(255)
@@ -70,9 +70,9 @@ describe("Terminal Utility", () => {
       const colorStr = "rgb(128, 64, 32)"
       const parts = colorStr.substring(4, colorStr.length - 1).split(",")
 
-      const r = parseInt(parts[0])
-      const g = parseInt(parts[1])
-      const b = parseInt(parts[2])
+      const r = parseInt(parts[0] ?? "0")
+      const g = parseInt(parts[1] ?? "0")
+      const b = parseInt(parts[2] ?? "0")
 
       expect(r).toBe(128)
       expect(g).toBe(64)

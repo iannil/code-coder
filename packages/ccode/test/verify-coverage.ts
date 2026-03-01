@@ -241,19 +241,23 @@ async function generateReport(verbose = false): Promise<CoverageReport> {
 
   for (const tc of testCases) {
     // By priority
-    if (!byPriority[tc.priority]) {
-      byPriority[tc.priority] = { total: 0, implemented: 0 }
+    let priorityEntry = byPriority[tc.priority]
+    if (!priorityEntry) {
+      priorityEntry = { total: 0, implemented: 0 }
+      byPriority[tc.priority] = priorityEntry
     }
-    byPriority[tc.priority].total++
-    if (tc.implemented) byPriority[tc.priority].implemented++
+    priorityEntry.total++
+    if (tc.implemented) priorityEntry.implemented++
 
     // By user type
     const userType = tc.id.split("-")[1]
-    if (!byUserType[userType]) {
-      byUserType[userType] = { total: 0, implemented: 0 }
+    let userTypeEntry = userType ? byUserType[userType] : undefined
+    if (!userTypeEntry) {
+      userTypeEntry = { total: 0, implemented: 0 }
+      if (userType) byUserType[userType] = userTypeEntry
     }
-    byUserType[userType].total++
-    if (tc.implemented) byUserType[userType].implemented++
+    userTypeEntry.total++
+    if (tc.implemented) userTypeEntry.implemented++
   }
 
   const implementedCount = testCases.filter((tc) => tc.implemented).length
