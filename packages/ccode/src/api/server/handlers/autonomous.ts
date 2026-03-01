@@ -19,6 +19,9 @@ import {
   type RiskLevel,
   type AutoApproveConfig,
 } from "../../../permission"
+import { Log } from "../../../util/log"
+
+const log = Log.create({ service: "api.autonomous" })
 
 // ============================================================================
 // Types
@@ -384,7 +387,7 @@ async function executeAutonomousTask(
   if (explicitAgent) {
     const agentExists = agents.some((a) => a.name === explicitAgent)
     if (!agentExists) {
-      console.warn(`Explicit agent "${explicitAgent}" not found, falling back to "general"`)
+      log.warn("Explicit agent not found, falling back to general", { agent: explicitAgent })
       agentName = "general"
     }
   } else {
@@ -603,7 +606,7 @@ export async function executeAutonomous(
       error: error instanceof Error ? error.message : String(error),
     })
 
-    console.error("Autonomous API error:", error)
+    log.error("Autonomous API error", { error: error instanceof Error ? error.message : String(error) })
 
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }

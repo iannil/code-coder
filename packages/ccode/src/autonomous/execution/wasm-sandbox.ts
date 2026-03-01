@@ -14,6 +14,10 @@
  * Part of Phase 2 Supplement: WASM Lightweight Sandbox
  */
 
+import { Log } from "../../util/log"
+
+const log = Log.create({ service: "wasm.sandbox" })
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -173,7 +177,7 @@ export class WasmSandboxExecutor {
       await loadQuickJS()
       this.available = true
     } catch (error) {
-      console.warn("WASM sandbox not available:", error)
+      log.warn("WASM sandbox not available", { error: error instanceof Error ? error.message : String(error) })
       this.available = false
     }
   }

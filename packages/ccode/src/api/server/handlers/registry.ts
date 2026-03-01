@@ -13,6 +13,9 @@
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
+import { Log } from "../../../util/log"
+
+const log = Log.create({ service: "api.registry" })
 
 // ============================================================================
 // Helper Functions
@@ -67,7 +70,7 @@ export async function listAgents(req: HttpRequest, _params: RouteParams): Promis
       data: sortedAgents,
     })
   } catch (error) {
-    console.error("Registry list error:", error)
+    log.error("Registry list error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -98,7 +101,7 @@ export async function getAgent(req: HttpRequest, params: RouteParams): Promise<H
       data: agent,
     })
   } catch (error) {
-    console.error("Registry get error:", error)
+    log.error("Registry get error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -132,7 +135,7 @@ export async function recommendAgent(req: HttpRequest, _params: RouteParams): Pr
       },
     })
   } catch (error) {
-    console.error("Registry recommend error:", error)
+    log.error("Registry recommend error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -162,7 +165,7 @@ export async function searchAgents(req: HttpRequest, _params: RouteParams): Prom
       data: results,
     })
   } catch (error) {
-    console.error("Registry search error:", error)
+    log.error("Registry search error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -196,7 +199,7 @@ export async function listCategories(_req: HttpRequest, _params: RouteParams): P
       data: categories,
     })
   } catch (error) {
-    console.error("Registry categories error:", error)
+    log.error("Registry categories error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -217,7 +220,7 @@ export async function listRecommended(_req: HttpRequest, _params: RouteParams): 
       data: recommended,
     })
   } catch (error) {
-    console.error("Registry recommended error:", error)
+    log.error("Registry recommended error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }

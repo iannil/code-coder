@@ -19,6 +19,9 @@ import { Database } from "bun:sqlite"
 import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync } from "fs"
+import { Log } from "../../../util/log"
+
+const log = Log.create({ service: "api.knowledge" })
 
 // ============================================================================
 // Configuration
@@ -335,7 +338,7 @@ async function getEmbeddings(texts: string[]): Promise<number[][] | null> {
 
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
-    console.warn("[knowledge] No OPENAI_API_KEY found, falling back to keyword-only search")
+    log.warn("No OPENAI_API_KEY found, falling back to keyword-only search")
     return null
   }
 
@@ -355,7 +358,7 @@ async function getEmbeddings(texts: string[]): Promise<number[][] | null> {
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error(`[knowledge] Embedding API error: ${response.status} ${errorText}`)
+    log.error("Embedding API error", { status: response.status, error: errorText })
     return null
   }
 

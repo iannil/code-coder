@@ -16,6 +16,9 @@ import { generateText } from "ai"
 import { randomUUID } from "node:crypto"
 import os from "os"
 import path from "path"
+import { Log } from "../../../util/log"
+
+const log = Log.create({ service: "api.compare" })
 
 // ============================================================================
 // Types
@@ -148,7 +151,7 @@ async function loadHistory(): Promise<Map<string, ComparisonHistoryEntry>> {
         }
       }
     } catch (error) {
-      console.warn("Failed to load comparison history:", error)
+      log.warn("Failed to load comparison history", { error: error instanceof Error ? error.message : String(error) })
     }
   })()
 
@@ -174,7 +177,7 @@ async function saveHistory(): Promise<void> {
     const entries = Array.from(history.values())
     await Bun.write(filePath, JSON.stringify(entries, null, 2))
   } catch (error) {
-    console.error("Failed to save comparison history:", error)
+    log.error("Failed to save comparison history", { error: error instanceof Error ? error.message : String(error) })
   }
 }
 
@@ -344,7 +347,7 @@ export async function compare(req: HttpRequest, _params: RouteParams): Promise<H
       },
     })
   } catch (error) {
-    console.error("Compare API error:", error)
+    log.error("Compare API error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -407,7 +410,7 @@ export async function listCompareModels(_req: HttpRequest, _params: RouteParams)
       },
     })
   } catch (error) {
-    console.error("List compare models error:", error)
+    log.error("List compare models error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -456,7 +459,7 @@ export async function getCompareHistory(req: HttpRequest, _params: RouteParams):
       },
     })
   } catch (error) {
-    console.error("Get compare history error:", error)
+    log.error("Get compare history error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -487,7 +490,7 @@ export async function getCompareEntry(req: HttpRequest, params: RouteParams): Pr
       },
     })
   } catch (error) {
-    console.error("Get compare entry error:", error)
+    log.error("Get compare entry error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -549,7 +552,7 @@ export async function voteForModel(req: HttpRequest, params: RouteParams): Promi
       },
     })
   } catch (error) {
-    console.error("Vote error:", error)
+    log.error("Vote error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
@@ -581,7 +584,7 @@ export async function deleteCompareEntry(req: HttpRequest, params: RouteParams):
       },
     })
   } catch (error) {
-    console.error("Delete compare entry error:", error)
+    log.error("Delete compare entry error", { error: error instanceof Error ? error.message : String(error) })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }
