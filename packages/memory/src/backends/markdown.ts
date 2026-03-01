@@ -342,7 +342,7 @@ export class MarkdownMemory implements UnifiedMemory {
               })
             }
           }
-          currentEntry = { key: entryMatch[1], content: entryMatch[2] }
+          currentEntry = { key: entryMatch[1]!, content: entryMatch[2]! }
           continue
         }
 
@@ -405,7 +405,7 @@ export class MarkdownMemory implements UnifiedMemory {
           const timestamp = lines[0]?.trim() ?? ""
           const keyLine = lines[1]?.trim() ?? ""
           const keyMatch = keyLine.match(/^\*\*(.+?)\*\*$/)
-          const key = keyMatch ? keyMatch[1] : keyLine
+          const key = keyMatch ? keyMatch[1]! : keyLine
           const entryContent = lines.slice(2).join("\n").trim()
 
           const score = this.calculateScore(key + " " + entryContent, keywords)
@@ -476,9 +476,9 @@ export class MarkdownMemory implements UnifiedMemory {
           return {
             id: this.generateId(),
             key,
-            content: match[1],
+            content: match[1]!,
             category,
-            timestamp: timestampMatch ? timestampMatch[1] : this.now(),
+            timestamp: timestampMatch ? timestampMatch[1]! : this.now(),
             source: "markdown",
           }
         }
