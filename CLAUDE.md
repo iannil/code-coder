@@ -68,7 +68,7 @@ compaction、title、summary
   - 对重复的、冗余的、不能体现实际情况的文档或文档内容，要保持更新和调整。
   - 文档模板和命名规范可以参考 `/docs/standards` 和 `docs/templates` 文件夹下的内容。
 - 文件夹约定：
-  - `memory`、`docs`文件夹只能存储于项目根目录`/`之下，不允许存储在项目任何其他位置。
+  - `memory`、`docs`、`example`文件夹只能存储于项目根目录`/`之下，不允许存储在项目任何其他位置。
 
 ### 面向大模型的可改写性（LLM Friendly）
 
