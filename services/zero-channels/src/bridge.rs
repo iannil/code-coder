@@ -9,7 +9,7 @@
 use crate::capture_bridge::CaptureBridge;
 use crate::checkpoint::CheckpointManager;
 use crate::debug::extract_debug_flag;
-use crate::message::{ChannelMessage, MessageContent, OutgoingContent};
+use crate::message::{ChannelMessage, ChannelType, MessageContent, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::progress::{ImProgressHandler, ProgressHandler};
 use crate::safe_truncate;
@@ -865,24 +865,26 @@ impl CodeCoderBridge {
         // Check if agent is specified in metadata (e.g., from previous context)
         let agent_from_meta = message.metadata.get("agent").map(|s| s.as_str());
 
-        // Auto-route to recommended agent if no explicit agent specified
-        let recommended_agent = if agent_from_meta.is_none() {
-            // No explicit agent, try to recommend based on message content
-            self.call_recommend_agent(text).await
+        // Determine agent based on channel type
+        // IM channels: use channel-specific default (autonomous), let the agent decide sub-agent routing
+        // CLI: use recommend API for intelligent routing to specialized agents
+        let final_agent = if agent_from_meta.is_some() {
+            // Explicit agent specified in metadata
+            agent_from_meta.map(|s| s.to_string())
+        } else if message.channel_type != ChannelType::Cli {
+            // IM channels: use default_agent_for_channel (autonomous)
+            // Don't call recommend API - let autonomous agent decide which sub-agent to invoke
+            Some(default_agent_for_channel(message.channel_type).to_string())
         } else {
-            // Explicit agent specified, skip recommendation
-            None
+            // CLI: use recommend API for intelligent routing
+            self.call_recommend_agent(text).await
         };
-
-        // Determine final agent: metadata > recommended > None (will use default)
-        let final_agent = agent_from_meta
-            .map(|s| s.to_string())
-            .or(recommended_agent);
 
         tracing::info!(
             message_id = %message.id,
             agent_from_meta = ?agent_from_meta,
-            recommended = ?final_agent,
+            channel_type = ?message.channel_type,
+            final_agent = ?final_agent,
             "Processing message with agent routing"
         );
 
@@ -1263,10 +1265,10 @@ impl CodeCoderBridge {
         // Create task context with conversation_id for session continuity
         let context = TaskContext::new(&message.user_id, &message.channel_id, message.channel_type.as_str());
 
-        // Determine agent to use
+        // Determine agent to use - use channel-specific default if not specified
         let agent_name = agent
             .or_else(|| message.metadata.get("agent").cloned())
-            .unwrap_or_else(|| "general".to_string());
+            .unwrap_or_else(|| default_agent_for_channel(message.channel_type).to_string());
 
         // Create task request
         let create_request = CreateTaskRequest {

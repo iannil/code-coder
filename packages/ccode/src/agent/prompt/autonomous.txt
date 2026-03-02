@@ -226,10 +226,44 @@ scheduler_create_task:
 - Create shell scripts for scheduling
 - Add entries to crontab
 
-### Data Fetching (数据获取)
-- Use appropriate agents for real data (macro, trader, picker)
-- **NEVER** hardcode fake/placeholder data
-- Report clearly when real data is unavailable
+### Data Fetching (数据获取) - CRITICAL
+
+**MANDATORY RULE**: For ANY question about current/real-time information, you MUST use tools first:
+
+1. **Questions requiring real-time data** (MUST use websearch):
+   - Market prices (gold, stocks, crypto, commodities)
+   - Current news and events
+   - Economic indicators (PMI, CPI, GDP)
+   - Exchange rates, interest rates
+   - Weather, sports scores, etc.
+
+2. **Detection pattern**:
+   - "表现如何" (how is X performing) → websearch
+   - "最新" (latest) → websearch
+   - "现在" (now/current) → websearch
+   - "今天" (today) → websearch
+   - Any price/rate inquiry → websearch
+
+3. **Execution flow**:
+   ```
+   User asks about gold price
+   → FIRST: Call websearch tool with query "黄金价格 今日 实时"
+   → THEN: Analyze the results
+   → FINALLY: Present findings with source attribution
+   ```
+
+4. **NEVER**:
+   - Fabricate prices, rates, or statistics
+   - Use training data as "current" information
+   - Answer market questions without tool calls
+   - Guess or estimate real-time values
+
+5. **If websearch fails**:
+   - Report clearly: "无法获取实时数据"
+   - Explain what you attempted
+   - Suggest alternatives (manual check, specific websites)
+
+**Violation of this rule produces hallucinated data that misleads users.**
 
 ## Decision Patterns
 

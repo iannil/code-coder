@@ -364,33 +364,9 @@ pub fn detect_agent<'a>(message: &str, default_agent: &'a str) -> &'a str {
         }
     }
 
-    // Domain-specific agents (check first - more specific)
-    if text.contains("宏观") || text.contains("经济") || text.contains("pmi") || text.contains("cpi") {
-        return "macro";
-    }
-    if text.contains("交易") || text.contains("仓位") || text.contains("风险") {
-        return "trader";
-    }
-    if text.contains("选品") || text.contains("产品") || text.contains("市场") {
-        return "picker";
-    }
-
-    // Check for task type indicators (general)
-    if text.contains("代码审查") || text.contains("review") || text.contains("审核") {
-        return "code-reviewer";
-    }
-    if text.contains("安全") || text.contains("漏洞") || text.contains("security") {
-        return "security-reviewer";
-    }
-    if text.contains("测试") || text.contains("tdd") || text.contains("test") {
-        return "tdd-guide";
-    }
-    if text.contains("架构") || text.contains("设计") || text.contains("architecture") {
-        return "architect";
-    }
-    if text.contains("分析") || text.contains("解释") || text.contains("explore") {
-        return "explore";
-    }
+    // No implicit keyword matching - let autonomous agent decide which sub-agent to call
+    // This avoids misrouting (e.g., "黄金市场" → picker instead of macro)
+    // Users can still use explicit @agent mentions for direct routing
 
     default_agent
 }
@@ -413,17 +389,17 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_agent_content_based() {
-        assert_eq!(detect_agent("帮我做个代码审查", "build"), "code-reviewer");
-        assert_eq!(detect_agent("检查有没有安全漏洞", "build"), "security-reviewer");
-        assert_eq!(detect_agent("写个测试用例", "build"), "tdd-guide");
-        assert_eq!(detect_agent("分析一下宏观经济形势", "build"), "macro");
-    }
-
-    #[test]
     fn test_detect_agent_default() {
+        // Without explicit @mention, all messages go to default agent
+        // Autonomous agent will decide which sub-agent to call
         assert_eq!(detect_agent("帮我写段代码", "build"), "build");
         assert_eq!(detect_agent("Hello world", "build"), "build");
+
+        // These used to match domain keywords, now they go to default
+        assert_eq!(detect_agent("黄金市场表现如何", "autonomous"), "autonomous");
+        assert_eq!(detect_agent("帮我做个代码审查", "autonomous"), "autonomous");
+        assert_eq!(detect_agent("分析一下宏观经济形势", "autonomous"), "autonomous");
+
         // Test with autonomous as default (IM channel behavior)
         assert_eq!(detect_agent("帮我写段代码", "autonomous"), "autonomous");
         assert_eq!(detect_agent("Hello world", "autonomous"), "autonomous");

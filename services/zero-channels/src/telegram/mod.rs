@@ -97,10 +97,23 @@ pub struct TelegramChannel {
 impl TelegramChannel {
     /// Create a new Telegram channel.
     pub fn new(bot_token: String, allowed_users: Vec<String>) -> Self {
+        // Configure client with proper timeouts for long-polling
+        // - connect_timeout: fail fast on connection issues
+        // - timeout: allow for Telegram's 30s long-poll + buffer
+        // - pool_idle_timeout: prevent stale connections
+        // - tcp_keepalive: detect dead connections
+        let client = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(60))
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client for Telegram");
+
         Self {
             bot_token,
             allowed_users,
-            client: reqwest::Client::new(),
+            client,
             stt: None,
             tts: None,
             callback_tx: None,

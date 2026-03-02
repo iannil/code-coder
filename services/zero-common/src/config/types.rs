@@ -2904,6 +2904,10 @@ pub struct PreparationTaskConfig {
     /// Whether preparation tasks are enabled (default: true)
     #[serde(default = "default_prep_enabled")]
     pub enabled: bool,
+
+    /// Workflow API endpoint for macro data (default: http://127.0.0.1:4432)
+    #[serde(default = "default_workflow_endpoint")]
+    pub workflow_endpoint: String,
 }
 
 fn default_data_preload_interval() -> u64 {
@@ -2922,6 +2926,10 @@ fn default_prep_enabled() -> bool {
     true
 }
 
+fn default_workflow_endpoint() -> String {
+    "http://127.0.0.1:4432".to_string()
+}
+
 impl Default for PreparationTaskConfig {
     fn default() -> Self {
         Self {
@@ -2929,6 +2937,7 @@ impl Default for PreparationTaskConfig {
             parameter_precompute_interval_secs: default_parameter_precompute_interval(),
             macro_analysis_interval_secs: default_macro_analysis_interval(),
             enabled: default_prep_enabled(),
+            workflow_endpoint: default_workflow_endpoint(),
         }
     }
 }

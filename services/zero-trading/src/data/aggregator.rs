@@ -939,6 +939,98 @@ impl MarketDataAggregator {
             Ok(StorageStats::default())
         }
     }
+
+    /// Sync macro indicators from workflow API to local storage.
+    ///
+    /// Fetches economic data from the workflow service and saves it locally.
+    /// Returns the number of indicators synced.
+    pub async fn sync_macro_indicators(&self, workflow_endpoint: &str) -> Result<usize> {
+        use chrono::Local;
+        use serde::Deserialize;
+
+        #[derive(Debug, Deserialize)]
+        struct MacroApiResponse {
+            success: bool,
+            data: Option<MacroData>,
+            error: Option<String>,
+        }
+
+        #[derive(Debug, Deserialize)]
+        struct MacroData {
+            pmi: Option<f64>,
+            m2_yoy: Option<f64>,
+            social_financing: Option<f64>,
+            cpi_yoy: Option<f64>,
+            ppi_yoy: Option<f64>,
+            gdp_yoy: Option<f64>,
+            industrial_value_added: Option<f64>,
+            fixed_asset_investment: Option<f64>,
+            retail_sales: Option<f64>,
+            export_yoy: Option<f64>,
+            import_yoy: Option<f64>,
+            lpr_1y: Option<f64>,
+            mlf_rate: Option<f64>,
+        }
+
+        let Some(ref storage) = self.local_storage else {
+            return Err(anyhow::anyhow!("Local storage not enabled"));
+        };
+
+        let url = format!("{}/api/v1/economic/china", workflow_endpoint);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()?;
+
+        let response = client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Workflow API returned status: {}", response.status());
+        }
+
+        let api_response: MacroApiResponse = response.json().await?;
+
+        if !api_response.success {
+            anyhow::bail!(
+                "Workflow API error: {}",
+                api_response.error.unwrap_or_else(|| "Unknown error".to_string())
+            );
+        }
+
+        let Some(data) = api_response.data else {
+            anyhow::bail!("Workflow API returned no data");
+        };
+
+        let today = Local::now().date_naive();
+        let source = "workflow_api";
+        let mut count = 0;
+
+        // Save each indicator
+        let indicators: [(Option<f64>, &str); 13] = [
+            (data.pmi, "PMI"),
+            (data.m2_yoy, "M2_YOY"),
+            (data.social_financing, "SOCIAL_FINANCING"),
+            (data.cpi_yoy, "CPI_YOY"),
+            (data.ppi_yoy, "PPI_YOY"),
+            (data.gdp_yoy, "GDP_YOY"),
+            (data.industrial_value_added, "INDUSTRIAL_VA"),
+            (data.fixed_asset_investment, "FAI_YOY"),
+            (data.retail_sales, "RETAIL_SALES"),
+            (data.export_yoy, "EXPORT_YOY"),
+            (data.import_yoy, "IMPORT_YOY"),
+            (data.lpr_1y, "LPR_1Y"),
+            (data.mlf_rate, "MLF_RATE"),
+        ];
+
+        for (value, code) in indicators {
+            if let Some(v) = value {
+                storage.save_macro_indicator(code, today, v, None, None, source).await?;
+                count += 1;
+            }
+        }
+
+        info!(count, "Synced macro indicators from workflow API");
+        Ok(count)
+    }
 }
 
 /// Summary of a bulk sync operation

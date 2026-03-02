@@ -146,9 +146,12 @@ impl TaskScheduler {
 
     /// Update macro analysis in the background.
     async fn update_macro_analysis(&self) -> anyhow::Result<()> {
-        // This will be implemented by the macro orchestrator
-        // For now, just log that it ran
-        debug!("Macro analysis background update completed");
+        // Sync macro indicators from workflow API to local storage
+        let count = self.data
+            .sync_macro_indicators(&self.prep_config.workflow_endpoint)
+            .await?;
+
+        info!(count, "Macro analysis background update completed");
         Ok(())
     }
 

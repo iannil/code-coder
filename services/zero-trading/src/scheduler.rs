@@ -480,11 +480,31 @@ impl TradingScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Datelike;
 
     #[test]
     fn test_scheduled_task_name() {
         assert_eq!(ScheduledTask::SessionStart.name(), "session_start");
+        assert_eq!(ScheduledTask::SessionPause.name(), "session_pause");
+        assert_eq!(ScheduledTask::SessionResume.name(), "session_resume");
+        assert_eq!(ScheduledTask::SessionStop.name(), "session_stop");
         assert_eq!(ScheduledTask::DailyReview.name(), "daily_review");
+    }
+
+    #[test]
+    fn test_scheduled_task_all_variants() {
+        let tasks = [
+            ScheduledTask::SessionStart,
+            ScheduledTask::SessionPause,
+            ScheduledTask::SessionResume,
+            ScheduledTask::SessionStop,
+            ScheduledTask::DailyReview,
+        ];
+
+        // Ensure all have unique names
+        let names: Vec<_> = tasks.iter().map(|t| t.name()).collect();
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(names.len(), unique.len(), "All task names should be unique");
     }
 
     #[test]
@@ -510,8 +530,144 @@ mod tests {
     }
 
     #[test]
-    fn test_scheduler_state() {
+    fn test_invalid_cron_expressions() {
+        // Test various invalid cron formats
+        let invalid_crons = [
+            "invalid",
+            "* * *",               // Too few fields
+            "60 0 * * * *",        // Invalid second (60)
+            "0 60 * * * *",        // Invalid minute (60)
+            "0 0 25 * * *",        // Invalid hour (25)
+        ];
+
+        for cron in invalid_crons {
+            assert!(
+                Schedule::from_str(cron).is_err(),
+                "Cron '{}' should be invalid",
+                cron
+            );
+        }
+    }
+
+    #[test]
+    fn test_scheduler_state_transitions() {
+        // All three states are distinct
         assert_ne!(SchedulerState::Running, SchedulerState::Stopped);
         assert_ne!(SchedulerState::Paused, SchedulerState::Running);
+        assert_ne!(SchedulerState::Paused, SchedulerState::Stopped);
+    }
+
+    #[test]
+    fn test_scheduler_state_copy() {
+        let state = SchedulerState::Running;
+        let copied = state;
+        assert_eq!(state, copied);
+    }
+
+    #[test]
+    fn test_a_share_market_hours_cron() {
+        // A-share trading hours cron expressions
+        let morning_open = "0 30 9 * * 1-5";      // 09:30
+        let lunch_start = "0 30 11 * * 1-5";      // 11:30
+        let afternoon_open = "0 0 13 * * 1-5";    // 13:00
+        let market_close = "0 0 15 * * 1-5";      // 15:00
+        let pre_auction = "0 25 9 * * 1-5";       // 09:25 (after auction)
+
+        assert!(Schedule::from_str(morning_open).is_ok());
+        assert!(Schedule::from_str(lunch_start).is_ok());
+        assert!(Schedule::from_str(afternoon_open).is_ok());
+        assert!(Schedule::from_str(market_close).is_ok());
+        assert!(Schedule::from_str(pre_auction).is_ok());
+    }
+
+    #[test]
+    fn test_cron_next_execution() {
+        let schedule = Schedule::from_str("0 30 9 * * 1-5").unwrap();
+        let next = schedule.upcoming(Utc).next();
+
+        // Should have a next execution time
+        assert!(next.is_some());
+
+        // Next execution should be in the future
+        let next_time = next.unwrap();
+        assert!(next_time > Utc::now() || (next_time - Utc::now()).num_seconds().abs() < 2);
+    }
+
+    #[test]
+    fn test_weekday_cron_pattern() {
+        // "1-5" in cron format should mean Monday through Friday
+        // Note: cron crate uses 0=Sunday, 1=Monday, ..., 6=Saturday
+        // So "1-5" means Monday to Friday (correct for trading days)
+        let weekday_only = Schedule::from_str("0 0 10 * * 1-5").unwrap();
+
+        // Verify the pattern parses correctly
+        let next = weekday_only.upcoming(Utc).next();
+        assert!(next.is_some(), "Should have a next execution time");
+    }
+
+    #[test]
+    fn test_disabled_scheduler_config() {
+        let config = TradingScheduleConfig {
+            enabled: false,
+            session_start: "invalid".to_string(), // Invalid but shouldn't matter
+            session_pause: "invalid".to_string(),
+            session_resume: "invalid".to_string(),
+            session_stop: "invalid".to_string(),
+            daily_review: "invalid".to_string(),
+            auto_start: false,
+            persist_state: false,
+            default_mode: "paper".to_string(),
+        };
+
+        // Disabled scheduler shouldn't validate cron expressions
+        assert!(!config.enabled);
+    }
+
+    #[test]
+    fn test_default_mode_parsing() {
+        let paper_config = TradingScheduleConfig {
+            enabled: true,
+            session_start: "0 25 9 * * 1-5".to_string(),
+            session_pause: "0 30 11 * * 1-5".to_string(),
+            session_resume: "0 0 13 * * 1-5".to_string(),
+            session_stop: "0 0 15 * * 1-5".to_string(),
+            daily_review: "0 30 15 * * 1-5".to_string(),
+            auto_start: true,
+            persist_state: true,
+            default_mode: "paper".to_string(),
+        };
+
+        let live_config = TradingScheduleConfig {
+            default_mode: "live".to_string(),
+            ..paper_config.clone()
+        };
+
+        assert_eq!(paper_config.default_mode, "paper");
+        assert_eq!(live_config.default_mode, "live");
+    }
+
+    #[test]
+    fn test_task_serialization() {
+        let task = ScheduledTask::SessionStart;
+        let json = serde_json::to_string(&task).unwrap();
+        let deserialized: ScheduledTask = serde_json::from_str(&json).unwrap();
+        assert_eq!(task, deserialized);
+    }
+
+    #[test]
+    fn test_all_tasks_serialization_roundtrip() {
+        let tasks = [
+            ScheduledTask::SessionStart,
+            ScheduledTask::SessionPause,
+            ScheduledTask::SessionResume,
+            ScheduledTask::SessionStop,
+            ScheduledTask::DailyReview,
+        ];
+
+        for task in tasks {
+            let json = serde_json::to_string(&task).unwrap();
+            let deserialized: ScheduledTask = serde_json::from_str(&json).unwrap();
+            assert_eq!(task, deserialized);
+        }
     }
 }

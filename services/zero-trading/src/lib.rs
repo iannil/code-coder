@@ -642,7 +642,6 @@ fn should_run_now(schedule: &cron::Schedule, now: chrono::DateTime<chrono::Local
 
 #[cfg(test)]
 mod cron_tests {
-    use super::*;
     use cron::Schedule;
     use std::str::FromStr;
 

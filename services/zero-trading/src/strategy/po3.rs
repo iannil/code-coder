@@ -299,11 +299,37 @@ mod tests {
         }
     }
 
+    fn make_candle_with_symbol(symbol: &str, open: f64, high: f64, low: f64, close: f64) -> Candle {
+        Candle {
+            symbol: symbol.to_string(),
+            timeframe: Timeframe::Daily,
+            timestamp: Utc::now(),
+            open,
+            high,
+            low,
+            close,
+            volume: 1000.0,
+            amount: 10000.0,
+        }
+    }
+
     #[test]
     fn test_po3_detector_creation() {
         let detector = Po3Detector::new(5, 1.5);
         assert_eq!(detector.min_accumulation_bars, 5);
         assert!((detector.manipulation_threshold - 1.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_po3_detector_different_configs() {
+        let conservative = Po3Detector::new(10, 2.0);
+        let aggressive = Po3Detector::new(3, 1.0);
+
+        assert_eq!(conservative.min_accumulation_bars, 10);
+        assert!((conservative.manipulation_threshold - 2.0).abs() < 0.001);
+
+        assert_eq!(aggressive.min_accumulation_bars, 3);
+        assert!((aggressive.manipulation_threshold - 1.0).abs() < 0.001);
     }
 
     #[test]
@@ -325,9 +351,264 @@ mod tests {
     }
 
     #[test]
+    fn test_atr_with_insufficient_data() {
+        let candles = vec![
+            make_candle(10.0, 11.0, 9.0, 10.5),
+            make_candle(10.5, 11.5, 10.0, 11.0),
+        ];
+
+        let detector = Po3Detector::new(5, 1.5);
+        let atr = detector.calculate_atr(&candles, 14);
+
+        // Should return last candle range as fallback
+        assert!(atr > 0.0);
+    }
+
+    #[test]
+    fn test_atr_empty_candles() {
+        let candles: Vec<Candle> = vec![];
+        let detector = Po3Detector::new(5, 1.5);
+        let atr = detector.calculate_atr(&candles, 14);
+
+        // Should return default 1.0 for empty data
+        assert!((atr - 1.0).abs() < 0.001);
+    }
+
+    #[test]
     fn test_po3_phase_serialization() {
-        let phase = Po3Phase::Manipulation;
-        let json = serde_json::to_string(&phase).unwrap();
-        assert!(json.contains("Manipulation"));
+        let phases = [
+            Po3Phase::Accumulation,
+            Po3Phase::Manipulation,
+            Po3Phase::Distribution,
+        ];
+
+        for phase in phases {
+            let json = serde_json::to_string(&phase).unwrap();
+            let deserialized: Po3Phase = serde_json::from_str(&json).unwrap();
+            assert_eq!(phase, deserialized);
+        }
+    }
+
+    #[test]
+    fn test_po3_phase_display() {
+        assert!(serde_json::to_string(&Po3Phase::Accumulation)
+            .unwrap()
+            .contains("Accumulation"));
+        assert!(serde_json::to_string(&Po3Phase::Manipulation)
+            .unwrap()
+            .contains("Manipulation"));
+        assert!(serde_json::to_string(&Po3Phase::Distribution)
+            .unwrap()
+            .contains("Distribution"));
+    }
+
+    #[test]
+    fn test_po3_structure_serialization() {
+        let structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Distribution,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 8.5,
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 9.0,
+            stop_loss: 8.5,
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        let json = serde_json::to_string(&structure).unwrap();
+        assert!(json.contains("Long"));
+        assert!(json.contains("Distribution"));
+    }
+
+    #[test]
+    fn test_detect_insufficient_data() {
+        let candles = vec![
+            make_candle(10.0, 10.5, 9.5, 10.2),
+            make_candle(10.2, 10.6, 9.8, 10.3),
+        ];
+
+        let detector = Po3Detector::new(5, 1.5);
+        let result = detector.detect(&candles);
+
+        // Should return None for insufficient data
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_detect_minimum_bars_boundary() {
+        let detector = Po3Detector::new(5, 1.5);
+
+        // Need enough candles: min_accumulation_bars + 3 = 8, plus lookback buffer
+        // Using more candles to avoid edge cases
+        let candles: Vec<Candle> = (0..25)
+            .map(|i| make_candle(10.0 + i as f64 * 0.1, 10.5, 9.5, 10.2))
+            .collect();
+
+        // May or may not find a pattern, but shouldn't panic
+        let _ = detector.detect(&candles);
+    }
+
+    #[test]
+    fn test_consolidation_range_calculation() {
+        // Create clear consolidation: tight range candles
+        let mut candles: Vec<Candle> = Vec::new();
+
+        // Add some pre-consolidation candles
+        for i in 0..10 {
+            candles.push(make_candle(10.0 + i as f64 * 0.5, 10.5 + i as f64 * 0.5, 9.5 + i as f64 * 0.5, 10.2 + i as f64 * 0.5));
+        }
+
+        // Add consolidation candles (tight range: 10-10.5)
+        for _ in 0..15 {
+            candles.push(make_candle(10.2, 10.4, 10.1, 10.3));
+        }
+
+        // Add post-consolidation
+        for i in 0..10 {
+            candles.push(make_candle(10.3 + i as f64 * 0.2, 10.8 + i as f64 * 0.2, 10.0 + i as f64 * 0.2, 10.5 + i as f64 * 0.2));
+        }
+
+        let detector = Po3Detector::new(5, 1.5);
+        // Test that detection runs without error
+        let _ = detector.detect(&candles);
+    }
+
+    #[test]
+    fn test_po3_direction_long_after_low_break() {
+        // When manipulation breaks low, expect Long direction (reversal up)
+        let structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Distribution,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 8.5, // Broke below range
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 9.0,
+            stop_loss: 8.5,
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        assert_eq!(structure.direction, SignalDirection::Long);
+        assert!(structure.manipulation_extreme < structure.range_low);
+    }
+
+    #[test]
+    fn test_po3_direction_short_after_high_break() {
+        // When manipulation breaks high, expect Short direction (reversal down)
+        let structure = Po3Structure {
+            direction: SignalDirection::Short,
+            current_phase: Po3Phase::Distribution,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 11.5, // Broke above range
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 11.0,
+            stop_loss: 11.5,
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        assert_eq!(structure.direction, SignalDirection::Short);
+        assert!(structure.manipulation_extreme > structure.range_high);
+    }
+
+    #[test]
+    fn test_midpoint_calculation() {
+        let structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Distribution,
+            range_high: 12.0,
+            range_low: 8.0,
+            midpoint: 10.0, // (12 + 8) / 2 = 10
+            manipulation_extreme: 7.5,
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 8.0,
+            stop_loss: 7.5,
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        let expected_midpoint = (structure.range_high + structure.range_low) / 2.0;
+        assert!((structure.midpoint - expected_midpoint).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_stop_loss_at_manipulation_extreme() {
+        let structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Distribution,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 8.5,
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 9.0,
+            stop_loss: 8.5, // Should match manipulation_extreme
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        assert!((structure.stop_loss - structure.manipulation_extreme).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_manipulation_clear_threshold() {
+        // Clear manipulation: breakout > threshold * 1.5
+        // Unclear manipulation: breakout > threshold but <= threshold * 1.5
+
+        let clear_structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Manipulation,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 7.0, // Significant break
+            manipulation_clear: true,
+            distribution_started: false,
+            ideal_entry: 8.0,
+            stop_loss: 7.0,
+            detected_at: Utc::now(),
+            accumulation_bars: 10,
+        };
+
+        let unclear_structure = Po3Structure {
+            manipulation_clear: false,
+            manipulation_extreme: 8.7, // Minor break
+            ..clear_structure.clone()
+        };
+
+        assert!(clear_structure.manipulation_clear);
+        assert!(!unclear_structure.manipulation_clear);
+    }
+
+    #[test]
+    fn test_accumulation_bars_tracking() {
+        let structure = Po3Structure {
+            direction: SignalDirection::Long,
+            current_phase: Po3Phase::Distribution,
+            range_high: 11.0,
+            range_low: 9.0,
+            midpoint: 10.0,
+            manipulation_extreme: 8.5,
+            manipulation_clear: true,
+            distribution_started: true,
+            ideal_entry: 9.0,
+            stop_loss: 8.5,
+            detected_at: Utc::now(),
+            accumulation_bars: 15,
+        };
+
+        assert_eq!(structure.accumulation_bars, 15);
     }
 }

@@ -4,7 +4,8 @@
 //! with remote data sources, using incremental updates where possible.
 
 use anyhow::Result;
-use chrono::{Duration, Local, Timelike, Utc};
+use chrono::{Duration, Local, NaiveDate, Timelike, Utc};
+use serde::Deserialize;
 use std::sync::Arc;
 use tokio::time::{interval, Duration as TokioDuration};
 use tracing::{debug, info, warn};
@@ -29,6 +30,8 @@ pub struct SyncConfig {
     pub candle_symbols: Vec<String>,
     /// Number of days of history to sync for new symbols
     pub initial_history_days: u32,
+    /// Workflow API endpoint for macro data
+    pub workflow_endpoint: String,
 }
 
 impl Default for SyncConfig {
@@ -43,6 +46,7 @@ impl Default for SyncConfig {
                 "000001.SH".to_string(), // SSE Composite
             ],
             initial_history_days: 365,
+            workflow_endpoint: "http://127.0.0.1:4432".to_string(),
         }
     }
 }
@@ -59,6 +63,34 @@ pub struct DataSynchronizer {
     router: Arc<DataProviderRouter>,
     /// Sync configuration
     config: SyncConfig,
+    /// HTTP client for API calls
+    http_client: reqwest::Client,
+}
+
+/// Response from workflow API for macro data
+#[derive(Debug, Deserialize)]
+struct MacroApiResponse {
+    success: bool,
+    data: Option<MacroData>,
+    error: Option<String>,
+}
+
+/// Macro economic data from workflow API
+#[derive(Debug, Deserialize)]
+struct MacroData {
+    pmi: Option<f64>,
+    m2_yoy: Option<f64>,
+    social_financing: Option<f64>,
+    cpi_yoy: Option<f64>,
+    ppi_yoy: Option<f64>,
+    gdp_yoy: Option<f64>,
+    industrial_value_added: Option<f64>,
+    fixed_asset_investment: Option<f64>,
+    retail_sales: Option<f64>,
+    export_yoy: Option<f64>,
+    import_yoy: Option<f64>,
+    lpr_1y: Option<f64>,
+    mlf_rate: Option<f64>,
 }
 
 impl DataSynchronizer {
@@ -68,10 +100,16 @@ impl DataSynchronizer {
         router: Arc<DataProviderRouter>,
         config: SyncConfig,
     ) -> Self {
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to create HTTP client");
+
         Self {
             storage,
             router,
             config,
+            http_client,
         }
     }
 
@@ -217,9 +255,9 @@ impl DataSynchronizer {
         Ok(())
     }
 
-    /// Sync macro economic indicators
+    /// Sync macro economic indicators from workflow API
     async fn sync_macro_indicators(&self) {
-        debug!("Syncing macro indicators");
+        debug!("Syncing macro indicators from workflow API");
 
         // Update sync status to in-progress
         let _ = self
@@ -227,17 +265,116 @@ impl DataSynchronizer {
             .update_sync_metadata("macro", None, SyncStatus::InProgress, None, None)
             .await;
 
-        // Note: Macro indicators are fetched via MacroFilter which already
-        // saves to local storage. Here we just mark the sync status.
-        // In a production system, we might fetch directly from data sources.
-
-        let next_sync = Utc::now() + Duration::minutes(self.config.sync_interval_minutes as i64);
-        let _ = self
-            .storage
-            .update_sync_metadata("macro", None, SyncStatus::Success, Some(next_sync), None)
-            .await;
+        // Fetch from workflow API
+        let url = format!("{}/api/v1/economic/china", self.config.workflow_endpoint);
+        match self.fetch_and_save_macro_data(&url).await {
+            Ok(count) => {
+                info!(count, "Synced macro indicators from workflow API");
+                let next_sync = Utc::now() + Duration::minutes(self.config.sync_interval_minutes as i64);
+                let _ = self
+                    .storage
+                    .update_sync_metadata("macro", None, SyncStatus::Success, Some(next_sync), None)
+                    .await;
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to sync macro indicators");
+                let _ = self
+                    .storage
+                    .update_sync_metadata("macro", None, SyncStatus::Failed, None, Some(&e.to_string()))
+                    .await;
+            }
+        }
 
         debug!("Macro indicators sync complete");
+    }
+
+    /// Fetch macro data from workflow API and save to local storage
+    async fn fetch_and_save_macro_data(&self, url: &str) -> Result<usize> {
+        let response = self.http_client.get(url).send().await?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("Workflow API returned status: {}", response.status());
+        }
+
+        let api_response: MacroApiResponse = response.json().await?;
+
+        if !api_response.success {
+            anyhow::bail!(
+                "Workflow API error: {}",
+                api_response.error.unwrap_or_else(|| "Unknown error".to_string())
+            );
+        }
+
+        let Some(data) = api_response.data else {
+            anyhow::bail!("Workflow API returned no data");
+        };
+
+        // Save each indicator to local storage
+        let today = Local::now().date_naive();
+        let source = "workflow_api";
+        let mut count = 0;
+
+        if let Some(pmi) = data.pmi {
+            self.save_indicator("PMI", today, pmi, source).await?;
+            count += 1;
+        }
+        if let Some(m2) = data.m2_yoy {
+            self.save_indicator("M2_YOY", today, m2, source).await?;
+            count += 1;
+        }
+        if let Some(sf) = data.social_financing {
+            self.save_indicator("SOCIAL_FINANCING", today, sf, source).await?;
+            count += 1;
+        }
+        if let Some(cpi) = data.cpi_yoy {
+            self.save_indicator("CPI_YOY", today, cpi, source).await?;
+            count += 1;
+        }
+        if let Some(ppi) = data.ppi_yoy {
+            self.save_indicator("PPI_YOY", today, ppi, source).await?;
+            count += 1;
+        }
+        if let Some(gdp) = data.gdp_yoy {
+            self.save_indicator("GDP_YOY", today, gdp, source).await?;
+            count += 1;
+        }
+        if let Some(iva) = data.industrial_value_added {
+            self.save_indicator("INDUSTRIAL_VA", today, iva, source).await?;
+            count += 1;
+        }
+        if let Some(fai) = data.fixed_asset_investment {
+            self.save_indicator("FAI_YOY", today, fai, source).await?;
+            count += 1;
+        }
+        if let Some(retail) = data.retail_sales {
+            self.save_indicator("RETAIL_SALES", today, retail, source).await?;
+            count += 1;
+        }
+        if let Some(exp) = data.export_yoy {
+            self.save_indicator("EXPORT_YOY", today, exp, source).await?;
+            count += 1;
+        }
+        if let Some(imp) = data.import_yoy {
+            self.save_indicator("IMPORT_YOY", today, imp, source).await?;
+            count += 1;
+        }
+        if let Some(lpr) = data.lpr_1y {
+            self.save_indicator("LPR_1Y", today, lpr, source).await?;
+            count += 1;
+        }
+        if let Some(mlf) = data.mlf_rate {
+            self.save_indicator("MLF_RATE", today, mlf, source).await?;
+            count += 1;
+        }
+
+        Ok(count)
+    }
+
+    /// Save a single macro indicator to local storage
+    async fn save_indicator(&self, code: &str, date: NaiveDate, value: f64, source: &str) -> Result<()> {
+        self.storage
+            .save_macro_indicator(code, date, value, None, None, source)
+            .await
     }
 
     /// Cleanup old and expired data

@@ -334,11 +334,38 @@ mod tests {
         }
     }
 
+    fn make_candle_with_symbol(symbol: &str, high: f64, low: f64) -> Candle {
+        Candle {
+            symbol: symbol.to_string(),
+            timeframe: Timeframe::Daily,
+            timestamp: Utc::now(),
+            open: (high + low) / 2.0,
+            high,
+            low,
+            close: (high + low) / 2.0,
+            volume: 1000.0,
+            amount: 10000.0,
+        }
+    }
+
     #[test]
     fn test_smt_detector_creation() {
         let detector = SmtDetector::new();
         assert_eq!(detector.lookback_period, 20);
         assert_eq!(detector.min_swing_separation, 3);
+    }
+
+    #[test]
+    fn test_smt_detector_custom_settings() {
+        let detector = SmtDetector::with_settings(30, 5);
+        assert_eq!(detector.lookback_period, 30);
+        assert_eq!(detector.min_swing_separation, 5);
+    }
+
+    #[test]
+    fn test_smt_detector_default() {
+        let detector = SmtDetector::default();
+        assert_eq!(detector.lookback_period, 20);
     }
 
     #[test]
@@ -364,10 +391,45 @@ mod tests {
     }
 
     #[test]
+    fn test_find_swing_lows() {
+        // Create candles with clear swing low
+        let candles: Vec<Candle> = vec![
+            make_candle(12.0, 11.0),
+            make_candle(11.5, 10.5),
+            make_candle(11.0, 10.0),
+            make_candle(10.5, 9.5),
+            make_candle(10.0, 9.0),
+            make_candle(9.5, 8.5),  // Swing low
+            make_candle(10.0, 9.0),
+            make_candle(10.5, 9.5),
+            make_candle(11.0, 10.0),
+            make_candle(11.5, 10.5),
+        ];
+
+        let detector = SmtDetector::new();
+        let swings = detector.find_swings(&candles);
+
+        assert!(!swings.lows.is_empty());
+    }
+
+    #[test]
     fn test_divergence_type_serialization() {
         let div_type = DivergenceType::Bullish;
         let json = serde_json::to_string(&div_type).unwrap();
         assert!(json.contains("Bullish"));
+
+        let deserialized: DivergenceType = serde_json::from_str(&json).unwrap();
+        assert_eq!(div_type, deserialized);
+    }
+
+    #[test]
+    fn test_bearish_divergence_type_serialization() {
+        let div_type = DivergenceType::Bearish;
+        let json = serde_json::to_string(&div_type).unwrap();
+        assert!(json.contains("Bearish"));
+
+        let deserialized: DivergenceType = serde_json::from_str(&json).unwrap();
+        assert_eq!(div_type, deserialized);
     }
 
     #[test]
@@ -377,5 +439,233 @@ mod tests {
         // 10% divergence
         let strength = detector.calculate_divergence_strength(110.0, 100.0, 100.0, 105.0);
         assert!(strength >= 10 && strength <= 100);
+    }
+
+    #[test]
+    fn test_divergence_strength_bounds() {
+        let detector = SmtDetector::new();
+
+        // Very small divergence should be at least 10
+        let small = detector.calculate_divergence_strength(100.1, 100.0, 100.0, 100.05);
+        assert!(small >= 10);
+
+        // Very large divergence should be capped at 100
+        let large = detector.calculate_divergence_strength(200.0, 100.0, 100.0, 150.0);
+        assert!(large <= 100);
+    }
+
+    #[test]
+    fn test_insufficient_data_primary() {
+        let primary: Vec<Candle> = (0..10)
+            .map(|_| make_candle(11.0, 10.0))
+            .collect();
+        let reference: Vec<Candle> = (0..30)
+            .map(|_| make_candle(11.0, 10.0))
+            .collect();
+
+        let detector = SmtDetector::new(); // lookback_period = 20
+        let result = detector.detect_divergence(&primary, &reference);
+
+        // Should return None due to insufficient primary data
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_insufficient_data_reference() {
+        let primary: Vec<Candle> = (0..30)
+            .map(|_| make_candle(11.0, 10.0))
+            .collect();
+        let reference: Vec<Candle> = (0..10)
+            .map(|_| make_candle(11.0, 10.0))
+            .collect();
+
+        let detector = SmtDetector::new();
+        let result = detector.detect_divergence(&primary, &reference);
+
+        // Should return None due to insufficient reference data
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_no_divergence_with_flat_data() {
+        let primary: Vec<Candle> = (0..30)
+            .map(|_| make_candle(10.5, 9.5))
+            .collect();
+        let reference: Vec<Candle> = (0..30)
+            .map(|_| make_candle(10.5, 9.5))
+            .collect();
+
+        let detector = SmtDetector::new();
+        let result = detector.detect_divergence(&primary, &reference);
+
+        // Flat data should not produce divergence
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_smt_divergence_struct() {
+        let divergence = SmtDivergence {
+            divergence_type: DivergenceType::Bullish,
+            primary_symbol: "CSI300".to_string(),
+            reference_symbol: "CSI500".to_string(),
+            primary_extreme: 100.0,
+            primary_prev_extreme: 105.0,
+            reference_extreme: 95.0,
+            reference_prev_extreme: 90.0,
+            detected_at: Utc::now(),
+            bars_ago: 5,
+            strength: 75,
+        };
+
+        assert_eq!(divergence.divergence_type, DivergenceType::Bullish);
+        assert_eq!(divergence.primary_symbol, "CSI300");
+        assert!(divergence.primary_extreme < divergence.primary_prev_extreme); // Lower low
+        assert!(divergence.reference_extreme > divergence.reference_prev_extreme); // Higher low
+    }
+
+    #[test]
+    fn test_smt_divergence_serialization() {
+        let divergence = SmtDivergence {
+            divergence_type: DivergenceType::Bearish,
+            primary_symbol: "SSE50".to_string(),
+            reference_symbol: "STAR50".to_string(),
+            primary_extreme: 110.0,
+            primary_prev_extreme: 100.0,
+            reference_extreme: 98.0,
+            reference_prev_extreme: 102.0,
+            detected_at: Utc::now(),
+            bars_ago: 3,
+            strength: 60,
+        };
+
+        let json = serde_json::to_string(&divergence).unwrap();
+        assert!(json.contains("Bearish"));
+        assert!(json.contains("SSE50"));
+        assert!(json.contains("STAR50"));
+
+        let deserialized: SmtDivergence = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.divergence_type, DivergenceType::Bearish);
+    }
+
+    #[test]
+    fn test_bearish_divergence_logic() {
+        // Bearish: Primary makes higher high, reference makes lower high
+        let divergence = SmtDivergence {
+            divergence_type: DivergenceType::Bearish,
+            primary_symbol: "TEST1".to_string(),
+            reference_symbol: "TEST2".to_string(),
+            primary_extreme: 115.0,       // Current high
+            primary_prev_extreme: 110.0,  // Previous high (lower)
+            reference_extreme: 105.0,     // Current high
+            reference_prev_extreme: 108.0, // Previous high (higher)
+            detected_at: Utc::now(),
+            bars_ago: 2,
+            strength: 50,
+        };
+
+        // Primary: higher high (115 > 110)
+        assert!(divergence.primary_extreme > divergence.primary_prev_extreme);
+        // Reference: lower high (105 < 108)
+        assert!(divergence.reference_extreme < divergence.reference_prev_extreme);
+    }
+
+    #[test]
+    fn test_bullish_divergence_logic() {
+        // Bullish: Primary makes lower low, reference makes higher low
+        let divergence = SmtDivergence {
+            divergence_type: DivergenceType::Bullish,
+            primary_symbol: "TEST1".to_string(),
+            reference_symbol: "TEST2".to_string(),
+            primary_extreme: 95.0,        // Current low
+            primary_prev_extreme: 100.0,  // Previous low (higher)
+            reference_extreme: 98.0,      // Current low
+            reference_prev_extreme: 96.0, // Previous low (lower)
+            detected_at: Utc::now(),
+            bars_ago: 2,
+            strength: 50,
+        };
+
+        // Primary: lower low (95 < 100)
+        assert!(divergence.primary_extreme < divergence.primary_prev_extreme);
+        // Reference: higher low (98 > 96)
+        assert!(divergence.reference_extreme > divergence.reference_prev_extreme);
+    }
+
+    #[test]
+    fn test_common_a_share_pairs() {
+        // Common pairs for A-share SMT analysis
+        let pairs = [
+            ("CSI300", "CSI500"),       // Large vs Mid-cap
+            ("SSE50", "STAR50"),        // Blue-chip vs Growth
+            ("SecuritiesETF", "BankETF"), // Financial sector
+        ];
+
+        for (primary, reference) in pairs {
+            assert!(!primary.is_empty());
+            assert!(!reference.is_empty());
+            assert_ne!(primary, reference);
+        }
+    }
+
+    #[test]
+    fn test_swing_detection_with_multiple_swings() {
+        // Create candles with multiple swing highs and lows
+        let mut candles = Vec::new();
+
+        // First swing low
+        candles.extend(vec![
+            make_candle(12.0, 11.0),
+            make_candle(11.0, 10.0),
+            make_candle(10.0, 9.0),
+            make_candle(9.0, 8.0),   // Swing low
+            make_candle(10.0, 9.0),
+            make_candle(11.0, 10.0),
+        ]);
+
+        // First swing high
+        candles.extend(vec![
+            make_candle(12.0, 11.0),
+            make_candle(13.0, 12.0),
+            make_candle(14.0, 13.0), // Swing high
+            make_candle(13.0, 12.0),
+            make_candle(12.0, 11.0),
+        ]);
+
+        // Second swing low
+        candles.extend(vec![
+            make_candle(11.0, 10.0),
+            make_candle(10.0, 9.0),
+            make_candle(9.5, 8.5),   // Swing low
+            make_candle(10.5, 9.5),
+            make_candle(11.5, 10.5),
+        ]);
+
+        // Second swing high
+        candles.extend(vec![
+            make_candle(12.5, 11.5),
+            make_candle(13.5, 12.5),
+            make_candle(14.5, 13.5), // Swing high
+            make_candle(13.5, 12.5),
+            make_candle(12.5, 11.5),
+        ]);
+
+        let detector = SmtDetector::new();
+        let swings = detector.find_swings(&candles);
+
+        // Should find multiple highs and lows
+        assert!(swings.highs.len() >= 1);
+        assert!(swings.lows.len() >= 1);
+    }
+
+    #[test]
+    fn test_strength_calculation_symmetric() {
+        let detector = SmtDetector::new();
+
+        // Same percentage change should give similar strength
+        let strength1 = detector.calculate_divergence_strength(110.0, 100.0, 100.0, 110.0);
+        let strength2 = detector.calculate_divergence_strength(100.0, 110.0, 110.0, 100.0);
+
+        // Should be close (within 10 points)
+        assert!((strength1 as i32 - strength2 as i32).abs() <= 10);
     }
 }
