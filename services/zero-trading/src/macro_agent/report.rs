@@ -518,6 +518,11 @@ impl MacroReportGenerator {
     }
 
     /// Format the report for Telegram.
+    ///
+    /// Note: This method no longer truncates content. Long messages are handled
+    /// by zero-channels which automatically:
+    /// - Splits messages > 4096 chars into multiple chunks
+    /// - Converts messages > 20000 chars to Markdown file attachments
     fn format_telegram_message(&self, report: &MacroReport) -> String {
         let mut message = String::new();
 
@@ -525,13 +530,8 @@ impl MacroReportGenerator {
         message.push_str(&format!("*{}*\n", report.title));
         message.push_str(&format!("📅 {}\n\n", report.period));
 
-        // Content (truncate if too long)
-        let content = if report.content.len() > 3500 {
-            format!("{}...\n\n_[报告已截断]_", &report.content[..3500])
-        } else {
-            report.content.clone()
-        };
-        message.push_str(&content);
+        // Full content - zero-channels handles message splitting/file conversion
+        message.push_str(&report.content);
 
         // Highlights
         if !report.highlights.is_empty() {
@@ -717,6 +717,35 @@ mod tests {
         assert!(message.contains("测试报告"));
         assert!(message.contains("2024-01"));
         assert!(message.contains("要点1"));
+    }
+
+    #[test]
+    fn test_format_telegram_message_no_truncation() {
+        // Verifies that long messages are NOT truncated - zero-channels handles this
+        let notification = Arc::new(NotificationClient::new(&zero_common::config::Config::default()));
+        let generator = MacroReportGenerator::new(
+            AgentBridgeConfig::default(),
+            notification,
+            ReportGeneratorConfig::default(),
+        );
+
+        // Create a report with content longer than 3500 chars
+        let long_content = "x".repeat(5000);
+        let report = MacroReport {
+            report_type: ReportType::Weekly,
+            title: "长报告".to_string(),
+            period: "2024-01-01 - 2024-01-07".to_string(),
+            content: long_content.clone(),
+            highlights: vec![],
+            generated_at: Utc::now(),
+        };
+
+        let message = generator.format_telegram_message(&report);
+
+        // Should NOT contain truncation indicator
+        assert!(!message.contains("[报告已截断]"));
+        // Should contain the full content
+        assert!(message.contains(&long_content));
     }
 
     #[test]

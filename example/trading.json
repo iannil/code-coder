@@ -8,6 +8,16 @@
     "auto_sync_on_startup": true,
     "sync_interval_minutes": 60
   },
+  "risk_params": {
+    "stop_loss_pct": 5.0,
+    "take_profit_pct": 10.0,
+    "max_loss_per_trade_pct": 2.0,
+    "gap_down_tolerance": 2.0,
+    "gap_up_threshold": 3.0,
+    "limit_pct": 10.0,
+    "typical_overnight_gap_pct": 2.0,
+    "initial_capital": 100000.0
+  },
   "smt_pairs": [
     {
       "primary": "000300.SH",

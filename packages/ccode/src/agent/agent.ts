@@ -95,6 +95,18 @@ export namespace Agent {
         "*.env.*": "ask",
         "*.env.example": "allow",
       },
+      // Autonomous task write restrictions: prevent creating files in source directories
+      // Workspace (~/.codecoder/workspace) is always allowed
+      write: {
+        "*": "allow",
+        // Source code directories require explicit confirmation
+        "packages/**": "ask",
+        "services/**": "ask",
+        "src/**": "ask",
+        "scripts/**": "ask",
+        // Workspace is always allowed (for autonomous tasks)
+        "~/.codecoder/workspace/**": "allow",
+      },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})
 

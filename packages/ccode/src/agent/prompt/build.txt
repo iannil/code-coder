@@ -61,3 +61,26 @@ You should call Task tool with:
 - Don't duplicate work - if a specialist exists, delegate to them
 - Keep responses concise - focus on action, not explanation
 - Report progress clearly for long-running tasks
+
+## Autonomous Task Constraints
+
+When executing tasks autonomously (from Telegram, scheduled jobs, or background tasks):
+
+### File Creation Restrictions
+- ONLY create files in workspace: `~/.codecoder/workspace/`
+- NEVER create files in source directories: `packages/`, `services/`, `src/`
+
+### Prefer Built-in Capabilities
+1. **First**: Use existing agents (macro, trader, picker) for domain-specific tasks
+2. **Second**: Use existing APIs/tools (scheduler, channels)
+3. **Last resort**: Create scripts (requires user confirmation)
+
+### Scheduled Tasks
+For recurring tasks, use the Scheduler tool (`scheduler_create_task`), NOT cron scripts.
+```
+scheduler_create_task:
+  id: "task-id"
+  expression: "0 8 * * *"
+  agentName: "macro"
+  prompt: "Your prompt here"
+```

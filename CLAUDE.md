@@ -70,6 +70,19 @@ compaction、title、summary
 - 文件夹约定：
   - `memory`、`docs`、`example`文件夹只能存储于项目根目录`/`之下，不允许存储在项目任何其他位置。
 
+### 自主任务规范
+
+当 Agent 执行自主任务（如来自 Telegram 消息、定时任务或后台任务）时，必须遵循以下规范：
+
+- **文件位置**：自主任务产生的文件只能存储在 workspace 目录 (`~/.codecoder/workspace`)
+- **禁止区域**：严禁在 `packages/`、`services/`、`src/`、`scripts/` 目录下创建文件
+- **能力优先级**：
+  1. 首选：调用现有 Agent（macro/trader/picker 等）和 API 组合
+  2. 其次：调用现有工具和服务（scheduler、channels）
+  3. 最后：仅在必要时创建新脚本（需用户明确确认）
+- **定时任务**：必须使用 Scheduler API (`/api/v1/scheduler/tasks`) 或 `scheduler_create_task` 工具，禁止直接创建 crontab 或 shell 脚本
+- **数据获取**：使用对应领域的 Agent（macro 获取财经、trader 获取行情），禁止硬编码假数据
+
 ### 面向大模型的可改写性（LLM Friendly）
 
 - 一致的分层与目录：相同功能在各应用/包中遵循相同结构与命名，使检索与大范围重构更可控。

@@ -90,7 +90,7 @@ pub use sse::{
 };
 
 // Task Dispatcher (Redis Streams)
-pub use task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, TaskRequest, detect_agent};
+pub use task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, TaskRequest, detect_agent, default_agent_for_channel};
 
 // Event Consumer (Redis Streams)
 pub use event_consumer::{convert_to_sse_event, EventConsumer, EventConsumerConfig};

@@ -12,7 +12,7 @@ mod executor;
 
 pub use position::Position;
 pub use order::{Order, OrderStatus, OrderType, OrderSide};
-pub use t1_risk::{T1RiskManager, T1Decision};
+pub use t1_risk::{T1RiskManager, T1RiskConfig, T1Decision};
 pub use executor::{
     TradingExecutor, PaperExecutor, AccountInfo,
     ExecutionRequest, ExecutionResult, ExecutionSide, ExecutionStatus,
@@ -96,19 +96,39 @@ impl ExecutionEngine {
             })
             .unwrap_or_default();
 
-        let risk_config = t1_risk::T1RiskConfig {
-            stop_loss_pct: exec_config.default_stop_loss_pct,
-            take_profit_pct: exec_config.default_stop_loss_pct * 2.0, // 2:1 R:R default
-            max_loss_per_trade_pct: 2.0,
-        };
+        // Load risk config from trading.risk_params, falling back to defaults
+        // The zero_common::config::T1RiskConfig is converted to t1_risk::T1RiskConfig
+        let common_risk_config = config
+            .trading
+            .as_ref()
+            .and_then(|t| t.risk_params.clone());
+
+        // Get initial capital from config (configurable, previously hardcoded 100k)
+        let initial_capital = common_risk_config
+            .as_ref()
+            .map(|r| r.initial_capital)
+            .unwrap_or(100000.0);
+
+        // Convert to t1_risk::T1RiskConfig for the risk manager
+        let risk_config = common_risk_config
+            .map(|r| t1_risk::T1RiskConfig {
+                stop_loss_pct: r.stop_loss_pct,
+                take_profit_pct: r.take_profit_pct,
+                max_loss_per_trade_pct: r.max_loss_per_trade_pct,
+                gap_down_tolerance: r.gap_down_tolerance,
+                gap_up_threshold: r.gap_up_threshold,
+                limit_pct: r.limit_pct,
+                typical_overnight_gap_pct: r.typical_overnight_gap_pct,
+            })
+            .unwrap_or_default();
 
         Self {
             config: exec_config,
             positions: HashMap::new(),
             orders: HashMap::new(),
             risk_manager: T1RiskManager::new(risk_config),
-            total_capital: 100000.0, // Default 100k
-            available_capital: 100000.0,
+            total_capital: initial_capital,
+            available_capital: initial_capital,
             daily_used_capital: 0.0,
             current_date: Local::now().date_naive(),
             connected: AtomicBool::new(false),
@@ -174,10 +194,12 @@ impl ExecutionEngine {
 
     /// Execute a buy order based on signal
     pub async fn execute_buy(&mut self, signal: &TradingSignal) -> Result<Order> {
-        // Calculate position size
-        let risk_per_trade = self.total_capital * 0.02; // 2% risk per trade
-        let risk_amount = (signal.entry_price - signal.stop_loss).abs();
-        let quantity = (risk_per_trade / risk_amount).floor();
+        // Calculate position size using risk manager (configurable, previously hardcoded 2%)
+        let quantity = self.risk_manager.calculate_position_size(
+            self.total_capital,
+            signal.entry_price,
+            signal.stop_loss,
+        );
         let amount = quantity * signal.entry_price;
 
         // Validate

@@ -28,6 +28,12 @@ import { ApplyPatchTool } from "./apply_patch"
 import { NetworkAnalyzerTool } from "./network-analyzer"
 import { GetCredentialTool } from "./credential"
 import { ReachTools } from "./reach"
+import {
+  SchedulerCreateTaskTool,
+  SchedulerListTasksTool,
+  SchedulerDeleteTaskTool,
+  SchedulerRunTaskTool,
+} from "./scheduler"
 
 export namespace ToolRegistry {
   const log = Log.create({ service: "tool.registry" })
@@ -99,6 +105,11 @@ export namespace ToolRegistry {
         ? [PlanExitTool, PlanEnterTool]
         : []),
       ...ReachTools,
+      // Scheduler tools for autonomous task management
+      SchedulerCreateTaskTool,
+      SchedulerListTasksTool,
+      SchedulerDeleteTaskTool,
+      SchedulerRunTaskTool,
       ...custom,
     ]
   }

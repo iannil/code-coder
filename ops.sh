@@ -38,8 +38,9 @@ NC='\033[0m' # No Color
 
 # 项目根目录
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PID_DIR="${PROJECT_ROOT}/.pids"
-LOG_DIR="${PROJECT_ROOT}/.logs"
+CODECODER_DIR="${HOME}/.codecoder"
+PID_DIR="${CODECODER_DIR}/.pids"
+LOG_DIR="${CODECODER_DIR}/logs"
 RUST_SERVICES_DIR="${PROJECT_ROOT}/services"
 RUST_TARGET_DIR="${RUST_SERVICES_DIR}/target/release"
 
@@ -2021,6 +2022,7 @@ show_help() {
     echo "    • zero-trading  (4434): PO3+SMT 自动化交易"
     echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
+    echo "  所有服务日志和 PID 文件统一存储在: ~/.codecoder/"
     echo ""
 }
 

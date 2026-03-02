@@ -172,7 +172,11 @@ export const ApprovalRequestSchema = z.object({
 // Constants
 // ============================================================================
 
-const DEFAULT_GATEWAY_URL = "http://127.0.0.1:4430"
+// Gateway URL priority: GATEWAY_URL > ZERO_GATEWAY_URL > default
+const DEFAULT_GATEWAY_URL =
+  process.env.GATEWAY_URL ||
+  process.env.ZERO_GATEWAY_URL ||
+  "http://127.0.0.1:4430"
 const DEFAULT_TIMEOUT_MS = 30000
 
 // ============================================================================

@@ -11,22 +11,55 @@ use crate::data::AuctionData;
 use super::Position;
 
 /// T+1 risk configuration
-#[derive(Debug, Clone)]
+///
+/// All parameters are configurable via `trading.risk_params` in config.json.
+/// Previously hardcoded values are now defaults that can be overridden.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct T1RiskConfig {
-    /// Stop loss percentage
+    /// Stop loss percentage (default: 5.0%)
+    #[serde(default = "default_stop_loss_pct")]
     pub stop_loss_pct: f64,
-    /// Take profit percentage
+    /// Take profit percentage (default: 10.0%)
+    #[serde(default = "default_take_profit_pct")]
     pub take_profit_pct: f64,
-    /// Maximum loss per trade as percentage of capital
+    /// Maximum loss per trade as percentage of capital (default: 2.0%)
+    #[serde(default = "default_max_loss_per_trade_pct")]
     pub max_loss_per_trade_pct: f64,
+    /// Gap down tolerance before sell at open (default: 2.0%)
+    /// If expected return < -gap_down_tolerance, sell at open
+    #[serde(default = "default_gap_down_tolerance")]
+    pub gap_down_tolerance: f64,
+    /// Gap up threshold for breakeven stop (default: 3.0%)
+    /// If expected return > gap_up_threshold, hold with breakeven stop
+    #[serde(default = "default_gap_up_threshold")]
+    pub gap_up_threshold: f64,
+    /// Limit up/down percentage for A-shares (default: 10.0%)
+    /// Note: 科创板/创业板 use 20% limits
+    #[serde(default = "default_limit_pct")]
+    pub limit_pct: f64,
+    /// Typical overnight gap percentage for risk calculation (default: 2.0%)
+    #[serde(default = "default_typical_overnight_gap")]
+    pub typical_overnight_gap_pct: f64,
 }
+
+fn default_stop_loss_pct() -> f64 { 5.0 }
+fn default_take_profit_pct() -> f64 { 10.0 }
+fn default_max_loss_per_trade_pct() -> f64 { 2.0 }
+fn default_gap_down_tolerance() -> f64 { 2.0 }
+fn default_gap_up_threshold() -> f64 { 3.0 }
+fn default_limit_pct() -> f64 { 10.0 }
+fn default_typical_overnight_gap() -> f64 { 2.0 }
 
 impl Default for T1RiskConfig {
     fn default() -> Self {
         Self {
-            stop_loss_pct: 5.0,
-            take_profit_pct: 10.0,
-            max_loss_per_trade_pct: 2.0,
+            stop_loss_pct: default_stop_loss_pct(),
+            take_profit_pct: default_take_profit_pct(),
+            max_loss_per_trade_pct: default_max_loss_per_trade_pct(),
+            gap_down_tolerance: default_gap_down_tolerance(),
+            gap_up_threshold: default_gap_up_threshold(),
+            limit_pct: default_limit_pct(),
+            typical_overnight_gap_pct: default_typical_overnight_gap(),
         }
     }
 }
@@ -82,18 +115,19 @@ impl T1RiskManager {
             return T1Decision::HoldToTarget;
         }
 
-        // Gap down beyond tolerance - sell
-        if expected_return < -2.0 {
+        // Gap down beyond tolerance - sell (configurable, previously hardcoded -2.0%)
+        if expected_return < -self.config.gap_down_tolerance {
             tracing::info!(
                 symbol = %position.symbol,
                 expected_return,
+                gap_down_tolerance = self.config.gap_down_tolerance,
                 "Gap down beyond tolerance"
             );
             return T1Decision::SellAtOpen;
         }
 
-        // Gap up nicely - hold with breakeven stop
-        if expected_return > 3.0 {
+        // Gap up nicely - hold with breakeven stop (configurable, previously hardcoded 3.0%)
+        if expected_return > self.config.gap_up_threshold {
             return T1Decision::HoldWithBreakeven;
         }
 
@@ -187,19 +221,20 @@ impl T1RiskManager {
 
     /// Evaluate overnight gap risk
     ///
-    /// A-shares can gap up/down 10% on limit moves
+    /// A-shares can gap up/down based on limit_pct (default 10%, 20% for 科创板/创业板)
     pub fn evaluate_gap_risk(&self, position: &Position) -> GapRiskAssessment {
         let entry = position.entry_price;
+        let limit_ratio = self.config.limit_pct / 100.0;
 
-        // Maximum gap scenarios
-        let limit_down = entry * 0.9; // -10% limit down
-        let limit_up = entry * 1.1; // +10% limit up
+        // Maximum gap scenarios (configurable, previously hardcoded 10%)
+        let limit_down = entry * (1.0 - limit_ratio);
+        let limit_up = entry * (1.0 + limit_ratio);
 
         let max_loss = (entry - limit_down) * position.quantity;
         let max_gain = (limit_up - entry) * position.quantity;
 
-        // Expected gap based on typical overnight moves (~2%)
-        let typical_gap = 0.02;
+        // Expected gap based on typical overnight moves (configurable, previously hardcoded 2%)
+        let typical_gap = self.config.typical_overnight_gap_pct / 100.0;
         let expected_gap_loss = entry * typical_gap * position.quantity;
 
         GapRiskAssessment {

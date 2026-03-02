@@ -14,7 +14,7 @@ use crate::outbound::OutboundRouter;
 use crate::progress::{ImProgressHandler, ProgressHandler};
 use crate::safe_truncate;
 use crate::sse::{CreateTaskRequest, CreateTaskResponse, SseClientConfig, SseTaskClient, TaskContext};
-use crate::task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, detect_agent};
+use crate::task_dispatcher::{TaskDispatcher, TaskDispatcherConfig, detect_agent, default_agent_for_channel};
 use crate::telegram::TelegramChannel;
 use crate::timeout::{TimeoutConfig as TaskTimeoutConfig, TimeoutMonitor, TaskTimeoutState};
 use anyhow::Result;
@@ -905,7 +905,12 @@ impl CodeCoderBridge {
         let content = content.trim().to_lowercase();
         matches!(
             content.as_str(),
-            "@help" | "@?" | "@帮助" | "@agents" | "help agents" | "list agents"
+            // Slash commands (IM style)
+            "/agents" | "/help" | "/?" |
+            // At-mention style
+            "@help" | "@?" | "@帮助" | "@agents" |
+            // Natural language
+            "help agents" | "list agents"
         )
     }
 
@@ -917,6 +922,7 @@ impl CodeCoderBridge {
             "**会话控制**",
             "• `/new` 或 `/clear` - 清空上下文，开始新对话",
             "• `/compact` 或 `/summary` - 压缩上下文，保留摘要继续对话",
+            "• `/agents` 或 `/help` - 显示此帮助信息",
             "",
             "**祝融说系列 (ZRS)**",
             "• `@macro` - 宏观经济分析（PMI、GDP等数据解读）",
@@ -1430,10 +1436,13 @@ impl CodeCoderBridge {
         let dispatcher = self.task_dispatcher.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Task dispatcher not initialized"))?;
 
-        // Determine agent
+        // Determine agent - use channel-specific default
+        // IM channels (Telegram, Discord, etc.) default to "autonomous" for independent task handling
+        // CLI defaults to "build" for interactive development workflow
+        let default_agent = default_agent_for_channel(message.channel_type);
         let agent_name = agent
             .or_else(|| message.metadata.get("agent").cloned())
-            .unwrap_or_else(|| detect_agent(text, "build").to_string());
+            .unwrap_or_else(|| detect_agent(text, default_agent).to_string());
 
         // Dispatch task to Redis Stream
         let task_id = {
@@ -3666,22 +3675,32 @@ mod tests {
 
     #[test]
     fn test_agent_help_request_detection() {
-        // Should match various help patterns
+        // Should match slash commands (IM style)
+        assert!(CodeCoderBridge::is_agent_help_request("/agents"));
+        assert!(CodeCoderBridge::is_agent_help_request("/help"));
+        assert!(CodeCoderBridge::is_agent_help_request("/?"));
+
+        // Should match at-mention patterns
         assert!(CodeCoderBridge::is_agent_help_request("@help"));
         assert!(CodeCoderBridge::is_agent_help_request("@?"));
         assert!(CodeCoderBridge::is_agent_help_request("@帮助"));
         assert!(CodeCoderBridge::is_agent_help_request("@agents"));
+
+        // Should match natural language
         assert!(CodeCoderBridge::is_agent_help_request("help agents"));
         assert!(CodeCoderBridge::is_agent_help_request("list agents"));
 
         // Should be case insensitive
         assert!(CodeCoderBridge::is_agent_help_request("@HELP"));
         assert!(CodeCoderBridge::is_agent_help_request("@Agents"));
+        assert!(CodeCoderBridge::is_agent_help_request("/AGENTS"));
+        assert!(CodeCoderBridge::is_agent_help_request("/Help"));
 
         // Should NOT match regular messages
         assert!(!CodeCoderBridge::is_agent_help_request("hello"));
         assert!(!CodeCoderBridge::is_agent_help_request("@macro 解读数据"));
         assert!(!CodeCoderBridge::is_agent_help_request("help me"));
+        assert!(!CodeCoderBridge::is_agent_help_request("/new")); // different command
     }
 
     #[test]
@@ -3692,6 +3711,7 @@ mod tests {
         assert!(help.contains("会话控制"));
         assert!(help.contains("/new"));
         assert!(help.contains("/compact"));
+        assert!(help.contains("/agents"));
 
         // Should contain key sections
         assert!(help.contains("🤖 **可用的 Agent 列表**"));

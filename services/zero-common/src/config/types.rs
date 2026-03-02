@@ -2933,6 +2933,119 @@ impl Default for PreparationTaskConfig {
     }
 }
 
+// ============================================================================
+// T+1 Risk Configuration (A-shares specific)
+// ============================================================================
+
+/// T+1 risk management configuration for A-share trading.
+///
+/// These parameters control stop-loss, take-profit, position sizing,
+/// and overnight gap risk management. Previously hardcoded, now configurable.
+///
+/// # Example Configuration
+///
+/// ```json
+/// {
+///   "trading": {
+///     "risk_params": {
+///       "stop_loss_pct": 5.0,
+///       "take_profit_pct": 10.0,
+///       "max_loss_per_trade_pct": 2.0,
+///       "gap_down_tolerance": 2.0,
+///       "gap_up_threshold": 3.0,
+///       "limit_pct": 10.0,
+///       "typical_overnight_gap_pct": 2.0,
+///       "initial_capital": 100000.0
+///     }
+///   }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct T1RiskConfig {
+    /// Stop loss percentage (default: 5.0%)
+    #[serde(default = "default_stop_loss_pct")]
+    pub stop_loss_pct: f64,
+
+    /// Take profit percentage (default: 10.0%)
+    #[serde(default = "default_take_profit_pct")]
+    pub take_profit_pct: f64,
+
+    /// Maximum loss per trade as percentage of capital (default: 2.0%)
+    #[serde(default = "default_max_loss_per_trade_pct")]
+    pub max_loss_per_trade_pct: f64,
+
+    /// Gap down tolerance before sell at open (default: 2.0%)
+    /// If expected return < -gap_down_tolerance, sell at open
+    #[serde(default = "default_gap_down_tolerance")]
+    pub gap_down_tolerance: f64,
+
+    /// Gap up threshold for breakeven stop (default: 3.0%)
+    /// If expected return > gap_up_threshold, hold with breakeven stop
+    #[serde(default = "default_gap_up_threshold")]
+    pub gap_up_threshold: f64,
+
+    /// Limit up/down percentage for A-shares (default: 10.0%)
+    /// Note: Some boards (科创板/创业板) have 20% limits
+    #[serde(default = "default_limit_pct")]
+    pub limit_pct: f64,
+
+    /// Typical overnight gap percentage for risk calculation (default: 2.0%)
+    #[serde(default = "default_typical_overnight_gap")]
+    pub typical_overnight_gap_pct: f64,
+
+    /// Initial capital for paper trading (default: 100000.0)
+    /// For live trading, this should be read from broker API
+    #[serde(default = "default_initial_capital")]
+    pub initial_capital: f64,
+}
+
+fn default_stop_loss_pct() -> f64 {
+    5.0
+}
+
+fn default_take_profit_pct() -> f64 {
+    10.0
+}
+
+fn default_max_loss_per_trade_pct() -> f64 {
+    2.0
+}
+
+fn default_gap_down_tolerance() -> f64 {
+    2.0
+}
+
+fn default_gap_up_threshold() -> f64 {
+    3.0
+}
+
+fn default_limit_pct() -> f64 {
+    10.0
+}
+
+fn default_typical_overnight_gap() -> f64 {
+    2.0
+}
+
+fn default_initial_capital() -> f64 {
+    100000.0
+}
+
+impl Default for T1RiskConfig {
+    fn default() -> Self {
+        Self {
+            stop_loss_pct: default_stop_loss_pct(),
+            take_profit_pct: default_take_profit_pct(),
+            max_loss_per_trade_pct: default_max_loss_per_trade_pct(),
+            gap_down_tolerance: default_gap_down_tolerance(),
+            gap_up_threshold: default_gap_up_threshold(),
+            limit_pct: default_limit_pct(),
+            typical_overnight_gap_pct: default_typical_overnight_gap(),
+            initial_capital: default_initial_capital(),
+        }
+    }
+}
+
 /// Trading service configuration for automated trading.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingConfig {
@@ -3009,6 +3122,11 @@ pub struct TradingConfig {
     #[serde(default = "default_paper_trading")]
     pub paper_trading: Option<bool>,
 
+    /// T+1 risk management parameters
+    /// Controls stop-loss, take-profit, position sizing, and overnight gap risk
+    #[serde(default)]
+    pub risk_params: Option<T1RiskConfig>,
+
     /// Enable macro economic filter
     #[serde(default)]
     pub macro_filter_enabled: Option<bool>,
@@ -3083,6 +3201,7 @@ impl Default for TradingConfig {
             default_stop_loss_pct: None,
             auto_execute: None,
             paper_trading: Some(true),
+            risk_params: None,
             macro_filter_enabled: None,
             macro_cache_secs: None,
             telegram_notification: None,

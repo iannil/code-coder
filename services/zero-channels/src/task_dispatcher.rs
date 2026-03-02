@@ -309,6 +309,31 @@ impl TaskDispatcher {
 // Agent Detection
 // ============================================================================
 
+use crate::message::ChannelType;
+
+/// Get the default agent for a channel type.
+///
+/// - IM channels (Telegram, Discord, Slack, etc.) default to "autonomous"
+///   because IM messages are typically autonomous tasks that benefit from
+///   independent decision-making and multi-step execution.
+/// - CLI defaults to "build" for interactive development workflow.
+pub fn default_agent_for_channel(channel_type: ChannelType) -> &'static str {
+    match channel_type {
+        ChannelType::Cli => "build",
+        // All IM channels default to autonomous agent
+        ChannelType::Telegram
+        | ChannelType::Discord
+        | ChannelType::Slack
+        | ChannelType::Feishu
+        | ChannelType::WeCom
+        | ChannelType::DingTalk
+        | ChannelType::WhatsApp
+        | ChannelType::Matrix
+        | ChannelType::IMessage
+        | ChannelType::Email => "autonomous",
+    }
+}
+
 /// Detect the agent to use based on message content.
 pub fn detect_agent<'a>(message: &str, default_agent: &'a str) -> &'a str {
     let text = message.trim().to_lowercase();
@@ -399,6 +424,27 @@ mod tests {
     fn test_detect_agent_default() {
         assert_eq!(detect_agent("帮我写段代码", "build"), "build");
         assert_eq!(detect_agent("Hello world", "build"), "build");
+        // Test with autonomous as default (IM channel behavior)
+        assert_eq!(detect_agent("帮我写段代码", "autonomous"), "autonomous");
+        assert_eq!(detect_agent("Hello world", "autonomous"), "autonomous");
+    }
+
+    #[test]
+    fn test_default_agent_for_channel() {
+        // CLI should default to "build" for interactive development
+        assert_eq!(default_agent_for_channel(ChannelType::Cli), "build");
+
+        // All IM channels should default to "autonomous"
+        assert_eq!(default_agent_for_channel(ChannelType::Telegram), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::Discord), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::Slack), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::Feishu), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::WeCom), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::DingTalk), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::WhatsApp), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::Matrix), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::IMessage), "autonomous");
+        assert_eq!(default_agent_for_channel(ChannelType::Email), "autonomous");
     }
 
     #[test]
