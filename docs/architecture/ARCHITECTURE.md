@@ -320,7 +320,152 @@ export class AgentRegistry {
 
 ---
 
-## 6. 记忆系统架构
+## 6. 沙箱系统架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           三后端沙箱架构                                              │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐                          │
+│   │   Process   │     │   Docker    │     │    WASM     │                          │
+│   │             │     │             │     │  (QuickJS)  │                          │
+│   │  快速执行   │     │  完整隔离   │     │  极速启动   │                          │
+│   │  开发/测试  │     │  生产环境   │     │  50x Docker │                          │
+│   └──────┬──────┘     └──────┬──────┘     └──────┬──────┘                          │
+│          │                   │                   │                                  │
+│          └───────────────────┼───────────────────┘                                  │
+│                              │                                                      │
+│                              ▼                                                      │
+│                    ┌─────────────────┐                                             │
+│                    │ SandboxExecutor │                                             │
+│                    │   统一接口      │                                             │
+│                    └─────────────────┘                                             │
+│                                                                                      │
+│   资源限制:                                                                          │
+│   • maxMemoryMb: 256 MB                                                             │
+│   • maxTimeMs: 30000 (30秒)                                                         │
+│   • allowNetwork: false                                                              │
+│   • allowFileWrite: false                                                            │
+│                                                                                      │
+│   语言支持: Python, Node.js, Shell                                                   │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 6.1 后端对比
+
+| 后端 | 启动速度 | 隔离级别 | 语言支持 | 适用场景 |
+|------|----------|----------|----------|----------|
+| **Process** | ~10ms | 低 | 全部 | 开发/测试 |
+| **Docker** | ~500ms | 高 | 全部 | 生产环境 |
+| **WASM** | ~10ms | 中 | JavaScript | 性能优先 |
+
+### 6.2 关键文件
+
+- `packages/ccode/src/autonomous/execution/sandbox.ts` - 主执行器
+- `packages/ccode/src/autonomous/execution/docker-sandbox.ts` - Docker 后端
+- `packages/ccode/src/autonomous/execution/wasm-sandbox.ts` - WASM 后端
+
+### 6.3 安全特性
+
+- **代码验证**: 执行前检查危险模式
+- **环境变量过滤**: 自动移除敏感变量 (API_KEY, TOKEN)
+- **输出限制**: 1MB 输出大小限制
+- **自动清理**: 临时文件自动删除
+
+---
+
+## 7. Hands 自主代理架构
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────────┐
+│                           Hands 自主执行系统                                         │
+├─────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                      │
+│   触发器类型                              执行模式                                    │
+│   ┌────────────┐                        ┌────────────┐                               │
+│   │ Cron       │  定时调度 ────►        │ Sequential  │  顺序执行                   │
+│   │ Webhook    │  HTTP 触发 ───╲         │ Parallel    │  并行执行                   │
+│   │ Git        │  Git 事件 ────╲──►     │ Conditional │  条件执行 (CLOSE)           │
+│   │ FileWatch  │  文件变化 ────╱         └────────────┘                               │
+│   └────────────┘                          │                                         │
+│                                          ▼                                         │
+│   ┌──────────────────────────────────────────────────────────┐                     │
+│   │                    HandExecutor                          │                     │
+│   │  ┌────────────────────────────────────────────────────┐  │                     │
+│   │  │  1. 加载状态 (SQLite)                                │  │                     │
+│   │  │  2. 检查自动审批配置                                 │  │                     │
+│   │  │  3. 调用 Agent (单/多 Agent Pipeline)               │  │                     │
+│   │  │  4. 记录结果 (SQLite + Markdown)                    │  │                     │
+│   │  │  5. 更新状态                                         │  │                     │
+│   │  └────────────────────────────────────────────────────┘  │                     │
+│   └──────────────────────────────────────────────────────────┘                     │
+│                                          │                                         │
+│                                          ▼                                         │
+│   自治级别 (6级)                         风险控制 (5级)                               │
+│   ┌────────────┐                        ┌────────────┐                               │
+│   │ Lunatic    │  完全自主                │ Safe        │  自动批准                   │
+│   │ Insane     │  高度自主                │ Low         │  低风险自动                 │
+│   │ Crazy      │  自主运行                │ Medium      │  中等风险                   │
+│   │ Wild       │  中等自主                │ High        │  高风险审批                 │
+│   │ Bold       │  保守自主                │ Critical    │  关键操作必须审批            │
+│   │ Timid      │  最谨慎                  └────────────┘                               │
+│   └────────────┘                        超时自动批准: 非关键操作可超时后自动批准      │
+│                                                                                      │
+│   CLOSE 框架集成                                                                     │
+│   • Convergence (收敛度)    • Leverage (杠杆)                                        │
+│   • Optionality (可选性)    • Surplus (余量)                                         │
+│   • Evolution (演化)                                                              │
+│                                                                                      │
+└─────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 7.1 自治级别说明
+
+| 级别 | 描述 | 自动批准范围 |
+|------|------|-------------|
+| **Lunatic** | 完全自主，无需审批 | 所有操作 |
+| **Insane** | 高度自主，仅关键操作审批 | Safe + Low + Medium |
+| **Crazy** | 自主运行，大部分操作自动批准 | Safe + Low |
+| **Wild** | 中等自主，部分操作需审批 | Safe |
+| **Bold** | 保守自主，多数操作需审批 | 极少 Safe |
+| **Timid** | 最谨慎，几乎所有操作需审批 | 几乎无 |
+
+### 7.2 Pipeline 模式
+
+```typescript
+// 单 Agent 模式
+agent: "writer"
+
+// 多 Agent Pipeline
+agents: ["explore", "writer", "proofreader"]
+pipeline: "sequential"  // 或 "parallel" 或 "conditional"
+```
+
+### 7.3 关键文件
+
+| 文件 | 说明 |
+|------|------|
+| `packages/ccode/src/autonomous/hands/bridge.ts` | TypeScript 桥接层 |
+| `services/zero-workflow/src/hands/executor.rs` | Rust 执行引擎 |
+| `services/zero-workflow/src/hands/auto_approve.rs` | 自动审批逻辑 |
+| `services/zero-workflow/src/hands/scheduler.rs` | Cron 调度器 |
+
+### 7.4 与 OpenFang 对比
+
+| 维度 | OpenFang | CodeCoder |
+|------|----------|-----------|
+| 内置 Hands | 7 个 (Clip, Lead...) | Agent 矩阵组合 |
+| 自治级别 | 未明确分级 | 6 级精细分级 |
+| 决策框架 | 无 | CLOSE 五维评估 |
+| Pipeline | 未明确 | Sequential/Parallel/Conditional |
+
+详见: `docs/architecture/OPENFANG_REFERENCE.md`
+
+---
+
+## 8. 记忆系统架构
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
@@ -350,9 +495,9 @@ export class AgentRegistry {
 
 ---
 
-## 7. 依赖关系
+## 9. 依赖关系
 
-### 7.1 TypeScript 包依赖
+### 9.1 TypeScript 包依赖
 
 ```
 @codecoder-ai/ccode
@@ -370,7 +515,7 @@ export class AgentRegistry {
   └── zustand (状态管理)
 ```
 
-### 7.2 Rust Crate 依赖
+### 9.2 Rust Crate 依赖
 
 ```
 zero-cli
@@ -387,9 +532,9 @@ zero-gateway / zero-channels / zero-workflow / zero-trading
 
 ---
 
-## 8. 运维指南
+## 10. 运维指南
 
-### 8.1 服务启动
+### 10.1 服务启动
 
 ```bash
 # 纯本地开发 (只需 ccode)
@@ -404,7 +549,7 @@ bun dev
 ./ops.sh start zero-daemon
 ```
 
-### 8.2 健康检查
+### 10.2 健康检查
 
 ```bash
 ./ops.sh status   # 查看所有服务状态
@@ -412,7 +557,7 @@ bun dev
 ./ops.sh logs     # 查看日志
 ```
 
-### 8.3 构建命令
+### 10.3 构建命令
 
 ```bash
 # TypeScript

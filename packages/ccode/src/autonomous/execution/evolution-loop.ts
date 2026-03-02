@@ -1,15 +1,32 @@
 /**
  * Autonomous Evolution Loop
  *
- * Implements the 5-step autonomous problem-solving evolution cycle:
- * 1. Resource Retrieval - Search documentation when confidence is low
- * 2. Tool Discovery - Check for existing reusable tools
- * 3. Dynamic Code Generation - Write temporary scripts as fallback
- * 4. Self-Reflection & Retry - Analyze errors and correct code
- * 5. Knowledge Sedimentation - Store successful solutions + learn tools
+ * Implements prioritized capability discovery for autonomous problem-solving:
+ *
+ * Phase 1: Internal Capabilities (Highest Priority)
+ *   1.1 Agent Discovery - Find matching specialized agents
+ *   1.2 Skill Discovery - Find matching Skills
+ *   1.3 Hand Discovery - Find matching autonomous hands (cron/webhook/git)
+ *   1.4 Tool Discovery - Internal + dynamic tools
+ *
+ * Phase 2: Learned Resources (High Priority)
+ *   2.1 Knowledge Search - Sedimented solutions
+ *   2.2 Memory Search - MEMORY.md + daily notes
+ *
+ * Phase 3: External Resources (Low Priority - Last Resort)
+ *   3.1 Web Search - Documentation, StackOverflow
+ *   3.2 GitHub Scout - Open-source libraries
+ *   3.3 Code Generation - LLM-generated scripts
+ *
+ * Phase 4: Self-Improvement (Post-execution)
+ *   4.1 Self-Reflection
+ *   4.2 Knowledge Sedimentation
+ *   4.3 Tool Learning
+ *   4.4 Auto-Builder (Gap Detection)
  *
  * Part of Phase 3: Autonomous Problem-Solving Loop
  * Enhanced in Phase 13: Sandbox-Tool Registry Integration
+ * Optimized in Phase 14: Capability Priority Optimization
  */
 
 import { createEnhancedWebSearch, type EnhancedWebSearch } from "./enhanced-web-search"
@@ -29,6 +46,22 @@ const log = Log.create({ service: "autonomous.evolution-loop" })
 
 // Lazy import helpers to break circular dependency
 const getBuilderModule = async () => import("../builder")
+
+// Lazy imports for internal capability discovery (avoid circular deps)
+const getAgentRegistry = async () => {
+  const { getRegistry } = await import("@/agent/registry")
+  return getRegistry()
+}
+
+const getSkillModule = async () => {
+  const { Skill } = await import("@/skill/skill")
+  return Skill
+}
+
+const getHandsBridge = async () => {
+  const { getBridge } = await import("../hands/bridge")
+  return getBridge()
+}
 
 // ============================================================================
 // Types
@@ -102,6 +135,24 @@ export interface EvolutionResult {
   buildAttempted?: boolean
   /** Build result if attempted (auto-builder) */
   buildResult?: BuildResult
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Capability Matching (New in Priority Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Matched internal capability that solved the problem */
+  matchedCapability?: {
+    type: "agent" | "skill" | "hand" | "tool" | "knowledge" | "memory"
+    identifier: string
+    score: number
+  }
+  /** Summary of all capabilities searched during evolution */
+  capabilitiesSearched?: Array<{
+    type: string
+    searched: boolean
+    matchCount: number
+    topMatchScore?: number
+  }>
 }
 
 /** Evolution loop configuration */
@@ -140,6 +191,82 @@ export interface EvolutionConfig {
   autoBuilderMinAttempts: number
   /** CLOSE score threshold for auto-build approval */
   autoBuilderCloseThreshold: number
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Phase 1: Internal Capability Discovery (New in Priority Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Enable Agent discovery - find matching specialized agents */
+  enableAgentDiscovery: boolean
+  /** Enable Skill discovery - find matching Skills */
+  enableSkillDiscovery: boolean
+  /** Enable Hand discovery - find matching autonomous hands (cron/webhook/git) */
+  enableHandDiscovery: boolean
+  /** Enable Memory search - search MEMORY.md and daily notes */
+  enableMemorySearch: boolean
+
+  /** Agent match threshold (0-1). Lower = more lenient matching */
+  agentMatchThreshold: number
+  /** Skill match threshold (0-1) */
+  skillMatchThreshold: number
+  /** Hand match threshold (0-1) */
+  handMatchThreshold: number
+
+  /** Skip external resources (web search, GitHub, code gen) if internal capability matches */
+  skipExternalIfInternalMatch: boolean
+}
+
+// ============================================================================
+// Capability Match Results (Phase 1: Internal Discovery)
+// ============================================================================
+
+/** Agent match result */
+export interface AgentMatchResult {
+  matched: boolean
+  agentName?: string
+  displayName?: string
+  description?: string
+  score: number
+  matchType: "trigger" | "search" | "recommend"
+  recommendation?: string
+}
+
+/** Skill match result */
+export interface SkillMatchResult {
+  matched: boolean
+  skillName?: string
+  description?: string
+  score: number
+  recommendation?: string
+}
+
+/** Hand match result - for scheduled/triggered autonomous tasks */
+export interface HandMatchResult {
+  matched: boolean
+  handId?: string
+  handName?: string
+  score: number
+  /** Trigger type that matched (cron, webhook, git, file_watch) */
+  triggerType?: string
+  recommendation?: string
+}
+
+/** Memory search result - MEMORY.md and daily notes */
+export interface MemorySearchResult {
+  matched: boolean
+  content?: string
+  source?: "memory_md" | "daily_note"
+  date?: string
+  score: number
+}
+
+/** Capability search summary for tracking */
+export interface CapabilitySearchSummary {
+  type: "agent" | "skill" | "hand" | "tool" | "knowledge" | "memory"
+  searched: boolean
+  matchCount: number
+  topMatchScore?: number
+  durationMs?: number
 }
 
 // ============================================================================
@@ -161,9 +288,23 @@ const DEFAULT_CONFIG: EvolutionConfig = {
   githubScoutMode: "autonomous",
   githubScoutTriggerThreshold: 0.6,
   enableAutoBuilder: true,
-  enableAutoMetaBuilder: true, // Enable auto-building new concepts from gaps
+  enableAutoMetaBuilder: true,
   autoBuilderMinAttempts: 2,
   autoBuilderCloseThreshold: 5.5,
+
+  // Phase 1: Internal Capability Discovery (highest priority)
+  enableAgentDiscovery: true,
+  enableSkillDiscovery: true,
+  enableHandDiscovery: true,
+  enableMemorySearch: true,
+
+  // Match thresholds (lower = more lenient)
+  agentMatchThreshold: 0.7,
+  skillMatchThreshold: 0.6,
+  handMatchThreshold: 0.7,
+
+  // Early exit: skip external resources if internal capability matched
+  skipExternalIfInternalMatch: true,
 }
 
 // ============================================================================
@@ -173,11 +314,8 @@ const DEFAULT_CONFIG: EvolutionConfig = {
 /**
  * Autonomous evolution loop for problem solving
  *
- * Implements the 4-step evolution cycle from goals.md 3.3:
- * 1. 主动资源检索 (Proactive Online Research)
- * 2. 动态编程保底 (Programming as Fallback)
- * 3. 自主反思与无限重试 (Self-Reflection & Retry)
- * 4. 沉淀与进化 (Knowledge Sedimentation)
+ * Implements prioritized capability discovery:
+ * Phase 1: Internal Capabilities → Phase 2: Learned Resources → Phase 3: External Resources
  */
 export class EvolutionLoop {
   private config: EvolutionConfig
@@ -187,6 +325,11 @@ export class EvolutionLoop {
   private llmSolver: LLMSolver | null = null
   private githubScout: GithubScout | null = null
   private previousAttempts: Array<{ code: string; error: string }> = []
+
+  // Capability search tracking for result reporting
+  private capabilitiesSearched: CapabilitySearchSummary[] = []
+  // Best internal match found (for early exit decision)
+  private bestInternalMatch: { type: string; score: number } | null = null
 
   constructor(config: Partial<EvolutionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -223,11 +366,8 @@ export class EvolutionLoop {
   /**
    * Run the evolution loop to solve a problem
    *
-   * Implements the 4-step evolution cycle:
-   * 1. 主动资源检索 - Search online when confidence is low
-   * 2. 动态编程保底 - Generate code with LLM when no existing solution
-   * 3. 自主反思与无限重试 - Analyze stderr like a human, fix and retry
-   * 4. 沉淀与进化 - Store successful solutions for future reuse
+   * Implements prioritized capability discovery:
+   * Phase 1: Internal Capabilities → Phase 2: Learned Resources → Phase 3: External Resources
    */
   async evolve(problem: AutonomousProblem): Promise<EvolutionResult> {
     const startTime = Date.now()
@@ -236,25 +376,224 @@ export class EvolutionLoop {
 
     await this.initialize(problem.sessionId)
     this.previousAttempts = []
+    this.capabilitiesSearched = []
+    this.bestInternalMatch = null
 
-    log.info("Starting evolution loop", {
+    log.info("Starting evolution loop with prioritized capability discovery", {
       sessionId: problem.sessionId,
       problemPreview: problem.description.slice(0, 100),
       maxRetries,
     })
 
-    // Step 1: 主动资源检索 (Proactive Online Research)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1: Internal Capabilities (Highest Priority)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 1.1 Agent Discovery - Find matching specialized agents
+    if (this.config.enableAgentDiscovery) {
+      const agentStart = Date.now()
+      const agentResult = await this.tryAgentMatch(problem)
+      this.recordCapabilitySearch("agent", true, agentResult.matched ? 1 : 0, agentResult.score, Date.now() - agentStart)
+
+      if (agentResult.matched && agentResult.agentName) {
+        log.info("Found matching agent", {
+          agent: agentResult.agentName,
+          score: agentResult.score,
+          matchType: agentResult.matchType,
+        })
+
+        return {
+          solved: true,
+          solution: agentResult.recommendation,
+          attempts: [],
+          durationMs: Date.now() - startTime,
+          summary: `Recommended agent: ${agentResult.displayName ?? agentResult.agentName}. ${agentResult.recommendation}`,
+          matchedCapability: {
+            type: "agent",
+            identifier: agentResult.agentName,
+            score: agentResult.score,
+          },
+          capabilitiesSearched: this.capabilitiesSearched,
+        }
+      }
+    }
+
+    // 1.2 Skill Discovery - Find matching Skills
+    if (this.config.enableSkillDiscovery) {
+      const skillStart = Date.now()
+      const skillResult = await this.trySkillMatch(problem)
+      this.recordCapabilitySearch("skill", true, skillResult.matched ? 1 : 0, skillResult.score, Date.now() - skillStart)
+
+      if (skillResult.matched && skillResult.skillName) {
+        log.info("Found matching skill", {
+          skill: skillResult.skillName,
+          score: skillResult.score,
+        })
+
+        return {
+          solved: true,
+          solution: skillResult.recommendation,
+          attempts: [],
+          durationMs: Date.now() - startTime,
+          summary: `Recommended skill: /${skillResult.skillName}. ${skillResult.recommendation}`,
+          matchedCapability: {
+            type: "skill",
+            identifier: skillResult.skillName,
+            score: skillResult.score,
+          },
+          capabilitiesSearched: this.capabilitiesSearched,
+        }
+      }
+    }
+
+    // 1.3 Hand Discovery - Find matching autonomous hands (cron/webhook/git)
+    if (this.config.enableHandDiscovery) {
+      const handStart = Date.now()
+      const handResult = await this.tryHandMatch(problem)
+      this.recordCapabilitySearch("hand", true, handResult.matched ? 1 : 0, handResult.score, Date.now() - handStart)
+
+      if (handResult.matched && handResult.handId) {
+        log.info("Found matching hand", {
+          hand: handResult.handName,
+          triggerType: handResult.triggerType,
+          score: handResult.score,
+        })
+
+        return {
+          solved: true,
+          solution: handResult.recommendation,
+          attempts: [],
+          durationMs: Date.now() - startTime,
+          summary: `Recommended autonomous hand: ${handResult.handName}. ${handResult.recommendation}`,
+          matchedCapability: {
+            type: "hand",
+            identifier: handResult.handId,
+            score: handResult.score,
+          },
+          capabilitiesSearched: this.capabilitiesSearched,
+        }
+      }
+    }
+
+    // 1.4 Tool Discovery - Internal + dynamic tools
+    if (this.config.enableToolDiscovery) {
+      const toolStart = Date.now()
+      const toolResult = await this.tryExistingTool(problem)
+
+      if (toolResult) {
+        this.recordCapabilitySearch("tool", true, 1, 1.0, Date.now() - toolStart)
+        log.info("Problem solved with existing tool", { toolName: toolResult.toolName })
+
+        return {
+          solved: true,
+          solution: toolResult.code,
+          attempts: [{
+            attempt: 1,
+            code: toolResult.code,
+            success: true,
+            timestamp: new Date().toISOString(),
+            toolId: toolResult.toolId,
+            toolName: toolResult.toolName,
+          }],
+          usedToolId: toolResult.toolId,
+          durationMs: Date.now() - startTime,
+          summary: `Problem solved using existing tool: ${toolResult.toolName}`,
+          matchedCapability: {
+            type: "tool",
+            identifier: toolResult.toolId,
+            score: 1.0,
+          },
+          capabilitiesSearched: this.capabilitiesSearched,
+        }
+      } else {
+        this.recordCapabilitySearch("tool", true, 0, 0, Date.now() - toolStart)
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 2: Learned Resources (High Priority)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 2.1 Knowledge Search - Sedimented solutions
+    const knowledgeStart = Date.now()
+    const existingKnowledge = await this.searchExistingKnowledge(problem)
+
+    if (existingKnowledge) {
+      this.recordCapabilitySearch("knowledge", true, 1, 0.85, Date.now() - knowledgeStart)
+      log.info("Found existing solution in knowledge base", { title: existingKnowledge.title })
+
+      return {
+        solved: true,
+        solution: existingKnowledge.solution,
+        attempts: [],
+        knowledgeId: existingKnowledge.id,
+        learnedToolId: undefined,
+        usedToolId: undefined,
+        durationMs: Date.now() - startTime,
+        summary: `Found existing solution from knowledge base: ${existingKnowledge.title}`,
+        matchedCapability: {
+          type: "knowledge",
+          identifier: existingKnowledge.id,
+          score: 0.85,
+        },
+        capabilitiesSearched: this.capabilitiesSearched,
+      }
+    } else {
+      this.recordCapabilitySearch("knowledge", true, 0, 0, Date.now() - knowledgeStart)
+    }
+
+    // 2.2 Memory Search - MEMORY.md and daily notes
+    if (this.config.enableMemorySearch) {
+      const memoryStart = Date.now()
+      const memoryResult = await this.searchMemorySystem(problem)
+      this.recordCapabilitySearch("memory", true, memoryResult.matched ? 1 : 0, memoryResult.score, Date.now() - memoryStart)
+
+      if (memoryResult.matched && memoryResult.content) {
+        log.info("Found relevant memory", {
+          source: memoryResult.source,
+          date: memoryResult.date,
+          score: memoryResult.score,
+        })
+
+        // Memory provides context but doesn't fully solve - record as best internal match
+        this.bestInternalMatch = { type: "memory", score: memoryResult.score }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Early Exit Check
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if (this.config.skipExternalIfInternalMatch && this.bestInternalMatch && this.bestInternalMatch.score >= 0.8) {
+      log.info("Strong internal match found - returning recommendation", this.bestInternalMatch)
+
+      return {
+        solved: false,
+        attempts: [],
+        durationMs: Date.now() - startTime,
+        summary: `Strong internal capability match found (${this.bestInternalMatch.type}, score: ${this.bestInternalMatch.score.toFixed(2)}). Consider using the recommended capability instead of external resources.`,
+        capabilitiesSearched: this.capabilitiesSearched,
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 3: External Resources (Low Priority - Last Resort)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    log.info("No internal capability match - proceeding to external resources")
+
+    // 3.1 Web Search - Documentation, StackOverflow
     let webSources: FetchedContent[] = []
     if (this.config.enableWebSearch && this.webSearch) {
-      log.info("Step 1: Searching for solutions online")
+      log.info("Phase 3.1: Searching for solutions online")
       webSources = await this.searchForSolutions(problem)
       log.info("Web search completed", { sourceCount: webSources.length })
     }
 
-    // Step 1.5: GitHub Scout - Search for open-source solutions
+    // 3.2 GitHub Scout - Open-source libraries
     let githubScoutResult: GithubScoutResult | undefined
     if (this.config.enableGithubScout && this.githubScout) {
-      log.info("Step 1.5: GitHub Scout - searching for open-source solutions")
+      log.info("Phase 3.2: GitHub Scout - searching for open-source solutions")
       githubScoutResult = await this.githubScout.scout({
         sessionId: problem.sessionId,
         description: problem.description,
@@ -278,6 +617,7 @@ export class EvolutionLoop {
           githubScoutResult,
           durationMs: Date.now() - startTime,
           summary: githubScoutResult.summary,
+          capabilitiesSearched: this.capabilitiesSearched,
         }
       }
 
@@ -290,50 +630,9 @@ export class EvolutionLoop {
       }
     }
 
-    // Step 2: Check existing knowledge
-    const existingKnowledge = await this.searchExistingKnowledge(problem)
-    if (existingKnowledge) {
-      log.info("Found existing solution in knowledge base", { title: existingKnowledge.title })
-      return {
-        solved: true,
-        solution: existingKnowledge.solution,
-        attempts: [],
-        knowledgeId: existingKnowledge.id,
-        learnedToolId: undefined,
-        usedToolId: undefined,
-        githubScoutResult,
-        durationMs: Date.now() - startTime,
-        summary: `Found existing solution from knowledge base: ${existingKnowledge.title}`,
-      }
-    }
-
-    // Step 2.5: Tool Discovery - Check for existing reusable tools
-    if (this.config.enableToolDiscovery) {
-      const toolResult = await this.tryExistingTool(problem)
-      if (toolResult) {
-        log.info("Problem solved with existing tool", { toolName: toolResult.toolName })
-        return {
-          solved: true,
-          solution: toolResult.code,
-          attempts: [{
-            attempt: 1,
-            code: toolResult.code,
-            success: true,
-            timestamp: new Date().toISOString(),
-            toolId: toolResult.toolId,
-            toolName: toolResult.toolName,
-          }],
-          usedToolId: toolResult.toolId,
-          githubScoutResult,
-          durationMs: Date.now() - startTime,
-          summary: `Problem solved using existing tool: ${toolResult.toolName}`,
-        }
-      }
-    }
-
-    // Step 2: 动态编程保底 (Programming as Fallback)
+    // 3.3 Code Generation - LLM-generated scripts (Programming as Fallback)
     if (this.config.enableCodeExecution && this.sandbox) {
-      log.info("Step 2: Generating solution code with LLM")
+      log.info("Phase 3.3: Generating solution code with LLM")
 
       // Generate initial code
       const codeResult = await this.generateSolutionCodeWithLLM(problem, webSources)
@@ -347,6 +646,7 @@ export class EvolutionLoop {
           githubScoutResult,
           durationMs: Date.now() - startTime,
           summary: "Could not generate solution code. Consider seeking human assistance.",
+          capabilitiesSearched: this.capabilitiesSearched,
         }
       }
 
@@ -354,8 +654,11 @@ export class EvolutionLoop {
       let currentLanguage = codeResult.language
       let attemptNumber = 0
 
-      // Step 3: 自主反思与无限重试 (Self-Reflection & Infinite Retry)
-      log.info("Step 3: Executing with self-reflection loop")
+      // ═════════════════════════════════════════════════════════════════════════
+      // Phase 4: Self-Reflection & Retry Loop
+      // ═════════════════════════════════════════════════════════════════════════
+
+      log.info("Phase 4: Executing with self-reflection loop")
 
       while (attemptNumber < maxRetries) {
         attemptNumber++
@@ -403,10 +706,10 @@ export class EvolutionLoop {
         if (execResult.exitCode === 0 && reflection.success) {
           log.info("Problem solved successfully", { attempts: attemptNumber })
 
-          // Step 4: 沉淀与进化 (Knowledge Sedimentation)
+          // Post-execution: Knowledge Sedimentation
           let knowledgeId: string | undefined
           if (this.config.enableSedimentation && this.knowledge) {
-            log.info("Step 4: Sedimenting solution to knowledge base")
+            log.info("Post-execution: Sedimenting solution to knowledge base")
             const entry = await this.sedimentSolution(
               problem,
               currentCode,
@@ -416,7 +719,7 @@ export class EvolutionLoop {
             knowledgeId = entry.id
           }
 
-          // Learn as reusable tool
+          // Post-execution: Learn as reusable tool
           let learnedToolId: string | undefined
           if (this.config.enableToolLearning) {
             const learnedTool = await this.learnToolFromExecution(problem, currentCode, execResult)
@@ -432,6 +735,7 @@ export class EvolutionLoop {
             githubScoutResult,
             durationMs: Date.now() - startTime,
             summary: `Problem solved after ${attemptNumber} attempt(s).${knowledgeId ? " Solution saved to knowledge base." : ""}${learnedToolId ? " Learned as reusable tool." : ""}`,
+            capabilitiesSearched: this.capabilitiesSearched,
           }
 
           // Write to memory system (daily notes + MEMORY.md)
@@ -471,6 +775,7 @@ export class EvolutionLoop {
       githubScoutResult,
       durationMs: Date.now() - startTime,
       summary: `Could not solve problem after ${attempts.length} attempts. Consider seeking human assistance.`,
+      capabilitiesSearched: this.capabilitiesSearched,
     }
 
     // Auto-Builder: Detect capability gaps and attempt to build new concepts
@@ -518,18 +823,299 @@ export class EvolutionLoop {
     return failureResult
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase 1: Internal Capability Discovery Methods
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Try to find a matching agent for the problem
+   *
+   * Uses the Agent Registry to find specialized agents based on:
+   * - Trigger keywords (e.g., "macro", "security", "tdd")
+   * - Capability matching
+   * - Fuzzy search
+   */
+  private async tryAgentMatch(problem: AutonomousProblem): Promise<AgentMatchResult> {
+    try {
+      const registry = await getAgentRegistry()
+      const query = problem.description
+
+      // First try trigger-based matching (highest confidence)
+      const triggerMatches = registry.findByTrigger(query)
+      if (triggerMatches.length > 0) {
+        const bestMatch = triggerMatches[0]
+        const score = 1.0 - (triggerMatches.indexOf(bestMatch) * 0.1)
+
+        if (score >= this.config.agentMatchThreshold) {
+          return {
+            matched: true,
+            agentName: bestMatch.name,
+            displayName: bestMatch.displayName,
+            description: bestMatch.shortDescription,
+            score,
+            matchType: "trigger",
+            recommendation: `Use @${bestMatch.name} agent. ${bestMatch.shortDescription ?? ""}`,
+          }
+        }
+      }
+
+      // Then try fuzzy search
+      const searchResults = registry.search(query, {
+        limit: 3,
+        threshold: 1 - this.config.agentMatchThreshold, // Fuse uses lower = better
+      })
+
+      if (searchResults.length > 0) {
+        const best = searchResults[0]
+        const score = 1 - best.score // Convert Fuse score (0=perfect) to our score (1=perfect)
+
+        if (score >= this.config.agentMatchThreshold) {
+          return {
+            matched: true,
+            agentName: best.agent.name,
+            displayName: best.agent.displayName,
+            description: best.agent.shortDescription,
+            score,
+            matchType: "search",
+            recommendation: `Use @${best.agent.name} agent. ${best.agent.shortDescription ?? ""}`,
+          }
+        }
+      }
+
+      // Finally try recommendation (fallback for general queries)
+      const recommended = registry.recommend(query)
+      if (recommended && recommended.recommended) {
+        return {
+          matched: false,
+          agentName: recommended.name,
+          displayName: recommended.displayName,
+          score: 0.5, // Lower score for general recommendation
+          matchType: "recommend",
+          recommendation: `Default agent: @${recommended.name}`,
+        }
+      }
+
+      return { matched: false, score: 0, matchType: "search" }
+    } catch (error) {
+      log.error("Agent discovery failed", { error })
+      return { matched: false, score: 0, matchType: "search" }
+    }
+  }
+
+  /**
+   * Try to find a matching skill for the problem
+   *
+   * Searches registered Skills based on name and description matching.
+   */
+  private async trySkillMatch(problem: AutonomousProblem): Promise<SkillMatchResult> {
+    try {
+      const Skill = await getSkillModule()
+      const skills = await Skill.all()
+      const query = problem.description.toLowerCase()
+
+      let bestMatch: { name: string; description: string } | undefined
+      let bestScore = 0
+
+      for (const skill of skills) {
+        // Simple keyword matching
+        const nameMatch = query.includes(skill.name.toLowerCase()) ? 0.8 : 0
+        const descMatch = this.calculateTextSimilarity(query, skill.description.toLowerCase())
+        const score = Math.max(nameMatch, descMatch)
+
+        if (score > bestScore) {
+          bestScore = score
+          bestMatch = skill
+        }
+      }
+
+      if (bestMatch && bestScore >= this.config.skillMatchThreshold) {
+        return {
+          matched: true,
+          skillName: bestMatch.name,
+          description: bestMatch.description,
+          score: bestScore,
+          recommendation: `Use /${bestMatch.name} skill. ${bestMatch.description}`,
+        }
+      }
+
+      return { matched: false, score: bestScore }
+    } catch (error) {
+      log.error("Skill discovery failed", { error })
+      return { matched: false, score: 0 }
+    }
+  }
+
+  /**
+   * Try to find a matching hand for the problem
+   *
+   * Searches registered Hands (autonomous agents) based on:
+   * - Schedule patterns (cron expressions)
+   * - Trigger keywords
+   * - Description matching
+   */
+  private async tryHandMatch(problem: AutonomousProblem): Promise<HandMatchResult> {
+    try {
+      const bridge = await getHandsBridge()
+
+      // Check if hands service is healthy
+      const isHealthy = await bridge.health()
+      if (!isHealthy) {
+        log.debug("Hands service not available - skipping hand discovery")
+        return { matched: false, score: 0 }
+      }
+
+      const hands = await bridge.list()
+      const query = problem.description.toLowerCase()
+
+      // Keywords that suggest scheduled/automated tasks
+      const scheduleKeywords = ["每天", "每周", "定时", "自动", "cron", "schedule", "daily", "weekly", "每小时", "hourly"]
+      const webhookKeywords = ["webhook", "触发", "trigger", "api", "endpoint"]
+      const gitKeywords = ["push", "pull request", "pr", "commit", "git"]
+
+      let bestMatch: { id: string; name: string; agent: string; schedule?: string } | undefined
+      let bestScore = 0
+      let matchedTriggerType: string | undefined
+
+      for (const hand of hands) {
+        if (!hand.enabled) continue
+
+        let score = 0
+        let triggerType: string | undefined
+
+        // Check for schedule-related keywords
+        if (hand.schedule && scheduleKeywords.some(k => query.includes(k))) {
+          score = 0.7
+          triggerType = "cron"
+        }
+
+        // Check name matching
+        if (query.includes(hand.name.toLowerCase())) {
+          score = Math.max(score, 0.8)
+        }
+
+        // Check for webhook triggers
+        if (webhookKeywords.some(k => query.includes(k))) {
+          score = Math.max(score, 0.6)
+          triggerType = "webhook"
+        }
+
+        // Check for git triggers
+        if (gitKeywords.some(k => query.includes(k))) {
+          score = Math.max(score, 0.6)
+          triggerType = "git"
+        }
+
+        if (score > bestScore) {
+          bestScore = score
+          bestMatch = hand
+          matchedTriggerType = triggerType
+        }
+      }
+
+      if (bestMatch && bestScore >= this.config.handMatchThreshold) {
+        return {
+          matched: true,
+          handId: bestMatch.id,
+          handName: bestMatch.name,
+          score: bestScore,
+          triggerType: matchedTriggerType,
+          recommendation: `Use autonomous hand: ${bestMatch.name} (Agent: ${bestMatch.agent}${bestMatch.schedule ? `, Schedule: ${bestMatch.schedule}` : ""})`,
+        }
+      }
+
+      return { matched: false, score: bestScore }
+    } catch (error) {
+      log.error("Hand discovery failed", { error })
+      return { matched: false, score: 0 }
+    }
+  }
+
+  /**
+   * Search the memory system (MEMORY.md and daily notes)
+   *
+   * This provides context from past interactions but typically
+   * doesn't fully solve problems - it augments other solutions.
+   */
+  private async searchMemorySystem(problem: AutonomousProblem): Promise<MemorySearchResult> {
+    try {
+      // Memory search is handled by the knowledge sedimentation system
+      // which already searches MEMORY.md and related files
+      if (!this.knowledge) {
+        return { matched: false, score: 0 }
+      }
+
+      const query = problem.errorMessage ?? problem.description
+      const results = await this.knowledge.search(query, 1)
+
+      if (results.length > 0 && results[0].relevanceScore > 0.6) {
+        const entry = results[0].entry
+        return {
+          matched: true,
+          content: entry.content,
+          source: "memory_md",
+          score: results[0].relevanceScore,
+        }
+      }
+
+      return { matched: false, score: 0 }
+    } catch (error) {
+      log.error("Memory search failed", { error })
+      return { matched: false, score: 0 }
+    }
+  }
+
+  /**
+   * Calculate simple text similarity using word overlap
+   */
+  private calculateTextSimilarity(text1: string, text2: string): number {
+    const words1 = new Set(text1.split(/\s+/).filter(w => w.length > 2))
+    const words2 = new Set(text2.split(/\s+/).filter(w => w.length > 2))
+
+    if (words1.size === 0 || words2.size === 0) return 0
+
+    let overlap = 0
+    for (const word of words1) {
+      if (words2.has(word)) overlap++
+    }
+
+    return overlap / Math.max(words1.size, words2.size)
+  }
+
+  /**
+   * Record a capability search for result tracking
+   */
+  private recordCapabilitySearch(
+    type: CapabilitySearchSummary["type"],
+    searched: boolean,
+    matchCount: number,
+    topMatchScore: number,
+    durationMs: number,
+  ): void {
+    this.capabilitiesSearched.push({
+      type,
+      searched,
+      matchCount,
+      topMatchScore,
+      durationMs,
+    })
+
+    // Track best internal match for early exit decision
+    if (matchCount > 0 && topMatchScore > (this.bestInternalMatch?.score ?? 0)) {
+      this.bestInternalMatch = { type, score: topMatchScore }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Existing Methods (unchanged)
+  // ═══════════════════════════════════════════════════════════════════════════
+
   /**
    * Generate solution code using LLM
-   *
-   * This implements the "动态编程保底" (Programming as Fallback) mechanism.
-   * Uses LLM to generate a complete, executable script based on the problem,
-   * web sources, and previous failed attempts.
    */
   private async generateSolutionCodeWithLLM(
     problem: AutonomousProblem,
     webSources: FetchedContent[],
   ): Promise<{ code: string; language: "python" | "nodejs" | "shell" } | null> {
-    // Try LLM-based generation first
     if (this.config.enableLLMCodeGeneration && this.llmSolver) {
       const result = await this.llmSolver.generateCode({
         problem: problem.description,
@@ -547,17 +1133,12 @@ export class EvolutionLoop {
       }
     }
 
-    // Fallback to heuristic-based generation
     const code = this.generateSolutionCodeFallback(problem, webSources)
     return code ? { code, language: this.detectLanguage(problem.technology) } : null
   }
 
   /**
    * Reflect on execution result using LLM
-   *
-   * This implements the "自主反思" (Self-Reflection) mechanism.
-   * Analyzes stderr like a human programmer, identifying root causes
-   * and suggesting fixes.
    */
   private async reflectOnExecution(context: {
     problem: string
@@ -570,12 +1151,9 @@ export class EvolutionLoop {
     technology?: string
     attemptNumber: number
   }): Promise<ReflectionAnalysis> {
-    // Try LLM-based reflection first
     if (this.config.enableLLMReflection && this.llmSolver) {
       return this.llmSolver.reflect(context)
     }
-
-    // Fallback to simple pattern-based reflection
     return this.reflectFallback(context)
   }
 
@@ -622,7 +1200,7 @@ export class EvolutionLoop {
   }
 
   /**
-   * Step 1: Search for solutions online
+   * Search for solutions online
    */
   private async searchForSolutions(problem: AutonomousProblem): Promise<FetchedContent[]> {
     if (!this.webSearch) return []
@@ -664,10 +1242,7 @@ export class EvolutionLoop {
   }
 
   /**
-   * Step 2.5: Try to find and execute an existing tool
-   *
-   * Searches the dynamic tool registry for a matching tool,
-   * then executes it if found and records usage statistics.
+   * Try to find and execute an existing tool
    */
   private async tryExistingTool(
     problem: AutonomousProblem,
@@ -675,7 +1250,6 @@ export class EvolutionLoop {
     const query = problem.errorMessage ?? problem.description
     const language = this.detectLanguage(problem.technology)
 
-    // Search for matching tools
     const results = await DynamicToolRegistry.search(query, {
       limit: 3,
       minScore: this.config.toolMatchThreshold,
@@ -686,11 +1260,9 @@ export class EvolutionLoop {
       return null
     }
 
-    // Try the best matching tool
     const bestMatch = results[0]
     const tool = bestMatch.tool
 
-    // Execute the tool
     if (this.sandbox) {
       const startTime = Date.now()
       const result = await this.sandbox.execute({
@@ -701,11 +1273,8 @@ export class EvolutionLoop {
       })
 
       const durationMs = Date.now() - startTime
-
-      // Record usage regardless of success
       await DynamicToolRegistry.recordUsage(tool.id, result.exitCode === 0, durationMs)
 
-      // Only return if successful
       if (result.exitCode === 0) {
         return {
           toolId: tool.id,
@@ -719,17 +1288,13 @@ export class EvolutionLoop {
   }
 
   /**
-   * Step 5: Learn a tool from successful execution
-   *
-   * Creates a reusable tool from code that successfully solved a problem.
-   * Applies quality gates to ensure only meaningful tools are learned.
+   * Learn a tool from successful execution
    */
   private async learnToolFromExecution(
     problem: AutonomousProblem,
     code: string,
     result: SandboxResult,
   ): Promise<ToolTypes.DynamicTool | null> {
-    // Quality gates - skip trivial or test code
     const lines = code.split("\n").filter((l) => l.trim().length > 0)
     const isAutoGenerated = code.includes("Auto-generated verification script")
     const isTooShort = lines.length < 5
@@ -754,24 +1319,17 @@ export class EvolutionLoop {
     return DynamicToolRegistry.learnFromExecution(execution)
   }
 
-  /**
-   * Map sandbox language to tool registry language
-   */
   private mapLanguageToToolLanguage(language: "python" | "nodejs" | "shell"): "python" | "nodejs" | "bash" {
     return language === "shell" ? "bash" : language
   }
 
   /**
    * Fallback code generation using heuristics
-   *
-   * Used when LLM-based generation is disabled or fails.
    */
   private generateSolutionCodeFallback(problem: AutonomousProblem, webSources: FetchedContent[]): string | null {
-    // Extract code examples from web sources
     const codeExamples: string[] = []
 
     for (const source of webSources) {
-      // Simple extraction of code blocks from content
       const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g
       let match: RegExpExecArray | null
       while ((match = codeBlockRegex.exec(source.content)) !== null) {
@@ -782,12 +1340,10 @@ export class EvolutionLoop {
       }
     }
 
-    // Use first relevant code example, or generate a test stub
     if (codeExamples.length > 0) {
       return codeExamples[0]
     }
 
-    // Generate a simple test/verification script
     const language = this.detectLanguage(problem.technology)
 
     if (language === "python") {
@@ -824,9 +1380,6 @@ main().then(result => process.exit(result ? 0 : 1));
     return null
   }
 
-  /**
-   * Detect language from technology string
-   */
   private detectLanguage(technology?: string): "python" | "nodejs" | "shell" {
     if (!technology) return "nodejs"
 
@@ -839,7 +1392,7 @@ main().then(result => process.exit(result ? 0 : 1));
   }
 
   /**
-   * Step 4: Sediment the successful solution
+   * Sediment the successful solution
    */
   private async sedimentSolution(
     problem: AutonomousProblem,
@@ -872,9 +1425,6 @@ main().then(result => process.exit(result ? 0 : 1));
 
   /**
    * Detect capability gap from a failed problem-solving attempt
-   *
-   * Analyzes the failure pattern to identify what kind of new concept
-   * could help solve similar problems in the future.
    */
   private async detectGapFromFailure(
     problem: AutonomousProblem,
@@ -883,7 +1433,6 @@ main().then(result => process.exit(result ? 0 : 1));
     const { getGapDetector } = await getBuilderModule()
     const gapDetector = getGapDetector()
 
-    // Build TaskFailure from evolution context
     const taskFailure: TaskFailure = {
       sessionId: problem.sessionId,
       description: problem.description,
@@ -895,7 +1444,7 @@ main().then(result => process.exit(result ? 0 : 1));
       evolutionResult: {
         solved: false,
         attempts,
-        durationMs: 0, // Not known yet
+        durationMs: 0,
         summary: "Evolution failed",
       },
     }
@@ -910,9 +1459,6 @@ main().then(result => process.exit(result ? 0 : 1));
 
   /**
    * Attempt to auto-build a new concept to address a detected gap
-   *
-   * Uses the MetaBuilder to orchestrate the full build flow:
-   * evaluation → generation → validation → approval → registration
    */
   private async attemptAutoBuild(
     gap: GapDetectionResult,
@@ -922,10 +1468,8 @@ main().then(result => process.exit(result ? 0 : 1));
     const metaBuilder = getMetaBuilder()
 
     try {
-      // Initialize the meta-builder if needed
       await metaBuilder.initialize()
 
-      // Build from the gap
       return await metaBuilder.buildFromFailure(
         {
           sessionId: problem.sessionId,

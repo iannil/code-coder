@@ -2,12 +2,19 @@
 //!
 //! Provides scheduled generation of weekly and monthly macro reports
 //! with Telegram notification integration.
+//!
+//! # State Persistence
+//!
+//! Report generation state is persisted to `~/.codecoder/workflow/report_state.json`
+//! to prevent duplicate reports after service restarts.
 
 use anyhow::Result;
 use chrono::{DateTime, Datelike, FixedOffset, Utc};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
 
 use super::bridge::{AgentBridge, AgentBridgeConfig};
 use super::types::{MacroReport, ReportType};
@@ -61,12 +68,140 @@ impl Default for ReportGeneratorConfig {
     }
 }
 
-/// State for tracking report generation.
+// ============================================================================
+// State Persistence
+// ============================================================================
+
+/// Get the path to the persistent state file.
+fn state_file_path() -> PathBuf {
+    zero_common::config::config_dir()
+        .join("workflow")
+        .join("report_state.json")
+}
+
+/// Persistent state for tracking report generation.
+///
+/// This state is saved to disk to survive service restarts.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PersistentReportState {
+    /// Last weekly report generation time (ISO8601)
+    pub last_weekly: Option<String>,
+    /// Last monthly report generation time (ISO8601)
+    pub last_monthly: Option<String>,
+    /// Last daily morning report generation time (ISO8601)
+    pub last_daily_morning: Option<String>,
+    /// Last daily afternoon report generation time (ISO8601)
+    pub last_daily_afternoon: Option<String>,
+}
+
+impl PersistentReportState {
+    /// Load state from disk.
+    pub fn load() -> Self {
+        let path = state_file_path();
+        if !path.exists() {
+            debug!("No existing report state file, using defaults");
+            return Self::default();
+        }
+
+        match std::fs::read_to_string(&path) {
+            Ok(content) => match serde_json::from_str(&content) {
+                Ok(state) => {
+                    info!("Loaded report state from {}", path.display());
+                    state
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to parse report state, using defaults");
+                    Self::default()
+                }
+            },
+            Err(e) => {
+                warn!(error = %e, "Failed to read report state file, using defaults");
+                Self::default()
+            }
+        }
+    }
+
+    /// Save state to disk.
+    pub fn save(&self) -> Result<()> {
+        let path = state_file_path();
+
+        // Ensure parent directory exists
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(&path, content)?;
+        debug!("Saved report state to {}", path.display());
+        Ok(())
+    }
+
+    /// Parse a datetime string.
+    fn parse_datetime(s: &str) -> Option<DateTime<Utc>> {
+        DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }
+
+    /// Get last weekly as DateTime.
+    pub fn get_last_weekly(&self) -> Option<DateTime<Utc>> {
+        self.last_weekly.as_ref().and_then(|s| Self::parse_datetime(s))
+    }
+
+    /// Get last monthly as DateTime.
+    pub fn get_last_monthly(&self) -> Option<DateTime<Utc>> {
+        self.last_monthly.as_ref().and_then(|s| Self::parse_datetime(s))
+    }
+
+    /// Get last daily morning as DateTime.
+    pub fn get_last_daily_morning(&self) -> Option<DateTime<Utc>> {
+        self.last_daily_morning.as_ref().and_then(|s| Self::parse_datetime(s))
+    }
+
+    /// Get last daily afternoon as DateTime.
+    pub fn get_last_daily_afternoon(&self) -> Option<DateTime<Utc>> {
+        self.last_daily_afternoon.as_ref().and_then(|s| Self::parse_datetime(s))
+    }
+
+    /// Set last weekly.
+    pub fn set_last_weekly(&mut self, dt: DateTime<Utc>) {
+        self.last_weekly = Some(dt.to_rfc3339());
+    }
+
+    /// Set last monthly.
+    pub fn set_last_monthly(&mut self, dt: DateTime<Utc>) {
+        self.last_monthly = Some(dt.to_rfc3339());
+    }
+
+    /// Set last daily morning.
+    pub fn set_last_daily_morning(&mut self, dt: DateTime<Utc>) {
+        self.last_daily_morning = Some(dt.to_rfc3339());
+    }
+
+    /// Set last daily afternoon.
+    pub fn set_last_daily_afternoon(&mut self, dt: DateTime<Utc>) {
+        self.last_daily_afternoon = Some(dt.to_rfc3339());
+    }
+}
+
+/// In-memory state for tracking report generation.
+/// Initialized from persistent state on startup.
 struct ReportState {
     last_weekly: Option<DateTime<Utc>>,
     last_monthly: Option<DateTime<Utc>>,
     last_daily_morning: Option<DateTime<Utc>>,
     last_daily_afternoon: Option<DateTime<Utc>>,
+}
+
+impl From<PersistentReportState> for ReportState {
+    fn from(p: PersistentReportState) -> Self {
+        Self {
+            last_weekly: p.get_last_weekly(),
+            last_monthly: p.get_last_monthly(),
+            last_daily_morning: p.get_last_daily_morning(),
+            last_daily_afternoon: p.get_last_daily_afternoon(),
+        }
+    }
 }
 
 /// Macro report generator with scheduling support.
@@ -83,21 +218,37 @@ pub struct MacroReportGenerator {
 
 impl MacroReportGenerator {
     /// Create a new report generator.
+    ///
+    /// Loads persistent state from disk to prevent duplicate reports after restart.
     pub fn new(
         agent_config: AgentBridgeConfig,
         notification: Arc<NotificationClient>,
         config: ReportGeneratorConfig,
     ) -> Self {
+        // Load persistent state from disk
+        let persistent_state = PersistentReportState::load();
+        let state = ReportState::from(persistent_state);
+
+        // Log loaded state for debugging
+        if state.last_weekly.is_some()
+            || state.last_monthly.is_some()
+            || state.last_daily_morning.is_some()
+            || state.last_daily_afternoon.is_some()
+        {
+            info!(
+                last_weekly = ?state.last_weekly.map(|dt| dt.to_rfc3339()),
+                last_monthly = ?state.last_monthly.map(|dt| dt.to_rfc3339()),
+                last_daily_morning = ?state.last_daily_morning.map(|dt| dt.to_rfc3339()),
+                last_daily_afternoon = ?state.last_daily_afternoon.map(|dt| dt.to_rfc3339()),
+                "Restored report state from disk"
+            );
+        }
+
         Self {
             agent_bridge: AgentBridge::new(agent_config),
             notification,
             config,
-            state: RwLock::new(ReportState {
-                last_weekly: None,
-                last_monthly: None,
-                last_daily_morning: None,
-                last_daily_afternoon: None,
-            }),
+            state: RwLock::new(state),
         }
     }
 
@@ -399,16 +550,31 @@ impl MacroReportGenerator {
     }
 
     /// Update state after generating a report.
+    ///
+    /// Updates both in-memory state and persistent state on disk.
     async fn update_state(&self, report_type: ReportType) {
         let mut state = self.state.write().await;
         let now = Utc::now();
 
+        // Update in-memory state
         match report_type {
             ReportType::Weekly => state.last_weekly = Some(now),
             ReportType::Monthly => state.last_monthly = Some(now),
             ReportType::DailyMorning => state.last_daily_morning = Some(now),
             ReportType::DailyAfternoon => state.last_daily_afternoon = Some(now),
             ReportType::Quarterly | ReportType::DataRelease | ReportType::AdHoc => {}
+        }
+
+        // Persist to disk
+        let persistent = PersistentReportState {
+            last_weekly: state.last_weekly.map(|dt| dt.to_rfc3339()),
+            last_monthly: state.last_monthly.map(|dt| dt.to_rfc3339()),
+            last_daily_morning: state.last_daily_morning.map(|dt| dt.to_rfc3339()),
+            last_daily_afternoon: state.last_daily_afternoon.map(|dt| dt.to_rfc3339()),
+        };
+
+        if let Err(e) = persistent.save() {
+            error!(error = %e, "Failed to persist report state");
         }
     }
 
@@ -551,5 +717,38 @@ mod tests {
         assert!(message.contains("测试报告"));
         assert!(message.contains("2024-01"));
         assert!(message.contains("要点1"));
+    }
+
+    #[test]
+    fn test_persistent_state_serialization() {
+        let mut state = PersistentReportState::default();
+        let now = Utc::now();
+
+        state.set_last_weekly(now);
+        state.set_last_monthly(now);
+
+        // Serialize and deserialize
+        let json = serde_json::to_string(&state).unwrap();
+        let loaded: PersistentReportState = serde_json::from_str(&json).unwrap();
+
+        assert!(loaded.get_last_weekly().is_some());
+        assert!(loaded.get_last_monthly().is_some());
+        assert!(loaded.get_last_daily_morning().is_none());
+    }
+
+    #[test]
+    fn test_persistent_state_conversion() {
+        let mut persistent = PersistentReportState::default();
+        let now = Utc::now();
+
+        persistent.set_last_weekly(now);
+        persistent.set_last_daily_morning(now);
+
+        let state = ReportState::from(persistent);
+
+        assert!(state.last_weekly.is_some());
+        assert!(state.last_daily_morning.is_some());
+        assert!(state.last_monthly.is_none());
+        assert!(state.last_daily_afternoon.is_none());
     }
 }

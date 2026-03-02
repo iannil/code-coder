@@ -14,6 +14,7 @@
 | [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md) | 设计思想与哲学框架 |
 | [CCODE_VS_ZERO.md](./CCODE_VS_ZERO.md) | packages/ccode 与 services/zero-* 关系 |
 | [OPENFANG_VS_CODECODER.md](./OPENFANG_VS_CODECODER.md) | OpenFang vs CodeCoder 对比分析 |
+| [OPENFANG_REFERENCE.md](./OPENFANG_REFERENCE.md) | OpenFang 参考分析 - 已实现特性说明 |
 | [diagrams/](./diagrams/) | ASCII 架构图 |
 
 ## 快速导航
@@ -42,6 +43,8 @@
 - **系统总览** - 见 [ARCHITECTURE.md](./ARCHITECTURE.md#2-系统架构总览)
 - **Agent 系统** - 见 [ARCHITECTURE.md](./ARCHITECTURE.md#4-agent-系统架构)
 - **Rust 微服务** - 见 [ARCHITECTURE.md](./ARCHITECTURE.md#5-rust-微服务架构)
+- **沙箱系统** - 见 [ARCHITECTURE.md](./ARCHITECTURE.md#6-沙箱系统架构)
+- **Hands 自主代理** - 见 [ARCHITECTURE.md](./ARCHITECTURE.md#7-hands-自主代理架构)
 - **Trading 模块** - 见 [DESIGN_PHILOSOPHY.md](./DESIGN_PHILOSOPHY.md#四zero-trading-模块设计思想)
 
 ### 关系与通信

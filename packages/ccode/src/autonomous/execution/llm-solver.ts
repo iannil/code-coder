@@ -348,14 +348,31 @@ export class LLMSolver {
       await Provider.getModel(model.providerID, model.modelID),
     )
 
-    const result = await generateText({
-      model: languageModel,
-      prompt,
-      maxOutputTokens: this.config.maxOutputTokens,
-      temperature,
-    })
+    // Create AbortController for timeout
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+      log.warn("LLM call timed out", { timeoutMs: this.config.timeout })
+    }, this.config.timeout)
 
-    return result.text
+    try {
+      const result = await generateText({
+        model: languageModel,
+        prompt,
+        maxOutputTokens: this.config.maxOutputTokens,
+        temperature,
+        abortSignal: controller.signal,
+      })
+
+      return result.text
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error(`LLM call timed out after ${this.config.timeout}ms`)
+      }
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 
   private parseCodeGenerationResponse(text: string): CodeGenerationResult | null {
