@@ -350,6 +350,43 @@ export namespace AutonomousEvent {
     }),
   )
 
+  // ============================================================================
+  // Project Creation Events
+  // ============================================================================
+
+  export const ProjectCreated = BusEvent.define(
+    "autonomous.project.created",
+    z.object({
+      projectId: z.string().optional(),
+      name: z.string(),
+      slug: z.string(),
+      technology: z.array(z.string()),
+      action: z.enum(["clone_template", "create_from_scratch", "ask_user"]),
+      template: z.string().optional(),
+      success: z.boolean(),
+    }),
+  )
+
+  export const ProjectSwitched = BusEvent.define(
+    "autonomous.project.switched",
+    z.object({
+      projectId: z.string(),
+      slug: z.string(),
+      path: z.string(),
+    }),
+  )
+
+  export const ProjectPushed = BusEvent.define(
+    "autonomous.project.pushed",
+    z.object({
+      projectId: z.string(),
+      slug: z.string(),
+      remote: z.string(),
+      success: z.boolean(),
+      error: z.string().optional(),
+    }),
+  )
+
   export const IterationStarted = BusEvent.define(
     "autonomous.iteration.started",
     z.object({

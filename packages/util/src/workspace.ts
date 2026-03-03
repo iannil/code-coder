@@ -32,6 +32,10 @@ export interface WorkspacePaths {
   mcpAuth: string
   /** Cache directory */
   cache: string
+  /** User projects directory (for IM-created projects) */
+  projects: string
+  /** Project registry index file */
+  projectRegistry: string
 }
 
 /** Default workspace path */
@@ -47,6 +51,8 @@ const DEFAULT_SUBDIRS = {
   tracking: "tracking",
   mcp_auth: "mcp-auth.json",
   cache: "cache",
+  projects: "projects",
+  project_registry: "projects/registry.json",
 } as const
 
 /**
@@ -98,6 +104,8 @@ export function resolveWorkspacePaths(
     tracking: path.join(root, subdirs.tracking),
     mcpAuth: path.join(root, subdirs.mcp_auth),
     cache: path.join(root, subdirs.cache),
+    projects: path.join(root, subdirs.projects),
+    projectRegistry: path.join(root, subdirs.project_registry),
   }
 }
 
@@ -117,7 +125,8 @@ export async function ensureWorkspace(paths?: WorkspacePaths): Promise<void> {
   await fs.mkdir(workspacePaths.knowledge, { recursive: true })
   await fs.mkdir(workspacePaths.tracking, { recursive: true })
   await fs.mkdir(workspacePaths.cache, { recursive: true })
-  // Note: mcpAuth is a file, not a directory, so we don't create it
+  await fs.mkdir(workspacePaths.projects, { recursive: true })
+  // Note: mcpAuth and projectRegistry are files, not directories, so we don't create them
 }
 
 /**
@@ -140,5 +149,7 @@ export function getWorkspacePathsFromEnv(): WorkspacePaths {
     tracking: path.join(root, DEFAULT_SUBDIRS.tracking),
     mcpAuth: path.join(root, DEFAULT_SUBDIRS.mcp_auth),
     cache: path.join(root, DEFAULT_SUBDIRS.cache),
+    projects: path.join(root, DEFAULT_SUBDIRS.projects),
+    projectRegistry: path.join(root, DEFAULT_SUBDIRS.project_registry),
   }
 }

@@ -106,6 +106,8 @@ export namespace Agent {
         "scripts/**": "ask",
         // Workspace is always allowed (for autonomous tasks)
         "~/.codecoder/workspace/**": "allow",
+        // Projects directory is allowed (for IM-created projects)
+        "~/.codecoder/workspace/projects/**": "allow",
       },
     })
     const user = PermissionNext.fromConfig(cfg.permission ?? {})

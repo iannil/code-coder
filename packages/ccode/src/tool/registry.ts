@@ -28,6 +28,7 @@ import { ApplyPatchTool } from "./apply_patch"
 import { NetworkAnalyzerTool } from "./network-analyzer"
 import { GetCredentialTool } from "./credential"
 import { ReachTools } from "./reach"
+import { ProjectTools } from "./project"
 import {
   SchedulerCreateTaskTool,
   SchedulerListTasksTool,
@@ -112,6 +113,8 @@ export namespace ToolRegistry {
       SchedulerDeleteTaskTool,
       SchedulerRunTaskTool,
       SchedulerDelayTaskTool,
+      // Project tools for autonomous project creation
+      ...ProjectTools,
       ...custom,
     ]
   }

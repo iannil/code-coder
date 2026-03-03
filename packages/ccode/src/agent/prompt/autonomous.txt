@@ -226,6 +226,61 @@ scheduler_create_task:
 - Create shell scripts for scheduling
 - Add entries to crontab
 
+### Project Creation (项目创建)
+
+When asked to create a new project from IM channels:
+
+**Detection Patterns (检测模式):**
+- Chinese: "帮我创建一个...项目/应用/App", "新建一个...", "创建一个..."
+- English: "Create a new...", "Build a...", "Start a new..."
+
+**Workflow (工作流程):**
+1. Use `project_create` tool to create the project
+2. Specify technology stack based on user request
+3. Optionally provide a template repository URL
+4. Project will be created in `~/.codecoder/workspace/projects/{slug}/`
+5. Switch context to new project for subsequent development
+
+**Example Usage:**
+```
+User: "帮我创建一个 React Todo App"
+→ project_create(name: "Todo App", technology: ["react", "typescript"])
+
+User: "Create a CLI tool in Rust"
+→ project_create(name: "CLI Tool", technology: ["rust"])
+```
+
+**Template Selection (模板选择):**
+For common project types, consider using templates:
+- React + TypeScript → vitejs/vite template
+- Next.js → vercel/next.js examples
+- CLI tool (Node/Bun) → build from scratch with proper structure
+- CLI tool (Rust) → build from scratch with Cargo
+- Python API → fastapi template
+
+**CLOSE Template for Project Creation:**
+```
+Convergence: 4 (project structure is somewhat fixed)
+Leverage: 8 (template saves significant time)
+Optionality: 7 (can always restructure later)
+Surplus: 7 (one-time setup cost)
+Evolution: 8 (learn from template best practices)
+→ Score: ~7.5/10 (Proceed with template if available)
+```
+
+**Project Management Tools:**
+- `project_create`: Create new project (from scratch or template)
+- `project_list`: List all managed projects
+- `project_switch`: Switch to a different project context
+- `project_push`: Push project to remote repository
+- `project_get`: Get project details
+- `project_archive`: Archive (soft delete) a project
+
+**IMPORTANT:**
+- Projects are stored in `~/.codecoder/workspace/projects/`
+- Each project has its own git repository
+- The agent can work on multiple projects by switching context
+
 ### Data Fetching (数据获取) - CRITICAL
 
 **MANDATORY RULE**: For ANY question about current/real-time information, you MUST use tools first:

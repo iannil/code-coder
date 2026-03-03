@@ -164,6 +164,21 @@ export interface EvolutionResult {
     identifier: string
     buildResult: BuildResult
   }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Parallel Discovery Results (Phase 14 Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** All capability candidates collected during parallel discovery */
+  allCandidates?: CapabilityCandidate[]
+
+  /** Selection decision explaining how the final capability was chosen */
+  selectionDecision?: {
+    decision: "single" | "multiple" | "none"
+    reasoning: string
+    selectedCount: number
+    totalCandidates: number
+  }
 }
 
 /** Evolution loop configuration */
@@ -238,6 +253,89 @@ export interface EvolutionConfig {
   allowedConceptTypes: ConceptType[]
   /** Execute generated concept immediately (true) or just return recommendation (false) */
   executeGeneratedConcept: boolean
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Parallel Capability Discovery (Phase 14 Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Run internal discovery and generation in parallel, then evaluate all candidates */
+  parallelCapabilityDiscovery: boolean
+  /** Strategy for selecting from multiple candidates */
+  candidateEvaluationStrategy: "best_only" | "best_two" | "all_above_threshold"
+  /** Minimum CLOSE score for a candidate to be considered (0-1, maps to 0-10 scale) */
+  candidateMinScore: number
+}
+
+// ============================================================================
+// CLOSE Score for Capability Evaluation
+// ============================================================================
+
+/**
+ * CLOSE framework score for evaluating capability candidates
+ *
+ * Based on 祝融说 decision framework:
+ * - Constraints: How well does the capability fit within current constraints?
+ * - Leverage: How much does this capability amplify our problem-solving power?
+ * - Options: Does using this capability preserve or expand future options?
+ * - Stakes: How significant is the risk/reward of using this capability?
+ * - Exit: Can we easily switch away if this capability doesn't work?
+ */
+export interface CLOSEScore {
+  /** Constraint fit (0-10): How well does this capability fit our constraints? */
+  constraints: number
+  /** Leverage (0-10): How much does this amplify our capabilities? */
+  leverage: number
+  /** Options preserved (0-10): Does this expand or constrain future choices? */
+  options: number
+  /** Stakes assessment (0-10): Risk/reward balance */
+  stakes: number
+  /** Exit flexibility (0-10): How easy to switch if this doesn't work? */
+  exit: number
+  /** Total score (0-10): Weighted average of all dimensions */
+  total: number
+  /** Reasoning for the score */
+  reasoning?: string
+}
+
+// ============================================================================
+// Capability Candidate (Phase 1A/1B Collection)
+// ============================================================================
+
+/**
+ * A candidate capability collected during Phase 1A (discovery) or Phase 1B (generation)
+ *
+ * All matching capabilities are collected into this structure for unified evaluation.
+ */
+export interface CapabilityCandidate {
+  /** Source of the capability: existing discovery or new generation */
+  source: "discovery" | "generation"
+  /** Type of capability */
+  type: "agent" | "skill" | "hand" | "tool" | "generated"
+  /** Unique identifier for the capability */
+  identifier: string
+  /** Raw match/confidence score from the discovery/generation process */
+  score: number
+  /** Original match result from the discovery phase */
+  result: AgentMatchResult | SkillMatchResult | HandMatchResult | ToolResult | GenerationResult
+  /** CLOSE score computed during evaluation phase */
+  closeScore?: CLOSEScore
+  /** Recommendation text for this capability */
+  recommendation?: string
+}
+
+/** Tool discovery result (internal structure) */
+interface ToolResult {
+  toolId: string
+  toolName: string
+  code: string
+  score: number
+}
+
+/** Generation result from Phase 1.5 */
+interface GenerationResult {
+  concept: GeneratedConcept
+  buildResult: BuildResult
+  confidence: number
 }
 
 // ============================================================================
@@ -335,6 +433,11 @@ const DEFAULT_CONFIG: EvolutionConfig = {
   conceptGenerationMinConfidence: 0.6,
   allowedConceptTypes: ["TOOL", "PROMPT", "SKILL", "AGENT", "MEMORY", "HAND", "WORKFLOW"],
   executeGeneratedConcept: true,
+
+  // Phase 14 Optimization: Parallel Capability Discovery
+  parallelCapabilityDiscovery: true,
+  candidateEvaluationStrategy: "all_above_threshold",
+  candidateMinScore: 0.6, // Maps to 6.0 on CLOSE 0-10 scale
 }
 
 // ============================================================================
@@ -400,8 +503,11 @@ export class EvolutionLoop {
   /**
    * Run the evolution loop to solve a problem
    *
-   * Implements prioritized capability discovery:
-   * Phase 1: Internal Capabilities → Phase 2: Learned Resources → Phase 3: External Resources
+   * Implements prioritized capability discovery with parallel evaluation:
+   * Phase 1A: Collect Internal Capabilities (Agent, Skill, Hand, Tool)
+   * Phase 1B: Capability Generation (always runs when enabled)
+   * Phase 1C: Evaluate and Select best candidates using CLOSE framework
+   * Phase 2: Learned Resources → Phase 3: External Resources
    */
   async evolve(problem: AutonomousProblem): Promise<EvolutionResult> {
     const startTime = Date.now()
@@ -414,187 +520,349 @@ export class EvolutionLoop {
     this.bestInternalMatch = null
     this.conceptGenerationAttempted = false
 
-    log.info("Starting evolution loop with prioritized capability discovery", {
+    log.info("Starting evolution loop with parallel capability discovery", {
       sessionId: problem.sessionId,
       problemPreview: problem.description.slice(0, 100),
       maxRetries,
+      parallelMode: this.config.parallelCapabilityDiscovery,
     })
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // Phase 1: Internal Capabilities (Highest Priority)
+    // Phase 1: Parallel Capability Discovery (New in Phase 14 Optimization)
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // 1.1 Agent Discovery - Find matching specialized agents
-    if (this.config.enableAgentDiscovery) {
-      const agentStart = Date.now()
-      const agentResult = await this.tryAgentMatch(problem)
-      this.recordCapabilitySearch("agent", true, agentResult.matched ? 1 : 0, agentResult.score, Date.now() - agentStart)
+    if (this.config.parallelCapabilityDiscovery) {
+      const candidates: CapabilityCandidate[] = []
 
-      if (agentResult.matched && agentResult.agentName) {
-        log.info("Found matching agent", {
-          agent: agentResult.agentName,
-          score: agentResult.score,
-          matchType: agentResult.matchType,
-        })
+      // Phase 1A: Collect all internal capability matches (no early exit)
+      log.info("Phase 1A: Collecting internal capability candidates")
 
-        return {
-          solved: true,
-          solution: agentResult.recommendation,
-          attempts: [],
-          durationMs: Date.now() - startTime,
-          summary: `Recommended agent: ${agentResult.displayName ?? agentResult.agentName}. ${agentResult.recommendation}`,
-          matchedCapability: {
+      // 1.1 Agent Discovery - Find matching specialized agents
+      if (this.config.enableAgentDiscovery) {
+        const agentStart = Date.now()
+        const agentResult = await this.tryAgentMatch(problem)
+        this.recordCapabilitySearch("agent", true, agentResult.matched ? 1 : 0, agentResult.score, Date.now() - agentStart)
+
+        if (agentResult.matched && agentResult.agentName) {
+          candidates.push({
+            source: "discovery",
             type: "agent",
             identifier: agentResult.agentName,
             score: agentResult.score,
-          },
-          capabilitiesSearched: this.capabilitiesSearched,
+            result: agentResult,
+            recommendation: agentResult.recommendation,
+          })
+          log.info("Collected agent candidate", {
+            agent: agentResult.agentName,
+            score: agentResult.score,
+          })
         }
       }
-    }
 
-    // 1.2 Skill Discovery - Find matching Skills
-    if (this.config.enableSkillDiscovery) {
-      const skillStart = Date.now()
-      const skillResult = await this.trySkillMatch(problem)
-      this.recordCapabilitySearch("skill", true, skillResult.matched ? 1 : 0, skillResult.score, Date.now() - skillStart)
+      // 1.2 Skill Discovery - Find matching Skills
+      if (this.config.enableSkillDiscovery) {
+        const skillStart = Date.now()
+        const skillResult = await this.trySkillMatch(problem)
+        this.recordCapabilitySearch("skill", true, skillResult.matched ? 1 : 0, skillResult.score, Date.now() - skillStart)
 
-      if (skillResult.matched && skillResult.skillName) {
-        log.info("Found matching skill", {
-          skill: skillResult.skillName,
-          score: skillResult.score,
-        })
-
-        return {
-          solved: true,
-          solution: skillResult.recommendation,
-          attempts: [],
-          durationMs: Date.now() - startTime,
-          summary: `Recommended skill: /${skillResult.skillName}. ${skillResult.recommendation}`,
-          matchedCapability: {
+        if (skillResult.matched && skillResult.skillName) {
+          candidates.push({
+            source: "discovery",
             type: "skill",
             identifier: skillResult.skillName,
             score: skillResult.score,
-          },
-          capabilitiesSearched: this.capabilitiesSearched,
+            result: skillResult,
+            recommendation: skillResult.recommendation,
+          })
+          log.info("Collected skill candidate", {
+            skill: skillResult.skillName,
+            score: skillResult.score,
+          })
         }
       }
-    }
 
-    // 1.3 Hand Discovery - Find matching autonomous hands (cron/webhook/git)
-    if (this.config.enableHandDiscovery) {
-      const handStart = Date.now()
-      const handResult = await this.tryHandMatch(problem)
-      this.recordCapabilitySearch("hand", true, handResult.matched ? 1 : 0, handResult.score, Date.now() - handStart)
+      // 1.3 Hand Discovery - Find matching autonomous hands (cron/webhook/git)
+      if (this.config.enableHandDiscovery) {
+        const handStart = Date.now()
+        const handResult = await this.tryHandMatch(problem)
+        this.recordCapabilitySearch("hand", true, handResult.matched ? 1 : 0, handResult.score, Date.now() - handStart)
 
-      if (handResult.matched && handResult.handId) {
-        log.info("Found matching hand", {
-          hand: handResult.handName,
-          triggerType: handResult.triggerType,
-          score: handResult.score,
-        })
-
-        return {
-          solved: true,
-          solution: handResult.recommendation,
-          attempts: [],
-          durationMs: Date.now() - startTime,
-          summary: `Recommended autonomous hand: ${handResult.handName}. ${handResult.recommendation}`,
-          matchedCapability: {
+        if (handResult.matched && handResult.handId) {
+          candidates.push({
+            source: "discovery",
             type: "hand",
             identifier: handResult.handId,
             score: handResult.score,
-          },
-          capabilitiesSearched: this.capabilitiesSearched,
+            result: handResult,
+            recommendation: handResult.recommendation,
+          })
+          log.info("Collected hand candidate", {
+            hand: handResult.handName,
+            score: handResult.score,
+          })
         }
       }
-    }
 
-    // 1.4 Tool Discovery - Internal + dynamic tools
-    if (this.config.enableToolDiscovery) {
-      const toolStart = Date.now()
-      const toolResult = await this.tryExistingTool(problem)
+      // 1.4 Tool Discovery - Internal + dynamic tools
+      if (this.config.enableToolDiscovery) {
+        const toolStart = Date.now()
+        const toolResult = await this.tryExistingTool(problem)
 
-      if (toolResult) {
-        this.recordCapabilitySearch("tool", true, 1, 1.0, Date.now() - toolStart)
-        log.info("Problem solved with existing tool", { toolName: toolResult.toolName })
-
-        return {
-          solved: true,
-          solution: toolResult.code,
-          attempts: [{
-            attempt: 1,
-            code: toolResult.code,
-            success: true,
-            timestamp: new Date().toISOString(),
-            toolId: toolResult.toolId,
-            toolName: toolResult.toolName,
-          }],
-          usedToolId: toolResult.toolId,
-          durationMs: Date.now() - startTime,
-          summary: `Problem solved using existing tool: ${toolResult.toolName}`,
-          matchedCapability: {
+        if (toolResult) {
+          this.recordCapabilitySearch("tool", true, 1, 1.0, Date.now() - toolStart)
+          candidates.push({
+            source: "discovery",
             type: "tool",
             identifier: toolResult.toolId,
             score: 1.0,
-          },
-          capabilitiesSearched: this.capabilitiesSearched,
+            result: { ...toolResult, score: 1.0 },
+            recommendation: `Use existing tool: ${toolResult.toolName}`,
+          })
+          log.info("Collected tool candidate", {
+            tool: toolResult.toolName,
+            score: 1.0,
+          })
+        } else {
+          this.recordCapabilitySearch("tool", true, 0, 0, Date.now() - toolStart)
         }
-      } else {
-        this.recordCapabilitySearch("tool", true, 0, 0, Date.now() - toolStart)
       }
-    }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Phase 1.5: Internal Capability Generation (New)
-    // If no existing internal capability matches, try to generate a new one
-    // ═══════════════════════════════════════════════════════════════════════════
+      // Phase 1B: Capability Generation (always execute when enabled)
+      if (this.config.enableConceptGeneration && !this.conceptGenerationAttempted) {
+        log.info("Phase 1B: Attempting capability generation (parallel mode)")
+        this.conceptGenerationAttempted = true
 
-    if (
-      this.config.enableConceptGeneration &&
-      !this.bestInternalMatch &&
-      !this.conceptGenerationAttempted
-    ) {
-      log.info("Phase 1.5: No internal capability match - attempting to generate new capability")
-      this.conceptGenerationAttempted = true
+        const generationStart = Date.now()
+        const generationResult = await this.tryConceptGeneration(problem)
 
-      const generationStart = Date.now()
-      const generationResult = await this.tryConceptGeneration(problem)
+        this.recordCapabilitySearch(
+          "generation",
+          true,
+          generationResult?.success ? 1 : 0,
+          generationResult?.confidence ?? 0,
+          Date.now() - generationStart,
+        )
 
-      // Record the generation attempt
-      this.recordCapabilitySearch(
-        "generation",
-        true,
-        generationResult?.success ? 1 : 0,
-        generationResult?.confidence ?? 0,
-        Date.now() - generationStart,
-      )
-
-      if (generationResult?.success && generationResult.concept) {
-        log.info("Successfully generated new capability", {
-          type: generationResult.concept.type,
-          identifier: generationResult.concept.identifier,
-          confidence: generationResult.confidence,
-        })
-
-        return {
-          solved: true,
-          solution: generationResult.recommendation,
-          attempts: generationResult.executionResult ? [generationResult.executionResult] : [],
-          durationMs: Date.now() - startTime,
-          summary: `Generated new ${generationResult.concept.type}: ${generationResult.concept.identifier}`,
-          matchedCapability: {
-            type: generationResult.concept.type.toLowerCase() as "agent" | "skill" | "hand" | "tool",
+        if (generationResult?.success && generationResult.concept) {
+          candidates.push({
+            source: "generation",
+            type: "generated",
             identifier: generationResult.concept.identifier,
             score: generationResult.confidence,
-          },
-          capabilitiesSearched: this.capabilitiesSearched,
-          buildResult: generationResult.buildResult,
-          generatedConcept: {
+            result: {
+              concept: generationResult.concept,
+              buildResult: generationResult.buildResult!,
+              confidence: generationResult.confidence,
+            },
+            recommendation: generationResult.recommendation,
+          })
+          log.info("Collected generation candidate", {
             type: generationResult.concept.type,
             identifier: generationResult.concept.identifier,
-            buildResult: generationResult.buildResult!,
-          },
+            confidence: generationResult.confidence,
+          })
+        }
+      }
+
+      // Phase 1C: Evaluate and Select candidates
+      log.info("Phase 1C: Evaluating candidates", { candidateCount: candidates.length })
+
+      if (candidates.length > 0) {
+        const selection = this.evaluateAndSelectCapabilities(candidates, problem)
+
+        // Return result based on selection decision
+        if (selection.decision !== "none" && selection.selected.length > 0) {
+          const bestCandidate = selection.selected[0]
+          log.info("Selected capability", {
+            type: bestCandidate.type,
+            identifier: bestCandidate.identifier,
+            score: bestCandidate.closeScore?.total,
+            decision: selection.decision,
+          })
+
+          // Build the result based on candidate type
+          return this.buildResultFromCandidate(
+            bestCandidate,
+            startTime,
+            candidates,
+            selection,
+          )
+        }
+      }
+
+      log.info("No suitable candidate found in parallel discovery, proceeding to Phase 2")
+    } else {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Legacy Mode: Serial capability discovery with early exit
+      // ═══════════════════════════════════════════════════════════════════════════
+
+      // 1.1 Agent Discovery - Find matching specialized agents
+      if (this.config.enableAgentDiscovery) {
+        const agentStart = Date.now()
+        const agentResult = await this.tryAgentMatch(problem)
+        this.recordCapabilitySearch("agent", true, agentResult.matched ? 1 : 0, agentResult.score, Date.now() - agentStart)
+
+        if (agentResult.matched && agentResult.agentName) {
+          log.info("Found matching agent", {
+            agent: agentResult.agentName,
+            score: agentResult.score,
+            matchType: agentResult.matchType,
+          })
+
+          return {
+            solved: true,
+            solution: agentResult.recommendation,
+            attempts: [],
+            durationMs: Date.now() - startTime,
+            summary: `Recommended agent: ${agentResult.displayName ?? agentResult.agentName}. ${agentResult.recommendation}`,
+            matchedCapability: {
+              type: "agent",
+              identifier: agentResult.agentName,
+              score: agentResult.score,
+            },
+            capabilitiesSearched: this.capabilitiesSearched,
+          }
+        }
+      }
+
+      // 1.2 Skill Discovery - Find matching Skills
+      if (this.config.enableSkillDiscovery) {
+        const skillStart = Date.now()
+        const skillResult = await this.trySkillMatch(problem)
+        this.recordCapabilitySearch("skill", true, skillResult.matched ? 1 : 0, skillResult.score, Date.now() - skillStart)
+
+        if (skillResult.matched && skillResult.skillName) {
+          log.info("Found matching skill", {
+            skill: skillResult.skillName,
+            score: skillResult.score,
+          })
+
+          return {
+            solved: true,
+            solution: skillResult.recommendation,
+            attempts: [],
+            durationMs: Date.now() - startTime,
+            summary: `Recommended skill: /${skillResult.skillName}. ${skillResult.recommendation}`,
+            matchedCapability: {
+              type: "skill",
+              identifier: skillResult.skillName,
+              score: skillResult.score,
+            },
+            capabilitiesSearched: this.capabilitiesSearched,
+          }
+        }
+      }
+
+      // 1.3 Hand Discovery - Find matching autonomous hands (cron/webhook/git)
+      if (this.config.enableHandDiscovery) {
+        const handStart = Date.now()
+        const handResult = await this.tryHandMatch(problem)
+        this.recordCapabilitySearch("hand", true, handResult.matched ? 1 : 0, handResult.score, Date.now() - handStart)
+
+        if (handResult.matched && handResult.handId) {
+          log.info("Found matching hand", {
+            hand: handResult.handName,
+            triggerType: handResult.triggerType,
+            score: handResult.score,
+          })
+
+          return {
+            solved: true,
+            solution: handResult.recommendation,
+            attempts: [],
+            durationMs: Date.now() - startTime,
+            summary: `Recommended autonomous hand: ${handResult.handName}. ${handResult.recommendation}`,
+            matchedCapability: {
+              type: "hand",
+              identifier: handResult.handId,
+              score: handResult.score,
+            },
+            capabilitiesSearched: this.capabilitiesSearched,
+          }
+        }
+      }
+
+      // 1.4 Tool Discovery - Internal + dynamic tools
+      if (this.config.enableToolDiscovery) {
+        const toolStart = Date.now()
+        const toolResult = await this.tryExistingTool(problem)
+
+        if (toolResult) {
+          this.recordCapabilitySearch("tool", true, 1, 1.0, Date.now() - toolStart)
+          log.info("Problem solved with existing tool", { toolName: toolResult.toolName })
+
+          return {
+            solved: true,
+            solution: toolResult.code,
+            attempts: [{
+              attempt: 1,
+              code: toolResult.code,
+              success: true,
+              timestamp: new Date().toISOString(),
+              toolId: toolResult.toolId,
+              toolName: toolResult.toolName,
+            }],
+            usedToolId: toolResult.toolId,
+            durationMs: Date.now() - startTime,
+            summary: `Problem solved using existing tool: ${toolResult.toolName}`,
+            matchedCapability: {
+              type: "tool",
+              identifier: toolResult.toolId,
+              score: 1.0,
+            },
+            capabilitiesSearched: this.capabilitiesSearched,
+          }
+        } else {
+          this.recordCapabilitySearch("tool", true, 0, 0, Date.now() - toolStart)
+        }
+      }
+
+      // Legacy Phase 1.5: Internal Capability Generation (only if no internal match)
+      if (
+        this.config.enableConceptGeneration &&
+        !this.bestInternalMatch &&
+        !this.conceptGenerationAttempted
+      ) {
+        log.info("Phase 1.5: No internal capability match - attempting to generate new capability")
+        this.conceptGenerationAttempted = true
+
+        const generationStart = Date.now()
+        const generationResult = await this.tryConceptGeneration(problem)
+
+        this.recordCapabilitySearch(
+          "generation",
+          true,
+          generationResult?.success ? 1 : 0,
+          generationResult?.confidence ?? 0,
+          Date.now() - generationStart,
+        )
+
+        if (generationResult?.success && generationResult.concept) {
+          log.info("Successfully generated new capability", {
+            type: generationResult.concept.type,
+            identifier: generationResult.concept.identifier,
+            confidence: generationResult.confidence,
+          })
+
+          return {
+            solved: true,
+            solution: generationResult.recommendation,
+            attempts: generationResult.executionResult ? [generationResult.executionResult] : [],
+            durationMs: Date.now() - startTime,
+            summary: `Generated new ${generationResult.concept.type}: ${generationResult.concept.identifier}`,
+            matchedCapability: {
+              type: generationResult.concept.type.toLowerCase() as "agent" | "skill" | "hand" | "tool",
+              identifier: generationResult.concept.identifier,
+              score: generationResult.confidence,
+            },
+            capabilitiesSearched: this.capabilitiesSearched,
+            buildResult: generationResult.buildResult,
+            generatedConcept: {
+              type: generationResult.concept.type,
+              identifier: generationResult.concept.identifier,
+              buildResult: generationResult.buildResult!,
+            },
+          }
         }
       }
     }
@@ -1192,6 +1460,258 @@ export class EvolutionLoop {
     if (matchCount > 0 && topMatchScore > (this.bestInternalMatch?.score ?? 0)) {
       this.bestInternalMatch = { type, score: topMatchScore }
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase 1C: Capability Evaluation & Selection (Phase 14 Optimization)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Evaluate and select the best capability candidates using CLOSE framework
+   *
+   * This implements the core decision-making logic from 祝融说:
+   * - Compare all candidates using the CLOSE framework
+   * - Select based on configured strategy (best_only, best_two, all_above_threshold)
+   * - Return selected candidates with reasoning
+   */
+  private evaluateAndSelectCapabilities(
+    candidates: CapabilityCandidate[],
+    problem: AutonomousProblem,
+  ): {
+    selected: CapabilityCandidate[]
+    decision: "single" | "multiple" | "none"
+    reasoning: string
+  } {
+    if (candidates.length === 0) {
+      return { selected: [], decision: "none", reasoning: "No candidates found" }
+    }
+
+    // Calculate CLOSE score for each candidate
+    for (const candidate of candidates) {
+      candidate.closeScore = this.calculateCLOSEForCandidate(candidate, problem)
+    }
+
+    // Sort by total CLOSE score (descending)
+    candidates.sort((a, b) => (b.closeScore?.total ?? 0) - (a.closeScore?.total ?? 0))
+
+    // Convert candidateMinScore (0-1) to CLOSE scale (0-10)
+    const minScoreThreshold = this.config.candidateMinScore * 10
+
+    // Select based on strategy
+    switch (this.config.candidateEvaluationStrategy) {
+      case "best_only": {
+        const best = candidates[0]
+        if (best.closeScore!.total >= minScoreThreshold) {
+          return {
+            selected: [best],
+            decision: "single",
+            reasoning: `Best candidate: ${best.type}:${best.identifier} (CLOSE score: ${best.closeScore!.total.toFixed(2)}/10)`,
+          }
+        }
+        return {
+          selected: [],
+          decision: "none",
+          reasoning: `Best candidate ${best.type}:${best.identifier} scored ${best.closeScore!.total.toFixed(2)}/10, below threshold ${minScoreThreshold.toFixed(1)}`,
+        }
+      }
+
+      case "best_two": {
+        const qualified = candidates
+          .filter((c) => c.closeScore!.total >= minScoreThreshold)
+          .slice(0, 2)
+        return {
+          selected: qualified,
+          decision: qualified.length > 1 ? "multiple" : qualified.length === 1 ? "single" : "none",
+          reasoning: `Selected ${qualified.length} candidates above threshold ${minScoreThreshold.toFixed(1)}/10`,
+        }
+      }
+
+      case "all_above_threshold": {
+        const qualified = candidates.filter((c) => c.closeScore!.total >= minScoreThreshold)
+        return {
+          selected: qualified,
+          decision: qualified.length > 1 ? "multiple" : qualified.length === 1 ? "single" : "none",
+          reasoning: `${qualified.length}/${candidates.length} candidates scored above threshold ${minScoreThreshold.toFixed(1)}/10`,
+        }
+      }
+
+      default:
+        return { selected: [], decision: "none", reasoning: "Unknown evaluation strategy" }
+    }
+  }
+
+  /**
+   * Calculate CLOSE score for a capability candidate
+   *
+   * CLOSE framework dimensions:
+   * - Constraints: How well does this capability fit within problem constraints?
+   * - Leverage: How much does this capability amplify problem-solving power?
+   * - Options: Does using this preserve or expand future options?
+   * - Stakes: What's the risk/reward balance?
+   * - Exit: How easy to switch if this doesn't work?
+   */
+  private calculateCLOSEForCandidate(
+    candidate: CapabilityCandidate,
+    _problem: AutonomousProblem,
+  ): CLOSEScore {
+    const baseScore = candidate.score * 10 // Convert 0-1 to 0-10
+
+    // Adjust scores based on candidate type and source
+    let constraints = baseScore
+    let leverage = baseScore
+    let options = baseScore
+    let stakes = 5.0 // Default neutral
+    let exit = 7.0 // Most capabilities are easy to switch away from
+
+    switch (candidate.type) {
+      case "agent":
+        // Agents are well-tested, high leverage, preserve options
+        constraints = Math.min(baseScore + 1, 10)
+        leverage = Math.min(baseScore + 2, 10)
+        options = 8.0 // Can always try other approaches
+        stakes = 3.0 // Low risk - just a recommendation
+        exit = 9.0 // Very easy to try different agent
+        break
+
+      case "skill":
+        // Skills are structured workflows
+        constraints = Math.min(baseScore + 1, 10)
+        leverage = Math.min(baseScore + 1, 10)
+        options = 7.5
+        stakes = 4.0 // Low-medium risk
+        exit = 8.5
+        break
+
+      case "hand":
+        // Hands are autonomous - higher stakes
+        constraints = baseScore
+        leverage = Math.min(baseScore + 1.5, 10)
+        options = 6.0 // Scheduled tasks are harder to change
+        stakes = 6.0 // Medium risk - runs automatically
+        exit = 6.0 // Need to manage scheduling
+        break
+
+      case "tool":
+        // Tools execute code - medium stakes
+        constraints = Math.min(baseScore + 0.5, 10)
+        leverage = baseScore
+        options = 7.0
+        stakes = 5.0 // Medium risk - executes code
+        exit = 8.0
+        break
+
+      case "generated":
+        // Generated capabilities are new - higher stakes but high potential
+        constraints = baseScore
+        leverage = Math.min(baseScore + 2, 10) // High potential leverage
+        options = Math.max(baseScore - 1, 3) // New code may constrain options
+        stakes = 7.0 // Higher risk - untested
+        exit = 5.0 // Need to delete/modify if doesn't work
+        break
+    }
+
+    // Adjust for source
+    if (candidate.source === "generation") {
+      // Generated capabilities have higher potential but more uncertainty
+      leverage = Math.min(leverage + 1, 10)
+      stakes = Math.min(stakes + 1, 10)
+      exit = Math.max(exit - 1, 3)
+    }
+
+    // Calculate weighted average (equal weights for simplicity)
+    const total = (constraints + leverage + options + stakes + exit) / 5
+
+    return {
+      constraints,
+      leverage,
+      options,
+      stakes,
+      exit,
+      total,
+      reasoning: `${candidate.type}:${candidate.identifier} - C:${constraints.toFixed(1)} L:${leverage.toFixed(1)} O:${options.toFixed(1)} S:${stakes.toFixed(1)} E:${exit.toFixed(1)}`,
+    }
+  }
+
+  /**
+   * Build an EvolutionResult from a selected capability candidate
+   */
+  private buildResultFromCandidate(
+    candidate: CapabilityCandidate,
+    startTime: number,
+    allCandidates: CapabilityCandidate[],
+    selection: { decision: "single" | "multiple" | "none"; reasoning: string },
+  ): EvolutionResult {
+    const baseResult: EvolutionResult = {
+      solved: true,
+      solution: candidate.recommendation,
+      attempts: [],
+      durationMs: Date.now() - startTime,
+      matchedCapability: {
+        type: candidate.type === "generated" ? "tool" : candidate.type,
+        identifier: candidate.identifier,
+        score: candidate.closeScore?.total ?? candidate.score,
+      },
+      capabilitiesSearched: this.capabilitiesSearched,
+      allCandidates,
+      selectionDecision: {
+        decision: selection.decision,
+        reasoning: selection.reasoning,
+        selectedCount: selection.decision === "none" ? 0 : selection.decision === "single" ? 1 : allCandidates.length,
+        totalCandidates: allCandidates.length,
+      },
+      summary: "",
+    }
+
+    // Build type-specific result
+    switch (candidate.type) {
+      case "agent": {
+        const agentResult = candidate.result as AgentMatchResult
+        baseResult.summary = `Recommended agent: ${agentResult.displayName ?? agentResult.agentName}. ${candidate.recommendation}`
+        break
+      }
+
+      case "skill": {
+        const skillResult = candidate.result as SkillMatchResult
+        baseResult.summary = `Recommended skill: /${skillResult.skillName}. ${candidate.recommendation}`
+        break
+      }
+
+      case "hand": {
+        const handResult = candidate.result as HandMatchResult
+        baseResult.summary = `Recommended autonomous hand: ${handResult.handName}. ${candidate.recommendation}`
+        break
+      }
+
+      case "tool": {
+        const toolResult = candidate.result as ToolResult
+        baseResult.solution = toolResult.code
+        baseResult.usedToolId = toolResult.toolId
+        baseResult.attempts = [{
+          attempt: 1,
+          code: toolResult.code,
+          success: true,
+          timestamp: new Date().toISOString(),
+          toolId: toolResult.toolId,
+          toolName: toolResult.toolName,
+        }]
+        baseResult.summary = `Problem solved using existing tool: ${toolResult.toolName}`
+        break
+      }
+
+      case "generated": {
+        const genResult = candidate.result as GenerationResult
+        baseResult.buildResult = genResult.buildResult
+        baseResult.generatedConcept = {
+          type: genResult.concept.type,
+          identifier: genResult.concept.identifier,
+          buildResult: genResult.buildResult,
+        }
+        baseResult.summary = `Generated new ${genResult.concept.type}: ${genResult.concept.identifier}`
+        break
+      }
+    }
+
+    return baseResult
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
