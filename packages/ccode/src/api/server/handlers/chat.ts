@@ -195,7 +195,8 @@ async function getOrCreateSession(conversationId: string | undefined): Promise<s
 import type { AutonomousSessionStore } from "../store/autonomous-session"
 
 /**
- * Check if a message indicates an actionable task suitable for Evolution Loop
+ * @deprecated Use classifyTask from autonomous/classification instead
+ * This function is kept for backward compatibility but now delegates to the classifier.
  */
 function isActionableTask(message: string): boolean {
   const actionKeywords = [
@@ -214,14 +215,96 @@ function isActionableTask(message: string): boolean {
 }
 
 /**
+ * Execute chat with Research Loop for research/analysis tasks.
+ *
+ * Flow:
+ * 1. Understanding - Parse topic, dimensions, search strategy
+ * 2. Searching - Multi-source parallel search
+ * 3. Synthesizing - Dedupe, validate, annotate sources
+ * 4. Analyzing - LLM-based analysis and insight extraction
+ * 5. Reporting - Generate structured report (inline or file)
+ * 6. Learning - Sediment patterns, suggest Hands
+ */
+async function executeResearchChat(
+  input: ChatRequest,
+  classification: Awaited<ReturnType<typeof import("../../../autonomous/classification").classifyTask>>,
+  ctx: TracingContext,
+  startTime: number
+): Promise<HttpResponse> {
+  const { createResearchLoop } = await import("../../../autonomous/execution/research-loop")
+
+  const sessionId = await getOrCreateSession(input.conversation_id)
+
+  logLifecycleEvent(ctx, "http_request", {
+    function: "executeResearchChat",
+    topic: classification.researchTopic ?? input.message,
+    confidence: classification.confidence,
+  })
+
+  const researchLoop = createResearchLoop({
+    maxSources: 10,
+    maxInlineLength: 1000,
+    enableLearning: true,
+    enableHandCreation: true,
+  })
+
+  try {
+    const result = await researchLoop.research({
+      sessionId,
+      topic: classification.researchTopic ?? input.message,
+      maxSources: 10,
+    })
+
+    const durationMs = Math.round(performance.now() - startTime)
+
+    logLifecycleEvent(ctx, "function_end", {
+      function: "executeResearchChat",
+      duration_ms: durationMs,
+      success: result.success,
+      sourceCount: result.sources.length,
+      insightCount: result.insights.length,
+      reportMode: result.outputPath ? "file" : "inline",
+    })
+
+    return jsonResponse({
+      success: true,
+      data: {
+        message: result.report || result.summary,
+        conversation_id: input.conversation_id ?? sessionId,
+        agent: "research",
+        research_result: {
+          success: result.success,
+          topic: result.topic,
+          sourceCount: result.sources.length,
+          insightCount: result.insights.length,
+          outputPath: result.outputPath,
+          handCreated: result.handCreated,
+          durationMs: result.durationMs,
+        },
+      },
+    })
+  } catch (error) {
+    logLifecycleEvent(ctx, "error", {
+      function: "executeResearchChat",
+      error: error instanceof Error ? error.message : String(error),
+    })
+
+    return errorResponse(error instanceof Error ? error.message : String(error), 500)
+  } finally {
+    await researchLoop.cleanup()
+  }
+}
+
+/**
  * Execute chat with autonomous mode enabled.
  * Uses CLOSE decision framework, Evolution Loop, and Auto-Builder.
  *
  * Flow:
- * 1. CLOSE evaluation to decide whether to proceed
- * 2. If actionable task → trigger Evolution Loop for autonomous problem-solving
- * 3. Evolution Loop includes: web search, tool discovery, code generation, reflection, gap detection
- * 4. If Evolution Loop fails → Gap Detection → Auto-Builder (if enabled)
+ * 1. Task Classification - determine if implementation, research, query, or other
+ * 2. If research task → trigger Research Loop for multi-source analysis
+ * 3. If implementation task → CLOSE evaluation then Evolution Loop
+ * 4. Evolution Loop includes: web search, tool discovery, code generation, reflection, gap detection
+ * 5. If Evolution Loop fails → Gap Detection → Auto-Builder (if enabled)
  */
 async function executeAutonomousChat(
   input: ChatRequest,
@@ -230,7 +313,25 @@ async function executeAutonomousChat(
   startTime: number
 ): Promise<HttpResponse> {
   try {
-    // Import autonomous components
+    // Import task classifier first
+    const { classifyTask } = await import("../../../autonomous/classification")
+
+    // Classify the task to determine appropriate execution path
+    const classification = await classifyTask(input.message)
+
+    logLifecycleEvent(ctx, "http_request", {
+      function: "executeAutonomousChat.classification",
+      type: classification.type,
+      confidence: classification.confidence,
+      researchTopic: classification.researchTopic,
+    })
+
+    // Route to Research Loop for research tasks with high confidence
+    if (classification.type === "research" && classification.confidence > 0.6) {
+      return await executeResearchChat(input, classification, ctx, startTime)
+    }
+
+    // Import autonomous components for implementation tasks
     const { buildCriteria, DecisionTemplates } = await import("../../../autonomous/decision/criteria")
     const { DecisionEngine } = await import("../../../autonomous/decision/engine")
     const { createEvolutionLoop } = await import("../../../autonomous/execution/evolution-loop")
@@ -246,8 +347,8 @@ async function executeAutonomousChat(
     const autonomyLevel = autonomousState.autonomyLevel as "lunatic" | "insane" | "crazy" | "wild" | "bold" | "timid"
     const decisionEngine = new DecisionEngine({ autonomyLevel })
 
-    // Build CLOSE criteria for the request
-    const isActionable = isActionableTask(input.message)
+    // Build CLOSE criteria for the request - now based on classification
+    const isActionable = classification.type === "implementation"
     const criteria = buildCriteria({
       type: isActionable ? "implementation" : "other",
       description: input.message,
@@ -280,6 +381,7 @@ async function executeAutonomousChat(
       approved: decision.approved,
       action: decision.action,
       isActionable,
+      classificationType: classification.type,
     })
 
     // If decision not approved, ask for confirmation

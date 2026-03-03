@@ -130,6 +130,57 @@ export type {
   EvolutionConfig,
 } from "./execution/evolution-loop"
 
+// Research Loop
+export { createResearchLoop } from "./execution/research-loop"
+export type {
+  ResearchLoop,
+  ResearchProblem,
+  ResearchResult,
+  ResearchSource,
+  ResearchLoopConfig,
+} from "./execution/research-loop"
+export { createReportRenderer, renderReport } from "./execution/report-renderer"
+export type {
+  ReportRenderer,
+  ReportData,
+  RenderConfig,
+  RenderResult,
+} from "./execution/report-renderer"
+export { createResearchLearner } from "./execution/research-learner"
+export type {
+  ResearchLearner,
+  LearnedResearchPattern,
+  ResearchRecord,
+  HandSuggestion,
+} from "./execution/research-learner"
+
+// Acceptance Loop (PDCA: Check)
+export { createAcceptanceLoop } from "./execution/acceptance-loop"
+export type {
+  AcceptanceLoop,
+  AcceptanceProblem,
+  AcceptanceResult,
+  AcceptanceIssue,
+  AcceptanceLoopConfig,
+  CodeQualityReport,
+  RequirementReport,
+  ExpectationReport,
+} from "./execution/acceptance-loop"
+
+// Fix Loop (PDCA: Adjust)
+export { createFixLoop } from "./execution/fix-loop"
+export type {
+  FixLoop,
+  FixProblem,
+  FixResult,
+  FixAttempt,
+  FixStrategy,
+  FixLoopConfig,
+} from "./execution/fix-loop"
+
+// Classification
+export * from "./classification"
+
 // LLM Solver (Phase 1 Enhancement)
 export { LLMSolver, getLLMSolver, createLLMSolver } from "./execution/llm-solver"
 export type {

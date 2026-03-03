@@ -542,6 +542,223 @@ export namespace AutonomousEvent {
       })),
     }),
   )
+
+  // ============================================================================
+  // Research Loop Events
+  // ============================================================================
+
+  export const ResearchStarted = BusEvent.define(
+    "autonomous.research.started",
+    z.object({
+      sessionId: z.string(),
+      topic: z.string(),
+      dimensions: z.array(z.string()).optional(),
+      sourceTypes: z.array(z.enum(["web", "financial", "news"])).optional(),
+    }),
+  )
+
+  export const ResearchPhaseChanged = BusEvent.define(
+    "autonomous.research.phase_changed",
+    z.object({
+      sessionId: z.string(),
+      phase: z.enum([
+        "understanding",
+        "searching",
+        "synthesizing",
+        "analyzing",
+        "reporting",
+        "learning",
+      ]),
+      metadata: z.record(z.string(), z.any()).optional(),
+    }),
+  )
+
+  export const ResearchSourceFound = BusEvent.define(
+    "autonomous.research.source_found",
+    z.object({
+      sessionId: z.string(),
+      sourceCount: z.number(),
+      credibilityBreakdown: z.object({
+        high: z.number(),
+        medium: z.number(),
+        low: z.number(),
+      }),
+    }),
+  )
+
+  export const ResearchCompleted = BusEvent.define(
+    "autonomous.research.completed",
+    z.object({
+      sessionId: z.string(),
+      topic: z.string(),
+      success: z.boolean(),
+      reportMode: z.enum(["inline", "file"]),
+      reportPath: z.string().optional(),
+      insightCount: z.number(),
+      sourceCount: z.number(),
+      durationMs: z.number(),
+      handCreated: z.string().optional(),
+    }),
+  )
+
+  export const ResearchFailed = BusEvent.define(
+    "autonomous.research.failed",
+    z.object({
+      sessionId: z.string(),
+      topic: z.string(),
+      phase: z.string(),
+      error: z.string(),
+      retryable: z.boolean(),
+    }),
+  )
+
+  export const ResearchPatternLearned = BusEvent.define(
+    "autonomous.research.pattern_learned",
+    z.object({
+      sessionId: z.string(),
+      patternId: z.string(),
+      topic: z.string(),
+      keywords: z.array(z.string()),
+      frequency: z.enum(["daily", "weekly", "monthly"]).optional(),
+      confidence: z.number(),
+    }),
+  )
+
+  // ============================================================================
+  // Acceptance Loop Events (PDCA: Check)
+  // ============================================================================
+
+  export const AcceptanceStarted = BusEvent.define(
+    "autonomous.acceptance.started",
+    z.object({
+      sessionId: z.string(),
+      originalRequest: z.string(),
+      checkTypes: z.array(z.enum(["quality", "requirement", "expectation"])),
+    }),
+  )
+
+  export const AcceptancePhaseChanged = BusEvent.define(
+    "autonomous.acceptance.phase_changed",
+    z.object({
+      sessionId: z.string(),
+      phase: z.enum([
+        "requirement_parsing",
+        "quality_check",
+        "conformance_check",
+        "expectation_check",
+        "scoring",
+        "reporting",
+      ]),
+      metadata: z.record(z.string(), z.any()).optional(),
+    }),
+  )
+
+  export const AcceptanceIssueFound = BusEvent.define(
+    "autonomous.acceptance.issue_found",
+    z.object({
+      sessionId: z.string(),
+      issueId: z.string(),
+      type: z.enum(["test", "type", "lint", "security", "requirement", "expectation"]),
+      severity: z.enum(["critical", "high", "medium", "low"]),
+      description: z.string(),
+      location: z.string().optional(),
+    }),
+  )
+
+  export const AcceptanceCompleted = BusEvent.define(
+    "autonomous.acceptance.completed",
+    z.object({
+      sessionId: z.string(),
+      success: z.boolean(),
+      overallScore: z.number(),
+      issueCount: z.number(),
+      recommendation: z.enum(["pass", "fix", "rework"]),
+      durationMs: z.number(),
+    }),
+  )
+
+  export const AcceptanceFailed = BusEvent.define(
+    "autonomous.acceptance.failed",
+    z.object({
+      sessionId: z.string(),
+      phase: z.string(),
+      error: z.string(),
+      retryable: z.boolean(),
+    }),
+  )
+
+  // ============================================================================
+  // Fix Loop Events (PDCA: Adjust)
+  // ============================================================================
+
+  export const FixStarted = BusEvent.define(
+    "autonomous.fix.started",
+    z.object({
+      sessionId: z.string(),
+      issueCount: z.number(),
+      triggerSource: z.enum(["acceptance", "manual", "test_failure"]),
+    }),
+  )
+
+  export const FixPhaseChanged = BusEvent.define(
+    "autonomous.fix.phase_changed",
+    z.object({
+      sessionId: z.string(),
+      phase: z.enum([
+        "issue_analysis",
+        "strategy_selection",
+        "fix_execution",
+        "fix_verification",
+        "learning",
+      ]),
+      metadata: z.record(z.string(), z.any()).optional(),
+    }),
+  )
+
+  export const FixAttemptMade = BusEvent.define(
+    "autonomous.fix.attempt_made",
+    z.object({
+      sessionId: z.string(),
+      issueId: z.string(),
+      strategy: z.enum(["auto_fix", "agent_fix", "llm_generate", "evolution"]),
+      success: z.boolean(),
+      durationMs: z.number(),
+      error: z.string().optional(),
+    }),
+  )
+
+  export const FixCompleted = BusEvent.define(
+    "autonomous.fix.completed",
+    z.object({
+      sessionId: z.string(),
+      success: z.boolean(),
+      fixedCount: z.number(),
+      remainingCount: z.number(),
+      shouldRecheck: z.boolean(),
+      durationMs: z.number(),
+    }),
+  )
+
+  export const FixFailed = BusEvent.define(
+    "autonomous.fix.failed",
+    z.object({
+      sessionId: z.string(),
+      error: z.string(),
+      attemptsMade: z.number(),
+      retryable: z.boolean(),
+    }),
+  )
+
+  export const FixPatternLearned = BusEvent.define(
+    "autonomous.fix.pattern_learned",
+    z.object({
+      sessionId: z.string(),
+      patternId: z.string(),
+      issueType: z.string(),
+      strategy: z.string(),
+      confidence: z.number(),
+    }),
+  )
 }
 
 const BusPromise = import("@/bus").then((m) => m.Bus)
