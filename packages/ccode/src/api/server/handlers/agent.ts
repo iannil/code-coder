@@ -125,6 +125,7 @@ export async function invokeAgent(req: HttpRequest, _params: RouteParams): Promi
           sessionId,
           messageId: result.messageID,
           agent: input.agent,
+          content: result.content,
         },
       },
       201,

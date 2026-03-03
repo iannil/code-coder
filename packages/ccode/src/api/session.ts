@@ -119,8 +119,15 @@ export namespace LocalSession {
       parts: input.parts as any,
     })
     // result is either a message ID or a MessageV2.WithParts object
-    const messageID = typeof result === "string" ? result : result.info.id
-    return { messageID }
+    if (typeof result === "string") {
+      return { messageID: result }
+    }
+    // Extract text content from assistant message parts
+    const textParts = result.parts
+      .filter((p) => p.type === "text" && "text" in p)
+      .map((p) => (p as { type: "text"; text: string }).text)
+    const content = textParts.join("\n")
+    return { messageID: result.info.id, content }
   }
 
   export type CommandInput = {

@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/DropdownMenu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/Tooltip"
 import { useToast } from "@/hooks/use-toast"
+import { useUserId } from "@/hooks/use-user-id"
 import { api } from "@/lib/api"
 import type { RegistryAgentMetadata, AgentRecommendation } from "@/lib/types"
 
@@ -143,6 +144,7 @@ function Message({ message }: MessageProps) {
 
 export function Chat() {
   const { toast } = useToast()
+  const userId = useUserId()
 
   const [messages, setMessages] = React.useState<ChatMessage[]>([])
   const [input, setInput] = React.useState("")
@@ -237,7 +239,7 @@ export function Chat() {
         message: trimmedInput,
         conversation_id: conversationId,
         agent: targetAgent,
-        user_id: "web-user", // TODO: Get from auth context
+        user_id: userId,
         channel: "web",
       })
 

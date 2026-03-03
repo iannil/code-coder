@@ -339,7 +339,8 @@ export namespace ProviderTransform {
         if (!model.id.includes("gpt") && !model.id.includes("gemini-3")) return {}
         return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoning: { effort } }]))
 
-      // TODO: YOU CANNOT SET max_tokens if this is set!!!
+      // Gateway provider: reasoningEffort is handled internally by the SDK
+      // Important: When reasoningEffort is set, max_tokens must NOT be set (see maxOutputTokens function)
       case "@ai-sdk/gateway":
         return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
 
@@ -649,7 +650,14 @@ export namespace ProviderTransform {
     options: Record<string, any>,
     modelLimit: number,
     globalLimit: number,
-  ): number {
+  ): number | undefined {
+    // @ai-sdk/gateway: Cannot set max_tokens when reasoningEffort is set
+    // OpenAI reasoning models (o1, o3, etc.) use max_completion_tokens internally
+    // and setting both parameters causes API errors
+    if (npm === "@ai-sdk/gateway" && options?.["reasoningEffort"] !== undefined) {
+      return undefined
+    }
+
     const modelCap = modelLimit || globalLimit
     let standardLimit = Math.min(modelCap, globalLimit)
 

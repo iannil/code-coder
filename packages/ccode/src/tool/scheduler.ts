@@ -31,6 +31,8 @@ const TaskCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("agent"),
     agentName: z.string().describe("The agent to invoke (e.g., 'macro', 'trader', 'picker')"),
     prompt: z.string().describe("The prompt to send to the agent"),
+    callbackChannelType: z.string().optional().describe("Callback channel type for sending results back to IM"),
+    callbackChannelId: z.string().optional().describe("Callback channel ID for sending results back to IM"),
   }),
   z.object({
     type: z.literal("api"),
@@ -146,10 +148,21 @@ export const SchedulerCreateTaskTool = Tool.define("scheduler_create_task", {
       },
     })
 
+    // Auto-detect channel info from context for agent task callbacks
+    const autoChannelType = ctx.extra?.channelType as string | undefined
+    const autoChannelId = ctx.extra?.channelId as string | undefined
+
     // Determine command type based on provided parameters
     let command: TaskCommand
     if (params.agentName && params.prompt) {
-      command = { type: "agent", agentName: params.agentName, prompt: params.prompt }
+      // Agent task - automatically include callback channel info from context
+      command = {
+        type: "agent",
+        agentName: params.agentName,
+        prompt: params.prompt,
+        callbackChannelType: autoChannelType,
+        callbackChannelId: autoChannelId,
+      }
     } else if (params.endpoint && params.method) {
       command = { type: "api", endpoint: params.endpoint, method: params.method }
     } else if (params.shellCommand) {
@@ -459,7 +472,14 @@ export const SchedulerDelayTaskTool = Tool.define("scheduler_delay_task", {
       // Simple message shortcut without channel context - creates local session only
       command = { type: "agent", agentName: "general", prompt: params.message }
     } else if (params.agentName && params.prompt) {
-      command = { type: "agent", agentName: params.agentName, prompt: params.prompt }
+      // Agent task - automatically include callback channel info from context so results are sent back to IM
+      command = {
+        type: "agent",
+        agentName: params.agentName,
+        prompt: params.prompt,
+        callbackChannelType: autoChannelType,
+        callbackChannelId: autoChannelId,
+      }
     } else if (params.endpoint && params.method) {
       command = { type: "api", endpoint: params.endpoint, method: params.method }
     } else if (params.shellCommand) {

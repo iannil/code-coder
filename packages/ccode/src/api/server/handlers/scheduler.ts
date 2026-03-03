@@ -39,6 +39,8 @@ export const TaskCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("agent"),
     agentName: z.string(),
     prompt: z.string(),
+    callbackChannelType: z.string().optional(),
+    callbackChannelId: z.string().optional(),
   }),
   z.object({
     type: z.literal("api"),
@@ -193,7 +195,13 @@ async function fetchWorkflowService<T>(
 function serializeCommand(cmd: TaskCommand): string {
   switch (cmd.type) {
     case "agent":
-      return JSON.stringify({ type: "agent", agent: cmd.agentName, prompt: cmd.prompt })
+      return JSON.stringify({
+        type: "agent",
+        agent: cmd.agentName,
+        prompt: cmd.prompt,
+        callback_channel_type: cmd.callbackChannelType,
+        callback_channel_id: cmd.callbackChannelId,
+      })
     case "api":
       return JSON.stringify({ type: "api", endpoint: cmd.endpoint, method: cmd.method, body: cmd.body })
     case "channel_message":
@@ -210,7 +218,13 @@ function parseCommand(commandStr: string): TaskCommand {
   try {
     const parsed = JSON.parse(commandStr)
     if (parsed.type === "agent") {
-      return { type: "agent", agentName: parsed.agent, prompt: parsed.prompt }
+      return {
+        type: "agent",
+        agentName: parsed.agent,
+        prompt: parsed.prompt,
+        callbackChannelType: parsed.callback_channel_type,
+        callbackChannelId: parsed.callback_channel_id,
+      }
     }
     if (parsed.type === "api") {
       return { type: "api", endpoint: parsed.endpoint, method: parsed.method, body: parsed.body }

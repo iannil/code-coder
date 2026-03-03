@@ -1685,3 +1685,110 @@ export interface DlpSummary {
     count: number
   }>
 }
+
+// ============================================================================
+// Scheduler Types (Scheduled Task Management)
+// ============================================================================
+
+export type SchedulerTaskCommandType = "agent" | "api" | "shell" | "channel_message"
+
+export interface SchedulerTaskCommandAgent {
+  type: "agent"
+  agentName: string
+  prompt: string
+  callbackChannelType?: string
+  callbackChannelId?: string
+}
+
+export interface SchedulerTaskCommandApi {
+  type: "api"
+  endpoint: string
+  method: "GET" | "POST" | "PUT" | "DELETE"
+  body?: Record<string, unknown>
+}
+
+export interface SchedulerTaskCommandShell {
+  type: "shell"
+  command: string
+}
+
+export interface SchedulerTaskCommandChannelMessage {
+  type: "channel_message"
+  channelType: string
+  channelId: string
+  message: string
+}
+
+export type SchedulerTaskCommand =
+  | SchedulerTaskCommandAgent
+  | SchedulerTaskCommandApi
+  | SchedulerTaskCommandShell
+  | SchedulerTaskCommandChannelMessage
+
+export interface SchedulerTask {
+  id: string
+  name?: string
+  description?: string
+  expression: string
+  command: SchedulerTaskCommand
+  enabled: boolean
+  nextRun?: string
+  lastRun?: string
+  lastStatus?: "ok" | "error"
+  lastOutput?: string
+}
+
+export interface SchedulerTaskCreateInput {
+  id: string
+  name?: string
+  description?: string
+  expression: string
+  command: SchedulerTaskCommand
+  enabled?: boolean
+}
+
+export interface SchedulerTaskUpdateInput {
+  name?: string
+  description?: string
+  expression?: string
+  command?: SchedulerTaskCommand
+  enabled?: boolean
+}
+
+export interface SchedulerExecutionHistory {
+  id: string
+  taskId: string
+  startedAt: string
+  endedAt?: string
+  status: "ok" | "error" | "running"
+  output?: string
+  error?: string
+}
+
+export interface SchedulerConfig {
+  enabled: boolean
+  defaultTimeZone: string
+  maxConcurrentTasks: number
+  retryOnFailure: boolean
+  maxRetries: number
+  retryDelaySeconds: number
+}
+
+export interface SchedulerHealth {
+  status: string
+  rustService: string
+  tasksCount: number
+  historyCount: number
+  config: {
+    enabled: boolean
+    maxConcurrentTasks: number
+  }
+}
+
+export interface SchedulerRunResult {
+  executionId: string
+  taskId: string
+  status: "ok" | "error"
+  output?: string
+  error?: string
+}

@@ -106,6 +106,14 @@ import type {
   KnowledgeSearchRequest,
   KnowledgeSearchResponse,
   KnowledgeHealthResponse,
+  // Scheduler Types
+  SchedulerTask,
+  SchedulerTaskCreateInput,
+  SchedulerTaskUpdateInput,
+  SchedulerExecutionHistory,
+  SchedulerConfig,
+  SchedulerHealth,
+  SchedulerRunResult,
 } from "./types"
 
 // ============================================================================
@@ -1450,6 +1458,92 @@ export class ApiClient {
   async searchKnowledge(input: KnowledgeSearchRequest): Promise<KnowledgeSearchResponse> {
     return this.post<KnowledgeSearchResponse>("/v1/knowledge/search", input)
   }
+
+  // ========================================================================
+  // Scheduler (Scheduled Task Management)
+  // ========================================================================
+
+  /**
+   * List all scheduled tasks
+   */
+  async listSchedulerTasks(): Promise<SchedulerTask[]> {
+    return this.get<SchedulerTask[]>("/v1/scheduler/tasks")
+  }
+
+  /**
+   * Get a specific scheduled task
+   */
+  async getSchedulerTask(id: string): Promise<SchedulerTask> {
+    return this.get<SchedulerTask>(`/v1/scheduler/tasks/${id}`)
+  }
+
+  /**
+   * Create a new scheduled task
+   */
+  async createSchedulerTask(input: SchedulerTaskCreateInput): Promise<{ id: string }> {
+    return this.post<{ id: string }>("/v1/scheduler/tasks", input)
+  }
+
+  /**
+   * Update a scheduled task
+   */
+  async updateSchedulerTask(id: string, input: SchedulerTaskUpdateInput): Promise<{ id: string }> {
+    return this.put<{ id: string }>(`/v1/scheduler/tasks/${id}`, input)
+  }
+
+  /**
+   * Delete a scheduled task
+   */
+  async deleteSchedulerTask(id: string): Promise<{ deleted: boolean }> {
+    return this.delete<{ deleted: boolean }>(`/v1/scheduler/tasks/${id}`)
+  }
+
+  /**
+   * Manually run a scheduled task
+   */
+  async runSchedulerTask(id: string): Promise<SchedulerRunResult> {
+    return this.post<SchedulerRunResult>(`/v1/scheduler/tasks/${id}/run`)
+  }
+
+  /**
+   * Get execution history
+   */
+  async getSchedulerHistory(options?: { limit?: number; taskId?: string }): Promise<SchedulerExecutionHistory[]> {
+    const params = new URLSearchParams()
+    if (options?.limit) params.append("limit", String(options.limit))
+    if (options?.taskId) params.append("taskId", options.taskId)
+    const queryString = params.toString()
+    const path = queryString ? `/v1/scheduler/history?${queryString}` : "/v1/scheduler/history"
+    return this.get<SchedulerExecutionHistory[]>(path)
+  }
+
+  /**
+   * Get a specific execution
+   */
+  async getSchedulerExecution(id: string): Promise<SchedulerExecutionHistory> {
+    return this.get<SchedulerExecutionHistory>(`/v1/scheduler/history/${id}`)
+  }
+
+  /**
+   * Get scheduler configuration
+   */
+  async getSchedulerConfig(): Promise<SchedulerConfig> {
+    return this.get<SchedulerConfig>("/v1/scheduler/config")
+  }
+
+  /**
+   * Update scheduler configuration
+   */
+  async updateSchedulerConfig(config: Partial<SchedulerConfig>): Promise<SchedulerConfig> {
+    return this.put<SchedulerConfig>("/v1/scheduler/config", config)
+  }
+
+  /**
+   * Get scheduler health status
+   */
+  async getSchedulerHealth(): Promise<SchedulerHealth> {
+    return this.get<SchedulerHealth>("/v1/scheduler/health")
+  }
 }
 
 // ============================================================================
@@ -1658,4 +1752,18 @@ export const api = {
   uploadKnowledge: (input: KnowledgeUploadRequest) => getClient().uploadKnowledge(input),
   deleteKnowledgeDoc: (id: string) => getClient().deleteKnowledgeDoc(id),
   searchKnowledge: (input: KnowledgeSearchRequest) => getClient().searchKnowledge(input),
+  // Scheduler APIs
+  listSchedulerTasks: () => getClient().listSchedulerTasks(),
+  getSchedulerTask: (id: string) => getClient().getSchedulerTask(id),
+  createSchedulerTask: (input: SchedulerTaskCreateInput) => getClient().createSchedulerTask(input),
+  updateSchedulerTask: (id: string, input: SchedulerTaskUpdateInput) =>
+    getClient().updateSchedulerTask(id, input),
+  deleteSchedulerTask: (id: string) => getClient().deleteSchedulerTask(id),
+  runSchedulerTask: (id: string) => getClient().runSchedulerTask(id),
+  getSchedulerHistory: (options?: { limit?: number; taskId?: string }) =>
+    getClient().getSchedulerHistory(options),
+  getSchedulerExecution: (id: string) => getClient().getSchedulerExecution(id),
+  getSchedulerConfig: () => getClient().getSchedulerConfig(),
+  updateSchedulerConfig: (config: Partial<SchedulerConfig>) => getClient().updateSchedulerConfig(config),
+  getSchedulerHealth: () => getClient().getSchedulerHealth(),
 }

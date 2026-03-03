@@ -830,6 +830,143 @@ fn truncate_diff(diff: &str, max_len: usize) -> String {
     format!("{}\n\n... [diff truncated, {} more characters]", truncated, diff.len() - max_len)
 }
 
+/// Parse findings from review response.
+/// Extracts file paths, line numbers, and severity levels from structured review text.
+fn parse_findings(response: &str) -> Vec<ReviewFinding> {
+    use regex::Regex;
+
+    let mut findings = Vec::new();
+
+    // Patterns to match file:line references
+    // 1. "filename.rs:42:" or "filename.rs:42 -"
+    // 2. "**filename.rs:42**" (markdown bold)
+    // 3. "`filename.rs:42`" (inline code)
+    let file_line_pattern = Regex::new(
+        r"(?x)
+        (?:\*\*|`)?          # Optional markdown formatting start
+        ([a-zA-Z0-9_\-./]+)  # Filename (group 1)
+        :(\d+)               # Line number (group 2)
+        (?:\*\*|`)?          # Optional markdown formatting end
+        (?::\s*|\s*[-–—]\s*) # Separator (colon or dash)
+        (.+)                 # Description (group 3)
+        "
+    ).ok();
+
+    // Alternative pattern: "Line 42 in filename.rs: description"
+    let line_in_pattern = Regex::new(
+        r"(?i)line\s+(\d+)\s+in\s+([a-zA-Z0-9_\-./]+)\s*[:–—-]\s*(.+)"
+    ).ok();
+
+    for line in response.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        // Try file:line pattern first
+        if let Some(ref re) = file_line_pattern {
+            if let Some(caps) = re.captures(trimmed) {
+                let file = caps.get(1).map(|m| m.as_str().to_string());
+                let line_num = caps.get(2).and_then(|m| m.as_str().parse::<i64>().ok());
+                let desc = caps.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+
+                if !desc.is_empty() {
+                    findings.push(ReviewFinding {
+                        severity: detect_severity(&desc),
+                        file,
+                        line: line_num,
+                        description: desc,
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // Try "Line X in file" pattern
+        if let Some(ref re) = line_in_pattern {
+            if let Some(caps) = re.captures(trimmed) {
+                let line_num = caps.get(1).and_then(|m| m.as_str().parse::<i64>().ok());
+                let file = caps.get(2).map(|m| m.as_str().to_string());
+                let desc = caps.get(3).map(|m| m.as_str().trim().to_string()).unwrap_or_default();
+
+                if !desc.is_empty() {
+                    findings.push(ReviewFinding {
+                        severity: detect_severity(&desc),
+                        file,
+                        line: line_num,
+                        description: desc,
+                    });
+                    continue;
+                }
+            }
+        }
+
+        // Check for bullet points with severity markers (e.g., "- [HIGH] ...")
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") || trimmed.starts_with("• ") {
+            let content = &trimmed[2..].trim();
+            let severity = detect_severity(content);
+
+            // Only add if it looks like an actionable finding
+            if content.len() > 10 && (
+                severity != FindingSeverity::Info ||
+                content.to_lowercase().contains("issue") ||
+                content.to_lowercase().contains("bug") ||
+                content.to_lowercase().contains("error") ||
+                content.to_lowercase().contains("missing") ||
+                content.to_lowercase().contains("should")
+            ) {
+                findings.push(ReviewFinding {
+                    severity,
+                    file: None,
+                    line: None,
+                    description: content.to_string(),
+                });
+            }
+        }
+    }
+
+    findings
+}
+
+/// Detect severity level from text content.
+fn detect_severity(text: &str) -> FindingSeverity {
+    let lower = text.to_lowercase();
+
+    // Check for explicit markers first
+    if lower.contains("[critical]") || lower.starts_with("critical:") {
+        return FindingSeverity::Critical;
+    }
+    if lower.contains("[high]") || lower.starts_with("high:") {
+        return FindingSeverity::High;
+    }
+    if lower.contains("[medium]") || lower.starts_with("medium:") {
+        return FindingSeverity::Medium;
+    }
+    if lower.contains("[low]") || lower.starts_with("low:") {
+        return FindingSeverity::Low;
+    }
+    if lower.contains("[info]") || lower.starts_with("info:") {
+        return FindingSeverity::Info;
+    }
+
+    // Infer from keywords
+    if lower.contains("critical") || lower.contains("security vulnerability") || lower.contains("sql injection") {
+        return FindingSeverity::Critical;
+    }
+    if lower.contains("must be fixed") || lower.contains("bug") || lower.contains("error") {
+        return FindingSeverity::High;
+    }
+    if lower.contains("should") || lower.contains("consider") || lower.contains("recommend") {
+        return FindingSeverity::Medium;
+    }
+    if lower.contains("minor") || lower.contains("optional") || lower.contains("nit") {
+        return FindingSeverity::Low;
+    }
+
+    // Default to Medium for unclassified findings
+    FindingSeverity::Medium
+}
+
 /// Parse review response from CodeCoder.
 fn parse_review_response(response: &str) -> CodeReview {
     // Simple parsing - extract summary (first paragraph) and verdict
@@ -857,8 +994,8 @@ fn parse_review_response(response: &str) -> CodeReview {
         ReviewVerdict::Comment
     };
 
-    // TODO: Parse specific findings with file/line info
-    let findings = vec![];
+    // Parse specific findings with file/line info
+    let findings = parse_findings(response);
 
     CodeReview {
         summary: if summary.is_empty() {

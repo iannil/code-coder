@@ -494,6 +494,12 @@ enum CronCommand {
     Agent {
         agent: String,
         prompt: String,
+        /// Optional callback channel type for sending results back to IM (e.g., "telegram")
+        #[serde(default)]
+        callback_channel_type: Option<String>,
+        /// Optional callback channel ID for sending results back to IM
+        #[serde(default)]
+        callback_channel_id: Option<String>,
     },
     /// Make an HTTP API call
     Api {
@@ -526,8 +532,8 @@ async fn execute_cron_command(command_str: &str, codecoder_endpoint: &str, chann
     // Try to parse as JSON command
     if let Ok(cmd) = serde_json::from_str::<CronCommand>(command_str) {
         match cmd {
-            CronCommand::Agent { agent, prompt } => {
-                execute_agent_command(&agent, &prompt, codecoder_endpoint).await
+            CronCommand::Agent { agent, prompt, callback_channel_type, callback_channel_id } => {
+                execute_agent_command(&agent, &prompt, callback_channel_type.as_deref(), callback_channel_id.as_deref(), codecoder_endpoint, channels_endpoint).await
             }
             CronCommand::Api { endpoint, method, body } => {
                 execute_api_command(&endpoint, &method, body).await
@@ -546,7 +552,15 @@ async fn execute_cron_command(command_str: &str, codecoder_endpoint: &str, chann
 }
 
 /// Execute an agent command by calling the CodeCoder API.
-async fn execute_agent_command(agent: &str, prompt: &str, codecoder_endpoint: &str) -> anyhow::Result<String> {
+/// If callback_channel_type and callback_channel_id are provided, sends the result back to the IM channel.
+async fn execute_agent_command(
+    agent: &str,
+    prompt: &str,
+    callback_channel_type: Option<&str>,
+    callback_channel_id: Option<&str>,
+    codecoder_endpoint: &str,
+    channels_endpoint: &str,
+) -> anyhow::Result<String> {
     use std::time::Duration;
 
     tracing::info!(agent = %agent, prompt_len = prompt.len(), "Executing agent command");
@@ -599,12 +613,42 @@ async fn execute_agent_command(agent: &str, prompt: &str, codecoder_endpoint: &s
         .and_then(|s| s.as_str())
         .unwrap_or("unknown");
 
+    // Extract agent response content for callback
+    let response_content = result.get("data")
+        .and_then(|d| d.get("content"))
+        .and_then(|c| c.as_str())
+        .unwrap_or("");
+
     tracing::info!(
         agent = %agent,
         session_id = %session_id,
         message_id = %message_id,
+        has_callback = callback_channel_type.is_some() && callback_channel_id.is_some(),
         "Agent command completed"
     );
+
+    // If callback channel is configured, send the result back to IM
+    if let (Some(ch_type), Some(ch_id)) = (callback_channel_type, callback_channel_id) {
+        if !response_content.is_empty() {
+            tracing::info!(
+                channel_type = %ch_type,
+                channel_id = %ch_id,
+                content_len = response_content.len(),
+                "Sending agent result to callback channel"
+            );
+
+            if let Err(e) = execute_channel_message_command(ch_type, ch_id, response_content, channels_endpoint).await {
+                tracing::warn!(
+                    error = %e,
+                    channel_type = %ch_type,
+                    channel_id = %ch_id,
+                    "Failed to send callback message to IM channel"
+                );
+            }
+        } else {
+            tracing::debug!("Agent response content is empty, skipping callback");
+        }
+    }
 
     Ok(format!("Agent '{}' executed successfully. Session: {}, Message: {}", agent, session_id, message_id))
 }

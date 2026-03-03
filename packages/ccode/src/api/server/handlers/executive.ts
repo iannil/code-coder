@@ -16,9 +16,50 @@ import { jsonResponse, errorResponse } from "../middleware"
 import { spawn } from "child_process"
 import path from "path"
 import { ConfigManager } from "@codecoder-ai/util/config"
+import { Project } from "@/project/project"
+import { Session } from "@/session"
 
 // Use config manager for endpoint
 const configManager = new ConfigManager()
+
+// ============================================================================
+// Project & Session Count Helpers
+// ============================================================================
+
+/**
+ * Get count of active projects.
+ * A project is considered "active" if it was updated in the last 30 days.
+ */
+async function getActiveProjectCount(): Promise<number> {
+  try {
+    const projects = await Project.list()
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000
+    return projects.filter((p) => p.time.updated > thirtyDaysAgo).length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * Get count of recent AI sessions for a project.
+ * Sessions updated in the last 24 hours are counted.
+ */
+async function getRecentSessionCount(projectPath?: string): Promise<number> {
+  try {
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
+    let count = 0
+    for await (const session of Session.list()) {
+      if (session.time.updated > oneDayAgo) {
+        // If projectPath specified, only count sessions for that project
+        if (projectPath && session.directory !== projectPath) continue
+        count++
+      }
+    }
+    return count
+  } catch {
+    return 0
+  }
+}
 
 // ============================================================================
 // Types
@@ -271,7 +312,7 @@ async function generateSummaryFromMetering(period: "daily" | "weekly" | "monthly
     total_tokens: tokensUsed,
     total_requests: requestsUsed,
     active_users: metering.active_users_24h,
-    active_projects: 4, // TODO: Integrate with project tracking
+    active_projects: await getActiveProjectCount(),
     top_models: [
       { model: "claude-sonnet-4", usage_percent: 65, cost_usd: parseFloat((totalCost * 0.65).toFixed(2)) },
       { model: "gpt-4o", usage_percent: 20, cost_usd: parseFloat((totalCost * 0.2).toFixed(2)) },
@@ -447,11 +488,12 @@ async function fetchGitActivityData(): Promise<ProjectActivity[]> {
     for (const project of TRACKED_PROJECTS) {
       const fullPath = path.join(repoRoot, project.path)
 
-      const [commitsToday, commitsWeek, contributors, lastCommit] = await Promise.all([
+      const [commitsToday, commitsWeek, contributors, lastCommit, aiSessions] = await Promise.all([
         countCommitsSince(repoRoot, project.path, todayStart),
         countCommitsSince(repoRoot, project.path, weekAgo),
         getContributorsSince(repoRoot, project.path, weekAgo),
         getLastCommitTime(repoRoot, project.path),
+        getRecentSessionCount(fullPath),
       ])
 
       results.push({
@@ -461,7 +503,7 @@ async function fetchGitActivityData(): Promise<ProjectActivity[]> {
         commits_week: commitsWeek,
         active_contributors: contributors,
         last_commit: lastCommit,
-        ai_sessions: 0, // TODO: Integrate with session tracking
+        ai_sessions: aiSessions,
       })
     }
 
@@ -616,7 +658,7 @@ function generateSummary(period: "daily" | "weekly" | "monthly"): ExecutiveSumma
     total_tokens: Math.floor(4500000 * multiplier),
     total_requests: Math.floor(800 * multiplier),
     active_users: 12,
-    active_projects: 4,
+    active_projects: TRACKED_PROJECTS.length, // Use actual tracked project count
     top_models: [
       { model: "claude-sonnet-4", usage_percent: 65, cost_usd: parseFloat((totalCost * 0.65).toFixed(2)) },
       { model: "gpt-4o", usage_percent: 20, cost_usd: parseFloat((totalCost * 0.2).toFixed(2)) },

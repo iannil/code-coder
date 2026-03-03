@@ -15,7 +15,7 @@ use crate::debug::{self, AgentUsage, DebugContext, ModelUsage};
 use crate::message::{ChannelMessage, ChannelType, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::safe_truncate;
-use crate::sse::{AgentInfoData, DebugInfoData, FinishData, ProgressData, QuestionData, SkillUseData, TaskEvent, ToolUseData};
+use crate::sse::{AgentInfoData, ConfirmationData, DebugInfoData, FinishData, ProgressData, QuestionData, SkillUseData, TaskEvent, ToolUseData};
 use crate::telegram::{InlineButton, TelegramChannel};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -58,6 +58,9 @@ pub trait ProgressHandler: Send + Sync {
 
     /// Called when AI asks user a question.
     async fn on_question(&self, msg: &ChannelMessage, event: &QuestionData) -> Result<()>;
+
+    /// Called when a confirmation is required (tool approval).
+    async fn on_confirmation(&self, msg: &ChannelMessage, event: &ConfirmationData) -> Result<()>;
 
     /// Called when task completes (success or failure).
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()>;
@@ -1350,6 +1353,115 @@ impl ProgressHandler for ImProgressHandler {
         Ok(())
     }
 
+    async fn on_confirmation(&self, msg: &ChannelMessage, event: &ConfirmationData) -> Result<()> {
+        tracing::info!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            request_id = %event.request_id,
+            tool = %event.tool,
+            actions_count = event.actions.len(),
+            "Confirmation event received"
+        );
+
+        // Build confirmation message
+        let tool_info = format!("🔧 **Tool**: `{}`", event.tool);
+        let desc = format!("📋 {}", event.description);
+
+        // Format args for display (truncate if too long)
+        let args_preview = {
+            let args_str = serde_json::to_string_pretty(&event.args).unwrap_or_default();
+            if args_str.len() > 500 {
+                format!("```json\n{}...\n```", &args_str[..500])
+            } else if !args_str.is_empty() && args_str != "{}" {
+                format!("```json\n{}\n```", args_str)
+            } else {
+                String::new()
+            }
+        };
+
+        let confirmation_text = if args_preview.is_empty() {
+            format!("⚠️ **确认执行操作**\n\n{}\n{}", tool_info, desc)
+        } else {
+            format!("⚠️ **确认执行操作**\n\n{}\n{}\n\n{}", tool_info, desc, args_preview)
+        };
+
+        // For Telegram, send with inline buttons
+        if msg.channel_type == ChannelType::Telegram {
+            // Build buttons from available actions
+            let buttons: Vec<InlineButton> = event.actions.iter().map(|action| {
+                // Callback data format: "c:{request_id}:{action}"
+                let callback_data = format!("c:{}:{}", event.request_id, action);
+                let label = match action.as_str() {
+                    "approve" | "once" => "✅ 批准",
+                    "always" => "✅ 始终批准",
+                    "reject" => "❌ 拒绝",
+                    _ => action.as_str(),
+                };
+                InlineButton::new(label, callback_data)
+            }).collect();
+
+            if let Some(ref telegram) = self.telegram {
+                if let Err(e) = telegram.send_with_inline_keyboard(
+                    &msg.channel_id,
+                    &confirmation_text,
+                    vec![buttons],
+                ).await {
+                    tracing::warn!(
+                        message_id = %msg.id,
+                        error = %e,
+                        "Failed to send confirmation with inline keyboard"
+                    );
+                    // Fallback to text-based confirmation
+                    let fallback = format!(
+                        "{}\n\n请回复以下命令之一：\n{}",
+                        confirmation_text,
+                        event.actions.iter()
+                            .map(|a| format!("/confirm_{} {}", a, event.request_id))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+                    let _ = self.router.send_direct(
+                        msg.channel_type,
+                        msg.channel_id.clone(),
+                        OutgoingContent::Text { text: fallback },
+                    ).await;
+                }
+            } else {
+                // No Telegram client, use text fallback
+                let fallback = format!(
+                    "{}\n\n请回复以下命令之一：\n{}",
+                    confirmation_text,
+                    event.actions.iter()
+                        .map(|a| format!("/confirm_{} {}", a, event.request_id))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+                let _ = self.router.send_direct(
+                    msg.channel_type,
+                    msg.channel_id.clone(),
+                    OutgoingContent::Text { text: fallback },
+                ).await;
+            }
+        } else {
+            // Non-Telegram: send as formatted text with command options
+            let text = format!(
+                "{}\n\n可用操作：\n{}",
+                confirmation_text,
+                event.actions.iter()
+                    .map(|a| format!("• {} - 回复 /confirm_{} {}", a, a, event.request_id))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+            let _ = self.router.send_direct(
+                msg.channel_type,
+                msg.channel_id.clone(),
+                OutgoingContent::Text { text },
+            ).await;
+        }
+
+        Ok(())
+    }
+
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()> {
         tracing::debug!(
             message_id = %msg.id,
@@ -1596,13 +1708,9 @@ impl ImProgressHandler {
                 self.on_question(msg, &data).await?;
                 Ok(false) // Question pauses but doesn't finish
             }
-            TaskEvent::Confirmation(_) => {
-                // TODO: Implement confirmation handling via inline buttons
-                tracing::warn!(
-                    message_id = %msg.id,
-                    "Confirmation requests not yet implemented in streaming mode"
-                );
-                Ok(false)
+            TaskEvent::Confirmation(data) => {
+                self.on_confirmation(msg, &data).await?;
+                Ok(false) // Confirmation pauses but doesn't finish
             }
         };
 

@@ -10,6 +10,8 @@
 import { create } from "zustand"
 import { useShallow } from "zustand/react/shallow"
 import type { CronJob, CronHistory } from "@/lib/types"
+import { api } from "@/lib/api"
+import type { SchedulerTask, SchedulerTaskCommand, SchedulerExecutionHistory } from "@/lib/types"
 
 // ============================================================================
 // Types
@@ -27,6 +29,7 @@ interface CronState {
 interface CronActions {
   fetchJobs: () => Promise<void>
   createJob: (job: Omit<CronJob, "id" | "nextRun" | "lastRun" | "lastStatus">) => Promise<void>
+  updateJob: (id: string, updates: Partial<Pick<CronJob, "name" | "expression" | "command" | "enabled">>) => Promise<void>
   deleteJob: (id: string) => Promise<void>
   toggleJob: (id: string) => Promise<void>
   runJob: (id: string) => Promise<void>
@@ -36,68 +39,85 @@ interface CronActions {
 type CronStore = CronState & CronActions
 
 // ============================================================================
-// Mock Data (replace with actual API calls when backend is ready)
+// Transform Helpers
 // ============================================================================
 
-const MOCK_JOBS: CronJob[] = [
-  {
-    id: "1",
-    name: "Daily Backup",
-    expression: "0 2 * * *",
-    command: "backup-memory",
-    enabled: true,
-    nextRun: Date.now() + 3600000 * 8,
-    lastRun: Date.now() - 3600000 * 16,
-    lastStatus: "success",
-  },
-  {
-    id: "2",
-    name: "Weekly Report",
-    expression: "0 9 * * 1",
-    command: "generate-report",
-    enabled: true,
-    nextRun: Date.now() + 3600000 * 24 * 3,
-    lastRun: Date.now() - 3600000 * 24 * 4,
-    lastStatus: "success",
-  },
-  {
-    id: "3",
-    name: "Health Check",
-    expression: "*/15 * * * *",
-    command: "health-check --all",
-    enabled: false,
-    lastRun: Date.now() - 3600000,
-    lastStatus: "failed",
-    lastError: "Connection timeout",
-  },
-]
+/**
+ * Transform SchedulerTask to CronJob format
+ */
+function toCronJob(task: SchedulerTask): CronJob {
+  const command =
+    task.command.type === "shell"
+      ? task.command.command
+      : task.command.type === "agent"
+        ? `agent:${task.command.agentName}`
+        : JSON.stringify(task.command)
 
-const MOCK_HISTORY: CronHistory[] = [
-  {
-    id: "h1",
-    jobId: "1",
-    jobName: "Daily Backup",
-    startTime: Date.now() - 3600000 * 16,
-    endTime: Date.now() - 3600000 * 16 + 45000,
-    status: "success",
-    output: "Backup completed: 256 files, 1.2GB",
-  },
-  {
-    id: "h2",
-    jobId: "3",
-    jobName: "Health Check",
-    startTime: Date.now() - 3600000,
-    endTime: Date.now() - 3600000 + 30000,
-    status: "failed",
-    error: "Connection timeout",
-  },
-]
+  return {
+    id: task.id,
+    name: task.name || task.id,
+    expression: task.expression,
+    command,
+    enabled: task.enabled,
+    nextRun: task.nextRun ? new Date(task.nextRun).getTime() : undefined,
+    lastRun: task.lastRun ? new Date(task.lastRun).getTime() : undefined,
+    lastStatus: task.lastStatus === "ok" ? "success" : task.lastStatus === "error" ? "failed" : undefined,
+    lastError: task.lastOutput,
+  }
+}
+
+/**
+ * Transform shell command string to SchedulerTaskCommand
+ */
+function toTaskCommand(command: string): SchedulerTaskCommand {
+  // Check if it's an agent command (agent:agentName format)
+  if (command.startsWith("agent:")) {
+    return {
+      type: "agent",
+      agentName: command.slice(6),
+      prompt: "",
+    }
+  }
+
+  // Try to parse as JSON for complex commands
+  try {
+    const parsed = JSON.parse(command)
+    if (parsed.type && ["agent", "api", "channel_message"].includes(parsed.type)) {
+      return parsed as SchedulerTaskCommand
+    }
+  } catch {
+    // Not JSON, treat as shell command
+  }
+
+  return {
+    type: "shell",
+    command,
+  }
+}
+
+/**
+ * Transform SchedulerExecutionHistory to CronHistory format
+ */
+function toCronHistory(exec: SchedulerExecutionHistory, jobs: CronJob[]): CronHistory {
+  const job = jobs.find((j) => j.id === exec.taskId)
+
+  return {
+    id: exec.id,
+    jobId: exec.taskId,
+    jobName: job?.name || exec.taskId,
+    startTime: new Date(exec.startedAt).getTime(),
+    endTime: exec.endedAt ? new Date(exec.endedAt).getTime() : undefined,
+    status: exec.status === "ok" ? "success" : exec.status === "error" ? "failed" : "running",
+    output: exec.output,
+    error: exec.error,
+  }
+}
 
 // ============================================================================
 // Store
 // ============================================================================
 
-export const useCronStore = create<CronStore>((set) => ({
+export const useCronStore = create<CronStore>((set, get) => ({
   // Initial State
   jobs: [],
   history: [],
@@ -110,9 +130,9 @@ export const useCronStore = create<CronStore>((set) => ({
   fetchJobs: async () => {
     set({ isLoading: true, error: null })
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      set({ jobs: MOCK_JOBS, isLoading: false })
+      const tasks = await api.listSchedulerTasks()
+      const jobs = tasks.map(toCronJob)
+      set({ jobs, isLoading: false })
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to fetch cron jobs",
@@ -124,17 +144,19 @@ export const useCronStore = create<CronStore>((set) => ({
   createJob: async (jobData) => {
     set({ isCreating: true, error: null })
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      const newJob: CronJob = {
-        ...jobData,
-        id: `job-${Date.now()}`,
-        nextRun: Date.now() + 3600000,
-      }
-      set((state) => ({
-        jobs: [...state.jobs, newJob],
-        isCreating: false,
-      }))
+      const taskId = `task-${Date.now()}`
+      await api.createSchedulerTask({
+        id: taskId,
+        name: jobData.name,
+        expression: jobData.expression,
+        command: toTaskCommand(jobData.command),
+        enabled: jobData.enabled,
+      })
+
+      // Refresh jobs list after creation
+      const tasks = await api.listSchedulerTasks()
+      const jobs = tasks.map(toCronJob)
+      set({ jobs, isCreating: false })
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to create cron job",
@@ -143,11 +165,31 @@ export const useCronStore = create<CronStore>((set) => ({
     }
   },
 
+  updateJob: async (id, updates) => {
+    set({ error: null })
+    try {
+      await api.updateSchedulerTask(id, {
+        name: updates.name,
+        expression: updates.expression,
+        command: updates.command ? toTaskCommand(updates.command) : undefined,
+        enabled: updates.enabled,
+      })
+
+      // Refresh jobs list after update
+      const tasks = await api.listSchedulerTasks()
+      const jobs = tasks.map(toCronJob)
+      set({ jobs })
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Failed to update cron job",
+      })
+    }
+  },
+
   deleteJob: async (id) => {
     set({ error: null })
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await api.deleteSchedulerTask(id)
       set((state) => ({
         jobs: state.jobs.filter((j) => j.id !== id),
       }))
@@ -160,16 +202,21 @@ export const useCronStore = create<CronStore>((set) => ({
 
   toggleJob: async (id) => {
     set({ error: null })
+    const job = get().jobs.find((j) => j.id === id)
+    if (!job) return
+
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 200))
+      await api.updateSchedulerTask(id, {
+        enabled: !job.enabled,
+      })
+
+      // Optimistic update
       set((state) => ({
         jobs: state.jobs.map((j) =>
           j.id === id
             ? {
                 ...j,
                 enabled: !j.enabled,
-                nextRun: !j.enabled ? Date.now() + 3600000 : undefined,
               }
             : j
         ),
@@ -184,28 +231,30 @@ export const useCronStore = create<CronStore>((set) => ({
   runJob: async (id) => {
     set({ isRunning: id, error: null })
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      const result = await api.runSchedulerTask(id)
+
+      // Update job with execution result
       set((state) => ({
         jobs: state.jobs.map((j) =>
           j.id === id
             ? {
                 ...j,
                 lastRun: Date.now(),
-                lastStatus: "success" as const,
-                lastError: undefined,
+                lastStatus: result.status === "ok" ? ("success" as const) : ("failed" as const),
+                lastError: result.error,
               }
             : j
         ),
         history: [
           {
-            id: `h-${Date.now()}`,
+            id: result.executionId,
             jobId: id,
             jobName: state.jobs.find((j) => j.id === id)?.name ?? "Unknown",
-            startTime: Date.now() - 1500,
+            startTime: Date.now() - 1000, // Approximate
             endTime: Date.now(),
-            status: "success" as const,
-            output: "Manual execution completed",
+            status: result.status === "ok" ? ("success" as const) : ("failed" as const),
+            output: result.output,
+            error: result.error,
           },
           ...state.history,
         ],
@@ -221,9 +270,10 @@ export const useCronStore = create<CronStore>((set) => ({
 
   fetchHistory: async () => {
     try {
-      // TODO: Replace with actual API call
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      set({ history: MOCK_HISTORY })
+      const executions = await api.getSchedulerHistory({ limit: 50 })
+      const jobs = get().jobs
+      const history = executions.map((exec) => toCronHistory(exec, jobs))
+      set({ history })
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : "Failed to fetch history",
