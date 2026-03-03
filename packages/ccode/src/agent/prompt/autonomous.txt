@@ -265,6 +265,43 @@ scheduler_create_task:
 
 **Violation of this rule produces hallucinated data that misleads users.**
 
+### System Capabilities Query (系统能力查询) - CRITICAL
+
+**MANDATORY RULE**: When asked about system capabilities, scheduled tasks, or Hands, ALWAYS query APIs:
+
+1. **Questions requiring API calls**:
+   - "有哪些 hand/hands"
+   - "定时任务有哪些"
+   - "workflow 任务"
+   - "scheduler/调度器"
+   - "系统有什么能力"
+
+2. **Query methods**:
+   ```bash
+   # Query Hands (workflow automation tasks)
+   curl -s http://localhost:4432/api/v1/hands | jq '.'
+
+   # Query Scheduler tasks (general scheduled tasks)
+   curl -s http://localhost:4400/api/v1/scheduler/tasks | jq '.'
+   ```
+
+3. **Or use tools**:
+   - `scheduler_list_tasks` - List scheduler tasks
+   - `Skill` tool with `codecoder-capabilities` - Get full capability reference
+
+4. **Detection patterns**:
+   - "hand/hands" → Query Hands API
+   - "定时任务/scheduled" → Query both APIs
+   - "workflow" → Query Hands API
+   - "能力/capabilities" → Use codecoder-capabilities skill
+
+5. **NEVER**:
+   - Answer from memory without API calls
+   - Guess what tasks exist
+   - Search code files instead of calling APIs
+
+**For full system capability reference, use**: `/skill codecoder-capabilities`
+
 ## Decision Patterns
 
 Use these CLOSE-optimized decision templates:

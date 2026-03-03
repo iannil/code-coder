@@ -692,14 +692,26 @@ export namespace SessionPrompt {
     using _ = log.time("resolveTools")
     const tools: Record<string, AITool> = {}
 
-    const context = (args: any, options: ToolCallOptions): Tool.Context => ({
-      sessionID: input.session.id,
-      abort: options.abortSignal!,
-      messageID: input.processor.message.id,
-      callID: options.toolCallId,
-      extra: { model: input.model, bypassAgentCheck: input.bypassAgentCheck },
-      agent: input.agent.name,
-      metadata: async (val: { title?: string; metadata?: any }) => {
+    const context = (args: any, options: ToolCallOptions): Tool.Context => {
+      // Get channel info from TaskContextRegistry if this is a remote task
+      const channelInfo = TaskContextRegistry.getChannelInfo(input.session.id)
+
+      return {
+        sessionID: input.session.id,
+        abort: options.abortSignal!,
+        messageID: input.processor.message.id,
+        callID: options.toolCallId,
+        extra: {
+          model: input.model,
+          bypassAgentCheck: input.bypassAgentCheck,
+          // Inject channel info for tools like scheduler_delay_task
+          ...(channelInfo && {
+            channelType: channelInfo.channelType,
+            channelId: channelInfo.channelId,
+          }),
+        },
+        agent: input.agent.name,
+        metadata: async (val: { title?: string; metadata?: any }) => {
         const match = input.processor.partFromToolCall(options.toolCallId)
         if (match && match.state.status === "running") {
           await Session.updatePart({
@@ -725,7 +737,8 @@ export namespace SessionPrompt {
           autoApproveConfig: input.agent.autoApprove,
         })
       },
-    })
+      }
+    }
 
     for (const item of await ToolRegistry.tools(
       { modelID: input.model.api.id, providerID: input.model.providerID },

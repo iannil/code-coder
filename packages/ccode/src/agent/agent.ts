@@ -525,6 +525,9 @@ export namespace Agent {
             plan_enter: "allow",
             plan_exit: "allow",
             doom_loop: "deny",
+            // Enable web search for real-time data queries (gold prices, news, etc.)
+            websearch: "allow",
+            webfetch: "allow",
           }),
           user,
         ),

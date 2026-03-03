@@ -50,6 +50,12 @@ export const TaskCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("shell"),
     command: z.string(),
   }),
+  z.object({
+    type: z.literal("channel_message"),
+    channelType: z.string(),
+    channelId: z.string(),
+    message: z.string(),
+  }),
 ])
 
 export type TaskCommand = z.infer<typeof TaskCommandSchema>
@@ -190,6 +196,8 @@ function serializeCommand(cmd: TaskCommand): string {
       return JSON.stringify({ type: "agent", agent: cmd.agentName, prompt: cmd.prompt })
     case "api":
       return JSON.stringify({ type: "api", endpoint: cmd.endpoint, method: cmd.method, body: cmd.body })
+    case "channel_message":
+      return JSON.stringify({ type: "channel_message", channel_type: cmd.channelType, channel_id: cmd.channelId, message: cmd.message })
     case "shell":
       return cmd.command
   }
@@ -206,6 +214,9 @@ function parseCommand(commandStr: string): TaskCommand {
     }
     if (parsed.type === "api") {
       return { type: "api", endpoint: parsed.endpoint, method: parsed.method, body: parsed.body }
+    }
+    if (parsed.type === "channel_message") {
+      return { type: "channel_message", channelType: parsed.channel_type, channelId: parsed.channel_id, message: parsed.message }
     }
   } catch {
     // Not JSON, treat as shell command
@@ -595,7 +606,7 @@ export async function runSchedulerTask(_req: HttpRequest, params: RouteParams): 
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              agentId: command.agentName,
+              agent: command.agentName,
               prompt: command.prompt,
             }),
           })

@@ -11,8 +11,57 @@
 import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
+import * as TurndownModule from "turndown"
+const TurndownService = TurndownModule.default || TurndownModule
 
 const log = Log.create({ service: "autonomous.execution.web-search" })
+
+// ============================================================================
+// Exa MCP API Configuration
+// ============================================================================
+
+const EXA_API_CONFIG = {
+  BASE_URL: "https://mcp.exa.ai",
+  ENDPOINTS: {
+    SEARCH: "/mcp",
+  },
+  DEFAULT_NUM_RESULTS: 5,
+  TIMEOUT_MS: 25000,
+} as const
+
+interface ExaMcpSearchRequest {
+  jsonrpc: string
+  id: number
+  method: string
+  params: {
+    name: string
+    arguments: {
+      query: string
+      numResults?: number
+      livecrawl?: "fallback" | "preferred"
+      type?: "auto" | "fast" | "deep"
+      contextMaxCharacters?: number
+    }
+  }
+}
+
+interface ExaMcpSearchResponse {
+  jsonrpc: string
+  result: {
+    content: Array<{
+      type: string
+      text: string
+    }>
+  }
+}
+
+interface ExaSearchResultItem {
+  title: string
+  url: string
+  text?: string
+  highlights?: string[]
+  score?: number
+}
 
 // ============================================================================
 // Types
@@ -313,51 +362,166 @@ export class WebSearcher {
   }
 
   /**
-   * Perform a single search query
+   * Perform a single search query using Exa MCP API
    */
   private async performSearch(query: string): Promise<SearchResult[]> {
-    // In a real implementation, this would call a search API
-    // For now, we simulate with structured results based on query
+    log.debug("Performing search via Exa MCP API", { query })
 
-    log.debug("Performing search", { query })
+    const searchRequest: ExaMcpSearchRequest = {
+      jsonrpc: "2.0",
+      id: Date.now(),
+      method: "tools/call",
+      params: {
+        name: "web_search_exa",
+        arguments: {
+          query,
+          type: "auto",
+          numResults: EXA_API_CONFIG.DEFAULT_NUM_RESULTS,
+          livecrawl: "fallback",
+          contextMaxCharacters: 5000,
+        },
+      },
+    }
 
-    // Simulated search - in production, use WebSearch tool or API
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), EXA_API_CONFIG.TIMEOUT_MS)
+
+    try {
+      const response = await fetch(`${EXA_API_CONFIG.BASE_URL}${EXA_API_CONFIG.ENDPOINTS.SEARCH}`, {
+        method: "POST",
+        headers: {
+          accept: "application/json, text/event-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(searchRequest),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        log.warn("Exa search request failed", { status: response.status, error: errorText })
+        return []
+      }
+
+      const responseText = await response.text()
+
+      // Parse SSE response
+      const lines = responseText.split("\n")
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const data: ExaMcpSearchResponse = JSON.parse(line.substring(6))
+            if (data.result?.content?.[0]?.text) {
+              return this.parseExaResults(data.result.content[0].text, query)
+            }
+          } catch (parseError) {
+            log.warn("Failed to parse Exa response", { error: parseError })
+          }
+        }
+      }
+
+      log.debug("No search results found", { query })
+      return []
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      if (error instanceof Error && error.name === "AbortError") {
+        log.warn("Search request timed out", { query })
+      } else {
+        log.warn("Search request failed", { query, error: error instanceof Error ? error.message : String(error) })
+      }
+
+      return []
+    }
+  }
+
+  /**
+   * Parse Exa API response text into SearchResult array
+   */
+  private parseExaResults(responseText: string, query: string): SearchResult[] {
     const results: SearchResult[] = []
 
-    // Check for documentation patterns
-    if (query.includes("documentation") || query.includes("docs")) {
-      results.push({
-        url: `https://developer.mozilla.org/search?q=${encodeURIComponent(query)}`,
-        title: `MDN Documentation: ${query}`,
-        snippet: "Official documentation and guides...",
-        source: "documentation",
-        relevanceScore: 0.9,
-      })
+    try {
+      // Try to parse as JSON first (structured response)
+      const parsed = JSON.parse(responseText)
+      if (Array.isArray(parsed)) {
+        for (const item of parsed as ExaSearchResultItem[]) {
+          results.push({
+            url: item.url,
+            title: item.title || "Untitled",
+            snippet: item.text?.slice(0, 300) || item.highlights?.join(" ") || "",
+            source: this.detectSource(item.url),
+            relevanceScore: item.score ?? 0.7,
+          })
+        }
+        return results
+      }
+    } catch {
+      // Not JSON, parse as text
     }
 
-    // Check for error patterns
-    if (query.includes("error") || query.includes("Error")) {
-      results.push({
-        url: `https://stackoverflow.com/search?q=${encodeURIComponent(query)}`,
-        title: `Stack Overflow: ${query}`,
-        snippet: "Community solutions for this error...",
-        source: "stackoverflow",
-        relevanceScore: 0.8,
-      })
+    // Parse as markdown/text format (Links: [...] format)
+    const linksMatch = responseText.match(/Links:\s*(\[[\s\S]*?\])/i)
+    if (linksMatch) {
+      try {
+        const links = JSON.parse(linksMatch[1])
+        for (const link of links) {
+          results.push({
+            url: link.url,
+            title: link.title || "Untitled",
+            snippet: link.snippet || link.description || "",
+            source: this.detectSource(link.url),
+            relevanceScore: 0.7,
+          })
+        }
+        return results
+      } catch {
+        // Continue with text parsing
+      }
     }
 
-    // GitHub search for code patterns
-    if (query.includes("example") || query.includes("how to")) {
+    // Extract URLs from plain text response
+    const urlRegex = /https?:\/\/[^\s\])"']+/g
+    const urls = responseText.match(urlRegex) || []
+    const uniqueUrls = Array.from(new Set(urls)).slice(0, 5)
+
+    for (const url of uniqueUrls) {
       results.push({
-        url: `https://github.com/search?q=${encodeURIComponent(query)}&type=code`,
-        title: `GitHub Code Search: ${query}`,
-        snippet: "Code examples from open source projects...",
-        source: "github",
-        relevanceScore: 0.7,
+        url,
+        title: `Search result for: ${query.slice(0, 50)}`,
+        snippet: "Extracted from search results",
+        source: this.detectSource(url),
+        relevanceScore: 0.6,
       })
     }
 
     return results
+  }
+
+  /**
+   * Detect source type from URL
+   */
+  private detectSource(url: string): SearchResult["source"] {
+    const lowerUrl = url.toLowerCase()
+
+    if (lowerUrl.includes("stackoverflow.com") || lowerUrl.includes("stackexchange.com")) {
+      return "stackoverflow"
+    }
+    if (lowerUrl.includes("github.com") || lowerUrl.includes("gitlab.com")) {
+      return "github"
+    }
+    if (
+      lowerUrl.includes("docs.") ||
+      lowerUrl.includes("/docs/") ||
+      lowerUrl.includes("developer.") ||
+      lowerUrl.includes("documentation")
+    ) {
+      return "documentation"
+    }
+
+    return "other"
   }
 
   /**
@@ -374,19 +538,173 @@ export class WebSearcher {
         return null
       }
 
-      // In a real implementation, this would fetch the URL
-      // For now, return a placeholder
-      return {
-        url,
-        content: `Content from ${url}`,
-        summary: `Summary of documentation relevant to: ${problem.slice(0, 50)}...`,
-        relevantSections: ["Getting Started", "API Reference", "Examples"],
-        confidence: 0.7,
+      log.debug("Fetching content from URL", { url })
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), this.config.fetchTimeout)
+
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": "CodeCoder/1.0 (Autonomous Agent; +https://codecoder.dev)",
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          },
+        })
+
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          log.debug("Failed to fetch URL", { url, status: response.status })
+          return null
+        }
+
+        const html = await response.text()
+        const contentType = response.headers.get("content-type") || ""
+
+        // Convert HTML to markdown for better analysis
+        let content = html
+        if (contentType.includes("text/html")) {
+          content = this.convertToMarkdown(html)
+        }
+
+        // Limit content size
+        content = content.slice(0, 50000)
+
+        // Extract relevant sections
+        const relevantSections = this.extractRelevantSections(content, problem)
+
+        // Generate summary
+        const summary = this.generateSummary(content, url, problem)
+
+        // Calculate confidence based on content quality
+        const confidence = this.calculateContentConfidence(content, relevantSections, problem)
+
+        return {
+          url,
+          content,
+          summary,
+          relevantSections,
+          confidence,
+        }
+      } finally {
+        clearTimeout(timeoutId)
       }
     } catch (error) {
-      log.warn("Failed to fetch content", { url, error })
+      log.warn("Failed to fetch content", {
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      })
       return null
     }
+  }
+
+  /**
+   * Convert HTML to markdown for easier analysis
+   */
+  private convertToMarkdown(html: string): string {
+    try {
+      const turndownService = new TurndownService({
+        headingStyle: "atx",
+        hr: "---",
+        bulletListMarker: "-",
+        codeBlockStyle: "fenced",
+        emDelimiter: "*",
+      })
+      turndownService.remove(["script", "style", "meta", "link", "nav", "footer", "header"])
+      return turndownService.turndown(html)
+    } catch {
+      // Fallback: strip HTML tags
+      return html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    }
+  }
+
+  /**
+   * Extract sections relevant to the problem
+   */
+  private extractRelevantSections(content: string, problem: string): string[] {
+    const sections: string[] = []
+    const problemKeywords = problem
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+
+    // Split by headings
+    const headingPattern = /^#{1,3}\s+(.+)$/gm
+    let match: RegExpExecArray | null
+    const headings: Array<{ title: string; index: number }> = []
+
+    while ((match = headingPattern.exec(content)) !== null) {
+      headings.push({ title: match[1], index: match.index })
+    }
+
+    // Find sections containing problem keywords
+    for (let i = 0; i < headings.length; i++) {
+      const start = headings[i].index
+      const end = headings[i + 1]?.index ?? content.length
+      const sectionContent = content.slice(start, end).toLowerCase()
+
+      const keywordMatches = problemKeywords.filter((kw) => sectionContent.includes(kw)).length
+      if (keywordMatches >= 2 || sectionContent.includes("example") || sectionContent.includes("solution")) {
+        sections.push(headings[i].title)
+      }
+    }
+
+    // Fallback: look for common useful sections
+    const commonSections = ["Getting Started", "Installation", "Usage", "Examples", "API", "Error", "Troubleshooting"]
+    for (const cs of commonSections) {
+      if (content.toLowerCase().includes(cs.toLowerCase()) && !sections.some((s) => s.toLowerCase().includes(cs.toLowerCase()))) {
+        sections.push(cs)
+      }
+    }
+
+    return sections.slice(0, 10)
+  }
+
+  /**
+   * Generate a summary of the content
+   */
+  private generateSummary(content: string, url: string, problem: string): string {
+    const hostname = new URL(url).hostname
+
+    // Extract first meaningful paragraph
+    const paragraphs = content.split(/\n\n+/).filter((p) => p.length > 50 && !p.startsWith("#"))
+    const firstParagraph = paragraphs[0]?.slice(0, 200) || ""
+
+    return `Documentation from ${hostname}: ${firstParagraph}...`
+  }
+
+  /**
+   * Calculate confidence based on content quality and relevance
+   */
+  private calculateContentConfidence(content: string, sections: string[], problem: string): number {
+    let confidence = 0.5
+
+    // Content length contributes
+    if (content.length > 1000) confidence += 0.1
+    if (content.length > 5000) confidence += 0.1
+
+    // Code blocks indicate practical solutions
+    const codeBlockCount = (content.match(/```/g) || []).length / 2
+    confidence += Math.min(codeBlockCount / 10, 0.15)
+
+    // Relevant sections found
+    confidence += Math.min(sections.length / 10, 0.1)
+
+    // Problem keywords in content
+    const problemKeywords = problem
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w) => w.length > 3)
+    const keywordMatches = problemKeywords.filter((kw) => content.toLowerCase().includes(kw)).length
+    confidence += Math.min(keywordMatches / problemKeywords.length, 0.15)
+
+    return Math.min(confidence, 1.0)
   }
 
   /**

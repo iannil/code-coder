@@ -31,7 +31,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::Router;
-use tokio::sync::mpsc;
 use tower_http::cors::{Any, CorsLayer};
 use zero_common::config::Config;
 
@@ -250,7 +249,7 @@ impl WorkflowService {
         let codecoder_endpoint = self.config.codecoder_endpoint();
         let channels_endpoint = self.config.channels_endpoint();
 
-        let state = create_state_with_channels(codecoder_endpoint, channels_endpoint);
+        let state = create_state_with_channels(codecoder_endpoint.clone(), channels_endpoint);
 
         // Load monitor tasks from config
         if self.config.workflow.monitor.enabled {
@@ -294,37 +293,53 @@ impl WorkflowService {
             }
 
             // Start the scheduler
-            let (tx, _rx) = mpsc::channel::<String>(100);
             let scheduler = Arc::clone(&state.scheduler);
+            let cron_codecoder_endpoint = codecoder_endpoint.clone();
+            let cron_channels_endpoint = self.config.channels_endpoint();
 
             tokio::spawn(async move {
-                let executor = move |command: &str| {
-                    let cmd = command.to_string();
-                    let tx = tx.clone();
-                    tokio::spawn(async move {
-                        match execute_command(&cmd).await {
-                            Ok(output) => {
-                                tracing::info!(command = %cmd, "Cron command executed successfully");
-                                let _ = tx.send(output).await;
-                            }
-                            Err(e) => {
-                                tracing::error!(command = %cmd, error = %e, "Cron command failed");
-                            }
-                        }
-                    });
-                };
+                let codecoder_endpoint = cron_codecoder_endpoint;
+                let channels_endpoint = cron_channels_endpoint;
 
                 // Check for tasks periodically
                 loop {
-                    if let Ok(tasks) = scheduler.list_tasks() {
-                        let now = chrono::Utc::now();
-                        for task in tasks {
-                            if task.next_run <= now {
-                                tracing::info!(task_id = %task.id, "Running scheduled task");
-                                executor(&task.command);
+                    let now = chrono::Utc::now();
+
+                    // Get tasks that are due to run
+                    match scheduler.due_tasks(now) {
+                        Ok(due_tasks) => {
+                            for job in due_tasks {
+                                tracing::info!(task_id = %job.id, "Running scheduled task");
+
+                                let cmd = job.command.clone();
+                                let cc_endpoint = codecoder_endpoint.clone();
+                                let ch_endpoint = channels_endpoint.clone();
+                                let task_id = job.id.clone();
+
+                                // Execute the command
+                                let (success, output) = match execute_cron_command(&cmd, &cc_endpoint, &ch_endpoint).await {
+                                    Ok(output) => {
+                                        tracing::info!(task_id = %task_id, "Cron command executed successfully");
+                                        (true, output)
+                                    }
+                                    Err(e) => {
+                                        let error_msg = format!("{}", e);
+                                        tracing::error!(task_id = %task_id, command = %cmd, error = %error_msg, "Cron command failed");
+                                        (false, error_msg)
+                                    }
+                                };
+
+                                // Reschedule the task for next run
+                                if let Err(e) = scheduler.reschedule_after_run(&job, success, &output) {
+                                    tracing::error!(task_id = %task_id, error = %e, "Failed to reschedule task");
+                                }
                             }
                         }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to get due tasks");
+                        }
                     }
+
                     tokio::time::sleep(std::time::Duration::from_secs(60)).await;
                 }
             });
@@ -467,10 +482,255 @@ impl WorkflowService {
     }
 }
 
+// ============================================================================
+// Cron Command Types and Executor
+// ============================================================================
+
+/// Cron command types matching the TypeScript scheduler tool.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum CronCommand {
+    /// Execute an agent with a prompt
+    Agent {
+        agent: String,
+        prompt: String,
+    },
+    /// Make an HTTP API call
+    Api {
+        endpoint: String,
+        method: String,
+        #[serde(default)]
+        body: Option<serde_json::Value>,
+    },
+    /// Send a message to an IM channel (Telegram, Feishu, etc.)
+    ChannelMessage {
+        channel_type: String,
+        channel_id: String,
+        message: String,
+    },
+    /// Execute a shell command (not explicitly tagged, fallback)
+    #[serde(skip)]
+    Shell {
+        command: String,
+    },
+}
+
+/// Execute a cron command, dispatching based on command type.
+///
+/// Supports four command types:
+/// - `agent`: Invokes a CodeCoder agent via the API
+/// - `api`: Makes an HTTP request to an external endpoint
+/// - `channel_message`: Sends a message to an IM channel via zero-channels
+/// - `shell`: Executes a shell command (default for non-JSON commands)
+async fn execute_cron_command(command_str: &str, codecoder_endpoint: &str, channels_endpoint: &str) -> anyhow::Result<String> {
+    // Try to parse as JSON command
+    if let Ok(cmd) = serde_json::from_str::<CronCommand>(command_str) {
+        match cmd {
+            CronCommand::Agent { agent, prompt } => {
+                execute_agent_command(&agent, &prompt, codecoder_endpoint).await
+            }
+            CronCommand::Api { endpoint, method, body } => {
+                execute_api_command(&endpoint, &method, body).await
+            }
+            CronCommand::ChannelMessage { channel_type, channel_id, message } => {
+                execute_channel_message_command(&channel_type, &channel_id, &message, channels_endpoint).await
+            }
+            CronCommand::Shell { command } => {
+                execute_shell_command(&command).await
+            }
+        }
+    } else {
+        // Not JSON, treat as shell command
+        execute_shell_command(command_str).await
+    }
+}
+
+/// Execute an agent command by calling the CodeCoder API.
+async fn execute_agent_command(agent: &str, prompt: &str, codecoder_endpoint: &str) -> anyhow::Result<String> {
+    use std::time::Duration;
+
+    tracing::info!(agent = %agent, prompt_len = prompt.len(), "Executing agent command");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(300)) // 5 minute timeout for agent execution
+        .build()?;
+
+    let url = format!("{}/api/agent/invoke", codecoder_endpoint.trim_end_matches('/'));
+
+    let payload = serde_json::json!({
+        "agent": agent,
+        "prompt": prompt
+    });
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to call agent API: {}", e))?;
+
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!("Agent API returned {}: {}", status, body));
+    }
+
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to parse agent response: {}", e))?;
+
+    // Check for success in response
+    if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
+        let error = result.get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("Unknown error");
+        return Err(anyhow::anyhow!("Agent execution failed: {}", error));
+    }
+
+    // Extract useful info from response
+    let session_id = result.get("data")
+        .and_then(|d| d.get("sessionId"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+    let message_id = result.get("data")
+        .and_then(|d| d.get("messageId"))
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+
+    tracing::info!(
+        agent = %agent,
+        session_id = %session_id,
+        message_id = %message_id,
+        "Agent command completed"
+    );
+
+    Ok(format!("Agent '{}' executed successfully. Session: {}, Message: {}", agent, session_id, message_id))
+}
+
+/// Execute an API command by making an HTTP request.
+async fn execute_api_command(endpoint: &str, method: &str, body: Option<serde_json::Value>) -> anyhow::Result<String> {
+    use std::time::Duration;
+
+    tracing::info!(endpoint = %endpoint, method = %method, "Executing API command");
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()?;
+
+    let method = match method.to_uppercase().as_str() {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "PATCH" => reqwest::Method::PATCH,
+        _ => return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method)),
+    };
+
+    let mut request = client.request(method.clone(), endpoint);
+
+    if let Some(body_value) = body {
+        request = request
+            .header("Content-Type", "application/json")
+            .json(&body_value);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("API request failed: {}", e))?;
+
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+
+    tracing::info!(endpoint = %endpoint, status = %status, "API command completed");
+
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(anyhow::anyhow!("API returned {}: {}", status, body))
+    }
+}
+
+/// Execute a channel message command by sending a message to an IM channel via zero-channels.
+async fn execute_channel_message_command(
+    channel_type: &str,
+    channel_id: &str,
+    message: &str,
+    channels_endpoint: &str,
+) -> anyhow::Result<String> {
+    use std::time::Duration;
+
+    tracing::info!(
+        channel_type = %channel_type,
+        channel_id = %channel_id,
+        message_len = message.len(),
+        "Executing channel message command"
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
+
+    let url = format!("{}/api/v1/send", channels_endpoint.trim_end_matches('/'));
+
+    let payload = serde_json::json!({
+        "channel_type": channel_type,
+        "channel_id": channel_id,
+        "content": {
+            "type": "text",
+            "text": message
+        }
+    });
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to call channels API: {}", e))?;
+
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!("Channels API returned {}: {}", status, body));
+    }
+
+    let result: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to parse channels response: {}", e))?;
+
+    // Check for success in response
+    if result.get("success").and_then(|v| v.as_bool()) != Some(true) {
+        let error = result.get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("Unknown error");
+        return Err(anyhow::anyhow!("Channel message failed: {}", error));
+    }
+
+    let message_id = result.get("message_id")
+        .and_then(|m| m.as_str())
+        .unwrap_or("unknown");
+
+    tracing::info!(
+        channel_type = %channel_type,
+        channel_id = %channel_id,
+        message_id = %message_id,
+        "Channel message sent successfully"
+    );
+
+    Ok(format!("Message sent to {} channel {}. Message ID: {}", channel_type, channel_id, message_id))
+}
+
 /// Execute a shell command asynchronously.
-async fn execute_command(command: &str) -> anyhow::Result<String> {
+async fn execute_shell_command(command: &str) -> anyhow::Result<String> {
     use std::process::Stdio;
     use tokio::process::Command;
+
+    tracing::debug!(command = %command, "Executing shell command");
 
     let output = Command::new("sh")
         .arg("-c")
@@ -486,6 +746,12 @@ async fn execute_command(command: &str) -> anyhow::Result<String> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         Err(anyhow::anyhow!("Command failed: {}", stderr))
     }
+}
+
+/// Legacy function for backwards compatibility.
+#[allow(dead_code)]
+async fn execute_command(command: &str) -> anyhow::Result<String> {
+    execute_shell_command(command).await
 }
 
 #[cfg(test)]

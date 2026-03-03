@@ -42,6 +42,12 @@ const TaskCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("shell"),
     command: z.string().describe("Shell command to execute"),
   }),
+  z.object({
+    type: z.literal("channel_message"),
+    channelType: z.string().describe("Channel type: telegram, feishu, wecom, dingtalk, discord, slack"),
+    channelId: z.string().describe("Channel/chat ID to send the message to"),
+    message: z.string().describe("Message text to send"),
+  }),
 ])
 
 type TaskCommand = z.infer<typeof TaskCommandSchema>
@@ -93,9 +99,13 @@ async function callSchedulerApi<T>(
   }
 }
 
-const SCHEDULER_CREATE_DESCRIPTION = `Create a scheduled task that runs on a cron schedule.
+const SCHEDULER_CREATE_DESCRIPTION = `Create a RECURRING scheduled task that runs on a cron schedule.
 
-Use this tool to set up recurring automated tasks. The task can:
+IMPORTANT: This tool is for RECURRING/PERIODIC tasks only!
+- For "do something in X minutes" → use scheduler_delay_task instead
+- For "remind me in 1 hour" → use scheduler_delay_task instead
+
+Use this tool to set up automated tasks that repeat on a schedule:
 - Call an agent with a specific prompt (type: "agent")
 - Make an HTTP API call (type: "api")
 - Run a shell command (type: "shell")
@@ -345,5 +355,156 @@ export const SchedulerRunTaskTool = Tool.define("scheduler_run_task", {
     }
 
     throw new Error(result.error || "Failed to run scheduled task")
+  },
+})
+
+const SCHEDULER_DELAY_DESCRIPTION = `Schedule a one-time task to run after a delay.
+
+Use this tool when user asks to "do something in X minutes/hours" or "remind me in X minutes".
+This is for ONE-TIME delayed execution, NOT for recurring tasks.
+
+Examples:
+- "Send me a message in 5 minutes" → delayMinutes: 5, channelType: "telegram", channelId: "xxx", channelMessage: "..."
+- "Remind me in 1 hour" → delayMinutes: 60
+- "Check this in 30 seconds" → delaySeconds: 30
+
+IMPORTANT FOR IM MESSAGES:
+When user asks to send a message via IM (Telegram, etc.), you MUST use channelType, channelId, and channelMessage parameters.
+Using agentName/prompt will only create a local session and NOT send the message back to the IM channel.
+
+IMPORTANT: Use this tool for one-time delayed tasks. Use scheduler_create_task for recurring/periodic tasks.`
+
+/**
+ * Tool: scheduler_delay_task
+ * Creates a one-time delayed task
+ */
+export const SchedulerDelayTaskTool = Tool.define("scheduler_delay_task", {
+  description: SCHEDULER_DELAY_DESCRIPTION,
+  parameters: z.object({
+    delayMinutes: z.number().min(1).max(1440).optional().describe("Delay in minutes before execution (1-1440, i.e., up to 24 hours)"),
+    delaySeconds: z.number().min(30).max(3600).optional().describe("Delay in seconds before execution (30-3600). Use for delays less than 1 minute."),
+    agentName: z.string().optional().describe("Agent to invoke (e.g., 'general', 'macro'). Note: This creates a local session, NOT an IM message."),
+    prompt: z.string().optional().describe("Prompt for the agent"),
+    message: z.string().optional().describe("Simple message to send (uses 'general' agent). Note: This creates a local session, NOT an IM message."),
+    channelType: z.string().optional().describe("Channel type for IM message: telegram, feishu, wecom, dingtalk, discord, slack. Use this for sending messages back to IM."),
+    channelId: z.string().optional().describe("Channel/chat ID to send the message to. Required when channelType is specified."),
+    channelMessage: z.string().optional().describe("Message text to send to the channel. Required when channelType is specified."),
+    endpoint: z.string().optional().describe("API endpoint URL (for api-type tasks)"),
+    method: z.enum(["GET", "POST", "PUT", "DELETE"]).optional().describe("HTTP method (for api-type tasks)"),
+    shellCommand: z.string().optional().describe("Shell command (for shell-type tasks)"),
+    description: z.string().max(512).optional().describe("Human-readable description of the task"),
+  }),
+  async execute(params, ctx) {
+    // Calculate delay
+    let delayMs: number
+    if (params.delayMinutes) {
+      delayMs = params.delayMinutes * 60 * 1000
+    } else if (params.delaySeconds) {
+      delayMs = params.delaySeconds * 1000
+    } else {
+      throw new Error("Must provide either delayMinutes or delaySeconds")
+    }
+
+    // Calculate target time (round to next minute for cron)
+    const now = new Date()
+    const targetTime = new Date(now.getTime() + delayMs)
+    // Round up to next minute
+    targetTime.setSeconds(0, 0)
+    if (targetTime.getTime() <= now.getTime()) {
+      targetTime.setMinutes(targetTime.getMinutes() + 1)
+    }
+
+    // Generate unique task ID
+    const taskId = `delayed-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+
+    // Build cron expression for exact time (minute hour day month weekday year)
+    // Using 7-field cron: second minute hour day month weekday year
+    const minute = targetTime.getUTCMinutes()
+    const hour = targetTime.getUTCHours()
+    const day = targetTime.getUTCDate()
+    const month = targetTime.getUTCMonth() + 1
+    const year = targetTime.getUTCFullYear()
+    // 6-field cron (second minute hour day month weekday)
+    const expression = `0 ${minute} ${hour} ${day} ${month} *`
+
+    await ctx.ask({
+      permission: "scheduler",
+      patterns: [taskId],
+      always: ["*"],
+      metadata: {
+        action: "delay_task",
+        taskId,
+        targetTime: targetTime.toISOString(),
+        delayMinutes: params.delayMinutes,
+        delaySeconds: params.delaySeconds,
+      },
+    })
+
+    // Determine command type - channel_message takes priority for IM delivery
+    // Auto-detect channel info from context if not explicitly provided
+    const autoChannelType = ctx.extra?.channelType as string | undefined
+    const autoChannelId = ctx.extra?.channelId as string | undefined
+
+    let command: TaskCommand
+    if (params.channelType && params.channelId && params.channelMessage) {
+      // Explicit IM channel message - sends directly to the channel
+      command = { type: "channel_message", channelType: params.channelType, channelId: params.channelId, message: params.channelMessage }
+    } else if (params.channelMessage && autoChannelType && autoChannelId) {
+      // Auto-detected channel from context + explicit message
+      command = { type: "channel_message", channelType: autoChannelType, channelId: autoChannelId, message: params.channelMessage }
+    } else if (params.message && autoChannelType && autoChannelId) {
+      // Simple message shortcut with auto-detected channel - sends to IM
+      command = { type: "channel_message", channelType: autoChannelType, channelId: autoChannelId, message: params.message }
+    } else if (params.message) {
+      // Simple message shortcut without channel context - creates local session only
+      command = { type: "agent", agentName: "general", prompt: params.message }
+    } else if (params.agentName && params.prompt) {
+      command = { type: "agent", agentName: params.agentName, prompt: params.prompt }
+    } else if (params.endpoint && params.method) {
+      command = { type: "api", endpoint: params.endpoint, method: params.method }
+    } else if (params.shellCommand) {
+      command = { type: "shell", command: params.shellCommand }
+    } else {
+      throw new Error("Must provide (channelType + channelId + channelMessage), message, (agentName + prompt), (endpoint + method), or shellCommand")
+    }
+
+    const delayDesc = params.delayMinutes
+      ? `${params.delayMinutes} minute(s)`
+      : `${params.delaySeconds} second(s)`
+
+    const payload = {
+      id: taskId,
+      expression,
+      command,
+      description: params.description || `One-time task scheduled for ${targetTime.toISOString()}`,
+      enabled: true,
+    }
+
+    log.info("creating delayed task", {
+      taskId,
+      targetTime: targetTime.toISOString(),
+      expression,
+      commandType: command.type,
+    })
+
+    const result = await callSchedulerApi<{ id: string }>("/api/v1/scheduler/tasks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    })
+
+    if (result.data) {
+      return {
+        title: `Scheduled task for ${delayDesc} from now`,
+        metadata: {
+          taskId: result.data.id,
+          targetTime: targetTime.toISOString(),
+          expression,
+          commandType: command.type,
+        },
+        output: `Task scheduled to run at ${targetTime.toISOString()} (in ${delayDesc}).\n\nTask ID: ${taskId}\nType: ${command.type}\n${params.description ? `Description: ${params.description}` : ""}`,
+      }
+    }
+
+    throw new Error(result.error || "Failed to create delayed task")
   },
 })

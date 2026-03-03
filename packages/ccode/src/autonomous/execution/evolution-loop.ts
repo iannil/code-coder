@@ -40,7 +40,7 @@ import { sedimentEvolutionSuccess, logEvolutionFailure } from "./memory-writer"
 import { Log } from "@/util/log"
 // NOTE: Builder imports are lazy to avoid circular dependency
 // (autonomous/index.ts -> orchestrator -> evolution-loop -> builder -> validation -> memory/tools)
-import type { GapDetectionResult, BuildResult, TaskFailure } from "../builder"
+import type { GapDetectionResult, BuildResult, TaskFailure, ConceptType, GeneratedConcept } from "../builder"
 
 const log = Log.create({ service: "autonomous.evolution-loop" })
 
@@ -153,6 +153,17 @@ export interface EvolutionResult {
     matchCount: number
     topMatchScore?: number
   }>
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Phase 1.5: Generated Concept (New in Priority Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** New concept generated during Phase 1.5 */
+  generatedConcept?: {
+    type: ConceptType
+    identifier: string
+    buildResult: BuildResult
+  }
 }
 
 /** Evolution loop configuration */
@@ -214,6 +225,19 @@ export interface EvolutionConfig {
 
   /** Skip external resources (web search, GitHub, code gen) if internal capability matches */
   skipExternalIfInternalMatch: boolean
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Phase 1.5: Internal Capability Generation (New in Priority Optimization)
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /** Enable internal capability generation when no existing match found */
+  enableConceptGeneration: boolean
+  /** Minimum confidence threshold for concept generation (0-1) */
+  conceptGenerationMinConfidence: number
+  /** Allowed concept types for auto-generation */
+  allowedConceptTypes: ConceptType[]
+  /** Execute generated concept immediately (true) or just return recommendation (false) */
+  executeGeneratedConcept: boolean
 }
 
 // ============================================================================
@@ -262,7 +286,7 @@ export interface MemorySearchResult {
 
 /** Capability search summary for tracking */
 export interface CapabilitySearchSummary {
-  type: "agent" | "skill" | "hand" | "tool" | "knowledge" | "memory"
+  type: "agent" | "skill" | "hand" | "tool" | "knowledge" | "memory" | "generation"
   searched: boolean
   matchCount: number
   topMatchScore?: number
@@ -305,6 +329,12 @@ const DEFAULT_CONFIG: EvolutionConfig = {
 
   // Early exit: skip external resources if internal capability matched
   skipExternalIfInternalMatch: true,
+
+  // Phase 1.5: Internal Capability Generation
+  enableConceptGeneration: true,
+  conceptGenerationMinConfidence: 0.6,
+  allowedConceptTypes: ["TOOL", "PROMPT", "SKILL", "AGENT", "MEMORY", "HAND", "WORKFLOW"],
+  executeGeneratedConcept: true,
 }
 
 // ============================================================================
@@ -330,6 +360,10 @@ export class EvolutionLoop {
   private capabilitiesSearched: CapabilitySearchSummary[] = []
   // Best internal match found (for early exit decision)
   private bestInternalMatch: { type: string; score: number } | null = null
+  // MetaBuilder for Phase 1.5 concept generation (lazy loaded)
+  private metaBuilder: import("../builder").MetaBuilder | null = null
+  // Track if concept generation was attempted in this session (prevent infinite loops)
+  private conceptGenerationAttempted = false
 
   constructor(config: Partial<EvolutionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -378,6 +412,7 @@ export class EvolutionLoop {
     this.previousAttempts = []
     this.capabilitiesSearched = []
     this.bestInternalMatch = null
+    this.conceptGenerationAttempted = false
 
     log.info("Starting evolution loop with prioritized capability discovery", {
       sessionId: problem.sessionId,
@@ -507,6 +542,60 @@ export class EvolutionLoop {
         }
       } else {
         this.recordCapabilitySearch("tool", true, 0, 0, Date.now() - toolStart)
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Phase 1.5: Internal Capability Generation (New)
+    // If no existing internal capability matches, try to generate a new one
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if (
+      this.config.enableConceptGeneration &&
+      !this.bestInternalMatch &&
+      !this.conceptGenerationAttempted
+    ) {
+      log.info("Phase 1.5: No internal capability match - attempting to generate new capability")
+      this.conceptGenerationAttempted = true
+
+      const generationStart = Date.now()
+      const generationResult = await this.tryConceptGeneration(problem)
+
+      // Record the generation attempt
+      this.recordCapabilitySearch(
+        "generation",
+        true,
+        generationResult?.success ? 1 : 0,
+        generationResult?.confidence ?? 0,
+        Date.now() - generationStart,
+      )
+
+      if (generationResult?.success && generationResult.concept) {
+        log.info("Successfully generated new capability", {
+          type: generationResult.concept.type,
+          identifier: generationResult.concept.identifier,
+          confidence: generationResult.confidence,
+        })
+
+        return {
+          solved: true,
+          solution: generationResult.recommendation,
+          attempts: generationResult.executionResult ? [generationResult.executionResult] : [],
+          durationMs: Date.now() - startTime,
+          summary: `Generated new ${generationResult.concept.type}: ${generationResult.concept.identifier}`,
+          matchedCapability: {
+            type: generationResult.concept.type.toLowerCase() as "agent" | "skill" | "hand" | "tool",
+            identifier: generationResult.concept.identifier,
+            score: generationResult.confidence,
+          },
+          capabilitiesSearched: this.capabilitiesSearched,
+          buildResult: generationResult.buildResult,
+          generatedConcept: {
+            type: generationResult.concept.type,
+            identifier: generationResult.concept.identifier,
+            buildResult: generationResult.buildResult!,
+          },
+        }
       }
     }
 
@@ -1102,6 +1191,208 @@ export class EvolutionLoop {
     // Track best internal match for early exit decision
     if (matchCount > 0 && topMatchScore > (this.bestInternalMatch?.score ?? 0)) {
       this.bestInternalMatch = { type, score: topMatchScore }
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Phase 1.5: Internal Capability Generation Methods
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Phase 1.5: Attempt to generate a new internal capability
+   *
+   * Uses MetaBuilder to detect capability gaps from the problem description
+   * and generate new concepts (TOOL, SKILL, AGENT, etc.) to address them.
+   */
+  private async tryConceptGeneration(problem: AutonomousProblem): Promise<{
+    success: boolean
+    concept?: GeneratedConcept
+    buildResult?: BuildResult
+    executionResult?: SolutionAttempt
+    recommendation?: string
+    confidence: number
+  } | null> {
+    try {
+      // Lazy load MetaBuilder to avoid circular dependency
+      if (!this.metaBuilder) {
+        const { getMetaBuilder } = await getBuilderModule()
+        this.metaBuilder = getMetaBuilder()
+        await this.metaBuilder.initialize()
+      }
+
+      // Try to detect a gap from the problem description and build
+      const buildResult = await this.metaBuilder.buildFromQuery(
+        problem.description,
+        {
+          sessionId: problem.sessionId,
+          workingDir: problem.workingDir,
+          technology: problem.technology,
+          triggeredBy: "system",
+        },
+      )
+
+      if (!buildResult) {
+        log.debug("No concept gap detected for generation")
+        return null
+      }
+
+      if (buildResult.success && buildResult.concept) {
+        // Check if generated concept type is in allowed list
+        if (!this.config.allowedConceptTypes.includes(buildResult.concept.type)) {
+          log.info("Generated concept type not in allowed list", {
+            type: buildResult.concept.type,
+            allowed: this.config.allowedConceptTypes,
+          })
+          return null
+        }
+
+        // Check minimum confidence threshold
+        const confidence = buildResult.closeScore?.total ?? 0.7
+        if (confidence < this.config.conceptGenerationMinConfidence) {
+          log.info("Generated concept below confidence threshold", {
+            confidence,
+            threshold: this.config.conceptGenerationMinConfidence,
+          })
+          return null
+        }
+
+        // Execute generated concept if enabled
+        if (this.config.executeGeneratedConcept) {
+          const executionResult = await this.executeGeneratedConcept(
+            buildResult.concept,
+            problem,
+          )
+
+          return {
+            success: executionResult.success,
+            concept: buildResult.concept,
+            buildResult,
+            executionResult,
+            recommendation: this.formatConceptRecommendation(buildResult.concept),
+            confidence,
+          }
+        }
+
+        // Return recommendation without execution
+        return {
+          success: true,
+          concept: buildResult.concept,
+          buildResult,
+          recommendation: this.formatConceptRecommendation(buildResult.concept),
+          confidence,
+        }
+      }
+
+      return { success: false, confidence: 0 }
+    } catch (error) {
+      log.error("Concept generation failed", { error })
+      return null
+    }
+  }
+
+  /**
+   * Execute a generated concept to solve the problem
+   *
+   * Different concept types have different execution strategies:
+   * - TOOL: Execute code in sandbox
+   * - SKILL: Invoke the skill
+   * - AGENT: Return recommendation to use the agent
+   */
+  private async executeGeneratedConcept(
+    concept: GeneratedConcept,
+    problem: AutonomousProblem,
+  ): Promise<SolutionAttempt> {
+    const timestamp = new Date().toISOString()
+
+    switch (concept.type) {
+      case "TOOL": {
+        // Execute tool code in sandbox
+        if (this.sandbox && typeof concept.content === "string") {
+          const result = await this.sandbox.execute({
+            language: this.detectLanguage(problem.technology),
+            code: concept.content,
+            workingDir: problem.workingDir,
+            timeoutMs: 30000,
+          })
+          return {
+            attempt: 1,
+            code: concept.content,
+            executionResult: result,
+            success: result.exitCode === 0,
+            timestamp,
+            toolId: concept.identifier,
+            toolName: concept.identifier,
+          }
+        }
+        break
+      }
+
+      case "SKILL": {
+        // Skill generated - return success, available for invocation via /<skill-name>
+        return {
+          attempt: 1,
+          success: true,
+          timestamp,
+          toolName: `/${concept.identifier}`,
+        }
+      }
+
+      case "AGENT": {
+        // Agent generated - return success, orchestrator will use it next turn
+        return {
+          attempt: 1,
+          success: true,
+          timestamp,
+          toolName: `@${concept.identifier}`,
+        }
+      }
+
+      case "PROMPT":
+      case "MEMORY": {
+        // These don't need execution - generation is success
+        return {
+          attempt: 1,
+          success: true,
+          timestamp,
+        }
+      }
+
+      case "HAND":
+      case "WORKFLOW": {
+        // These require scheduling/orchestration - generation is success
+        return {
+          attempt: 1,
+          success: true,
+          timestamp,
+          toolName: concept.identifier,
+        }
+      }
+    }
+
+    return { attempt: 1, success: false, timestamp }
+  }
+
+  /**
+   * Format a recommendation message for the generated concept
+   */
+  private formatConceptRecommendation(concept: GeneratedConcept): string {
+    switch (concept.type) {
+      case "TOOL":
+        return `Generated and executed new tool: ${concept.identifier}. ${concept.description}`
+      case "SKILL":
+        return `Generated new skill: /${concept.identifier}. Invoke with /${concept.identifier}.`
+      case "AGENT":
+        return `Generated new agent: @${concept.identifier}. Use with @${concept.identifier}.`
+      case "PROMPT":
+        return `Generated new prompt template: ${concept.identifier}. ${concept.description}`
+      case "HAND":
+        return `Generated new autonomous hand: ${concept.identifier}. It will run on schedule.`
+      case "WORKFLOW":
+        return `Generated new workflow: ${concept.identifier}. ${concept.description}`
+      case "MEMORY":
+        return `Generated new memory schema: ${concept.identifier}.`
+      default:
+        return `Generated new ${concept.type}: ${concept.identifier}.`
     }
   }
 

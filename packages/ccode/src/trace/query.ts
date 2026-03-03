@@ -55,6 +55,41 @@ async function getLogFiles(logDir: string): Promise<string[]> {
 }
 
 /**
+ * Get Rust service log files (zero-*.log)
+ * These contain structured JSON trace entries mixed with unstructured tracing output
+ */
+async function getServiceLogFiles(logDir: string): Promise<string[]> {
+  const files = await fs.readdir(logDir).catch(() => [])
+  return files
+    .filter((f) => f.startsWith("zero-") && f.endsWith(".log"))
+    .map((f) => path.join(logDir, f))
+}
+
+/**
+ * Normalize a Rust log entry to match TypeScript LogEntry format.
+ * Handles the timestamp -> ts field mapping.
+ */
+function normalizeLogEntry(raw: Record<string, unknown>): LogEntry | null {
+  // Handle Rust format (uses "timestamp" instead of "ts")
+  const ts = (raw.ts as string) || (raw.timestamp as string)
+  if (!ts) return null
+
+  const trace_id = raw.trace_id as string
+  if (!trace_id) return null
+
+  return {
+    ts,
+    trace_id,
+    span_id: (raw.span_id as string) || "",
+    parent_span_id: raw.parent_span_id as string | undefined,
+    service: (raw.service as string) || "unknown",
+    event_type: (raw.event_type as string) || "unknown",
+    level: (raw.level as string) || "info",
+    payload: (raw.payload as Record<string, unknown>) || {},
+  } as LogEntry
+}
+
+/**
  * Get the current day's log file
  */
 function getCurrentLogFile(logDir: string): string {
@@ -95,6 +130,28 @@ async function* parseLogFile(filePath: string): AsyncGenerator<LogEntry> {
 }
 
 /**
+ * Parse a service log file (zero-*.log) and yield entries.
+ * Service logs contain mixed content: structured JSON and unstructured tracing output.
+ * Only JSON lines starting with '{' are parsed; others are skipped.
+ */
+async function* parseServiceLogFile(filePath: string): AsyncGenerator<LogEntry> {
+  const content = await fs.readFile(filePath, "utf-8").catch(() => "")
+
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim()
+    // Only parse lines that look like JSON (start with {)
+    if (!trimmed.startsWith("{")) continue
+    try {
+      const raw = JSON.parse(trimmed) as Record<string, unknown>
+      const entry = normalizeLogEntry(raw)
+      if (entry) yield entry
+    } catch {
+      // Skip malformed lines
+    }
+  }
+}
+
+/**
  * Parse log entries from a file within a time range
  */
 async function* parseLogFileInRange(
@@ -115,20 +172,38 @@ async function* parseLogFileInRange(
 
 /**
  * Query all entries for a specific trace ID
+ * Searches both trace-*.jsonl files and zero-*.log service files
  */
 export async function queryTrace(traceId: string, logDir: string): Promise<LogEntry[]> {
   const results: LogEntry[] = []
-  const files = await getLogFiles(logDir)
 
-  for (const file of files) {
+  // Search trace JSONL files first
+  const traceFiles = await getLogFiles(logDir)
+  for (const file of traceFiles) {
     for await (const entry of parseLogFile(file)) {
       if (entry.trace_id === traceId) {
         results.push(entry)
       }
     }
     // Stop searching older files if we found entries
-    if (results.length > 0 && files.indexOf(file) > 0) {
+    if (results.length > 0 && traceFiles.indexOf(file) > 0) {
       break
+    }
+  }
+
+  // Also search Rust service logs (zero-*.log) for cross-service trace correlation
+  const serviceFiles = await getServiceLogFiles(logDir)
+  for (const file of serviceFiles) {
+    for await (const entry of parseServiceLogFile(file)) {
+      if (entry.trace_id === traceId) {
+        // Avoid duplicates
+        const isDuplicate = results.some(
+          (r) => r.ts === entry.ts && r.span_id === entry.span_id && r.event_type === entry.event_type,
+        )
+        if (!isDuplicate) {
+          results.push(entry)
+        }
+      }
     }
   }
 

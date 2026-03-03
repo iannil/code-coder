@@ -33,6 +33,7 @@ import {
   SchedulerListTasksTool,
   SchedulerDeleteTaskTool,
   SchedulerRunTaskTool,
+  SchedulerDelayTaskTool,
 } from "./scheduler"
 
 export namespace ToolRegistry {
@@ -110,6 +111,7 @@ export namespace ToolRegistry {
       SchedulerListTasksTool,
       SchedulerDeleteTaskTool,
       SchedulerRunTaskTool,
+      SchedulerDelayTaskTool,
       ...custom,
     ]
   }
@@ -129,8 +131,12 @@ export namespace ToolRegistry {
     const result = await Promise.all(
       tools
         .filter((t) => {
-          // Enable websearch/codesearch for zen users OR via enable flag
+          // Enable websearch/codesearch for zen users, via enable flag, or for autonomous agent
           if (t.id === "codesearch" || t.id === "websearch") {
+            // Always enable for autonomous agent (needs real-time data)
+            if (agent?.name === "autonomous") {
+              return true
+            }
             return model.providerID === "ccode" || Flag.CCODE_ENABLE_EXA
           }
 
