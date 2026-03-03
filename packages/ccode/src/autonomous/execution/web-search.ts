@@ -139,14 +139,18 @@ const DEFAULT_CONFIG: WebSearchConfig = {
   maxResults: 5,
   fetchTimeout: 10000,
   trustedDomains: [
+    // Technical documentation
     "docs.python.org",
     "developer.mozilla.org",
     "nodejs.org",
     "typescriptlang.org",
     "rust-lang.org",
-    "doc.rust-lang.org",
-    "docs.rs",
     "go.dev",
+    "docs.rs",
+    "crates.io",
+    "npmjs.com",
+    "pypi.org",
+    "doc.rust-lang.org",
     "pkg.go.dev",
     "react.dev",
     "nextjs.org",
@@ -154,6 +158,24 @@ const DEFAULT_CONFIG: WebSearchConfig = {
     "deno.land",
     "github.com",
     "stackoverflow.com",
+    "stackexchange.com",
+    // Financial/news sources for research
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "ft.com",
+    "economist.com",
+    "sina.com",
+    "163.com",
+    "sohu.com",
+    "qq.com",
+    "eastmoney.com",
+    "hexun.com",
+    "fx678.com",
+    "tradingeconomics.com",
+    "investing.com",
+    "goldsilver.com",
+    "kitco.com",
   ],
   enableStackOverflow: true,
 }
@@ -263,6 +285,12 @@ export class WebSearcher {
       queries.push(`${technology} documentation ${keywords.slice(0, 2).join(" ")}`)
     }
 
+    // IMPORTANT: For research tasks without error context, use the problem directly
+    // This handles Chinese text and general research queries
+    if (queries.length === 0 && problem.trim().length > 0) {
+      queries.push(problem.trim())
+    }
+
     return [...new Set(queries)].slice(0, 3)
   }
 
@@ -273,9 +301,12 @@ export class WebSearcher {
     const startTime = Date.now()
     const cacheKey = this.getCacheKey(context)
 
+    console.error("[WEB-SEARCH] search() called:", { problem: context.problem.slice(0, 50), sessionId: this.sessionId })
+
     // Check cache
     const cached = this.searchHistory.get(cacheKey)
     if (cached) {
+      console.error("[WEB-SEARCH] Returning cached result")
       log.debug("Returning cached search result", { sessionId: this.sessionId })
       return cached
     }
@@ -287,8 +318,15 @@ export class WebSearcher {
 
     // Evaluate search need
     const decision = await this.evaluateSearchNeed(context)
+    console.error("[WEB-SEARCH] evaluateSearchNeed result:", {
+      shouldSearch: decision.shouldSearch,
+      confidence: decision.confidence,
+      queryCount: decision.suggestedQueries.length,
+      queries: decision.suggestedQueries,
+    })
 
     if (!decision.shouldSearch) {
+      console.error("[WEB-SEARCH] Skipping search - shouldSearch is false")
       log.info("Search not needed based on confidence", { confidence: decision.confidence })
       return {
         query: "",
@@ -304,15 +342,20 @@ export class WebSearcher {
     const allResults: SearchResult[] = []
     for (const query of decision.suggestedQueries) {
       try {
+        console.error("[WEB-SEARCH] Calling performSearch for:", query)
         const results = await this.performSearch(query)
+        console.error("[WEB-SEARCH] performSearch returned", results.length, "results for:", query)
         allResults.push(...results)
       } catch (error) {
+        console.error("[WEB-SEARCH] performSearch error:", error)
         log.warn("Search query failed", {
           query,
           error: error instanceof Error ? error.message : String(error),
         })
       }
     }
+
+    console.error("[WEB-SEARCH] Total results after all searches:", allResults.length)
 
     // Deduplicate and rank results
     const rankedResults = this.rankResults(allResults)
@@ -365,7 +408,7 @@ export class WebSearcher {
    * Perform a single search query using Exa MCP API
    */
   private async performSearch(query: string): Promise<SearchResult[]> {
-    log.debug("Performing search via Exa MCP API", { query })
+    console.error("[WEB-SEARCH] performSearch called:", query)
 
     const searchRequest: ExaMcpSearchRequest = {
       jsonrpc: "2.0",
@@ -387,6 +430,7 @@ export class WebSearcher {
     const timeoutId = setTimeout(() => controller.abort(), EXA_API_CONFIG.TIMEOUT_MS)
 
     try {
+      console.error("[WEB-SEARCH] Calling Exa API:", EXA_API_CONFIG.BASE_URL + EXA_API_CONFIG.ENDPOINTS.SEARCH)
       const response = await fetch(`${EXA_API_CONFIG.BASE_URL}${EXA_API_CONFIG.ENDPOINTS.SEARCH}`, {
         method: "POST",
         headers: {
@@ -398,14 +442,24 @@ export class WebSearcher {
       })
 
       clearTimeout(timeoutId)
+      console.error("[WEB-SEARCH] Response status:", response.status)
 
       if (!response.ok) {
         const errorText = await response.text()
+        console.error("[WEB-SEARCH] API error:", response.status, errorText.slice(0, 200))
         log.warn("Exa search request failed", { status: response.status, error: errorText })
         return []
       }
 
       const responseText = await response.text()
+      console.error("[WEB-SEARCH] Response length:", responseText.length, "First 200 chars:", responseText.slice(0, 200))
+
+      log.debug("Exa API response received", {
+        query,
+        responseLength: responseText.length,
+        hasEventPrefix: responseText.includes("event:"),
+        hasDataPrefix: responseText.includes("data:"),
+      })
 
       // Parse SSE response
       const lines = responseText.split("\n")
@@ -414,10 +468,18 @@ export class WebSearcher {
           try {
             const data: ExaMcpSearchResponse = JSON.parse(line.substring(6))
             if (data.result?.content?.[0]?.text) {
-              return this.parseExaResults(data.result.content[0].text, query)
+              const textContent = data.result.content[0].text
+              log.debug("Found text content in Exa response", { textLength: textContent.length })
+              return this.parseExaResults(textContent, query)
+            } else {
+              log.warn("Exa response missing expected content structure", {
+                hasResult: !!data.result,
+                hasContent: !!data.result?.content,
+                contentLength: data.result?.content?.length,
+              })
             }
           } catch (parseError) {
-            log.warn("Failed to parse Exa response", { error: parseError })
+            log.warn("Failed to parse Exa response", { error: parseError, linePreview: line.slice(0, 100) })
           }
         }
       }
@@ -443,6 +505,8 @@ export class WebSearcher {
   private parseExaResults(responseText: string, query: string): SearchResult[] {
     const results: SearchResult[] = []
 
+    log.debug("Parsing Exa results", { responseLength: responseText.length, preview: responseText.slice(0, 200) })
+
     try {
       // Try to parse as JSON first (structured response)
       const parsed = JSON.parse(responseText)
@@ -456,10 +520,38 @@ export class WebSearcher {
             relevanceScore: item.score ?? 0.7,
           })
         }
+        log.debug("Parsed as JSON array", { resultCount: results.length })
         return results
       }
     } catch {
       // Not JSON, parse as text
+    }
+
+    // Parse "Title:/URL:/Text:" structured format from Exa MCP
+    // Format: Title: ...\nURL: ...\nText: ...\n\nTitle: ...\nURL: ...
+    const titleUrlPattern = /Title:\s*(.+?)\n(?:Author:[^\n]*\n)?(?:Published Date:[^\n]*\n)?URL:\s*(https?:\/\/[^\s\n]+)/g
+    let match: RegExpExecArray | null
+    while ((match = titleUrlPattern.exec(responseText)) !== null) {
+      const title = match[1].trim()
+      const url = match[2].trim()
+
+      // Extract the full text content after URL (not truncated - let synthesis handle it)
+      const afterUrl = responseText.slice(match.index + match[0].length)
+      const textMatch = afterUrl.match(/^[^\n]*\nText:\s*(.+?)(?=\n\nTitle:|\n\n\n|$)/s)
+      const snippet = textMatch ? textMatch[1].trim().slice(0, 2000) : "" // Increased to 2000 chars
+
+      results.push({
+        url,
+        title,
+        snippet,
+        source: this.detectSource(url),
+        relevanceScore: 0.8,
+      })
+    }
+
+    if (results.length > 0) {
+      log.debug("Parsed structured Title/URL format", { resultCount: results.length })
+      return results
     }
 
     // Parse as markdown/text format (Links: [...] format)
@@ -476,6 +568,7 @@ export class WebSearcher {
             relevanceScore: 0.7,
           })
         }
+        log.debug("Parsed Links format", { resultCount: results.length })
         return results
       } catch {
         // Continue with text parsing
@@ -483,9 +576,11 @@ export class WebSearcher {
     }
 
     // Extract URLs from plain text response
-    const urlRegex = /https?:\/\/[^\s\])"']+/g
+    const urlRegex = /https?:\/\/[^\s\])"'<>]+/g
     const urls = responseText.match(urlRegex) || []
     const uniqueUrls = Array.from(new Set(urls)).slice(0, 5)
+
+    log.debug("Falling back to URL extraction", { urlCount: uniqueUrls.length })
 
     for (const url of uniqueUrls) {
       results.push({

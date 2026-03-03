@@ -1402,6 +1402,9 @@ impl CodeCoderBridge {
                             crate::sse::TaskEvent::SkillUse(_) => "SkillUse",
                             crate::sse::TaskEvent::Question(_) => "Question",
                             crate::sse::TaskEvent::Confirmation(_) => "Confirmation",
+                            crate::sse::TaskEvent::PdcaCycle(_) => "PdcaCycle",
+                            crate::sse::TaskEvent::PdcaCheck(_) => "PdcaCheck",
+                            crate::sse::TaskEvent::PdcaResult(_) => "PdcaResult",
                         };
 
                         tracing::debug!(

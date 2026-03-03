@@ -69,6 +69,18 @@ pub enum TaskEvent {
     /// Task completion event (success or failure)
     #[serde(rename = "finish")]
     Finish(FinishData),
+
+    /// PDCA cycle phase event
+    #[serde(rename = "pdca_cycle")]
+    PdcaCycle(PdcaCycleData),
+
+    /// PDCA check result event
+    #[serde(rename = "pdca_check")]
+    PdcaCheck(PdcaCheckData),
+
+    /// PDCA final result event
+    #[serde(rename = "pdca_result")]
+    PdcaResult(PdcaResultData),
 }
 
 /// Tool use event data.
@@ -108,6 +120,91 @@ pub struct FinishData {
     pub output: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+// ============================================================================
+// PDCA Event Types
+// ============================================================================
+
+/// CLOSE score for PDCA quality evaluation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloseScore {
+    /// Convergence: progress toward the goal
+    pub convergence: f64,
+    /// Leverage: impact vs effort ratio
+    pub leverage: f64,
+    /// Optionality: preserves future choices
+    pub optionality: f64,
+    /// Surplus: maintains buffer/reserves
+    pub surplus: f64,
+    /// Evolution: learning and growth
+    pub evolution: f64,
+    /// Total weighted score
+    pub total: f64,
+}
+
+/// PDCA cycle phase event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdcaCycleData {
+    /// Current cycle number (1-indexed)
+    pub cycle: u32,
+    /// Maximum cycles allowed
+    #[serde(rename = "maxCycles")]
+    pub max_cycles: u32,
+    /// Current phase: plan, do, check, act
+    pub phase: String,
+    /// Task type being processed
+    #[serde(rename = "taskType")]
+    pub task_type: String,
+}
+
+/// PDCA issue found during check phase.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdcaIssue {
+    /// Unique issue identifier
+    pub id: String,
+    /// Issue category (e.g., "quality", "security", "performance")
+    pub category: String,
+    /// Severity level
+    pub severity: String,
+    /// Human-readable description
+    pub description: String,
+}
+
+/// PDCA check result event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdcaCheckData {
+    /// Whether the check passed
+    pub passed: bool,
+    /// CLOSE score evaluation
+    #[serde(rename = "closeScore")]
+    pub close_score: CloseScore,
+    /// Recommendation: pass, fix, or rework
+    pub recommendation: String,
+    /// Number of issues found
+    #[serde(rename = "issueCount")]
+    pub issue_count: u32,
+    /// Detailed issues (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issues: Option<Vec<PdcaIssue>>,
+}
+
+/// PDCA final result event data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PdcaResultData {
+    /// Whether the PDCA loop succeeded
+    pub success: bool,
+    /// Number of cycles completed
+    pub cycles: u32,
+    /// Total duration in milliseconds
+    #[serde(rename = "totalDurationMs")]
+    pub total_duration_ms: u64,
+    /// Final CLOSE score (if available)
+    #[serde(rename = "closeScore", skip_serializing_if = "Option::is_none")]
+    pub close_score: Option<CloseScore>,
+    /// Reason for success/failure
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 /// Debug information event data.
@@ -816,6 +913,169 @@ mod tests {
                 assert_eq!(data.error, Some("Rate limit exceeded".to_string()));
             }
             _ => panic!("Expected Finish event"),
+        }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // PDCA Event Parsing Tests
+    // ────────────────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_pdca_cycle_event() {
+        let json = r#"{
+            "type": "pdca_cycle",
+            "data": {
+                "cycle": 1,
+                "maxCycles": 3,
+                "phase": "plan",
+                "taskType": "research"
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::PdcaCycle(data) => {
+                assert_eq!(data.cycle, 1);
+                assert_eq!(data.max_cycles, 3);
+                assert_eq!(data.phase, "plan");
+                assert_eq!(data.task_type, "research");
+            }
+            _ => panic!("Expected PdcaCycle event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pdca_check_event() {
+        let json = r#"{
+            "type": "pdca_check",
+            "data": {
+                "passed": true,
+                "closeScore": {
+                    "convergence": 85.0,
+                    "leverage": 78.0,
+                    "optionality": 70.0,
+                    "surplus": 82.0,
+                    "evolution": 75.0,
+                    "total": 78.0
+                },
+                "recommendation": "pass",
+                "issueCount": 0
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::PdcaCheck(data) => {
+                assert!(data.passed);
+                assert_eq!(data.close_score.total, 78.0);
+                assert_eq!(data.close_score.convergence, 85.0);
+                assert_eq!(data.recommendation, "pass");
+                assert_eq!(data.issue_count, 0);
+                assert!(data.issues.is_none());
+            }
+            _ => panic!("Expected PdcaCheck event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pdca_check_event_with_issues() {
+        let json = r#"{
+            "type": "pdca_check",
+            "data": {
+                "passed": false,
+                "closeScore": {
+                    "convergence": 60.0,
+                    "leverage": 50.0,
+                    "optionality": 40.0,
+                    "surplus": 55.0,
+                    "evolution": 45.0,
+                    "total": 50.0
+                },
+                "recommendation": "fix",
+                "issueCount": 2,
+                "issues": [
+                    {
+                        "id": "issue-1",
+                        "category": "quality",
+                        "severity": "high",
+                        "description": "Missing error handling"
+                    },
+                    {
+                        "id": "issue-2",
+                        "category": "security",
+                        "severity": "medium",
+                        "description": "Input validation needed"
+                    }
+                ]
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::PdcaCheck(data) => {
+                assert!(!data.passed);
+                assert_eq!(data.recommendation, "fix");
+                assert_eq!(data.issue_count, 2);
+                let issues = data.issues.unwrap();
+                assert_eq!(issues.len(), 2);
+                assert_eq!(issues[0].id, "issue-1");
+                assert_eq!(issues[0].severity, "high");
+                assert_eq!(issues[1].category, "security");
+            }
+            _ => panic!("Expected PdcaCheck event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pdca_result_event() {
+        let json = r#"{
+            "type": "pdca_result",
+            "data": {
+                "success": true,
+                "cycles": 2,
+                "totalDurationMs": 5000,
+                "closeScore": {
+                    "convergence": 85.0,
+                    "leverage": 80.0,
+                    "optionality": 75.0,
+                    "surplus": 80.0,
+                    "evolution": 78.0,
+                    "total": 79.6
+                },
+                "reason": "All quality checks passed"
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::PdcaResult(data) => {
+                assert!(data.success);
+                assert_eq!(data.cycles, 2);
+                assert_eq!(data.total_duration_ms, 5000);
+                let score = data.close_score.unwrap();
+                assert_eq!(score.total, 79.6);
+                assert_eq!(data.reason, Some("All quality checks passed".to_string()));
+            }
+            _ => panic!("Expected PdcaResult event"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pdca_result_event_minimal() {
+        let json = r#"{
+            "type": "pdca_result",
+            "data": {
+                "success": false,
+                "cycles": 3,
+                "totalDurationMs": 120000
+            }
+        }"#;
+        let event: TaskEvent = serde_json::from_str(json).unwrap();
+        match event {
+            TaskEvent::PdcaResult(data) => {
+                assert!(!data.success);
+                assert_eq!(data.cycles, 3);
+                assert_eq!(data.total_duration_ms, 120000);
+                assert!(data.close_score.is_none());
+                assert!(data.reason.is_none());
+            }
+            _ => panic!("Expected PdcaResult event"),
         }
     }
 

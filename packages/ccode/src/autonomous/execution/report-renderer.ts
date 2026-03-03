@@ -40,7 +40,7 @@ export interface RenderResult {
 }
 
 const DEFAULT_CONFIG: Required<RenderConfig> = {
-  maxInlineLength: 1000,
+  maxInlineLength: 3500, // Telegram limit is 4096, leave room for PDCA summary
   outputDir: join(homedir(), ".codecoder", "workspace", "reports"),
   filenamePattern: "{date}-{topic}.md",
 }
@@ -129,7 +129,7 @@ export async function renderReport(
     }
   }
 
-  // Save to file
+  // Save to file for archival purposes
   const filename = generateFilename(cfg.filenamePattern, data.topic)
   const filePath = join(cfg.outputDir, filename)
 
@@ -142,9 +142,13 @@ export async function renderReport(
 
   log.info("Report saved to file", { filePath, length: report.length })
 
+  // Return full content with file reference appended
+  // This ensures IM messages show the complete report, not just a summary
+  const contentWithFileRef = `${report}\n\n---\n📄 完整报告已保存: \`${filePath}\``
+
   return {
     mode: "file",
-    content: generateSummary(data, filePath),
+    content: contentWithFileRef,
     filePath,
   }
 }

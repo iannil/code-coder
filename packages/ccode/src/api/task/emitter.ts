@@ -354,11 +354,87 @@ export namespace TaskEmitter {
     }
   }
 
+  // ============================================================================
+  // PDCA Events
+  // ============================================================================
+
+  /**
+   * Emit a PDCA cycle event
+   */
+  export function pdcaCycle(
+    taskID: string,
+    data: {
+      cycle: number
+      maxCycles: number
+      phase: "plan" | "do" | "check" | "act"
+      taskType: string
+    }
+  ): void {
+    emit(taskID, { type: "pdca_cycle", data })
+  }
+
+  /**
+   * Emit a PDCA check completed event
+   */
+  export function pdcaCheck(
+    taskID: string,
+    data: {
+      passed: boolean
+      closeScore: {
+        convergence: number
+        leverage: number
+        optionality: number
+        surplus: number
+        evolution: number
+        total: number
+      }
+      recommendation: "pass" | "fix" | "rework"
+      issueCount: number
+      issues?: Array<{
+        id: string
+        category: string
+        severity: "critical" | "high" | "medium" | "low"
+        description: string
+      }>
+    }
+  ): void {
+    emit(taskID, { type: "pdca_check", data })
+  }
+
+  /**
+   * Emit a PDCA final result event
+   */
+  export function pdcaResult(
+    taskID: string,
+    data: {
+      success: boolean
+      cycles: number
+      totalDurationMs: number
+      closeScore?: {
+        convergence: number
+        leverage: number
+        optionality: number
+        surplus: number
+        evolution: number
+        total: number
+      }
+      reason?: string
+    }
+  ): void {
+    emit(taskID, { type: "pdca_result", data })
+  }
+
   /**
    * Emit a finish event (success or failure)
+   * This function is async to ensure the finish event is fully transmitted
+   * before closing SSE streams.
    */
-  export function finish(taskID: string, success: boolean, output?: string, error?: string): void {
-    emit(taskID, { type: "finish", data: { success, output, error } })
+  export async function finish(taskID: string, success: boolean, output?: string, error?: string): Promise<void> {
+    await emit(taskID, { type: "finish", data: { success, output, error } })
+
+    // Let the event loop flush pending events before closing streams
+    // This prevents race conditions where pdca events are not transmitted
+    await new Promise(resolve => setImmediate(resolve))
 
     // Close all streams for this task
     closeAllStreams(taskID)

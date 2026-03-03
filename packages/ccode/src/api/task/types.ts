@@ -192,6 +192,68 @@ export const QuestionEvent = z.object({
 })
 export type QuestionEvent = z.infer<typeof QuestionEvent>
 
+// ============================================================================
+// PDCA Events
+// ============================================================================
+
+/** CLOSE score structure for PDCA events */
+export const CLOSEScoreEvent = z.object({
+  convergence: z.number(),
+  leverage: z.number(),
+  optionality: z.number(),
+  surplus: z.number(),
+  evolution: z.number(),
+  total: z.number(),
+})
+export type CLOSEScoreEvent = z.infer<typeof CLOSEScoreEvent>
+
+/** PDCA issue found during Check phase */
+export const PDCAIssueEvent = z.object({
+  id: z.string(),
+  category: z.string(),
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  description: z.string(),
+})
+export type PDCAIssueEvent = z.infer<typeof PDCAIssueEvent>
+
+/** PDCA cycle started event */
+export const PDCACycleEvent = z.object({
+  type: z.literal("pdca_cycle"),
+  data: z.object({
+    cycle: z.number(),
+    maxCycles: z.number(),
+    phase: z.enum(["plan", "do", "check", "act"]),
+    taskType: z.string(),
+  }),
+})
+export type PDCACycleEvent = z.infer<typeof PDCACycleEvent>
+
+/** PDCA check completed event */
+export const PDCACheckEvent = z.object({
+  type: z.literal("pdca_check"),
+  data: z.object({
+    passed: z.boolean(),
+    closeScore: CLOSEScoreEvent,
+    recommendation: z.enum(["pass", "fix", "rework"]),
+    issueCount: z.number(),
+    issues: z.array(PDCAIssueEvent).optional(),
+  }),
+})
+export type PDCACheckEvent = z.infer<typeof PDCACheckEvent>
+
+/** PDCA final result event */
+export const PDCAResultEvent = z.object({
+  type: z.literal("pdca_result"),
+  data: z.object({
+    success: z.boolean(),
+    cycles: z.number(),
+    totalDurationMs: z.number(),
+    closeScore: CLOSEScoreEvent.optional(),
+    reason: z.string().optional(),
+  }),
+})
+export type PDCAResultEvent = z.infer<typeof PDCAResultEvent>
+
 export const TaskEvent = z.discriminatedUnion("type", [
   ThoughtEvent,
   ToolUseEvent,
@@ -203,6 +265,9 @@ export const TaskEvent = z.discriminatedUnion("type", [
   AgentInfoEvent,
   SkillUseEvent,
   QuestionEvent,
+  PDCACycleEvent,
+  PDCACheckEvent,
+  PDCAResultEvent,
 ])
 export type TaskEvent = z.infer<typeof TaskEvent>
 

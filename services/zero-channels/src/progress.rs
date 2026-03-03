@@ -15,7 +15,7 @@ use crate::debug::{self, AgentUsage, DebugContext, ModelUsage};
 use crate::message::{ChannelMessage, ChannelType, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::safe_truncate;
-use crate::sse::{AgentInfoData, ConfirmationData, DebugInfoData, FinishData, ProgressData, QuestionData, SkillUseData, TaskEvent, ToolUseData};
+use crate::sse::{AgentInfoData, ConfirmationData, DebugInfoData, FinishData, PdcaCycleData, PdcaCheckData, PdcaResultData, ProgressData, QuestionData, SkillUseData, TaskEvent, ToolUseData};
 use crate::telegram::{InlineButton, TelegramChannel};
 use anyhow::Result;
 use async_trait::async_trait;
@@ -61,6 +61,15 @@ pub trait ProgressHandler: Send + Sync {
 
     /// Called when a confirmation is required (tool approval).
     async fn on_confirmation(&self, msg: &ChannelMessage, event: &ConfirmationData) -> Result<()>;
+
+    /// Called when PDCA cycle phase changes.
+    async fn on_pdca_cycle(&self, msg: &ChannelMessage, event: &PdcaCycleData) -> Result<()>;
+
+    /// Called when PDCA check completes.
+    async fn on_pdca_check(&self, msg: &ChannelMessage, event: &PdcaCheckData) -> Result<()>;
+
+    /// Called when PDCA loop finishes.
+    async fn on_pdca_result(&self, msg: &ChannelMessage, event: &PdcaResultData) -> Result<()>;
 
     /// Called when task completes (success or failure).
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()>;
@@ -139,6 +148,13 @@ struct MessageTracker {
     messages_sent: u32,
     /// Count of send failures
     send_failures: u32,
+    // PDCA tracking fields (accumulated for final message)
+    /// Current PDCA cycle info
+    pdca_cycle: Option<PdcaCycleData>,
+    /// PDCA check result
+    pdca_check: Option<PdcaCheckData>,
+    /// PDCA final result
+    pdca_result: Option<PdcaResultData>,
 }
 
 impl MessageTracker {
@@ -160,6 +176,10 @@ impl MessageTracker {
             events_received: 0,
             messages_sent: 0,
             send_failures: 0,
+            // Initialize PDCA fields
+            pdca_cycle: None,
+            pdca_check: None,
+            pdca_result: None,
         }
     }
 
@@ -847,10 +867,9 @@ impl ProgressHandler for ImProgressHandler {
                 self.edit_telegram_message(&msg.channel_id, prog_msg_id, &progress_text)
                     .await?;
 
-                // Update tracker after network call completes
-                let tracker_ref = self.get_tracker(&msg.id);
-                let mut tracker = tracker_ref.lock().await;
-                tracker.current_text = progress_text;
+                // NOTE: Intentionally NOT updating tracker.current_text here
+                // Progress messages are for real-time display only, not for accumulation
+                // Actual output comes from on_output or finish event
 
                 tracing::debug!(
                     message_id = %msg.id,
@@ -870,12 +889,15 @@ impl ProgressHandler for ImProgressHandler {
         let send_result = self.send_new_message(msg, &progress_text).await;
 
         // Update tracker after network call completes
+        // Only record progress_message_id, NOT current_text
+        // Progress messages are for real-time display only, not for accumulation
         let tracker_ref = self.get_tracker(&msg.id);
         let mut tracker = tracker_ref.lock().await;
         if let Ok(Some(new_msg_id)) = send_result {
             tracker.progress_message_id = Some(new_msg_id);
         }
-        tracker.current_text = progress_text;
+        // NOTE: Intentionally NOT updating tracker.current_text
+        // Actual output comes from on_output or finish event
 
         tracing::debug!(
             message_id = %msg.id,
@@ -1462,6 +1484,68 @@ impl ProgressHandler for ImProgressHandler {
         Ok(())
     }
 
+    async fn on_pdca_cycle(&self, msg: &ChannelMessage, event: &PdcaCycleData) -> Result<()> {
+        tracing::info!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            cycle = event.cycle,
+            max_cycles = event.max_cycles,
+            phase = %event.phase,
+            task_type = %event.task_type,
+            "PDCA cycle event received - storing for final message"
+        );
+
+        // Store PDCA cycle data in tracker (will be included in final message)
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.pdca_cycle = Some(event.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn on_pdca_check(&self, msg: &ChannelMessage, event: &PdcaCheckData) -> Result<()> {
+        tracing::info!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            passed = event.passed,
+            recommendation = %event.recommendation,
+            issue_count = event.issue_count,
+            close_score = event.close_score.total,
+            "PDCA check event received - storing for final message"
+        );
+
+        // Store PDCA check data in tracker (will be included in final message)
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.pdca_check = Some(event.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn on_pdca_result(&self, msg: &ChannelMessage, event: &PdcaResultData) -> Result<()> {
+        tracing::info!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            success = event.success,
+            cycles = event.cycles,
+            duration_ms = event.total_duration_ms,
+            "PDCA result event received - storing for final message"
+        );
+
+        // Store PDCA result data in tracker (will be included in final message)
+        {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
+            tracker.pdca_result = Some(event.clone());
+        }
+
+        Ok(())
+    }
+
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()> {
         tracing::debug!(
             message_id = %msg.id,
@@ -1512,10 +1596,13 @@ impl ProgressHandler for ImProgressHandler {
             } else {
                 None
             };
+            // NOTE: PDCA summary is already included in TypeScript output (task.ts)
+            // with richer context (sources, insights). Don't duplicate here.
             tracing::info!(
                 message_id = %msg.id,
                 accumulated_length = accumulated.as_ref().map_or(0, |s| s.len()),
                 thought_messages_count = tracker.thought_message_ids.len(),
+                has_pdca_result = tracker.pdca_result.is_some(),
                 "Accumulated text from on_output events"
             );
             (summary, debug_info_text, accumulated, tracker.progress_message_id, tracker.thought_message_ids.clone())
@@ -1523,13 +1610,19 @@ impl ProgressHandler for ImProgressHandler {
 
         // Clean up progress message (which may contain thinking content)
         // Edit it to show a completion marker instead of thinking
+        // Use different text based on success/failure to avoid confusing dual messages
         if msg.channel_type == ChannelType::Telegram {
             if let Some(prog_msg_id) = progress_message_id {
-                let cleanup_text = "✅ 处理完成";
+                let cleanup_text = if event.success {
+                    "✅ 处理完成"
+                } else {
+                    "⏳ 正在生成结果..."
+                };
                 tracing::debug!(
                     message_id = %msg.id,
                     trace_id = %msg.trace_id,
                     progress_message_id = prog_msg_id,
+                    success = event.success,
                     "🔍 [TRACE] on_finish: cleaning up progress message"
                 );
                 // Best effort - don't fail if edit fails
@@ -1552,15 +1645,16 @@ impl ProgressHandler for ImProgressHandler {
 
         // Format final response with optional debug info
         // Use accumulated text from streaming if available, otherwise use event.output
+        // NOTE: PDCA summary is included in TypeScript output (task.ts), not added here
         let content = if event.success {
             // Use accumulated text (from on_output events) or fallback to event.output
             let final_output = accumulated_text.as_ref().or(event.output.as_ref());
 
-            // Always send a message - either the output or a completion marker
+            // Build base message with output content
             let base = if let Some(output) = final_output {
                 format!("{}\n\n{}", output, summary)
             } else {
-                // No output content, just show summary
+                // No output content, show completion marker
                 format!("✅ 处理完成\n\n{}", summary)
             };
 
@@ -1583,6 +1677,7 @@ impl ProgressHandler for ImProgressHandler {
         } else {
             let error_msg = event.error.as_deref().unwrap_or("Unknown error");
             let text = format!("❌ 处理失败: {}\n\n{}", error_msg, summary);
+
             // Add end marker for error case too
             let with_end_marker = format!("{}\n\n─────────────────\n❌ 回复结束", text);
             if let Some(debug_text) = debug_info_text {
@@ -1662,6 +1757,9 @@ impl ImProgressHandler {
             TaskEvent::SkillUse(_) => "SkillUse",
             TaskEvent::Question(_) => "Question",
             TaskEvent::Confirmation(_) => "Confirmation",
+            TaskEvent::PdcaCycle(_) => "PdcaCycle",
+            TaskEvent::PdcaCheck(_) => "PdcaCheck",
+            TaskEvent::PdcaResult(_) => "PdcaResult",
         };
 
         tracing::debug!(
@@ -1711,6 +1809,18 @@ impl ImProgressHandler {
             TaskEvent::Confirmation(data) => {
                 self.on_confirmation(msg, &data).await?;
                 Ok(false) // Confirmation pauses but doesn't finish
+            }
+            TaskEvent::PdcaCycle(data) => {
+                self.on_pdca_cycle(msg, &data).await?;
+                Ok(false) // PDCA cycle doesn't finish
+            }
+            TaskEvent::PdcaCheck(data) => {
+                self.on_pdca_check(msg, &data).await?;
+                Ok(false) // PDCA check doesn't finish
+            }
+            TaskEvent::PdcaResult(data) => {
+                self.on_pdca_result(msg, &data).await?;
+                Ok(false) // PDCA result doesn't finish (finish event comes separately)
             }
         };
 

@@ -386,9 +386,9 @@ export async function createTask(req: HttpRequest, _params: RouteParams): Promis
         // Cleanup registration after task completes
         TaskContextRegistry.unregister(sessionID)
       })
-      .catch((error) => {
+      .catch(async (error) => {
         TaskStore.fail(task.id, error instanceof Error ? error.message : String(error))
-        TaskEmitter.finish(task.id, false, undefined, error instanceof Error ? error.message : String(error))
+        await TaskEmitter.finish(task.id, false, undefined, error instanceof Error ? error.message : String(error))
       })
 
     return jsonResponse(
@@ -429,6 +429,12 @@ async function executeTask(
   // Mark task as running
   TaskStore.setRunning(taskID)
   TaskEmitter.progress(taskID, "starting", `Starting ${agent} agent...`)
+
+  // For autonomous agent, use PDCA-wrapped execution
+  if (agent === "autonomous") {
+    await executeTaskWithPDCA(taskID, prompt, sessionID, context, model, startTime)
+    return
+  }
 
   // Subscribe to permission requests for this session
   const unsubscribePermission = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
@@ -635,7 +641,7 @@ async function executeTask(
 
     // Mark task as completed
     TaskStore.complete(taskID, output)
-    TaskEmitter.finish(taskID, true, output)
+    await TaskEmitter.finish(taskID, true, output)
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error)
     const elapsedMs = Date.now() - startTime
@@ -650,10 +656,430 @@ async function executeTask(
     })
 
     TaskStore.fail(taskID, errorMsg)
-    TaskEmitter.finish(taskID, false, undefined, errorMsg)
+    await TaskEmitter.finish(taskID, false, undefined, errorMsg)
   } finally {
     unsubscribePermission()
     unsubscribeQuestion()
+  }
+}
+
+/**
+ * Execute an autonomous task with PDCA cycle
+ * This ensures research and implementation tasks go through quality checks
+ */
+async function executeTaskWithPDCA(
+  taskID: string,
+  prompt: string,
+  sessionID: string,
+  context: TaskContext,
+  model: string | undefined,
+  startTime: number,
+): Promise<void> {
+  const { LocalSession } = await import("@/api")
+  const { classifyTask } = await import("../../../autonomous/classification")
+  const { createPDCAController } = await import("../../../autonomous/pdca")
+  const { createResearchLoop } = await import("../../../autonomous/execution/research-loop")
+
+  // Classify the task first
+  TaskEmitter.progress(taskID, "classifying", "Analyzing task type...")
+  const classification = await classifyTask(prompt)
+
+  log.info("task classified", {
+    taskID,
+    type: classification.type,
+    confidence: classification.confidence,
+    researchTopic: classification.researchTopic,
+  })
+
+  // Emit PDCA cycle started
+  TaskEmitter.pdcaCycle(taskID, {
+    cycle: 1,
+    maxCycles: 3,
+    phase: "plan",
+    taskType: classification.type,
+  })
+
+  // Route based on task type
+  if (classification.type === "research" && classification.confidence > 0.6) {
+    await executeResearchTaskWithPDCA(
+      taskID,
+      prompt,
+      sessionID,
+      classification,
+      startTime,
+    )
+    return
+  }
+
+  // For other task types (implementation, query, etc.), use evolution-based PDCA
+  await executeImplementationTaskWithPDCA(
+    taskID,
+    prompt,
+    sessionID,
+    context,
+    model,
+    classification,
+    startTime,
+  )
+}
+
+/**
+ * Execute a research task with PDCA cycle
+ */
+async function executeResearchTaskWithPDCA(
+  taskID: string,
+  prompt: string,
+  sessionID: string,
+  classification: Awaited<ReturnType<typeof import("../../../autonomous/classification").classifyTask>>,
+  startTime: number,
+): Promise<void> {
+  const { createPDCAController } = await import("../../../autonomous/pdca")
+  const { createResearchLoop } = await import("../../../autonomous/execution/research-loop")
+
+  const topic = classification.researchTopic ?? prompt
+
+  log.info("executing research task with PDCA", {
+    taskID,
+    topic,
+    confidence: classification.confidence,
+  })
+
+  TaskEmitter.progress(taskID, "researching", `Researching: ${topic.slice(0, 50)}...`)
+  TaskEmitter.agentInfo(taskID, {
+    agent: "research",
+    display_name: "研究分析师",
+    is_primary: true,
+  })
+
+  const researchLoop = createResearchLoop({
+    maxSources: 10,
+    enableLearning: true,
+    enableHandCreation: true,
+  })
+
+  // Create PDCA controller for research task
+  const pdca = createPDCAController<{
+    topic: string
+    summary: string
+    report: string
+    sources: Array<{
+      url: string
+      title: string
+      snippet: string
+      credibility: "high" | "medium" | "low"
+      content?: string
+    }>
+    insights: string[]
+    outputPath?: string
+    handCreated?: string
+  }>({
+    taskType: "research",
+    sessionId: sessionID,
+    maxCycles: 3,
+    passThreshold: 6.0,
+    fixThreshold: 4.0,
+    enableFix: true,
+    enableLearning: true,
+  })
+
+  try {
+    const pdcaResult = await pdca.execute(
+      async () => {
+        // Emit DO phase
+        TaskEmitter.pdcaCycle(taskID, {
+          cycle: pdca.getCycles() + 1,
+          maxCycles: pdca.getConfig().maxCycles,
+          phase: "do",
+          taskType: "research",
+        })
+
+        const result = await researchLoop.research({
+          sessionId: sessionID,
+          topic,
+        })
+        return {
+          taskType: "research" as const,
+          success: result.success,
+          output: result,
+          durationMs: result.durationMs,
+        }
+      },
+      prompt,
+    )
+
+    // Emit PDCA check result
+    if (pdcaResult.checkResult) {
+      TaskEmitter.pdcaCheck(taskID, {
+        passed: pdcaResult.checkResult.passed,
+        closeScore: pdcaResult.checkResult.closeScore,
+        recommendation: pdcaResult.checkResult.recommendation,
+        issueCount: pdcaResult.checkResult.issues.length,
+        issues: pdcaResult.checkResult.issues.map(i => ({
+          id: i.id,
+          category: i.category,
+          severity: i.severity,
+          description: i.description,
+        })),
+      })
+    }
+
+    // Emit PDCA result
+    TaskEmitter.pdcaResult(taskID, {
+      success: pdcaResult.success,
+      cycles: pdcaResult.cycles,
+      totalDurationMs: pdcaResult.totalDurationMs,
+      closeScore: pdcaResult.checkResult?.closeScore,
+      reason: pdcaResult.reason,
+    })
+
+    const elapsedMs = Date.now() - startTime
+    const output = pdcaResult.result?.output
+
+    // Format output with PDCA summary
+    let formattedOutput = output?.report || output?.summary || "Research completed."
+    formattedOutput += `\n\n---\n### PDCA 验收结果\n`
+    formattedOutput += `- **状态**: ${pdcaResult.success ? "✅ 通过" : "⚠️ 需改进"}\n`
+    formattedOutput += `- **CLOSE 分数**: ${pdcaResult.checkResult?.closeScore.total.toFixed(1) ?? "N/A"}/10\n`
+    formattedOutput += `- **循环次数**: ${pdcaResult.cycles}\n`
+    if (output?.sources) {
+      formattedOutput += `- **来源数量**: ${output.sources.length}\n`
+    }
+    if (output?.insights) {
+      formattedOutput += `- **洞察数量**: ${output.insights.length}\n`
+    }
+
+    log.info("research task with PDCA completed", {
+      taskID,
+      success: pdcaResult.success,
+      cycles: pdcaResult.cycles,
+      closeScore: pdcaResult.checkResult?.closeScore.total,
+      elapsedMs,
+    })
+
+    // Handle success/failure differently to avoid dual status messages
+    if (pdcaResult.success) {
+      TaskStore.complete(taskID, formattedOutput)
+      await TaskEmitter.finish(taskID, true, formattedOutput)
+    } else {
+      // PDCA failed - use fail() and pass the reason as error message
+      const failureReason = pdcaResult.reason || "PDCA check did not pass"
+      TaskStore.fail(taskID, failureReason)
+      await TaskEmitter.finish(taskID, false, formattedOutput, failureReason)
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error("research task with PDCA failed", { taskID, error: errorMsg })
+
+    // Emit PDCA failure result event so IM clients see the error
+    TaskEmitter.pdcaResult(taskID, {
+      success: false,
+      cycles: 1,
+      totalDurationMs: Date.now() - startTime,
+      reason: errorMsg,
+    })
+
+    TaskStore.fail(taskID, errorMsg)
+    await TaskEmitter.finish(taskID, false, undefined, errorMsg)
+  } finally {
+    await researchLoop.cleanup()
+  }
+}
+
+/**
+ * Execute an implementation task with PDCA cycle
+ */
+async function executeImplementationTaskWithPDCA(
+  taskID: string,
+  prompt: string,
+  sessionID: string,
+  context: TaskContext,
+  model: string | undefined,
+  classification: Awaited<ReturnType<typeof import("../../../autonomous/classification").classifyTask>>,
+  startTime: number,
+): Promise<void> {
+  const { LocalSession } = await import("@/api")
+  const { createPDCAController } = await import("../../../autonomous/pdca")
+  const { createEvolutionLoop } = await import("../../../autonomous/execution/evolution-loop")
+
+  log.info("executing implementation task with PDCA", {
+    taskID,
+    type: classification.type,
+    confidence: classification.confidence,
+  })
+
+  TaskEmitter.progress(taskID, "implementing", "Processing implementation...")
+  TaskEmitter.agentInfo(taskID, {
+    agent: "autonomous",
+    display_name: "自主代理",
+    is_primary: true,
+  })
+
+  // Create PDCA controller for implementation task
+  const pdca = createPDCAController<{
+    summary: string
+    solved: boolean
+    solution?: string
+    knowledgeId?: string
+    learnedToolId?: string
+  }>({
+    taskType: classification.type,
+    sessionId: sessionID,
+    maxCycles: 2,
+    passThreshold: 6.0,
+    fixThreshold: 4.0,
+    enableFix: true,
+    enableLearning: true,
+  })
+
+  // Create Evolution Loop
+  const evolutionLoop = createEvolutionLoop({
+    maxRetries: 3,
+    enableWebSearch: true,
+    enableCodeExecution: true,
+    enableToolLearning: true,
+    enableAutoBuilder: false,
+  })
+
+  // Subscribe to permission requests for this session
+  const unsubscribePermission = Bus.subscribe(PermissionNext.Event.Asked, (event) => {
+    if (event.properties.sessionID !== sessionID) return
+
+    if (context.source === "remote") {
+      if (shouldRequireApproval(event.properties.permission, context)) {
+        log.info("permission requested", {
+          taskID,
+          requestID: event.properties.id,
+          permission: event.properties.permission,
+        })
+        TaskStore.setAwaitingApproval(taskID, event.properties.id, event.properties.permission)
+        TaskEmitter.confirmation(
+          taskID,
+          event.properties.id,
+          event.properties.permission,
+          `Permission requested: ${event.properties.permission}`,
+          event.properties.metadata,
+        )
+      }
+    }
+  })
+
+  // Subscribe to question requests for this session
+  const unsubscribeQuestion = Bus.subscribe(Question.Event.Asked, (event) => {
+    if (event.properties.sessionID !== sessionID) return
+
+    log.info("question requested", {
+      taskID,
+      requestID: event.properties.id,
+    })
+
+    TaskEmitter.question(taskID, event.properties.id, event.properties.questions)
+  })
+
+  try {
+    const pdcaResult = await pdca.execute(
+      async () => {
+        // Emit DO phase
+        TaskEmitter.pdcaCycle(taskID, {
+          cycle: pdca.getCycles() + 1,
+          maxCycles: pdca.getConfig().maxCycles,
+          phase: "do",
+          taskType: classification.type,
+        })
+
+        const result = await evolutionLoop.evolve({
+          sessionId: sessionID,
+          description: prompt,
+        })
+        return {
+          taskType: classification.type,
+          success: result.solved,
+          output: {
+            summary: result.summary,
+            solved: result.solved,
+            solution: result.solution,
+            knowledgeId: result.knowledgeId,
+            learnedToolId: result.learnedToolId,
+          },
+          durationMs: result.durationMs,
+        }
+      },
+      prompt,
+    )
+
+    // Emit PDCA check result
+    if (pdcaResult.checkResult) {
+      TaskEmitter.pdcaCheck(taskID, {
+        passed: pdcaResult.checkResult.passed,
+        closeScore: pdcaResult.checkResult.closeScore,
+        recommendation: pdcaResult.checkResult.recommendation,
+        issueCount: pdcaResult.checkResult.issues.length,
+        issues: pdcaResult.checkResult.issues.map(i => ({
+          id: i.id,
+          category: i.category,
+          severity: i.severity,
+          description: i.description,
+        })),
+      })
+    }
+
+    // Emit PDCA result
+    TaskEmitter.pdcaResult(taskID, {
+      success: pdcaResult.success,
+      cycles: pdcaResult.cycles,
+      totalDurationMs: pdcaResult.totalDurationMs,
+      closeScore: pdcaResult.checkResult?.closeScore,
+      reason: pdcaResult.reason,
+    })
+
+    const elapsedMs = Date.now() - startTime
+    const output = pdcaResult.result?.output
+
+    // Format output with PDCA summary
+    let formattedOutput = output?.summary || "Task completed."
+    if (output?.solution) {
+      formattedOutput += `\n\n${output.solution}`
+    }
+    formattedOutput += `\n\n---\n### PDCA 验收结果\n`
+    formattedOutput += `- **状态**: ${pdcaResult.success ? "✅ 通过" : "⚠️ 需改进"}\n`
+    formattedOutput += `- **CLOSE 分数**: ${pdcaResult.checkResult?.closeScore.total.toFixed(1) ?? "N/A"}/10\n`
+    formattedOutput += `- **循环次数**: ${pdcaResult.cycles}\n`
+
+    log.info("implementation task with PDCA completed", {
+      taskID,
+      success: pdcaResult.success,
+      cycles: pdcaResult.cycles,
+      closeScore: pdcaResult.checkResult?.closeScore.total,
+      elapsedMs,
+    })
+
+    // Handle success/failure differently to avoid dual status messages
+    if (pdcaResult.success) {
+      TaskStore.complete(taskID, formattedOutput)
+      await TaskEmitter.finish(taskID, true, formattedOutput)
+    } else {
+      // PDCA failed - use fail() and pass the reason as error message
+      const failureReason = pdcaResult.reason || "PDCA check did not pass"
+      TaskStore.fail(taskID, failureReason)
+      await TaskEmitter.finish(taskID, false, formattedOutput, failureReason)
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    log.error("implementation task with PDCA failed", { taskID, error: errorMsg })
+
+    // Emit PDCA failure result event so IM clients see the error
+    TaskEmitter.pdcaResult(taskID, {
+      success: false,
+      cycles: 1,
+      totalDurationMs: Date.now() - startTime,
+      reason: errorMsg,
+    })
+
+    TaskStore.fail(taskID, errorMsg)
+    await TaskEmitter.finish(taskID, false, undefined, errorMsg)
+  } finally {
+    unsubscribePermission()
+    unsubscribeQuestion()
+    await evolutionLoop.cleanup()
   }
 }
 

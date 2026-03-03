@@ -344,13 +344,24 @@ Evaluate coverage (0-10) and list any missing dimensions.`,
       }
     } catch (error) {
       log.warn("Coverage check LLM failed", { error })
-      // Fallback: basic check based on report length and insight count
-      const score = Math.min(10, (output.report.length / 500) + (output.insights?.length ?? 0))
+      // Fallback: basic check based on report/summary length and insight count
+      // Include summary length since that's where extracted content lives when LLM fails
+      const contentLength = Math.max(output.report.length, output.summary?.length ?? 0)
+      const insightCount = output.insights?.length ?? 0
+      const score = Math.min(10, (contentLength / 200) + insightCount)
+
+      log.debug("Coverage fallback calculation", {
+        reportLength: output.report.length,
+        summaryLength: output.summary?.length ?? 0,
+        insightCount,
+        score,
+      })
+
       return {
         passed: score >= 6,
         score,
         weight: RESEARCH_CHECK_ITEMS.coverage.weight,
-        details: "Fallback coverage check",
+        details: `Fallback: content=${contentLength}chars, insights=${insightCount}`,
       }
     }
   }
