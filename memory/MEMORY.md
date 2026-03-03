@@ -13,8 +13,10 @@
 
 ### 版本信息
 
-- **当前版本**: 0.0.1 (开发中，功能完成度 90%+)
+- **当前版本**: 0.0.1 (开发中，功能完成度 95%+)
 - **发布时间**: 待定
+- **Agent 数量**: 31 个
+- **测试覆盖**: TypeScript 74.93% / Rust 364 tests
 
 ### 核心架构
 
@@ -363,6 +365,39 @@
   - 断点续传支持
   - ImProgressHandler 重构
 - **配置**: taskQueue 块 (backend, consumerGroup, timeouts)
+
+### 2026-03-02: IM 默认 Autonomous Agent
+
+- **决策**: IM 渠道默认使用 `autonomous` agent 而非 `build`
+- **理由**: autonomous agent 具有更广泛的任务处理能力
+- **影响**: 更好的用户体验，减少手动指定 agent
+
+### 2026-03-02: Trace Thinking 清理
+
+- **决策**: Trace 完成后自动清理 thinking 信息
+- **理由**: 减少 IM 消息中的噪音，保持消息简洁
+- **实现**: 修改 `ImProgressHandler` 的 `onTraceComplete` 方法
+
+### 2026-03-02: Phase 1.5 内部能力生成优先
+
+- **决策**: Evolution Loop 优先使用内部能力生成概念
+- **理由**: 减少对外部服务的依赖，提高自主学习循环稳定性
+- **影响**: 自主 Agent 更可靠地学习新技能
+
+### 2026-03-03: Question 工具 IM 显示
+
+- **决策**: 实现 Question 工具在 IM 渠道的交互式显示
+- **理由**: 让用户在 IM 中可以看到并响应 Agent 提出的问题
+- **实现**: 修改 `ImProgressHandler` 支持 question 事件类型
+
+### 2026-03-03: Agent 定时任务 IM 回调
+
+- **决策**: 定时任务执行后自动推送结果到原始 IM 渠道
+- **理由**: 用户通过 IM 创建的任务，结果应该回到 IM
+- **实现**:
+  - Rust `CronCommand::Agent` 添加 `callback_channel_type` 和 `callback_channel_id`
+  - TypeScript `TaskCommandSchema` 添加回调字段
+  - 自动从上下文注入回调渠道信息
 
 ## 经验教训
 
