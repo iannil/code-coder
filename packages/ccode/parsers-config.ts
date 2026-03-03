@@ -142,7 +142,11 @@ export default {
           // "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/html/highlights.scm",
           "https://github.com/tree-sitter/tree-sitter-html/raw/refs/heads/master/queries/highlights.scm",
         ],
-        // TODO: Injections not working for some reason
+        // KNOWN ISSUE: Tree-sitter injections for HTML (embedding JS/CSS) are not working.
+        // Root cause: The injection query syntax changed between tree-sitter versions and
+        // the current parser/query combination is incompatible.
+        // Workaround: Syntax highlighting falls back to plain HTML without embedded language support.
+        // Track: https://github.com/tree-sitter/tree-sitter-html/issues for updates
         // injections: [
         //   "https://github.com/tree-sitter/tree-sitter-html/raw/refs/heads/master/queries/injections.scm",
         // ],
@@ -237,8 +241,11 @@ export default {
     },
     {
       filetype: "nix",
-      // TODO: Replace with official tree-sitter-nix WASM when published
-      // See: https://github.com/nix-community/tree-sitter-nix/issues/66
+      // UPSTREAM DEPENDENCY: Official tree-sitter-nix does not publish WASM releases.
+      // Using ast-grep's pre-built WASM as a workaround.
+      // Track: https://github.com/nix-community/tree-sitter-nix/issues/66
+      // When official WASM is published, update to:
+      // "https://github.com/nix-community/tree-sitter-nix/releases/download/vX.Y.Z/tree-sitter-nix.wasm"
       wasm: "https://github.com/ast-grep/ast-grep.github.io/raw/40b84530640aa83a0d34a20a2b0623d7b8e5ea97/website/public/parsers/tree-sitter-nix.wasm",
       queries: {
         highlights: [

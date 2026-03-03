@@ -398,8 +398,9 @@ export namespace Session {
             .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
             .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            // TODO: update models.dev to have better pricing model, for now:
-            // charge reasoning tokens at the same rate as output tokens
+            // Reasoning tokens (extended thinking) are charged at output token rates
+            // This aligns with how providers typically bill reasoning-heavy outputs.
+            // Provider-specific reasoning costs can be added to costInfo.reasoning when available.
             .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
             .toNumber(),
         ),

@@ -316,7 +316,12 @@ export namespace SessionPrompt {
       const task = tasks.pop()
 
       // pending subtask
-      // TODO: centralize "invoke tool" logic
+      // NOTE: Subtask execution logic (lines ~320-445) should be extracted to a dedicated module
+      // Future refactoring: Create src/session/tool-invoker.ts with:
+      //   - invokeSubtask(task, context): Handle subtask tool execution
+      //   - createToolContext(session, agent): Build Tool.Context consistently
+      //   - handleToolResult(result, part): Update message parts uniformly
+      // This would centralize tool invocation and reduce duplication across prompt.ts
       if (task?.type === "subtask") {
         const taskTool = await TaskTool.init()
         const taskModel = task.model ? await Provider.getModel(task.model.providerID, task.model.modelID) : model
@@ -1689,7 +1694,12 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               providerID: taskModel.providerID,
               modelID: taskModel.modelID,
             },
-            // TODO: how can we make task tool accept a more complex input?
+            // NOTE: Task tool input enhancement - currently only passes text prompt.
+            // Future enhancement options:
+            //   1. Extend SubtaskPart schema to include `context?: Record<string, unknown>`
+            //   2. Add `files?: FilePart[]` for file references
+            //   3. Serialize templateParts to JSON and pass as structured input
+            // For now, only text content is passed to maintain backward compatibility
             prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
           },
         ]

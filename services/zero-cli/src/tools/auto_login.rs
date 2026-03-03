@@ -90,7 +90,19 @@ impl AutoLoginTool {
         _service: &str,
         _timeout_secs: u64,
     ) -> anyhow::Result<String> {
-        // TODO: Re-implement using zero-agent confirmation system
+        // IMPLEMENTATION NEEDED: Use zero-common/guardrails ApprovalRequest system
+        //
+        // Proposed implementation:
+        // 1. Create an ApprovalRequest with action type "2fa_code_request"
+        // 2. Use zero-channels to send the request to user's preferred channel (Telegram/Discord)
+        // 3. Set up response listener with timeout
+        // 4. Parse user's response (extract 6-digit code)
+        // 5. Return the code
+        //
+        // Dependencies:
+        // - zero_common::guardrails::{ApprovalRequest, ApprovalStatus}
+        // - zero_channels::ChannelClient
+        //
         // For now, return an error - TOTP auto-generation is still supported
         anyhow::bail!("Interactive 2FA not available. Please configure TOTP secret in credential vault for automatic 2FA.")
     }

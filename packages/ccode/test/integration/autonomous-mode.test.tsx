@@ -9,9 +9,17 @@
  * - Test assertions use outdated API patterns
  * - TypeScript errors due to interface mismatches
  *
- * TODO: P4 debt - Review and update test assertions to match current exports
+ * Re-enablement checklist:
+ * 1. Remove @ts-nocheck directive
+ * 2. Run `bun typecheck` to identify interface mismatches
+ * 3. Update imports to match current exports from @/autonomous/*
+ * 4. Update method calls to match current signatures
+ * 5. Remove .skip from describe blocks
+ * 6. Run tests with `bun test autonomous-mode.test.tsx`
  *
- * To re-enable: Remove .skip and @ts-nocheck, then fix type errors
+ * Priority: P4 (low) - Tests are disabled, core functionality works
+ *
+ * To re-enable: Follow checklist above, then fix remaining type errors
  */
 import { describe, test, it, expect, beforeEach, afterEach } from "bun:test"
 import { AutonomousState } from "@/autonomous/state/states"

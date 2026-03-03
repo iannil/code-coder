@@ -297,6 +297,13 @@ export async function assessFeasibility(req: HttpRequest, _params: RouteParams):
     // Parse the structured analysis
     const analysis = parseAnalysisResult((textPart as { type: "text"; text: string }).text)
 
+    // Extract token usage from assistant message
+    const assistantInfo = lastMessage.info as { tokens?: { input: number; output: number; reasoning?: number; cache?: { read: number; write: number } } }
+    const tokens = assistantInfo.tokens
+    const tokensUsed = tokens
+      ? tokens.input + tokens.output + (tokens.reasoning ?? 0) + (tokens.cache?.read ?? 0) + (tokens.cache?.write ?? 0)
+      : undefined
+
     // Clean up transient session
     await LocalSession.remove(session.id)
 
@@ -308,7 +315,7 @@ export async function assessFeasibility(req: HttpRequest, _params: RouteParams):
           complexity: analysis.complexity,
           analysis,
           confidence: analysis.confidence,
-          tokens_used: undefined, // TODO: extract from response metadata
+          tokens_used: tokensUsed,
         },
       },
       200,

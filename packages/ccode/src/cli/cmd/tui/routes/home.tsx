@@ -15,7 +15,10 @@ import { VERSION } from "@/version"
 import { useKV } from "../context/kv"
 import { useCommandDialog } from "../component/dialog-command"
 
-// TODO: what is best way to do this?
+// Module-level flag for one-time initialization effects.
+// This pattern prevents duplicate initialization when the component
+// re-mounts (common in Solid.js with router transitions).
+// Alternative approaches like createRoot-level state would add complexity.
 let once = false
 
 export function Home() {
