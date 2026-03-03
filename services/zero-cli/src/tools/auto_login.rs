@@ -14,14 +14,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::process::Stdio;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::process::Command;
 use totp_rs::{Algorithm, TOTP};
+use zero_common::hitl_client::{
+    ApprovalType, CreateApprovalRequest, HitLClient, HitLClientError, RiskLevel,
+};
 
 /// Auto-login tool for automated authentication
 pub struct AutoLoginTool {
     #[allow(dead_code)]
     security: Arc<SecurityPolicy>,
     vault_path: std::path::PathBuf,
+    /// Gateway endpoint for HitL requests (e.g., "http://localhost:4430")
+    gateway_endpoint: String,
 }
 
 /// Response from agent-browser --json commands
@@ -63,7 +69,17 @@ impl Default for LoginPattern {
 
 impl AutoLoginTool {
     pub fn new(security: Arc<SecurityPolicy>, vault_path: std::path::PathBuf) -> Self {
-        Self { security, vault_path }
+        Self {
+            security,
+            vault_path,
+            gateway_endpoint: "http://localhost:4430".to_string(),
+        }
+    }
+
+    /// Create with a custom gateway endpoint.
+    pub fn with_gateway_endpoint(mut self, endpoint: impl Into<String>) -> Self {
+        self.gateway_endpoint = endpoint.into();
+        self
     }
 
     /// Generate TOTP code from secret
@@ -82,29 +98,136 @@ impl AutoLoginTool {
         Ok(code)
     }
 
-    /// Request 2FA code from user via messaging channel
+    /// Request 2FA code from user via HitL approval system.
+    ///
+    /// This sends an approval request to the user's IM channel (Telegram/Discord)
+    /// asking them to provide the 2FA code. The user's response is parsed for
+    /// a 6-digit code.
+    ///
+    /// # Arguments
+    ///
+    /// * `platform` - The IM channel to use (e.g., "telegram", "discord")
+    /// * `user_id` - The user ID to notify
+    /// * `service` - The service name requiring 2FA
+    /// * `timeout_secs` - Maximum time to wait for response
+    ///
+    /// # Returns
+    ///
+    /// The 6-digit 2FA code if provided, or an error.
     async fn request_2fa_code(
         &self,
-        _platform: &str,
-        _user_id: &str,
-        _service: &str,
-        _timeout_secs: u64,
+        platform: &str,
+        user_id: &str,
+        service: &str,
+        timeout_secs: u64,
     ) -> anyhow::Result<String> {
-        // IMPLEMENTATION NEEDED: Use zero-common/guardrails ApprovalRequest system
-        //
-        // Proposed implementation:
-        // 1. Create an ApprovalRequest with action type "2fa_code_request"
-        // 2. Use zero-channels to send the request to user's preferred channel (Telegram/Discord)
-        // 3. Set up response listener with timeout
-        // 4. Parse user's response (extract 6-digit code)
-        // 5. Return the code
-        //
-        // Dependencies:
-        // - zero_common::guardrails::{ApprovalRequest, ApprovalStatus}
-        // - zero_channels::ChannelClient
-        //
-        // For now, return an error - TOTP auto-generation is still supported
-        anyhow::bail!("Interactive 2FA not available. Please configure TOTP secret in credential vault for automatic 2FA.")
+        let client = HitLClient::new(&self.gateway_endpoint);
+
+        // Create approval request for 2FA code
+        let request = CreateApprovalRequest {
+            approval_type: ApprovalType::RiskOperation {
+                description: format!("2FA code required for login to {}", service),
+                risk_level: RiskLevel::High,
+            },
+            requester: format!("auto_login:{}", service),
+            approvers: vec![user_id.to_string()],
+            title: format!("🔐 2FA Code Required: {}", service),
+            description: Some(format!(
+                "A login attempt to **{}** requires two-factor authentication.\n\n\
+                Please reply with your 6-digit verification code.\n\n\
+                Example: `123456`\n\n\
+                ⏱️ This request expires in {} seconds.",
+                service, timeout_secs
+            )),
+            channel: platform.to_string(),
+            metadata: json!({
+                "request_type": "2fa_code",
+                "service": service,
+                "expected_format": "6-digit code",
+            }),
+            ttl_seconds: Some(timeout_secs),
+        };
+
+        tracing::info!(
+            service = %service,
+            platform = %platform,
+            user_id = %user_id,
+            "Sending 2FA code request via HitL"
+        );
+
+        // Send the request
+        let response = client.create_request(request).await.map_err(|e| {
+            anyhow::anyhow!("Failed to create 2FA approval request: {}", e)
+        })?;
+
+        let approval = response.approval.ok_or_else(|| {
+            anyhow::anyhow!("No approval returned from HitL server")
+        })?;
+
+        let approval_id = approval.id;
+
+        tracing::debug!(
+            approval_id = %approval_id,
+            "2FA request created, waiting for user response"
+        );
+
+        // Wait for user decision with timeout
+        let poll_interval = Duration::from_secs(2);
+        let timeout = Duration::from_secs(timeout_secs);
+
+        let status = client
+            .wait_for_decision_with_timeout(&approval_id, poll_interval, timeout)
+            .await
+            .map_err(|e| match e {
+                HitLClientError::Timeout => {
+                    anyhow::anyhow!("2FA request timed out after {} seconds", timeout_secs)
+                }
+                HitLClientError::Cancelled(reason) => {
+                    anyhow::anyhow!("2FA request cancelled: {}", reason)
+                }
+                other => anyhow::anyhow!("2FA request failed: {}", other),
+            })?;
+
+        // Check if approved
+        if !status.is_approved() {
+            return Err(anyhow::anyhow!("2FA request was rejected"));
+        }
+
+        // Get the full request to extract the code from metadata
+        let full_request = client.get_request(&approval_id).await.map_err(|e| {
+            anyhow::anyhow!("Failed to retrieve 2FA response: {}", e)
+        })?;
+
+        // Try to extract 2FA code from metadata
+        // The gateway should populate this from the user's response message
+        if let Some(code) = full_request.metadata.get("2fa_code").and_then(|v| v.as_str()) {
+            // Validate it looks like a 2FA code (6 digits)
+            if code.len() == 6 && code.chars().all(|c| c.is_ascii_digit()) {
+                tracing::info!(
+                    service = %service,
+                    "2FA code received successfully"
+                );
+                return Ok(code.to_string());
+            }
+        }
+
+        // Fallback: try to parse from message content in metadata
+        if let Some(message) = full_request.metadata.get("user_message").and_then(|v| v.as_str()) {
+            // Extract 6-digit code from the message
+            let code: String = message.chars().filter(|c| c.is_ascii_digit()).take(6).collect();
+            if code.len() == 6 {
+                tracing::info!(
+                    service = %service,
+                    "2FA code extracted from user message"
+                );
+                return Ok(code);
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "Could not extract 2FA code from approval response. \
+            Please ensure you replied with a 6-digit code."
+        ))
     }
 
     /// Execute agent-browser command
@@ -358,5 +481,20 @@ mod tests {
         assert!(!pattern.username_selector.is_empty());
         assert!(!pattern.password_selector.is_empty());
         assert!(!pattern.submit_selector.is_empty());
+    }
+
+    #[test]
+    fn auto_login_tool_custom_gateway() {
+        let security = Arc::new(SecurityPolicy::default());
+        let tool = AutoLoginTool::new(security, std::path::PathBuf::from("."))
+            .with_gateway_endpoint("http://custom:8080");
+        assert_eq!(tool.gateway_endpoint, "http://custom:8080");
+    }
+
+    #[test]
+    fn auto_login_tool_default_gateway() {
+        let security = Arc::new(SecurityPolicy::default());
+        let tool = AutoLoginTool::new(security, std::path::PathBuf::from("."));
+        assert_eq!(tool.gateway_endpoint, "http://localhost:4430");
     }
 }

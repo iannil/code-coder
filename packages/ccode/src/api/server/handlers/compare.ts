@@ -16,7 +16,7 @@ import { generateText } from "ai"
 import { randomUUID } from "node:crypto"
 import os from "os"
 import path from "path"
-import { Log } from "../../../util/log"
+import { Log } from "@/util/log"
 
 const log = Log.create({ service: "api.compare" })
 

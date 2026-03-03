@@ -43,6 +43,8 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+#[cfg(feature = "ts-bindings")]
+use ts_rs::TS;
 
 /// Error type for HitL client operations.
 #[derive(Error, Debug)]
@@ -77,6 +79,8 @@ pub type Result<T> = std::result::Result<T, HitLClientError>;
 
 /// Risk level for operations requiring approval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 #[repr(u8)]
 pub enum RiskLevel {
     /// Low risk - minimal impact if operation fails
@@ -91,6 +95,8 @@ pub enum RiskLevel {
 
 /// Type of operation requiring approval.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ApprovalType {
     /// Merge request approval for code changes
@@ -125,6 +131,8 @@ pub enum ApprovalType {
 
 /// Status of an approval request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ApprovalStatus {
     /// Request is pending review
@@ -170,6 +178,8 @@ impl ApprovalStatus {
 
 /// An approval request in the HitL system.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 pub struct ApprovalRequest {
     /// Unique identifier for the request
     pub id: String,
@@ -201,6 +211,8 @@ pub struct ApprovalRequest {
 
 /// Request payload to create a new approval.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 pub struct CreateApprovalRequest {
     /// Type of operation requiring approval
     pub approval_type: ApprovalType,
@@ -229,6 +241,8 @@ fn default_metadata() -> serde_json::Value {
 
 /// Response after creating or retrieving an approval.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "hitl/"))]
 pub struct ApprovalResponse {
     /// Whether the operation succeeded
     pub success: bool,

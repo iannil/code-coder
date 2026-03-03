@@ -84,10 +84,10 @@ import { DialogSessionRename } from "../../component/dialog-session-rename"
 import { Sidebar } from "./sidebar"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import parsers from "../../../../../../parsers-config.ts"
-import { Clipboard } from "../../util/clipboard"
+import { Clipboard } from "@tui/util/clipboard"
 import { Toast, useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv.tsx"
-import { Editor } from "../../util/editor"
+import { Editor } from "@tui/util/editor"
 import stripAnsi from "strip-ansi"
 import { Footer } from "./footer.tsx"
 import { usePromptRef } from "../../context/prompt"
@@ -97,12 +97,12 @@ import { Global } from "@/global"
 import { PermissionPrompt } from "./permission"
 import { QuestionPrompt } from "./question"
 import { DialogExportOptions } from "../../ui/dialog-export-options"
-import { formatTranscript } from "../../util/transcript"
+import { formatTranscript } from "@tui/util/transcript"
 import {
   formatExecutionTime,
   formatPreciseTime,
   getToolDuration,
-} from "../../util/execution-time"
+} from "@tui/util/execution-time"
 import { Spinner, ProgressBar } from "../../ui/progress-bar"
 
 addDefaultParsers(parsers.parsers)

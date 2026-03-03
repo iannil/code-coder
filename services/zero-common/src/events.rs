@@ -15,6 +15,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(feature = "ts-bindings")]
+use ts_rs::TS;
 
 // ============================================================================
 // Task Event Types
@@ -22,6 +24,8 @@ use std::collections::HashMap;
 
 /// All task event types.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TaskEvent {
     /// Task has been created and queued.
@@ -100,6 +104,8 @@ impl TaskEvent {
 
 /// Task created event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskCreatedData {
     /// Task ID.
     pub task_id: String,
@@ -122,6 +128,8 @@ pub struct TaskCreatedData {
 
 /// Task started event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskStartedData {
     /// Agent executing the task.
     pub agent: String,
@@ -133,6 +141,8 @@ pub struct TaskStartedData {
 
 /// Thought event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct ThoughtData {
     /// Thought content.
     pub content: String,
@@ -140,6 +150,8 @@ pub struct ThoughtData {
 
 /// Tool use event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct ToolUseData {
     /// Tool name.
     pub tool: String,
@@ -158,6 +170,8 @@ pub struct ToolUseData {
 
 /// Progress event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct ProgressData {
     /// Current stage.
     pub stage: String,
@@ -170,6 +184,8 @@ pub struct ProgressData {
 
 /// Output event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct OutputData {
     /// Output content.
     pub content: String,
@@ -180,6 +196,8 @@ pub struct OutputData {
 
 /// Confirmation request event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct ConfirmationData {
     /// Unique request ID.
     pub request_id: String,
@@ -195,6 +213,8 @@ pub struct ConfirmationData {
 
 /// Agent switch event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct AgentSwitchData {
     /// Previous agent.
     pub from: String,
@@ -207,6 +227,8 @@ pub struct AgentSwitchData {
 
 /// Heartbeat event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct HeartbeatData {
     /// Current stage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -217,6 +239,8 @@ pub struct HeartbeatData {
 
 /// Debug info event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct DebugInfoData {
     /// Model name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -246,6 +270,8 @@ pub struct DebugInfoData {
 
 /// Agent info event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct AgentInfoData {
     /// Agent name.
     pub agent: String,
@@ -262,6 +288,8 @@ pub struct AgentInfoData {
 
 /// Skill use event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct SkillUseData {
     /// Skill name.
     pub skill: String,
@@ -275,6 +303,8 @@ pub struct SkillUseData {
 
 /// Task completed event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskCompletedData {
     /// Final output.
     pub output: String,
@@ -288,6 +318,8 @@ pub struct TaskCompletedData {
 
 /// Task failed event data.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskFailedData {
     /// Error message.
     pub error: String,
@@ -301,6 +333,8 @@ pub struct TaskFailedData {
 
 /// Token usage statistics.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskUsage {
     /// Input tokens.
     pub input_tokens: u64,
@@ -318,6 +352,8 @@ pub struct TaskUsage {
 ///
 /// Contains the event plus metadata for stream operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct StreamEvent {
     /// Monotonically increasing sequence number (per task).
     pub seq: u64,
@@ -361,6 +397,8 @@ impl StreamEvent {
 ///
 /// This is stored in Redis Hash for quick access.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 pub struct TaskState {
     /// Task ID.
     pub task_id: String,
@@ -390,6 +428,8 @@ pub struct TaskState {
 
 /// Task status values.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "events/"))]
 #[serde(rename_all = "snake_case")]
 pub enum TaskStatus {
     /// Task is queued but not started.

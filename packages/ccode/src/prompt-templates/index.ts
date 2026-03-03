@@ -14,6 +14,14 @@ import { Global } from "@/global"
 import path from "path"
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Zod Workaround
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Schema Definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -64,11 +72,11 @@ export const TemplateMetadata = z.object({
   /** Template content (Handlebars syntax) */
   content: z.string(),
   /** Variables used in this template */
-  variables: z.array(TemplateVariable).default([]),
+  variables: defaultArray(TemplateVariable),
   /** Parent template ID for inheritance */
   extends: z.string().optional(),
   /** Tags for search */
-  tags: z.array(z.string()).default([]),
+  tags: defaultArray(z.string()),
   /** Author */
   author: z.string().optional(),
   /** Version */

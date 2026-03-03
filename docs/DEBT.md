@@ -136,7 +136,7 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 
 ### 7.3 TypeScript 类型错误
 
-**状态**: 部分完成 (2026-02-04)
+**状态**: ✅ 已完成 (2026-03-03)
 
 **已修复**:
 
@@ -146,26 +146,33 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 - `test/helpers/fixtures/sessions.ts` - 添加 Session 和 Message 接口定义
 - `test/integration/tui/edge-cases.test.tsx` - Map.keys() undefined 和 isEmpty 问题
 
-**剩余**: 约 100+ 个测试文件中的类型错误（主要是 TUI 集成测试）
-
-**建议**: 这些错误不影响核心功能和测试运行，可以后续逐步修复。
+**验证**: `bun turbo typecheck` 0 errors (2026-03-03)
 
 ## 8. 新增技术债务 (2026-02-16)
 
 ### 8.1 BookExpander Zod 兼容性问题
 
-- **状态**: 🚧 待解决
+- **状态**: ✅ 已完成
 - **问题**: Zod v4 + Bun 的 escapeRegex 错误
-- **影响**: BookExpander 模块无法正常运行
+- **解决方案**: 使用 `defaultArray` helper 替代 `.default([])` 模式
+- **修复文件**: 7 个文件已统一应用 workaround
+  - `src/cli/cmd/document/schema.ts`
+  - `src/cli/cmd/document/context.ts`
+  - `src/cli/cmd/document/knowledge/schema.ts`
+  - `src/prompt-templates/index.ts`
+  - `src/agent/registry.ts`
+  - `src/memory/tools/types.ts`
+  - `src/provider/routing-rules.ts`
 - **文档**: `docs/progress/2026-02-13-bookexpander-implementation.md`
 
 ### 8.2 CodeCoder + Zero-* 类型共享
 
-- **状态**: 🚧 待规划
+- **状态**: ✅ 已自动化 (ts-rs)
 - **问题**: Rust 和 TypeScript 之间缺乏类型同步机制
-- **影响**: 手动维护两端类型定义，容易不一致
-- **位置**: `services/zero-*/` 和 `packages/ccode/src/`
-- **建议**: 考虑使用 ts-rs 或 typeshare 自动生成类型定义
+- **解决方案**: 使用 `ts-rs` 从 Rust 自动生成 TypeScript 类型
+- **生成命令**: `./script/generate-ts-bindings.sh`
+- **输出位置**: `packages/ccode/src/generated/`
+- **文档**: [SHARED_TYPES.md](architecture/SHARED_TYPES.md)
 
 ### 8.3 存储路径迁移后清理
 
@@ -176,25 +183,64 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 
 ### 8.4 Zero-CLI 重构遗留
 
-- **状态**: 🚧 进行中 (Phase 15)
+- **状态**: ✅ 已完成
 - **问题**: zero-cli 本地模块与 zero-* 服务存在重复
-- **当前**: 已创建 HTTP 客户端，服务依赖已添加
-- **待办**: 逐步迁移本地模块到 HTTP 调用或服务 re-export
-- **文档**: `docs/progress/2026-02-21-phase15-cli-client.md`
+- **解决**: Phase 15 四个阶段全部完成，HTTP 客户端已创建，服务依赖已迁移
+- **文档**: `docs/reports/completed/2026-02-22-phase15-cli-client.md`
+
+## 9. 代码级技术债务标记
+
+本节记录代码中的 TODO/FIXME/WORKAROUND 等标记，便于追踪管理。
+
+### 9.1 功能待实现
+
+| 文件 | 行号 | 描述 | 优先级 |
+|------|------|------|--------|
+| `services/zero-cli/src/tools/auto_login.rs` | 93 | 2FA 交互式审批系统 | ✅ 已完成 |
+
+### 9.2 外部依赖问题
+
+| 文件 | 行号 | 问题 | 上游 Issue |
+|------|------|------|------------|
+| `packages/ccode/src/bun/index.ts` | 92 | Bun 代理缓存 | [#19936](https://github.com/oven-sh/bun/issues/19936) |
+| `packages/ccode/parsers-config.ts` | 145 | HTML 注入不生效 | tree-sitter-html |
+| `packages/ccode/parsers-config.ts` | 244 | Nix WASM 未发布 | [#66](https://github.com/nix-community/tree-sitter-nix/issues/66) |
+| `packages/ccode/src/provider/sdk/openai-compatible/...` | 1690 | AI SDK 6 类型变更 | [详细文档](progress/ai-sdk-migration-tech-debt.md) |
+
+### 9.3 类型共享债务
+
+| 文件 | 行号 | 描述 | 关联章节 |
+|------|------|------|----------|
+| `packages/ccode/src/memory-zerobot/types.ts` | 13 | Memory 类型 (手动同步) | 8.2 |
+
+**注意**: Guardrails、HitL、Events 类型已通过 ts-rs 自动化，详见 [SHARED_TYPES.md](architecture/SHARED_TYPES.md)。
+
+### 9.4 扫描命令
+
+定期扫描新增标记：
+
+```bash
+grep -rn "TODO\|FIXME\|HACK\|WORKAROUND\|KNOWN ISSUE\|IMPLEMENTATION NEEDED" \
+  packages/ccode/src services --include="*.ts" --include="*.rs" | \
+  grep -v "node_modules\|bench/fixture"
+```
 
 ## 优先级
 
 | 优先级 | 任务                          | 状态            | 预计工作量 |
 | ------ | ----------------------------- | --------------- | ---------- |
 | 高     | 统一工具函数到 packages/util  | ✓ 已完成        | 2小时      |
-| 高     | 标准化导入路径                | 部分完成        | 3小时      |
-| 高     | BookExpander Zod 兼容性       | 🆕 待解决       | 2小时      |
-| 高     | Zero-CLI 重构完成 (Phase 15)  | 🚧 进行中       | 4小时      |
+| 高     | 标准化导入路径                | ✅ 已完成       | 3小时      |
+| 高     | BookExpander Zod 兼容性       | ✅ 已完成       | 2小时      |
+| 高     | Zero-CLI 重构完成 (Phase 15)  | ✅ 已完成       | 4小时      |
+| 高     | AI SDK 迁移技术债务           | ✅ 已完成       | 2小时      |
 | 中     | 清理过时测试                  | ✓ 已验证有效    | 1小时      |
 | 中     | 重写 Skills 文档              | ✓ 已完成        | 1小时      |
-| 中     | Zero-* 类型共享               | 🆕 待规划       | 4小时      |
+| 中     | Zero-* 类型共享               | ✅ 已自动化     | 4小时      |
+| 中     | 2FA 审批系统实现              | ✅ 已完成       | 3小时      |
 | 低     | 审查依赖                      | ✓ 已完成        | 1小时      |
-| 低     | 修复 TS 类型错误              | 部分完成        | 4小时      |
+| 低     | 修复 TS 类型错误              | ✅ 已完成       | 4小时      |
+| 低     | 外部依赖追踪                  | 🆕 等待上游     | -          |
 
 ## 更新记录
 
@@ -210,3 +256,10 @@ grep -r "skip\|pending\|todo" packages/ccode/test/ --include="*.ts"
 - 2026-02-16: 添加新技术债务 - BookExpander Zod 兼容性问题、ZeroBot 类型共享；文档归档整理（11个文档从 progress 移至 completed）
 - 2026-02-16: 完成存储路径迁移；更新技术债务列表；规范化报告文件命名
 - 2026-02-22: 更新类型共享问题描述（zero-bot → zero-*）；添加 Zero-CLI 重构遗留项；移动 13 个已完成文档到 completed/
+- 2026-03-03: 新增代码级技术债务标记章节 (§9)；完成全量扫描 (6 个有效标记)；更新优先级表
+- 2026-03-03: 更新 §8.4 Zero-CLI 重构状态为已完成 (Phase 15 四阶段全部完成)
+- 2026-03-03: 完成 AI SDK v6 迁移 (ai@6.0.105, @ai-sdk/*@3-4.x); 更新 tool factory API; 修复类型兼容性问题
+- 2026-03-03: 完成导入路径标准化 (23 个文件更新为 @/ 和 @tui/ 别名)
+- 2026-03-03: 完成 Zod `.default([])` workaround 统一 (7 个文件); TypeScript typecheck 0 errors
+- 2026-03-03: 创建 SHARED_TYPES.md 文档; 完成 2FA 审批系统实现 (zero-cli/auto_login.rs + HitLClient 集成)
+- 2026-03-03: 完成 ts-rs 类型自动化; 生成脚本 script/generate-ts-bindings.sh; 更新 §8.2 状态为已自动化

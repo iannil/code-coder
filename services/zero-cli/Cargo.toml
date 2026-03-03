@@ -12,7 +12,7 @@ categories = ["command-line-utilities", "api-bindings"]
 
 [dependencies]
 # Internal crates (Zero Services)
-zero-common = { workspace = true }
+zero-common = { workspace = true, features = ["hitl-client"] }
 zero-agent = { workspace = true }
 zero-tools = { workspace = true }
 zero-memory = { workspace = true }

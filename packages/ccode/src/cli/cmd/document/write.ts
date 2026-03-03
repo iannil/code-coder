@@ -10,7 +10,7 @@ import { UI } from "../../ui"
 import { bootstrap } from "../../bootstrap"
 import { Document } from "../../../document"
 import { Writer } from "../../../document/writer"
-import { escapeShellArg } from "../../../util/security"
+import { escapeShellArg } from "@/util/security"
 import { $ } from "bun"
 
 // ============================================================================

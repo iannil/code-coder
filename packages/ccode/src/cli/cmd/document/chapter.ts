@@ -9,7 +9,7 @@ import { UI } from "../../ui"
 import { bootstrap } from "../../bootstrap"
 import { Document } from "../../../document"
 import { DocumentSchema } from "../../../document/schema"
-import { validatePath } from "../../../util/security"
+import { validatePath } from "@/util/security"
 
 // ============================================================================
 // List Command

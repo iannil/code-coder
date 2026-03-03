@@ -14,7 +14,7 @@
  * Part of Phase 2 Supplement: WASM Lightweight Sandbox
  */
 
-import { Log } from "../../util/log"
+import { Log } from "@/util/log"
 
 const log = Log.create({ service: "wasm.sandbox" })
 

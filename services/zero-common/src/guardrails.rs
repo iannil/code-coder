@@ -52,6 +52,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+#[cfg(feature = "ts-bindings")]
+use ts_rs::TS;
 use uuid::Uuid;
 
 // ============================================================================
@@ -60,6 +62,8 @@ use uuid::Uuid;
 
 /// Risk level for an action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 #[serde(rename_all = "lowercase")]
 #[derive(Default)]
 pub enum RiskLevel {
@@ -101,6 +105,8 @@ impl RiskLevel {
 
 /// Category of action being performed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 #[serde(rename_all = "snake_case")]
 pub enum ActionCategory {
     /// Browser automation actions
@@ -139,6 +145,8 @@ impl ActionCategory {
 
 /// An action to be evaluated by guardrails.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 pub struct Action {
     /// Unique action ID
     pub id: String,
@@ -262,6 +270,8 @@ impl Action {
 
 /// Decision from guardrails evaluation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum Decision {
     /// Action approved, proceed immediately
@@ -300,6 +310,8 @@ impl Decision {
 
 /// An approval request waiting for user confirmation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 pub struct ApprovalRequest {
     /// Unique approval ID
     pub id: String,
@@ -331,6 +343,8 @@ pub struct ApprovalRequest {
 
 /// Status of an approval request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts-bindings", derive(TS))]
+#[cfg_attr(feature = "ts-bindings", ts(export, export_to = "guardrails/"))]
 #[serde(rename_all = "lowercase")]
 pub enum ApprovalStatus {
     Pending,

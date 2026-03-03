@@ -48,7 +48,7 @@ export namespace LLM {
     retries?: number
   }
 
-  export type StreamOutput = StreamTextResult<ToolSet, unknown>
+  export type StreamOutput = StreamTextResult<ToolSet, never>
 
   export async function stream(input: StreamInput) {
     return runWithNewContextAsync("llm", async () => {
@@ -259,9 +259,10 @@ export namespace LLM {
         ...input.messages,
       ],
       model: wrapLanguageModel({
-        model: language,
+        model: language as any, // SDK v6: LanguageModelV2 → LanguageModelV3 compatibility
         middleware: [
           {
+            specificationVersion: "v3" as const,
             async transformParams(args) {
               if (args.type === "stream") {
                 // @ts-expect-error

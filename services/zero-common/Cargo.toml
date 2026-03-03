@@ -73,8 +73,12 @@ redis = { workspace = true, optional = true }
 # Streams (for Redis subscription)
 futures-util = { workspace = true, optional = true }
 
+# TypeScript bindings generation
+ts-rs = { workspace = true, optional = true }
+
 [features]
 default = []
+ts-bindings = ["ts-rs"]
 redis-backend = ["redis", "futures-util"]
 hitl-client = ["reqwest"]
 guardrails = ["reqwest"]

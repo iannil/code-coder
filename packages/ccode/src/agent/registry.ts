@@ -13,6 +13,14 @@ import { Agent } from "./agent"
 import Fuse from "fuse.js"
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Zod Workaround
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Schema Definitions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -57,7 +65,7 @@ export const AgentExample = z.object({
   /** Expected agent behavior or output summary */
   output: z.string(),
   /** Tags for categorization */
-  tags: z.array(z.string()).default([]),
+  tags: defaultArray(z.string()),
 })
 export type AgentExample = z.infer<typeof AgentExample>
 
@@ -89,13 +97,13 @@ export const AgentMetadata = z.object({
   /** Agent category */
   category: AgentCategory.default("custom"),
   /** Agent capabilities */
-  capabilities: z.array(AgentCapability).default([]),
+  capabilities: defaultArray(AgentCapability),
   /** Auto-invocation triggers */
-  triggers: z.array(AgentTrigger).default([]),
+  triggers: defaultArray(AgentTrigger),
   /** Usage examples */
-  examples: z.array(AgentExample).default([]),
+  examples: defaultArray(AgentExample),
   /** Tags for search */
-  tags: z.array(z.string()).default([]),
+  tags: defaultArray(z.string()),
   /** Author information */
   author: z.string().optional(),
   /** Version string */

@@ -9,7 +9,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../../ui"
 import { bootstrap } from "../../bootstrap"
 import { Document, Proofreader } from "../../../document"
-import { escapeShellArg } from "../../../util/security"
+import { escapeShellArg } from "@/util/security"
 import { $ } from "bun"
 
 // ============================================================================

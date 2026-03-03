@@ -19,7 +19,7 @@ import {
   type RiskLevel,
   type AutoApproveConfig,
 } from "../../../permission"
-import { Log } from "../../../util/log"
+import { Log } from "@/util/log"
 
 const log = Log.create({ service: "api.autonomous" })
 

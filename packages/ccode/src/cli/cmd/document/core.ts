@@ -9,7 +9,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../../ui"
 import { bootstrap } from "../../bootstrap"
 import { Document } from "../../../document"
-import { validatePath } from "../../../util/security"
+import { validatePath } from "@/util/security"
 import { z } from "zod"
 
 // Schema for validating outline JSON

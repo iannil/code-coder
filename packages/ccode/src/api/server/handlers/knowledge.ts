@@ -19,7 +19,7 @@ import { Database } from "bun:sqlite"
 import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync } from "fs"
-import { Log } from "../../../util/log"
+import { Log } from "@/util/log"
 
 const log = Log.create({ service: "api.knowledge" })
 

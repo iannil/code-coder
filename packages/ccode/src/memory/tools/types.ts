@@ -9,6 +9,10 @@
 
 import z from "zod"
 
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
 export namespace ToolTypes {
   // ============================================================================
   // Tool Parameter Schema
@@ -92,15 +96,15 @@ export namespace ToolTypes {
     /** Description of what the tool does (used for semantic search) */
     description: z.string(),
     /** Category tags for filtering */
-    tags: z.array(z.string()).default([]),
+    tags: defaultArray(z.string()),
     /** The actual code/script content */
     code: z.string(),
     /** Programming language of the code */
     language: z.enum(["python", "nodejs", "bash"]),
     /** Tool parameters */
-    parameters: z.array(ToolParameter).default([]),
+    parameters: defaultArray(ToolParameter),
     /** Usage examples */
-    examples: z.array(ToolExample).default([]),
+    examples: defaultArray(ToolExample),
     /** Tool metadata */
     metadata: ToolMetadata,
     /** Usage statistics */
@@ -120,15 +124,15 @@ export namespace ToolTypes {
     /** Tool description */
     description: z.string().min(1).max(2000),
     /** Tags for categorization */
-    tags: z.array(z.string()).default([]),
+    tags: defaultArray(z.string()),
     /** Tool code */
     code: z.string().min(1),
     /** Language */
     language: z.enum(["python", "nodejs", "bash"]),
     /** Parameters */
-    parameters: z.array(ToolParameter).default([]),
+    parameters: defaultArray(ToolParameter),
     /** Examples */
-    examples: z.array(ToolExample).default([]),
+    examples: defaultArray(ToolExample),
     /** Who is creating this */
     createdBy: z.enum(["agent", "user"]).default("agent"),
     /** Source task ID */

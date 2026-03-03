@@ -9,6 +9,10 @@
 
 import { z } from "zod"
 
+// Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
+const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
+  z.array(schema).optional().transform((v) => v ?? [])
+
 // ============================================================================
 // Types & Schemas
 // ============================================================================
@@ -34,11 +38,11 @@ export const ClassificationRule = z.object({
   /** Priority (lower = higher priority) */
   priority: z.number().int().min(0).default(10),
   /** Regex patterns to match (any match triggers rule) */
-  patterns: z.array(z.string()).default([]),
+  patterns: defaultArray(z.string()),
   /** Keywords to match (any match triggers rule) */
-  keywords: z.array(z.string()).default([]),
+  keywords: defaultArray(z.string()),
   /** Agent names that trigger this task type */
-  agents: z.array(z.string()).default([]),
+  agents: defaultArray(z.string()),
   /** Whether rule is enabled */
   enabled: z.boolean().default(true),
 })
@@ -55,7 +59,7 @@ export const RoutableModel = z.object({
   /** Model tier for permission checks */
   tier: ModelTier,
   /** Task types this model is optimized for */
-  optimizedFor: z.array(TaskType).default([]),
+  optimizedFor: defaultArray(TaskType),
   /** Cost per 1M tokens (for cost optimization) */
   costPer1M: z.number().default(0),
   /** Whether model is available */
@@ -72,9 +76,9 @@ export const RolePermission = z.object({
   /** Allowed model tiers */
   allowedTiers: z.array(ModelTier),
   /** Specific model IDs allowed (overrides tier restrictions) */
-  allowedModels: z.array(z.string()).default([]),
+  allowedModels: defaultArray(z.string()),
   /** Specific model IDs denied (overrides tier allowances) */
-  deniedModels: z.array(z.string()).default([]),
+  deniedModels: defaultArray(z.string()),
   /** Daily token limit */
   dailyTokenLimit: z.number().int().min(0).default(1_000_000),
   /** Monthly token limit */
@@ -99,7 +103,7 @@ export const RoutingDecision = z.object({
   /** Reason for the decision */
   reason: z.string(),
   /** Warnings (e.g., quota warning) */
-  warnings: z.array(z.string()).default([]),
+  warnings: defaultArray(z.string()),
 })
 export type RoutingDecision = z.infer<typeof RoutingDecision>
 
@@ -112,11 +116,11 @@ export const RoutingConfig = z.object({
   /** Default role for unknown users */
   defaultRole: UserRole.default("guest"),
   /** Classification rules */
-  rules: z.array(ClassificationRule).default([]),
+  rules: defaultArray(ClassificationRule),
   /** Role permissions */
-  rolePermissions: z.array(RolePermission).default([]),
+  rolePermissions: defaultArray(RolePermission),
   /** Available models */
-  models: z.array(RoutableModel).default([]),
+  models: defaultArray(RoutableModel),
   /** Enable DLP integration for sensitive content detection */
   enableDlpIntegration: z.boolean().default(true),
   /** Force local model for DLP-detected sensitive content */
