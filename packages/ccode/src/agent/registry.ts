@@ -6,11 +6,23 @@
  * - Runtime registration API
  * - Agent search and recommendations
  * - Category-based organization
+ *
+ * Triggers are loaded from external configuration:
+ * - Default: packages/ccode/src/agent/keywords.default.json
+ * - User override: ~/.codecoder/keywords.json
  */
 
 import z from "zod"
 import { Agent } from "./agent"
 import Fuse from "fuse.js"
+import {
+  getKeywords,
+  detectAlias,
+  detectTrigger,
+  type KeywordsConfig,
+  type TriggerRule,
+  type AgentKeywords,
+} from "@/config/keywords"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod Workaround
@@ -438,6 +450,7 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
 export class AgentRegistry {
   private metadata: Map<string, AgentMetadata> = new Map()
   private searchIndex: Fuse<AgentMetadata> | null = null
+  private keywordsConfig: KeywordsConfig | null = null
 
   constructor() {
     // Initialize will be called separately
@@ -445,12 +458,25 @@ export class AgentRegistry {
 
   /**
    * Initialize registry with built-in agents.
+   *
+   * Loads agent metadata from built-in defaults and triggers from
+   * the keywords configuration file.
    */
   async initialize(): Promise<void> {
-    const agents = await Agent.list()
+    const [agents, keywordsConfig] = await Promise.all([
+      Agent.list(),
+      getKeywords(),
+    ])
+
+    this.keywordsConfig = keywordsConfig
 
     for (const agent of agents) {
       const builtinMeta = BUILTIN_METADATA[agent.name]
+      const keywordsMeta = keywordsConfig.agents[agent.name]
+
+      // Build triggers from keywords config (with fallback to builtin)
+      const triggers = this.buildTriggersFromKeywords(agent.name, keywordsMeta, builtinMeta?.triggers)
+
       const metadata: AgentMetadata = {
         name: agent.name,
         displayName: builtinMeta?.displayName ?? agent.name,
@@ -458,7 +484,7 @@ export class AgentRegistry {
         longDescription: builtinMeta?.longDescription,
         category: builtinMeta?.category ?? "custom",
         capabilities: builtinMeta?.capabilities ?? [],
-        triggers: builtinMeta?.triggers ?? [],
+        triggers,
         examples: builtinMeta?.examples ?? [],
         tags: builtinMeta?.tags ?? [],
         author: builtinMeta?.author,
@@ -472,6 +498,59 @@ export class AgentRegistry {
     }
 
     this.rebuildSearchIndex()
+  }
+
+  /**
+   * Build triggers array from keywords config.
+   */
+  private buildTriggersFromKeywords(
+    agentName: string,
+    keywordsMeta: AgentKeywords | undefined,
+    fallbackTriggers: AgentTrigger[] | undefined
+  ): AgentTrigger[] {
+    // If no keywords config, fall back to builtin
+    if (!keywordsMeta) {
+      return fallbackTriggers ?? []
+    }
+
+    const triggers: AgentTrigger[] = []
+
+    // Convert keywords config triggers to AgentTrigger format
+    for (const trigger of keywordsMeta.triggers) {
+      if (typeof trigger === "string") {
+        // Simple string trigger
+        triggers.push({
+          type: "keyword",
+          value: trigger,
+          priority: keywordsMeta.priority,
+        })
+      } else {
+        // Advanced trigger rule
+        triggers.push({
+          type: trigger.type,
+          value: trigger.value,
+          priority: trigger.priority ?? keywordsMeta.priority,
+          description: trigger.description,
+        })
+      }
+    }
+
+    // Also add aliases as keyword triggers (lower priority)
+    for (const alias of keywordsMeta.aliases) {
+      // Don't add if already exists as a trigger
+      const alreadyExists = triggers.some((t) =>
+        t.type === "keyword" && t.value.toLowerCase() === alias.toLowerCase()
+      )
+      if (!alreadyExists && alias.toLowerCase() !== agentName.toLowerCase()) {
+        triggers.push({
+          type: "keyword",
+          value: alias,
+          priority: keywordsMeta.priority - 1,
+        })
+      }
+    }
+
+    return triggers
   }
 
   /**
@@ -610,11 +689,39 @@ export class AgentRegistry {
 
   /**
    * Recommend an agent based on user intent.
+   *
+   * Priority:
+   * 1. @mention alias match (via keywords config)
+   * 2. Keyword trigger match (via loaded triggers)
+   * 3. Fuzzy search match
+   * 4. Default recommended agent
    */
   recommend(intent: string): AgentMetadata | undefined {
     const trimmed = intent.trim()
 
-    // First try trigger matching
+    // First try @mention alias detection (from keywords config)
+    if (this.keywordsConfig && trimmed.startsWith("@")) {
+      const aliasMatch = detectAlias(intent, this.keywordsConfig)
+      if (aliasMatch) {
+        const agentMeta = this.metadata.get(aliasMatch)
+        if (agentMeta) {
+          return agentMeta
+        }
+      }
+    }
+
+    // Then try implicit trigger matching (from keywords config)
+    if (this.keywordsConfig) {
+      const triggerMatch = detectTrigger(intent, this.keywordsConfig)
+      if (triggerMatch) {
+        const agentMeta = this.metadata.get(triggerMatch)
+        if (agentMeta) {
+          return agentMeta
+        }
+      }
+    }
+
+    // Fall back to legacy trigger matching
     const triggerMatches = this.findByTrigger(intent)
     if (triggerMatches.length > 0) {
       return triggerMatches[0]

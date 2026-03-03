@@ -20,6 +20,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use zero_common::messages::{messages, t};
 use zero_common::metrics::MetricsRegistry;
 
 use crate::capture_bridge::CaptureBridge;
@@ -407,14 +408,14 @@ async fn handle_telegram_callback(
 
             // Answer the callback query
             let answer_text = match &result {
-                Ok(_) => "✅ 已收到回答",
-                Err(_) => "❌ 回答失败",
+                Ok(_) => messages().messages.status.answer_received.as_str(),
+                Err(_) => messages().messages.status.answer_failed.as_str(),
             };
             let _ = answer_callback_query(token, &callback.id, Some(answer_text)).await;
 
             // Edit the message to show the selected answer
             if let Some(msg) = callback.message {
-                let edit_text = format!("✅ 已选择选项 {}", option_idx + 1);
+                let edit_text = t("status.option_selected", &[("index", &(option_idx + 1).to_string())]);
                 let _ = edit_telegram_message(token, &msg.chat.id.to_string(), msg.message_id, &edit_text).await;
             }
 

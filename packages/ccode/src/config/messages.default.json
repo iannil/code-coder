@@ -1,0 +1,88 @@
+{
+  "$schema": "../../schemas/messages.schema.json",
+  "locale": "zh-CN",
+  "version": "1.0.0",
+  "messages": {
+    "task": {
+      "acknowledged": "🚀 收到，正在处理...",
+      "start_processing": "🚀 开始处理...\n📍 Trace: {trace_id}",
+      "processing": "🚀 处理中...",
+      "thinking": "⏳ 思考中...",
+      "progress": "⏳ {stage} ({percent}%)\n{message}",
+      "progress_no_percent": "⏳ {stage}\n{message}",
+      "completed": "✅ 处理完成",
+      "completed_with_summary": "✅ 处理完成\n\n{summary}",
+      "failed": "❌ 处理失败: {error}",
+      "failed_with_summary": "❌ 处理失败: {error}\n\n{summary}",
+      "generating_result": "⏳ 正在生成结果...",
+      "end_marker": "─────────────────\n{status} 回复结束",
+      "task_id_suffix": "\n\n任务ID: `{task_id}`"
+    },
+    "approval": {
+      "title": "🔐 CodeCoder 授权请求",
+      "confirm_action": "⚠️ **确认执行操作**",
+      "confirm_with_info": "⚠️ **确认执行操作**\n\n{tool_info}\n{description}",
+      "confirm_with_args": "⚠️ **确认执行操作**\n\n{tool_info}\n{description}\n\n{args}",
+      "approve": "✅ 批准",
+      "approve_always": "✅ 始终批准",
+      "reject": "❌ 拒绝",
+      "approved": "✅ 已批准",
+      "approved_by": "✅ 已批准 by {approver}",
+      "rejected": "❌ 已拒绝",
+      "rejected_by": "❌ 已拒绝 by {approver}",
+      "rejected_with_reason": "❌ 已拒绝\n审批人: {approver}\n原因: {reason}\n时间: {time}",
+      "pending": "⏳ 待审批",
+      "waiting": "⏳ 等待审批",
+      "queue_title": "📋 审批队列 ({count} 待处理)",
+      "queue_empty": "没有待处理的审批请求",
+      "select_prompt": "请选择批准或拒绝此操作："
+    },
+    "status": {
+      "auto_approve": "自动批准",
+      "pending_approval": "等待审批",
+      "denied": "拒绝",
+      "tool_executed": "{icon} {tool}\n✅ 已执行 (结果已隐藏)",
+      "tool_executing": "{icon} {tool}\n✅ 执行中...",
+      "answer_received": "✅ 已收到回答",
+      "answer_failed": "❌ 回答失败",
+      "option_selected": "✅ 已选择选项 {index}",
+      "pass": "✅ 通过",
+      "needs_improvement": "⚠️ 需改进",
+      "existing_capabilities": "✅ **现有能力**",
+      "risk_warning": "⚠️ **风险提示**"
+    },
+    "error": {
+      "load_failed": "加载失败: {error}",
+      "approve_failed": "批准失败",
+      "reject_failed": "拒绝失败",
+      "operation_failed": "❌ 操作失败: {error}",
+      "operation_failed_retry": "❌ 操作失败，请稍后重试: {error}",
+      "config_save_failed": "❌ 配置保存失败: {error}",
+      "config_load_failed": "❌ 配置加载失败: {error}",
+      "connection_lost": "处理异常中断 (收到 {count} 个事件后连接断开)。请重试。",
+      "telegram_not_configured": "❌ Telegram 未配置，无法绑定交易通知",
+      "verification_failed": "验证失败。",
+      "error_prefix": "❌ 错误: {error}"
+    },
+    "auth": {
+      "binding_success": "✅ *交易通知绑定成功*\n\n已绑定到当前 Telegram 会话。\n所有交易信号将推送至此处。"
+    },
+    "search": {
+      "no_results": "🌐 搜索完成，未找到结果"
+    },
+    "autonomous": {
+      "task_completed": "🤖 **[自主模式] 任务完成**",
+      "task_incomplete": "🤖 **[自主模式] 任务未完成**",
+      "status_solved": "✅ **状态**: 问题已解决",
+      "status_not_solved": "⚠️ **状态**: 未能自动解决",
+      "build_success": "✅ **成功构建**: {type} - {identifier}",
+      "build_failed": "❌ **构建失败**: {summary}",
+      "decision_paused": "⚠️ 自主决策暂停\n\n**CLOSE 评估分数**: {score}/10"
+    },
+    "context": {
+      "clear_failed": "❌ 清空上下文失败: {error}",
+      "compact_failed": "❌ 压缩上下文失败: {error}",
+      "clear_error_retry": "⚠️ 清空上下文时出现错误，请重试。"
+    }
+  }
+}

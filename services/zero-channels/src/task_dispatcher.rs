@@ -27,6 +27,8 @@ use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
 use zero_common::logging::RequestContext;
+use zero_common::keywords::{detect_alias, keywords};
+use zero_common::messages::messages;
 use zero_common::{
     stream_keys, RedisStreamClient, RedisStreamConfig, TaskCreatedData, TaskEvent,
 };
@@ -53,7 +55,7 @@ impl Default for TaskDispatcherConfig {
         Self {
             stream_config: RedisStreamConfig::default(),
             enabled: true,
-            ack_message: "🚀 收到，正在处理...".to_string(),
+            ack_message: messages().messages.task.acknowledged.clone(),
             default_agent: "build".to_string(),
         }
     }
@@ -335,32 +337,20 @@ pub fn default_agent_for_channel(channel_type: ChannelType) -> &'static str {
 }
 
 /// Detect the agent to use based on message content.
+///
+/// Uses the keywords configuration for @mention alias detection.
+/// Falls back to the default agent if no explicit mention is found.
 pub fn detect_agent<'a>(message: &str, default_agent: &'a str) -> &'a str {
     let text = message.trim().to_lowercase();
 
-    // Check for explicit @agent mentions
-    if text.starts_with("@") {
-        let parts: Vec<&str> = text.split_whitespace().collect();
-        if let Some(mention) = parts.first() {
-            let agent_name = mention.trim_start_matches('@');
-            // Known agents
-            match agent_name {
-                "plan" | "planner" => return "plan",
-                "code-review" | "code-reviewer" | "review" => return "code-reviewer",
-                "security" | "security-reviewer" => return "security-reviewer",
-                "tdd" | "tdd-guide" => return "tdd-guide",
-                "architect" | "arch" => return "architect",
-                "explore" | "explorer" => return "explore",
-                "macro" | "宏观" => return "macro",
-                "trader" | "交易" => return "trader",
-                "picker" | "选品" => return "picker",
-                "miniproduct" | "极小" => return "miniproduct",
-                "observer" | "观察者" => return "observer",
-                "decision" | "决策" => return "decision",
-                "writer" | "写作" => return "writer",
-                "proofreader" | "校对" => return "proofreader",
-                _ => {}
-            }
+    // Check for explicit @agent mentions using keywords config
+    if text.starts_with('@') {
+        let config = keywords();
+        if let Some(agent) = detect_alias(message, config) {
+            // SAFETY: We're returning a reference to a string that lives in config,
+            // which is 'static (from the global KEYWORDS). We leak the string to
+            // extend its lifetime to match the expected return type.
+            return Box::leak(agent.to_string().into_boxed_str());
         }
     }
 

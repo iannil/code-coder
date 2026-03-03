@@ -23,6 +23,8 @@ pub mod events;
 pub mod guardrails;
 #[cfg(feature = "hitl-client")]
 pub mod hitl_client;
+pub mod keywords;
+pub mod messages;
 #[cfg(feature = "http-client")]
 pub mod http_client;
 pub mod hybrid;
@@ -62,6 +64,14 @@ pub use hybrid::{
     AgentResult, AnalysisTrigger, DecisionSource, HybridConfig, HybridDecision,
     HybridDecisionMaker,
 };
+pub use keywords::{
+    detect_agent, detect_alias, detect_trigger, keywords, load_keywords, AgentKeywords,
+    DefaultsConfig, KeywordsConfig, TriggerRule, TriggerType,
+};
+pub use messages::{
+    messages, load_messages, t, AllMessages, ApprovalMessages, AuthMessages, AutonomousMessages,
+    ContextMessages, ErrorMessages, MessagesConfig, SearchMessages, StatusMessages, TaskMessages,
+};
 pub use notification::NotificationSink;
 pub use validation::{Validate, ValidationError, ValidationResult};
 
@@ -95,6 +105,8 @@ pub mod prelude {
     pub use crate::events::{StreamEvent, TaskEvent, TaskState, TaskStatus};
     pub use crate::guardrails::{Action, Decision, Guardrails, RiskLevel};
     pub use crate::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
+    pub use crate::keywords::{detect_agent, detect_alias, keywords, KeywordsConfig};
+    pub use crate::messages::{messages, t, MessagesConfig};
     #[cfg(feature = "http-client")]
     pub use crate::http_client::{build_client, ClientCategory};
     pub use crate::logging::init_logging;

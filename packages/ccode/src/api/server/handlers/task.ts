@@ -20,6 +20,7 @@ import { Bus } from "@/bus"
 import { Log } from "@/util/log"
 import { shouldRequireApproval, allowForUser, loadAllowlists } from "@/security/remote-policy"
 import { ConversationStore } from "../store/conversation"
+import { t, taskT, errorT, statusT } from "@/config/messages"
 
 const log = Log.create({ service: "task-handler" })
 
@@ -607,7 +608,7 @@ async function executeTask(
         assistantError.message ||
         assistantError.name ||
         "Unknown error"
-      output = `❌ 处理失败: ${errorMsg}`
+      output = taskT("failed", { error: errorMsg })
       log.warn("task: using error message as output", { taskID, error: errorMsg })
     } else if (toolResultParts.length > 0) {
       // Scheme 2: If no text parts but tool results exist, format tool results
@@ -621,14 +622,14 @@ async function executeTask(
         .filter(Boolean)
         .join("\n\n")
 
-      output = formattedToolResults || "✅ 处理完成"
+      output = formattedToolResults || taskT("completed")
       log.info("task: using tool results as output", {
         taskID,
         toolCount: toolResultParts.length,
         outputLength: output.length,
       })
     } else {
-      output = "✅ 处理完成"
+      output = taskT("completed")
     }
 
     const elapsedMs = Date.now() - startTime
@@ -838,7 +839,7 @@ async function executeResearchTaskWithPDCA(
     // Format output with PDCA summary
     let formattedOutput = output?.report || output?.summary || "Research completed."
     formattedOutput += `\n\n---\n### PDCA 验收结果\n`
-    formattedOutput += `- **状态**: ${pdcaResult.success ? "✅ 通过" : "⚠️ 需改进"}\n`
+    formattedOutput += `- **状态**: ${pdcaResult.success ? statusT("pass") : statusT("needs_improvement")}\n`
     formattedOutput += `- **CLOSE 分数**: ${pdcaResult.checkResult?.closeScore.total.toFixed(1) ?? "N/A"}/10\n`
     formattedOutput += `- **循环次数**: ${pdcaResult.cycles}\n`
     if (output?.sources) {
@@ -1040,7 +1041,7 @@ async function executeImplementationTaskWithPDCA(
       formattedOutput += `\n\n${output.solution}`
     }
     formattedOutput += `\n\n---\n### PDCA 验收结果\n`
-    formattedOutput += `- **状态**: ${pdcaResult.success ? "✅ 通过" : "⚠️ 需改进"}\n`
+    formattedOutput += `- **状态**: ${pdcaResult.success ? statusT("pass") : statusT("needs_improvement")}\n`
     formattedOutput += `- **CLOSE 分数**: ${pdcaResult.checkResult?.closeScore.total.toFixed(1) ?? "N/A"}/10\n`
     formattedOutput += `- **循环次数**: ${pdcaResult.cycles}\n`
 

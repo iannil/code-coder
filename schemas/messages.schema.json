@@ -1,0 +1,424 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/messages.json",
+  "title": "CodeCoder Messages Configuration",
+  "description": "Configuration for internationalized message templates used across IM channels and UI",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for configuration validation"
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+      "default": "zh-CN",
+      "description": "Locale identifier (e.g., zh-CN, en-US)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0",
+      "description": "Configuration schema version"
+    },
+    "messages": {
+      "type": "object",
+      "description": "Message templates organized by category",
+      "properties": {
+        "task": { "$ref": "#/$defs/TaskMessages" },
+        "approval": { "$ref": "#/$defs/ApprovalMessages" },
+        "status": { "$ref": "#/$defs/StatusMessages" },
+        "error": { "$ref": "#/$defs/ErrorMessages" },
+        "auth": { "$ref": "#/$defs/AuthMessages" },
+        "search": { "$ref": "#/$defs/SearchMessages" },
+        "autonomous": { "$ref": "#/$defs/AutonomousMessages" },
+        "context": { "$ref": "#/$defs/ContextMessages" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "TaskMessages": {
+      "type": "object",
+      "description": "Task processing lifecycle messages",
+      "properties": {
+        "acknowledged": {
+          "type": "string",
+          "default": "🚀 收到，正在处理...",
+          "description": "Sent when task is received and queued"
+        },
+        "start_processing": {
+          "type": "string",
+          "default": "🚀 开始处理...\n📍 Trace: {trace_id}",
+          "description": "Sent when task processing starts. Placeholder: {trace_id}"
+        },
+        "processing": {
+          "type": "string",
+          "default": "🚀 处理中...",
+          "description": "Generic processing indicator"
+        },
+        "thinking": {
+          "type": "string",
+          "default": "⏳ 思考中...",
+          "description": "Shown when AI is reasoning/thinking"
+        },
+        "progress": {
+          "type": "string",
+          "default": "⏳ {stage} ({percent}%)\n{message}",
+          "description": "Progress update template. Placeholders: {stage}, {percent}, {message}"
+        },
+        "progress_no_percent": {
+          "type": "string",
+          "default": "⏳ {stage}\n{message}",
+          "description": "Progress update without percentage. Placeholders: {stage}, {message}"
+        },
+        "completed": {
+          "type": "string",
+          "default": "✅ 处理完成",
+          "description": "Sent when task completes successfully"
+        },
+        "completed_with_summary": {
+          "type": "string",
+          "default": "✅ 处理完成\n\n{summary}",
+          "description": "Completion with summary. Placeholder: {summary}"
+        },
+        "failed": {
+          "type": "string",
+          "default": "❌ 处理失败: {error}",
+          "description": "Sent when task fails. Placeholder: {error}"
+        },
+        "failed_with_summary": {
+          "type": "string",
+          "default": "❌ 处理失败: {error}\n\n{summary}",
+          "description": "Failure with summary. Placeholders: {error}, {summary}"
+        },
+        "generating_result": {
+          "type": "string",
+          "default": "⏳ 正在生成结果...",
+          "description": "Shown while generating final result"
+        },
+        "end_marker": {
+          "type": "string",
+          "default": "─────────────────\n{status} 回复结束",
+          "description": "End marker with status. Placeholder: {status}"
+        },
+        "task_id_suffix": {
+          "type": "string",
+          "default": "\n\n任务ID: `{task_id}`",
+          "description": "Task ID suffix. Placeholder: {task_id}"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ApprovalMessages": {
+      "type": "object",
+      "description": "Human-in-the-loop approval messages",
+      "properties": {
+        "title": {
+          "type": "string",
+          "default": "🔐 CodeCoder 授权请求",
+          "description": "Title for authorization requests"
+        },
+        "confirm_action": {
+          "type": "string",
+          "default": "⚠️ **确认执行操作**",
+          "description": "Header for confirmation dialogs"
+        },
+        "confirm_with_info": {
+          "type": "string",
+          "default": "⚠️ **确认执行操作**\n\n{tool_info}\n{description}",
+          "description": "Confirmation with tool info. Placeholders: {tool_info}, {description}"
+        },
+        "confirm_with_args": {
+          "type": "string",
+          "default": "⚠️ **确认执行操作**\n\n{tool_info}\n{description}\n\n{args}",
+          "description": "Confirmation with tool info and args. Placeholders: {tool_info}, {description}, {args}"
+        },
+        "approve": {
+          "type": "string",
+          "default": "✅ 批准",
+          "description": "Approve button text"
+        },
+        "approve_always": {
+          "type": "string",
+          "default": "✅ 始终批准",
+          "description": "Always approve button text"
+        },
+        "reject": {
+          "type": "string",
+          "default": "❌ 拒绝",
+          "description": "Reject button text"
+        },
+        "approved": {
+          "type": "string",
+          "default": "✅ 已批准",
+          "description": "Status: approved"
+        },
+        "approved_by": {
+          "type": "string",
+          "default": "✅ 已批准 by {approver}",
+          "description": "Approved with approver name. Placeholder: {approver}"
+        },
+        "rejected": {
+          "type": "string",
+          "default": "❌ 已拒绝",
+          "description": "Status: rejected"
+        },
+        "rejected_by": {
+          "type": "string",
+          "default": "❌ 已拒绝 by {approver}",
+          "description": "Rejected with approver name. Placeholder: {approver}"
+        },
+        "rejected_with_reason": {
+          "type": "string",
+          "default": "❌ 已拒绝\n审批人: {approver}\n原因: {reason}\n时间: {time}",
+          "description": "Rejected with full details. Placeholders: {approver}, {reason}, {time}"
+        },
+        "pending": {
+          "type": "string",
+          "default": "⏳ 待审批",
+          "description": "Status: pending approval"
+        },
+        "waiting": {
+          "type": "string",
+          "default": "⏳ 等待审批",
+          "description": "Waiting for approval status"
+        },
+        "queue_title": {
+          "type": "string",
+          "default": "📋 审批队列 ({count} 待处理)",
+          "description": "Approval queue title. Placeholder: {count}"
+        },
+        "queue_empty": {
+          "type": "string",
+          "default": "没有待处理的审批请求",
+          "description": "Empty approval queue message"
+        },
+        "select_prompt": {
+          "type": "string",
+          "default": "请选择批准或拒绝此操作：",
+          "description": "Selection prompt text"
+        }
+      },
+      "additionalProperties": false
+    },
+    "StatusMessages": {
+      "type": "object",
+      "description": "General status indicators",
+      "properties": {
+        "auto_approve": {
+          "type": "string",
+          "default": "自动批准",
+          "description": "Auto-approval decision"
+        },
+        "pending_approval": {
+          "type": "string",
+          "default": "等待审批",
+          "description": "Pending approval decision"
+        },
+        "denied": {
+          "type": "string",
+          "default": "拒绝",
+          "description": "Denied decision"
+        },
+        "tool_executed": {
+          "type": "string",
+          "default": "{icon} {tool}\n✅ 已执行 (结果已隐藏)",
+          "description": "Tool executed (result hidden). Placeholders: {icon}, {tool}"
+        },
+        "tool_executing": {
+          "type": "string",
+          "default": "{icon} {tool}\n✅ 执行中...",
+          "description": "Tool executing. Placeholders: {icon}, {tool}"
+        },
+        "answer_received": {
+          "type": "string",
+          "default": "✅ 已收到回答",
+          "description": "User answer received"
+        },
+        "answer_failed": {
+          "type": "string",
+          "default": "❌ 回答失败",
+          "description": "User answer failed"
+        },
+        "option_selected": {
+          "type": "string",
+          "default": "✅ 已选择选项 {index}",
+          "description": "Option selected. Placeholder: {index}"
+        },
+        "pass": {
+          "type": "string",
+          "default": "✅ 通过",
+          "description": "Status: pass"
+        },
+        "needs_improvement": {
+          "type": "string",
+          "default": "⚠️ 需改进",
+          "description": "Status: needs improvement"
+        },
+        "existing_capabilities": {
+          "type": "string",
+          "default": "✅ **现有能力**",
+          "description": "Section header for existing capabilities"
+        },
+        "risk_warning": {
+          "type": "string",
+          "default": "⚠️ **风险提示**",
+          "description": "Section header for risk warnings"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ErrorMessages": {
+      "type": "object",
+      "description": "Error and failure messages",
+      "properties": {
+        "load_failed": {
+          "type": "string",
+          "default": "加载失败: {error}",
+          "description": "Generic load failure. Placeholder: {error}"
+        },
+        "approve_failed": {
+          "type": "string",
+          "default": "批准失败",
+          "description": "Approval action failed"
+        },
+        "reject_failed": {
+          "type": "string",
+          "default": "拒绝失败",
+          "description": "Rejection action failed"
+        },
+        "operation_failed": {
+          "type": "string",
+          "default": "❌ 操作失败: {error}",
+          "description": "Generic operation failure. Placeholder: {error}"
+        },
+        "operation_failed_retry": {
+          "type": "string",
+          "default": "❌ 操作失败，请稍后重试: {error}",
+          "description": "Operation failed with retry hint. Placeholder: {error}"
+        },
+        "config_save_failed": {
+          "type": "string",
+          "default": "❌ 配置保存失败: {error}",
+          "description": "Config save failure. Placeholder: {error}"
+        },
+        "config_load_failed": {
+          "type": "string",
+          "default": "❌ 配置加载失败: {error}",
+          "description": "Config load failure. Placeholder: {error}"
+        },
+        "connection_lost": {
+          "type": "string",
+          "default": "处理异常中断 (收到 {count} 个事件后连接断开)。请重试。",
+          "description": "Connection lost during processing. Placeholder: {count}"
+        },
+        "telegram_not_configured": {
+          "type": "string",
+          "default": "❌ Telegram 未配置，无法绑定交易通知",
+          "description": "Telegram not configured error"
+        },
+        "verification_failed": {
+          "type": "string",
+          "default": "验证失败。",
+          "description": "Verification failure"
+        },
+        "error_prefix": {
+          "type": "string",
+          "default": "❌ 错误: {error}",
+          "description": "Error message prefix. Placeholder: {error}"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AuthMessages": {
+      "type": "object",
+      "description": "Authorization and binding messages",
+      "properties": {
+        "binding_success": {
+          "type": "string",
+          "default": "✅ *交易通知绑定成功*\n\n已绑定到当前 Telegram 会话。\n所有交易信号将推送至此处。",
+          "description": "Trading notification binding success"
+        }
+      },
+      "additionalProperties": false
+    },
+    "SearchMessages": {
+      "type": "object",
+      "description": "Search-related messages",
+      "properties": {
+        "no_results": {
+          "type": "string",
+          "default": "🌐 搜索完成，未找到结果",
+          "description": "Search completed with no results"
+        }
+      },
+      "additionalProperties": false
+    },
+    "AutonomousMessages": {
+      "type": "object",
+      "description": "Autonomous mode messages",
+      "properties": {
+        "task_completed": {
+          "type": "string",
+          "default": "🤖 **[自主模式] 任务完成**",
+          "description": "Autonomous mode task completed"
+        },
+        "task_incomplete": {
+          "type": "string",
+          "default": "🤖 **[自主模式] 任务未完成**",
+          "description": "Autonomous mode task incomplete"
+        },
+        "status_solved": {
+          "type": "string",
+          "default": "✅ **状态**: 问题已解决",
+          "description": "Status: problem solved"
+        },
+        "status_not_solved": {
+          "type": "string",
+          "default": "⚠️ **状态**: 未能自动解决",
+          "description": "Status: could not auto-resolve"
+        },
+        "build_success": {
+          "type": "string",
+          "default": "✅ **成功构建**: {type} - {identifier}",
+          "description": "Build success. Placeholders: {type}, {identifier}"
+        },
+        "build_failed": {
+          "type": "string",
+          "default": "❌ **构建失败**: {summary}",
+          "description": "Build failed. Placeholder: {summary}"
+        },
+        "decision_paused": {
+          "type": "string",
+          "default": "⚠️ 自主决策暂停\n\n**CLOSE 评估分数**: {score}/10",
+          "description": "Autonomous decision paused. Placeholder: {score}"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ContextMessages": {
+      "type": "object",
+      "description": "Context management messages",
+      "properties": {
+        "clear_failed": {
+          "type": "string",
+          "default": "❌ 清空上下文失败: {error}",
+          "description": "Context clear failed. Placeholder: {error}"
+        },
+        "compact_failed": {
+          "type": "string",
+          "default": "❌ 压缩上下文失败: {error}",
+          "description": "Context compact failed. Placeholder: {error}"
+        },
+        "clear_error_retry": {
+          "type": "string",
+          "default": "⚠️ 清空上下文时出现错误，请重试。",
+          "description": "Context clear error with retry hint"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

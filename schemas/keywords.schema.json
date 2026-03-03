@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/keywords.json",
+  "title": "CodeCoder Agent Keywords Configuration",
+  "description": "Configuration for agent trigger keywords, aliases, and routing rules",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for configuration validation"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0",
+      "description": "Configuration schema version"
+    },
+    "agents": {
+      "type": "object",
+      "description": "Agent keywords keyed by agent name",
+      "additionalProperties": {
+        "$ref": "#/$defs/AgentKeywords"
+      }
+    },
+    "defaults": {
+      "$ref": "#/$defs/DefaultsConfig"
+    }
+  },
+  "$defs": {
+    "AgentKeywords": {
+      "type": "object",
+      "description": "Keywords configuration for a single agent",
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "$ref": "#/$defs/TriggerRule" }
+            ]
+          },
+          "default": [],
+          "description": "Keywords that trigger this agent. Can be simple strings or TriggerRule objects."
+        },
+        "aliases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Aliases for @mention routing (e.g., @macro, @宏观)"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 5,
+          "description": "Agent priority for conflict resolution (higher = more preferred)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether this agent's keywords are active"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TriggerRule": {
+      "type": "object",
+      "description": "Advanced trigger rule with type and options",
+      "required": ["type", "value"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["keyword", "pattern", "context", "event"],
+          "description": "Trigger type: keyword (exact/contains), pattern (regex), context (semantic), event (system event)"
+        },
+        "value": {
+          "type": "string",
+          "description": "Trigger value: keyword string, regex pattern, or event name"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 5,
+          "description": "Trigger-specific priority override"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description for this trigger"
+        }
+      },
+      "additionalProperties": false
+    },
+    "DefaultsConfig": {
+      "type": "object",
+      "description": "Default settings for agent routing",
+      "properties": {
+        "agent": {
+          "type": "string",
+          "default": "general",
+          "description": "Default agent when no triggers match"
+        },
+        "cli_agent": {
+          "type": "string",
+          "default": "build",
+          "description": "Default agent for CLI channel"
+        },
+        "im_agent": {
+          "type": "string",
+          "default": "autonomous",
+          "description": "Default agent for IM channels (Telegram, Discord, etc.)"
+        },
+        "use_implicit_matching": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable implicit keyword matching (may cause misrouting)"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

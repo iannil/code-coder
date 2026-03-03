@@ -10,6 +10,7 @@
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { ConversationStore } from "../store/conversation"
+import { t, autonomousT, contextT } from "@/config/messages"
 
 // ============================================================================
 // Types
@@ -760,7 +761,7 @@ function formatEvolutionSuccess(result: { solved: boolean; solution?: string; at
   const sections: string[] = []
 
   sections.push(`🤖 **[自主模式 - ${autonomyLevel}] 任务完成**\n`)
-  sections.push(`✅ **状态**: 问题已解决`)
+  sections.push(autonomousT("status_solved"))
   sections.push(`⏱ **耗时**: ${(result.durationMs / 1000).toFixed(1)}s`)
   sections.push(`🔄 **尝试次数**: ${result.attempts.length}`)
 
@@ -796,7 +797,7 @@ function formatEvolutionFailure(result: { solved: boolean; attempts: Array<{ att
   const sections: string[] = []
 
   sections.push(`🤖 **[自主模式 - ${autonomyLevel}] 任务未完成**\n`)
-  sections.push(`⚠️ **状态**: 未能自动解决`)
+  sections.push(autonomousT("status_not_solved"))
   sections.push(`⏱ **耗时**: ${(result.durationMs / 1000).toFixed(1)}s`)
   sections.push(`🔄 **尝试次数**: ${result.attempts.length}`)
 
@@ -815,9 +816,9 @@ function formatEvolutionFailure(result: { solved: boolean; attempts: Array<{ att
   if (result.buildAttempted) {
     sections.push(`\n### 🏗️ 自动构建`)
     if (result.buildResult?.success) {
-      sections.push(`✅ **成功构建**: ${result.buildResult.concept?.type} - ${result.buildResult.concept?.identifier}`)
+      sections.push(autonomousT("build_success", { type: result.buildResult.concept?.type ?? "", identifier: result.buildResult.concept?.identifier ?? "" }))
     } else {
-      sections.push(`❌ **构建失败**: ${result.buildResult?.summary ?? '未知错误'}`)
+      sections.push(autonomousT("build_failed", { summary: result.buildResult?.summary ?? '未知错误' }))
     }
   }
 
@@ -1108,7 +1109,7 @@ export async function clearConversation(req: HttpRequest, _params: RouteParams):
 
     // Return different messages based on actual result
     const message = redisError
-      ? "⚠️ 清空上下文时出现错误，请重试。"
+      ? contextT("clear_error_retry")
       : hadMapping
         ? "✨ 上下文已清空，下一条消息将开始新对话。"
         : "✨ 已准备开始新对话。"

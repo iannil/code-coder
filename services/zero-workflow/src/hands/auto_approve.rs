@@ -14,6 +14,7 @@ use super::manifest::{AutoApproveConfig, AutonomyLevel, RiskThreshold};
 use super::risk::{RiskEvaluator, RiskEvaluation, RiskLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use zero_common::messages::messages;
 
 /// Decision for a tool call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,10 +31,19 @@ pub enum ApprovalDecision {
 impl ApprovalDecision {
     /// Get display name.
     pub fn display_name(&self) -> &'static str {
+        // Note: We return &'static str for API compatibility.
+        // These are the default Chinese messages.
         match self {
-            ApprovalDecision::AutoApprove => "自动批准",
-            ApprovalDecision::Queue => "等待审批",
-            ApprovalDecision::Deny => "拒绝",
+            ApprovalDecision::AutoApprove => {
+                // Use leaked string for 'static lifetime
+                Box::leak(messages().messages.status.auto_approve.clone().into_boxed_str())
+            }
+            ApprovalDecision::Queue => {
+                Box::leak(messages().messages.status.pending_approval.clone().into_boxed_str())
+            }
+            ApprovalDecision::Deny => {
+                Box::leak(messages().messages.status.denied.clone().into_boxed_str())
+            }
         }
     }
 }

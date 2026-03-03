@@ -23,6 +23,7 @@ import {
   getApprovalTypeName,
   getRiskLevelIcon,
 } from "@/hitl/client"
+import { approvalT, errorT } from "@/config/messages"
 
 interface Props {
   approverId?: string
@@ -88,13 +89,13 @@ export function DialogApprovalQueue(props: Props) {
     try {
       const response = await client.approve(request.id, props.approverId ?? "tui-user")
       if (response.success) {
-        toast.show({ variant: "success", message: `已批准: ${request.title}` })
+        toast.show({ variant: "success", message: `${approvalT("approved")}: ${request.title}` })
         await fetchPending()
       } else {
-        toast.show({ variant: "error", message: response.error ?? "批准失败" })
+        toast.show({ variant: "error", message: response.error ?? errorT("approve_failed") })
       }
     } catch (err) {
-      toast.show({ variant: "error", message: `批准失败: ${err}` })
+      toast.show({ variant: "error", message: `${errorT("approve_failed")}: ${err}` })
     }
   }
 
@@ -105,13 +106,13 @@ export function DialogApprovalQueue(props: Props) {
     try {
       const response = await client.reject(request.id, props.approverId ?? "tui-user", "从 TUI 拒绝")
       if (response.success) {
-        toast.show({ variant: "info", message: `已拒绝: ${request.title}` })
+        toast.show({ variant: "info", message: `${approvalT("rejected")}: ${request.title}` })
         await fetchPending()
       } else {
-        toast.show({ variant: "error", message: response.error ?? "拒绝失败" })
+        toast.show({ variant: "error", message: response.error ?? errorT("reject_failed") })
       }
     } catch (err) {
-      toast.show({ variant: "error", message: `拒绝失败: ${err}` })
+      toast.show({ variant: "error", message: `${errorT("reject_failed")}: ${err}` })
     }
   }
 
@@ -179,7 +180,7 @@ export function DialogApprovalQueue(props: Props) {
       {/* Header */}
       <box flexDirection="row" justifyContent="space-between" marginBottom={1}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          {isHealthy() ? "📋" : "⚠️"} 审批队列 ({requests().length} 待处理)
+          {isHealthy() ? "📋" : "⚠️"} {approvalT("queue_title", { count: requests().length })}
         </text>
         <text fg={theme.textMuted}>[ESC] 关闭</text>
       </box>
@@ -197,7 +198,7 @@ export function DialogApprovalQueue(props: Props) {
       {/* Empty state */}
       <Show when={!loading() && !error() && requests().length === 0}>
         <box flexDirection="column" alignItems="center" marginTop={2}>
-          <text fg={theme.textMuted}>没有待处理的审批请求</text>
+          <text fg={theme.textMuted}>{approvalT("queue_empty")}</text>
           <text fg={theme.textMuted} marginTop={1}>
             当 Hands 需要人工确认时，请求会显示在这里
           </text>
@@ -278,8 +279,8 @@ export function DialogApprovalQueue(props: Props) {
           borderColor={theme.border}
           paddingTop={1}
         >
-          <text fg={theme.success}>[a] 批准</text>
-          <text fg={theme.error}>[r] 拒绝</text>
+          <text fg={theme.success}>[a] {approvalT("approve")}</text>
+          <text fg={theme.error}>[r] {approvalT("reject")}</text>
           <text fg={theme.textMuted}>[s] 跳过</text>
           <text fg={theme.textMuted}>[↑↓] 导航</text>
           <text fg={theme.textMuted}>[Enter] 详情</text>

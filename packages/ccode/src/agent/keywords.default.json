@@ -1,0 +1,153 @@
+{
+  "$schema": "../../schemas/keywords.schema.json",
+  "version": "1.0.0",
+  "agents": {
+    "general": {
+      "triggers": ["help", "帮助", "问"],
+      "aliases": ["general", "assistant", "通用"],
+      "priority": 3
+    },
+    "build": {
+      "triggers": [
+        { "type": "keyword", "value": "build", "priority": 10 },
+        { "type": "keyword", "value": "implement", "priority": 8 },
+        { "type": "keyword", "value": "create", "priority": 7 },
+        { "type": "keyword", "value": "fix", "priority": 6 }
+      ],
+      "aliases": ["build", "code", "dev", "implement", "构建", "实现"],
+      "priority": 8
+    },
+    "plan": {
+      "triggers": [
+        { "type": "keyword", "value": "plan", "priority": 10 },
+        { "type": "keyword", "value": "design", "priority": 8 },
+        { "type": "keyword", "value": "architecture", "priority": 7 }
+      ],
+      "aliases": ["plan", "planner", "design", "architect", "规划", "设计"],
+      "priority": 8
+    },
+    "code-reviewer": {
+      "triggers": [
+        { "type": "keyword", "value": "review", "priority": 10 },
+        { "type": "keyword", "value": "code review", "priority": 10 },
+        { "type": "event", "value": "pr.opened", "priority": 8 }
+      ],
+      "aliases": ["code-review", "code-reviewer", "review", "审查"],
+      "priority": 7
+    },
+    "security-reviewer": {
+      "triggers": [
+        { "type": "keyword", "value": "security", "priority": 10 },
+        { "type": "keyword", "value": "vulnerability", "priority": 9 },
+        { "type": "context", "value": "auth|payment|credential", "priority": 8 }
+      ],
+      "aliases": ["security", "security-reviewer", "安全"],
+      "priority": 7
+    },
+    "tdd-guide": {
+      "triggers": [
+        { "type": "keyword", "value": "tdd", "priority": 10 },
+        { "type": "keyword", "value": "test first", "priority": 9 },
+        { "type": "keyword", "value": "write tests", "priority": 8 }
+      ],
+      "aliases": ["tdd", "tdd-guide", "测试驱动"],
+      "priority": 7
+    },
+    "architect": {
+      "triggers": [
+        { "type": "keyword", "value": "architect", "priority": 10 },
+        { "type": "keyword", "value": "design system", "priority": 9 },
+        { "type": "keyword", "value": "scalability", "priority": 7 }
+      ],
+      "aliases": ["architect", "arch", "架构"],
+      "priority": 7
+    },
+    "writer": {
+      "triggers": [
+        { "type": "keyword", "value": "write book", "priority": 10 },
+        { "type": "keyword", "value": "write article", "priority": 9 },
+        { "type": "keyword", "value": "content", "priority": 7 }
+      ],
+      "aliases": ["writer", "写作", "写书"],
+      "priority": 6
+    },
+    "proofreader": {
+      "triggers": [
+        { "type": "keyword", "value": "proofread", "priority": 10 },
+        { "type": "keyword", "value": "grammar", "priority": 9 },
+        { "type": "keyword", "value": "spelling", "priority": 8 }
+      ],
+      "aliases": ["proofreader", "校对", "校稿"],
+      "priority": 6
+    },
+    "observer": {
+      "triggers": [
+        { "type": "keyword", "value": "祝融说", "priority": 10 },
+        { "type": "keyword", "value": "observer", "priority": 9 },
+        { "type": "keyword", "value": "可能性", "priority": 8 }
+      ],
+      "aliases": ["observer", "观察者", "祝融"],
+      "priority": 6
+    },
+    "decision": {
+      "triggers": [
+        { "type": "keyword", "value": "decision", "priority": 10 },
+        { "type": "keyword", "value": "CLOSE", "priority": 10 },
+        { "type": "keyword", "value": "选择", "priority": 8 }
+      ],
+      "aliases": ["decision", "决策", "close"],
+      "priority": 6
+    },
+    "macro": {
+      "triggers": [
+        { "type": "keyword", "value": "macro", "priority": 10 },
+        { "type": "keyword", "value": "GDP", "priority": 9 },
+        { "type": "keyword", "value": "economy", "priority": 8 }
+      ],
+      "aliases": ["macro", "宏观", "经济"],
+      "priority": 6
+    },
+    "trader": {
+      "triggers": [
+        { "type": "keyword", "value": "trade", "priority": 10 },
+        { "type": "keyword", "value": "trading", "priority": 9 },
+        { "type": "keyword", "value": "技术分析", "priority": 8 }
+      ],
+      "aliases": ["trader", "交易", "trading"],
+      "priority": 6
+    },
+    "picker": {
+      "triggers": [],
+      "aliases": ["picker", "选品"],
+      "priority": 5
+    },
+    "miniproduct": {
+      "triggers": [],
+      "aliases": ["miniproduct", "极小", "极小产品"],
+      "priority": 5
+    },
+    "explore": {
+      "triggers": [
+        { "type": "keyword", "value": "find", "priority": 10 },
+        { "type": "keyword", "value": "search", "priority": 9 },
+        { "type": "keyword", "value": "where", "priority": 7 }
+      ],
+      "aliases": ["explore", "explorer", "搜索", "查找"],
+      "priority": 7
+    },
+    "autonomous": {
+      "triggers": [
+        { "type": "keyword", "value": "autonomous", "priority": 10 },
+        { "type": "keyword", "value": "自主", "priority": 9 }
+      ],
+      "aliases": ["autonomous", "自主", "auto"],
+      "priority": 9
+    }
+  },
+  "defaults": {
+    "agent": "general",
+    "cli_agent": "build",
+    "im_agent": "autonomous",
+    "use_implicit_matching": false
+  }
+}

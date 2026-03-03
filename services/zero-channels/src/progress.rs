@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
+use zero_common::messages::{messages, t};
 
 // ============================================================================
 // Progress Handler Trait
@@ -738,7 +739,7 @@ impl ImProgressHandler {
 impl ProgressHandler for ImProgressHandler {
     async fn on_start(&self, msg: &ChannelMessage, task_id: &str) -> Result<()> {
         // Include trace_id in the first message for user tracking
-        let text = format!("🚀 开始处理...\n📍 Trace: {}", &msg.trace_id);
+        let text = t("task.start_processing", &[("trace_id", &msg.trace_id)]);
 
         tracing::info!(
             message_id = %msg.id,
@@ -852,8 +853,15 @@ impl ProgressHandler for ImProgressHandler {
 
         // Format progress text
         let progress_text = match event.percentage {
-            Some(pct) => format!("⏳ {} ({}%)\n{}", event.stage, pct, event.message),
-            None => format!("⏳ {}\n{}", event.stage, event.message),
+            Some(pct) => t("task.progress", &[
+                ("stage", &event.stage),
+                ("percent", &pct.to_string()),
+                ("message", &event.message),
+            ]),
+            None => t("task.progress_no_percent", &[
+                ("stage", &event.stage),
+                ("message", &event.message),
+            ]),
         };
 
         // Try to edit existing message if on Telegram
@@ -962,9 +970,9 @@ impl ProgressHandler for ImProgressHandler {
                 // Show thought in progress message (temporary display only)
                 // Use a status prefix instead of current_text to avoid accumulation
                 let status_prefix = if current_text == "[started]" {
-                    "🚀 处理中...".to_string()
+                    messages().messages.task.processing.clone()
                 } else {
-                    "⏳ 思考中...".to_string()
+                    messages().messages.task.thinking.clone()
                 };
                 let progress_display = format!("{}\n\n{}", status_prefix, display_thought);
 
@@ -1137,10 +1145,10 @@ impl ProgressHandler for ImProgressHandler {
                 self.format_search_result(&event.tool, result)
             } else if Self::is_sensitive_tool(&event.tool) {
                 // For sensitive tools, show only success (no content)
-                format!("{} {}\n✅ 已执行 (结果已隐藏)", tool_display, event.tool)
+                t("status.tool_executed", &[("icon", &tool_display), ("tool", &event.tool)])
             } else {
                 // For intermediate tools, show brief confirmation
-                format!("{} {}\n✅ 执行中...", tool_display, event.tool)
+                t("status.tool_executing", &[("icon", &tool_display), ("tool", &event.tool)])
             }
         } else {
             format!("{} {}", tool_display, event.tool)
@@ -1402,9 +1410,9 @@ impl ProgressHandler for ImProgressHandler {
         };
 
         let confirmation_text = if args_preview.is_empty() {
-            format!("⚠️ **确认执行操作**\n\n{}\n{}", tool_info, desc)
+            t("approval.confirm_with_info", &[("tool_info", &tool_info), ("description", &desc)])
         } else {
-            format!("⚠️ **确认执行操作**\n\n{}\n{}\n\n{}", tool_info, desc, args_preview)
+            t("approval.confirm_with_args", &[("tool_info", &tool_info), ("description", &desc), ("args", &args_preview)])
         };
 
         // For Telegram, send with inline buttons
@@ -1414,9 +1422,9 @@ impl ProgressHandler for ImProgressHandler {
                 // Callback data format: "c:{request_id}:{action}"
                 let callback_data = format!("c:{}:{}", event.request_id, action);
                 let label = match action.as_str() {
-                    "approve" | "once" => "✅ 批准",
-                    "always" => "✅ 始终批准",
-                    "reject" => "❌ 拒绝",
+                    "approve" | "once" => messages().messages.approval.approve.as_str(),
+                    "always" => messages().messages.approval.approve_always.as_str(),
+                    "reject" => messages().messages.approval.reject.as_str(),
                     _ => action.as_str(),
                 };
                 InlineButton::new(label, callback_data)
@@ -1614,9 +1622,9 @@ impl ProgressHandler for ImProgressHandler {
         if msg.channel_type == ChannelType::Telegram {
             if let Some(prog_msg_id) = progress_message_id {
                 let cleanup_text = if event.success {
-                    "✅ 处理完成"
+                    messages().messages.task.completed.as_str()
                 } else {
-                    "⏳ 正在生成结果..."
+                    messages().messages.task.generating_result.as_str()
                 };
                 tracing::debug!(
                     message_id = %msg.id,
@@ -1655,11 +1663,11 @@ impl ProgressHandler for ImProgressHandler {
                 format!("{}\n\n{}", output, summary)
             } else {
                 // No output content, show completion marker
-                format!("✅ 处理完成\n\n{}", summary)
+                t("task.completed_with_summary", &[("summary", &summary)])
             };
 
             // Add end marker to indicate completion
-            let with_end_marker = format!("{}\n\n─────────────────\n✅ 回复结束", base);
+            let with_end_marker = format!("{}\n\n{}", base, t("task.end_marker", &[("status", "✅")]));
 
             tracing::info!(
                 message_id = %msg.id,
@@ -1676,10 +1684,10 @@ impl ProgressHandler for ImProgressHandler {
             }
         } else {
             let error_msg = event.error.as_deref().unwrap_or("Unknown error");
-            let text = format!("❌ 处理失败: {}\n\n{}", error_msg, summary);
+            let text = t("task.failed_with_summary", &[("error", error_msg), ("summary", &summary)]);
 
             // Add end marker for error case too
-            let with_end_marker = format!("{}\n\n─────────────────\n❌ 回复结束", text);
+            let with_end_marker = format!("{}\n\n{}", text, t("task.end_marker", &[("status", "❌")]));
             if let Some(debug_text) = debug_info_text {
                 OutgoingContent::Markdown {
                     text: format!("{}\n\n{}", with_end_marker, debug_text),
