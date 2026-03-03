@@ -908,7 +908,7 @@ impl CodeCoderBridge {
         matches!(
             content.as_str(),
             // Slash commands (IM style)
-            "/agents" | "/help" | "/?" |
+            "/start" | "/agents" | "/help" | "/?" |
             // At-mention style
             "@help" | "@?" | "@帮助" | "@agents" |
             // Natural language
@@ -1295,8 +1295,50 @@ impl CodeCoderBridge {
             "Task created, subscribing to events"
         );
 
-        // Step 2: Send start notification
-        progress_handler.on_start(&message_with_debug, &task_id).await?;
+        tracing::debug!(
+            message_id = %message.id,
+            task_id = %task_id,
+            "🔍 [TRACE] step 2: calling on_start"
+        );
+
+        // Step 2: Send start notification (with timeout)
+        let on_start_result = tokio::time::timeout(
+            Duration::from_secs(20),
+            progress_handler.on_start(&message_with_debug, &task_id)
+        ).await;
+
+        match on_start_result {
+            Ok(Ok(_)) => {
+                tracing::debug!(
+                    message_id = %message.id,
+                    task_id = %task_id,
+                    "🔍 [TRACE] step 2: on_start completed"
+                );
+            }
+            Ok(Err(e)) => {
+                tracing::error!(
+                    message_id = %message.id,
+                    task_id = %task_id,
+                    error = %e,
+                    "🔍 [TRACE] step 2: on_start error"
+                );
+                // Continue anyway - don't fail the whole process
+            }
+            Err(_) => {
+                tracing::error!(
+                    message_id = %message.id,
+                    task_id = %task_id,
+                    "🔍 [TRACE] step 2: on_start TIMEOUT after 20s"
+                );
+                // Continue anyway
+            }
+        }
+
+        tracing::debug!(
+            message_id = %message.id,
+            task_id = %task_id,
+            "🔍 [TRACE] step 3: creating SSE client"
+        );
 
         // Step 3: Subscribe to SSE events
         let sse_client = SseTaskClient::new(SseClientConfig {
@@ -1304,20 +1346,195 @@ impl CodeCoderBridge {
             ..Default::default()
         });
 
+        tracing::debug!(
+            message_id = %message.id,
+            task_id = %task_id,
+            "🔍 [TRACE] step 3: calling sse_client.subscribe"
+        );
+
         let (mut rx, handle) = sse_client.subscribe(&task_id).await?;
 
-        // Step 4: Process events
+        tracing::debug!(
+            message_id = %message.id,
+            task_id = %task_id,
+            "🔍 [TRACE] step 4: entering polling loop"
+        );
+
+        // Step 4: Polling-first approach with non-blocking SSE event drain
+        // This avoids blocking the runtime while still receiving SSE events when available
+        const POLL_INTERVAL_SECS: u64 = 3; // Poll every 3 seconds
+        const MAX_TOTAL_WAIT_SECS: u64 = 360; // 6 minutes total
         let mut received_finish = false;
         let mut event_count = 0u32;
+        let start_time = Instant::now();
 
-        while let Some(event) = rx.recv().await {
-            event_count += 1;
-            let finished = progress_handler.handle_event(&message_with_debug, event).await?;
-            if finished {
+        loop {
+            // Check total elapsed time
+            let elapsed = start_time.elapsed();
+            if elapsed > Duration::from_secs(MAX_TOTAL_WAIT_SECS) {
+                tracing::error!(
+                    message_id = %message.id,
+                    task_id = %task_id,
+                    event_count = event_count,
+                    total_elapsed_secs = elapsed.as_secs(),
+                    "⏰ Total timeout exceeded"
+                );
+                break;
+            }
+
+            // Step 4a: Drain all available SSE events (non-blocking)
+            // Add timeout to prevent slow Telegram API calls from blocking
+            const EVENT_HANDLER_TIMEOUT_SECS: u64 = 5;
+            loop {
+                match rx.try_recv() {
+                    Ok(task_event) => {
+                        event_count += 1;
+
+                        // Log event type for debugging
+                        let event_type = match &task_event {
+                            crate::sse::TaskEvent::Progress(_) => "Progress",
+                            crate::sse::TaskEvent::Thought(_) => "Thought",
+                            crate::sse::TaskEvent::Output(_) => "Output",
+                            crate::sse::TaskEvent::ToolUse(_) => "ToolUse",
+                            crate::sse::TaskEvent::Finish(_) => "Finish",
+                            crate::sse::TaskEvent::DebugInfo(_) => "DebugInfo",
+                            crate::sse::TaskEvent::AgentInfo(_) => "AgentInfo",
+                            crate::sse::TaskEvent::SkillUse(_) => "SkillUse",
+                            crate::sse::TaskEvent::Question(_) => "Question",
+                            crate::sse::TaskEvent::Confirmation(_) => "Confirmation",
+                        };
+
+                        tracing::debug!(
+                            message_id = %message.id,
+                            task_id = %task_id,
+                            event_count = event_count,
+                            event_type = event_type,
+                            "🔍 [TRACE] Received SSE event, calling handle_event"
+                        );
+
+                        // Check if this is a finish event BEFORE handling
+                        let is_finish = matches!(&task_event, crate::sse::TaskEvent::Finish(_));
+
+                        // Handle event with timeout to prevent blocking
+                        let handle_result = tokio::time::timeout(
+                            Duration::from_secs(EVENT_HANDLER_TIMEOUT_SECS),
+                            progress_handler.handle_event(&message_with_debug, task_event)
+                        ).await;
+
+                        tracing::debug!(
+                            message_id = %message.id,
+                            task_id = %task_id,
+                            event_count = event_count,
+                            event_type = event_type,
+                            timed_out = handle_result.is_err(),
+                            "🔍 [TRACE] handle_event returned"
+                        );
+
+                        match handle_result {
+                            Ok(Ok(true)) => {
+                                tracing::info!(
+                                    message_id = %message.id,
+                                    task_id = %task_id,
+                                    event_count = event_count,
+                                    "✅ Finish event processed successfully"
+                                );
+                                received_finish = true;
+                                break;
+                            }
+                            Ok(Ok(false)) => {
+                                // Continue draining events
+                            }
+                            Ok(Err(e)) => {
+                                tracing::warn!(
+                                    message_id = %message.id,
+                                    task_id = %task_id,
+                                    event_type = event_type,
+                                    error = %e,
+                                    "Error handling SSE event"
+                                );
+                            }
+                            Err(_) => {
+                                tracing::warn!(
+                                    message_id = %message.id,
+                                    task_id = %task_id,
+                                    event_type = event_type,
+                                    "⏰ Event handler timeout after 5s, skipping"
+                                );
+                                // If this was supposed to be a finish event, mark it
+                                if is_finish {
+                                    received_finish = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                        // No more events available, continue to polling
+                        tracing::trace!(
+                            message_id = %message.id,
+                            task_id = %task_id,
+                            event_count = event_count,
+                            "SSE channel empty, proceeding to poll"
+                        );
+                        break;
+                    }
+                    Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                        // Channel closed
+                        tracing::warn!(
+                            message_id = %message.id,
+                            task_id = %task_id,
+                            event_count = event_count,
+                            "SSE channel disconnected"
+                        );
+                        break;
+                    }
+                }
+            }
+
+            // If we got a finish event from SSE, we're done
+            if received_finish {
+                break;
+            }
+
+            // Step 4b: Poll task status via API
+            tracing::debug!(
+                message_id = %message.id,
+                task_id = %task_id,
+                elapsed_secs = elapsed.as_secs(),
+                event_count = event_count,
+                "Polling task status"
+            );
+
+            if let Some(finish_data) = self.poll_task_status(&task_id).await {
+                tracing::info!(
+                    message_id = %message.id,
+                    task_id = %task_id,
+                    event_count = event_count,
+                    elapsed_secs = elapsed.as_secs(),
+                    "✅ Task completed (detected via polling)"
+                );
+                // Send finish with timeout to prevent blocking
+                let finish_result = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    progress_handler.on_finish(&message_with_debug, &finish_data)
+                ).await;
+                if let Err(_) = finish_result {
+                    tracing::warn!(
+                        message_id = %message.id,
+                        task_id = %task_id,
+                        "⏰ on_finish timeout, but marking as complete"
+                    );
+                }
                 received_finish = true;
                 break;
             }
+
+            // Step 4c: Short sleep before next iteration (non-blocking, can be cancelled)
+            tokio::time::sleep(Duration::from_secs(POLL_INTERVAL_SECS)).await;
         }
+
+        // Cancel the SSE subscription task (don't wait for it)
+        handle.abort();
 
         // Protection: If loop exited without finish event, send error notification
         if !received_finish {
@@ -1328,26 +1545,28 @@ impl CodeCoderBridge {
                 "❌ SSE stream ended without finish event"
             );
 
-            // Send error message to user
-            use crate::sse::FinishData;
-            let error_event = FinishData {
-                success: false,
-                output: None,
-                error: Some(format!(
-                    "处理异常中断 (收到 {} 个事件后连接断开)。请重试。",
-                    event_count
-                )),
-            };
-            let _ = progress_handler.on_finish(&message_with_debug, &error_event).await;
-        }
-
-        // Wait for the SSE task to complete
-        if let Err(e) = handle.await {
-            tracing::warn!(
-                task_id = %task_id,
-                error = ?e,
-                "SSE subscription task panicked"
-            );
+            // Try one final poll before giving up (with timeout)
+            if let Some(finish_data) = self.poll_task_status(&task_id).await {
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    progress_handler.on_finish(&message_with_debug, &finish_data)
+                ).await;
+            } else {
+                // Send error message to user (with timeout)
+                use crate::sse::FinishData;
+                let error_event = FinishData {
+                    success: false,
+                    output: None,
+                    error: Some(format!(
+                        "处理异常中断 (收到 {} 个事件后连接断开)。请重试。",
+                        event_count
+                    )),
+                };
+                let _ = tokio::time::timeout(
+                    Duration::from_secs(10),
+                    progress_handler.on_finish(&message_with_debug, &error_event)
+                ).await;
+            }
         }
 
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -1398,6 +1617,71 @@ impl CodeCoderBridge {
         }
 
         Ok(task_response)
+    }
+
+    /// Poll task status from the API.
+    /// Returns Some(FinishData) if task is completed/failed, None if still running.
+    async fn poll_task_status(&self, task_id: &str) -> Option<crate::sse::FinishData> {
+        let url = format!("{}/api/v1/tasks/{}", self.endpoint, task_id);
+
+        let response = match self
+            .client
+            .get(&url)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(task_id = %task_id, error = %e, "Failed to poll task status");
+                return None;
+            }
+        };
+
+        if !response.status().is_success() {
+            return None;
+        }
+
+        #[derive(serde::Deserialize)]
+        struct TaskStatusResponse {
+            success: bool,
+            data: Option<TaskData>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct TaskData {
+            status: String,
+            output: Option<String>,
+            error: Option<String>,
+        }
+
+        let task_response: TaskStatusResponse = match response.json().await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(task_id = %task_id, error = %e, "Failed to parse task status");
+                return None;
+            }
+        };
+
+        if !task_response.success {
+            return None;
+        }
+
+        let data = task_response.data?;
+
+        match data.status.as_str() {
+            "completed" => Some(crate::sse::FinishData {
+                success: true,
+                output: data.output,
+                error: None,
+            }),
+            "failed" => Some(crate::sse::FinishData {
+                success: false,
+                output: None,
+                error: data.error.or(Some("Task failed".to_string())),
+            }),
+            _ => None, // Still running
+        }
     }
 
     // ========================================================================
@@ -3678,6 +3962,7 @@ mod tests {
     #[test]
     fn test_agent_help_request_detection() {
         // Should match slash commands (IM style)
+        assert!(CodeCoderBridge::is_agent_help_request("/start")); // Telegram start command
         assert!(CodeCoderBridge::is_agent_help_request("/agents"));
         assert!(CodeCoderBridge::is_agent_help_request("/help"));
         assert!(CodeCoderBridge::is_agent_help_request("/?"));

@@ -157,7 +157,7 @@ export async function registerRoutes(): Promise<void> {
   const { findFiles, findFilesCache } = await import("./handlers/find")
   const { streamEvents, listEventChannels } = await import("./handlers/event")
   const { listAgents, invokeAgent, getAgent } = await import("./handlers/agent")
-  const { createTask, listTasks, getTask, streamTaskEvents, interactTask, deleteTask } = await import(
+  const { createTask, listTasks, getTask, streamTaskEvents, interactTask, deleteTask, replyToQuestion } = await import(
     "./handlers/task"
   )
   const {
@@ -315,6 +315,9 @@ export async function registerRoutes(): Promise<void> {
   router.get("/api/v1/tasks/:id/events", streamTaskEvents)
   router.post("/api/v1/tasks/:id/interact", interactTask)
   router.delete("/api/v1/tasks/:id", deleteTask)
+
+  // Question reply route (for IM callback handling)
+  router.post("/api/v1/questions/:requestId/reply", replyToQuestion)
 
   // Provider routes (for Web UI model selection and provider management)
   router.get("/api/providers", listProviders)

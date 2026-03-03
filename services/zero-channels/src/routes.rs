@@ -254,6 +254,7 @@ async fn feishu_webhook(
 struct TelegramUpdate {
     update_id: i64,
     message: Option<TelegramMessage>,
+    callback_query: Option<TelegramCallbackQuery>,
 }
 
 #[allow(dead_code)]
@@ -276,6 +277,20 @@ struct TelegramUser {
     username: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct TelegramCallbackQuery {
+    id: String,
+    from: TelegramUser,
+    message: Option<TelegramCallbackMessage>,
+    data: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TelegramCallbackMessage {
+    message_id: i64,
+    chat: TelegramChat,
+}
+
 async fn telegram_webhook(
     State(state): State<Arc<ChannelsState>>,
     Path(token): Path<String>,
@@ -293,6 +308,11 @@ async fn telegram_webhook(
                 challenge: None,
             }),
         );
+    }
+
+    // Handle callback queries (inline button clicks)
+    if let Some(callback) = update.callback_query {
+        return handle_telegram_callback(&state, &token, callback).await;
     }
 
     // Process text messages
@@ -342,6 +362,160 @@ async fn telegram_webhook(
             challenge: None,
         }),
     )
+}
+
+/// Handle Telegram callback query (inline button clicks)
+async fn handle_telegram_callback(
+    state: &Arc<ChannelsState>,
+    token: &str,
+    callback: TelegramCallbackQuery,
+) -> (StatusCode, Json<WebhookResponse>) {
+    let Some(data) = callback.data else {
+        return (
+            StatusCode::OK,
+            Json(WebhookResponse {
+                success: true,
+                message: Some("No callback data".to_string()),
+                challenge: None,
+            }),
+        );
+    };
+
+    tracing::info!(
+        callback_id = %callback.id,
+        data = %data,
+        "Received Telegram callback query"
+    );
+
+    // Parse question callback: q:{request_id}:{question_idx}:{option_idx}
+    if data.starts_with("q:") {
+        let parts: Vec<&str> = data.split(':').collect();
+        if parts.len() >= 4 {
+            let request_id = parts[1];
+            let question_idx: usize = parts[2].parse().unwrap_or(0);
+            let option_idx: usize = parts[3].parse().unwrap_or(0);
+
+            tracing::info!(
+                request_id = %request_id,
+                question_idx = question_idx,
+                option_idx = option_idx,
+                "Processing question callback"
+            );
+
+            // Call CodeCoder API to reply to the question
+            let result = reply_to_question(&state.codecoder_endpoint, request_id, question_idx, option_idx).await;
+
+            // Answer the callback query
+            let answer_text = match &result {
+                Ok(_) => "✅ 已收到回答",
+                Err(_) => "❌ 回答失败",
+            };
+            let _ = answer_callback_query(token, &callback.id, Some(answer_text)).await;
+
+            // Edit the message to show the selected answer
+            if let Some(msg) = callback.message {
+                let edit_text = format!("✅ 已选择选项 {}", option_idx + 1);
+                let _ = edit_telegram_message(token, &msg.chat.id.to_string(), msg.message_id, &edit_text).await;
+            }
+
+            return match result {
+                Ok(_) => (
+                    StatusCode::OK,
+                    Json(WebhookResponse {
+                        success: true,
+                        message: Some("Question answered".to_string()),
+                        challenge: None,
+                    }),
+                ),
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to reply to question");
+                    (
+                        StatusCode::OK, // Return OK to Telegram even on error
+                        Json(WebhookResponse {
+                            success: false,
+                            message: Some(format!("Failed to reply: {e}")),
+                            challenge: None,
+                        }),
+                    )
+                }
+            };
+        }
+    }
+
+    // Unknown callback, just acknowledge
+    let _ = answer_callback_query(token, &callback.id, None).await;
+
+    (
+        StatusCode::OK,
+        Json(WebhookResponse {
+            success: true,
+            message: None,
+            challenge: None,
+        }),
+    )
+}
+
+/// Reply to a question via CodeCoder API
+async fn reply_to_question(
+    codecoder_endpoint: &str,
+    request_id: &str,
+    _question_idx: usize,
+    option_idx: usize,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/v1/questions/{}/reply", codecoder_endpoint, request_id);
+
+    // Build the answer - we use the option index to construct the answer
+    // The actual option label should be stored/tracked elsewhere for a proper implementation
+    let body = serde_json::json!({
+        "answers": [[format!("Option {}", option_idx + 1)]]
+    });
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        anyhow::bail!("CodeCoder API error: {}", err);
+    }
+
+    Ok(())
+}
+
+/// Answer a Telegram callback query
+async fn answer_callback_query(token: &str, callback_id: &str, text: Option<&str>) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.telegram.org/bot{}/answerCallbackQuery", token);
+
+    let mut body = serde_json::json!({
+        "callback_query_id": callback_id,
+    });
+
+    if let Some(t) = text {
+        body["text"] = serde_json::Value::String(t.to_string());
+    }
+
+    let _ = client.post(&url).json(&body).send().await?;
+    Ok(())
+}
+
+/// Edit a Telegram message
+async fn edit_telegram_message(token: &str, chat_id: &str, message_id: i64, text: &str) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("https://api.telegram.org/bot{}/editMessageText", token);
+
+    let body = serde_json::json!({
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+    });
+
+    let _ = client.post(&url).json(&body).send().await?;
+    Ok(())
 }
 
 // ============================================================================

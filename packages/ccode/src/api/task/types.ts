@@ -169,6 +169,29 @@ export const SkillUseEvent = z.object({
 })
 export type SkillUseEvent = z.infer<typeof SkillUseEvent>
 
+export const QuestionOption = z.object({
+  label: z.string(),
+  description: z.string(),
+})
+export type QuestionOption = z.infer<typeof QuestionOption>
+
+export const QuestionInfo = z.object({
+  question: z.string(),
+  header: z.string(),
+  options: z.array(QuestionOption),
+  multiple: z.boolean().optional(),
+})
+export type QuestionInfo = z.infer<typeof QuestionInfo>
+
+export const QuestionEvent = z.object({
+  type: z.literal("question"),
+  data: z.object({
+    requestID: z.string(),
+    questions: z.array(QuestionInfo),
+  }),
+})
+export type QuestionEvent = z.infer<typeof QuestionEvent>
+
 export const TaskEvent = z.discriminatedUnion("type", [
   ThoughtEvent,
   ToolUseEvent,
@@ -179,6 +202,7 @@ export const TaskEvent = z.discriminatedUnion("type", [
   DebugInfoEvent,
   AgentInfoEvent,
   SkillUseEvent,
+  QuestionEvent,
 ])
 export type TaskEvent = z.infer<typeof TaskEvent>
 

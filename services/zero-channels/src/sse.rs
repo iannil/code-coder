@@ -46,6 +46,10 @@ pub enum TaskEvent {
     #[serde(rename = "confirmation")]
     Confirmation(ConfirmationData),
 
+    /// Question event (AI asking user for input)
+    #[serde(rename = "question")]
+    Question(QuestionData),
+
     /// Progress update event
     #[serde(rename = "progress")]
     Progress(ProgressData),
@@ -164,6 +168,39 @@ pub struct SkillUseData {
     pub duration_ms: Option<u64>,
 }
 
+/// Question option data (single choice option).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionOption {
+    /// Display label for the option
+    pub label: String,
+    /// Description of what this option means
+    pub description: String,
+}
+
+/// Single question info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionInfo {
+    /// The question text
+    pub question: String,
+    /// Short header/label for the question
+    pub header: String,
+    /// Available options to choose from
+    pub options: Vec<QuestionOption>,
+    /// Whether multiple selections are allowed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub multiple: Option<bool>,
+}
+
+/// Question event data (AI asking user for input).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuestionData {
+    /// Unique request ID for this question
+    #[serde(rename = "requestID")]
+    pub request_id: String,
+    /// List of questions to ask
+    pub questions: Vec<QuestionInfo>,
+}
+
 // ============================================================================
 // SSE Client
 // ============================================================================
@@ -175,6 +212,9 @@ pub struct SseClientConfig {
     pub endpoint: String,
     /// Connection timeout
     pub connect_timeout: Duration,
+    /// Read timeout - how long to wait for data before considering connection dead.
+    /// Should be longer than the server's heartbeat interval (15s).
+    pub read_timeout: Duration,
     /// Maximum number of reconnection attempts
     pub max_retries: u32,
     /// Initial backoff duration for reconnection
@@ -186,6 +226,9 @@ impl Default for SseClientConfig {
         Self {
             endpoint: "http://127.0.0.1:4400".to_string(),
             connect_timeout: Duration::from_secs(10),
+            // 30 second read timeout - if no data received, connection will close.
+            // The bridge has polling fallback to check task status when SSE fails.
+            read_timeout: Duration::from_secs(30),
             max_retries: 3,
             initial_backoff: Duration::from_secs(1),
         }
@@ -235,12 +278,14 @@ impl SseTaskClient {
         let (tx, rx) = mpsc::channel(32);
         let max_retries = self.config.max_retries;
         let initial_backoff = self.config.initial_backoff;
+        let read_timeout = self.config.read_timeout;
         let task_id_owned = task_id.to_string();
 
         tracing::info!(
             task_id = %task_id,
             endpoint = %self.config.endpoint,
             max_retries = max_retries,
+            read_timeout_secs = read_timeout.as_secs(),
             "📡 Starting SSE subscription"
         );
 
@@ -249,7 +294,7 @@ impl SseTaskClient {
             let mut backoff = initial_backoff;
 
             loop {
-                match Self::connect_and_stream(&url, &tx).await {
+                match Self::connect_and_stream(&url, &tx, read_timeout).await {
                     Ok(finished) => {
                         if finished {
                             tracing::info!(task_id = %task_id_owned, "📡 SSE stream finished normally");
@@ -306,11 +351,12 @@ impl SseTaskClient {
     /// Returns Ok(true) if the stream finished with a finish event,
     /// Ok(false) if the stream ended without a finish event,
     /// Err if there was a connection error.
-    async fn connect_and_stream(url: &str, tx: &mpsc::Sender<TaskEvent>) -> Result<bool> {
-        tracing::debug!(url = %url, "Connecting to SSE endpoint");
+    async fn connect_and_stream(url: &str, tx: &mpsc::Sender<TaskEvent>, read_timeout: Duration) -> Result<bool> {
+        tracing::debug!(url = %url, read_timeout_secs = read_timeout.as_secs(), "Connecting to SSE endpoint");
 
         let client = eventsource_client::ClientBuilder::for_url(url)
             .context("Failed to create SSE client")?
+            .read_timeout(read_timeout)
             .build();
 
         let mut stream = client.stream();
@@ -812,6 +858,7 @@ mod tests {
         let config = SseClientConfig::default();
         assert_eq!(config.endpoint, "http://127.0.0.1:4400");
         assert_eq!(config.connect_timeout, Duration::from_secs(10));
+        assert_eq!(config.read_timeout, Duration::from_secs(30));
         assert_eq!(config.max_retries, 3);
         assert_eq!(config.initial_backoff, Duration::from_secs(1));
     }
@@ -822,6 +869,7 @@ mod tests {
         assert_eq!(client.config.endpoint, "http://localhost:8080");
         // Other config values should be default
         assert_eq!(client.config.max_retries, 3);
+        assert_eq!(client.config.read_timeout, Duration::from_secs(30));
     }
 
     #[test]
@@ -829,12 +877,14 @@ mod tests {
         let config = SseClientConfig {
             endpoint: "https://api.example.com".to_string(),
             connect_timeout: Duration::from_secs(30),
+            read_timeout: Duration::from_secs(60),
             max_retries: 5,
             initial_backoff: Duration::from_secs(2),
         };
         let client = SseTaskClient::new(config);
         assert_eq!(client.config.endpoint, "https://api.example.com");
         assert_eq!(client.config.max_retries, 5);
+        assert_eq!(client.config.read_timeout, Duration::from_secs(60));
     }
 
     // ────────────────────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import { jsonResponse, errorResponse } from "../middleware"
 import { TaskStore, TaskEmitter, TaskContextRegistry } from "@/api/task"
 import { CreateTaskRequest, InteractTaskRequest, type TaskContext } from "@/api/task/types"
 import { PermissionNext } from "@/permission/next"
+import { Question } from "@/question"
 import { Bus } from "@/bus"
 import { Log } from "@/util/log"
 import { shouldRequireApproval, allowForUser, loadAllowlists } from "@/security/remote-policy"
@@ -376,8 +377,8 @@ export async function createTask(req: HttpRequest, _params: RouteParams): Promis
       sessionID,
     })
 
-    // Register session -> task mapping for SSE event routing
-    TaskContextRegistry.register(sessionID, task.id)
+    // Register session -> task mapping for SSE event routing (include context for channel info)
+    TaskContextRegistry.register(sessionID, task.id, input.context)
 
     // Start task execution asynchronously
     executeTask(task.id, input.agent, input.prompt, sessionID, input.context, input.model)
@@ -453,6 +454,24 @@ async function executeTask(
         )
       }
     }
+  })
+
+  // Subscribe to question requests for this session
+  const unsubscribeQuestion = Bus.subscribe(Question.Event.Asked, (event) => {
+    if (event.properties.sessionID !== sessionID) return
+
+    log.info("question requested", {
+      taskID,
+      requestID: event.properties.id,
+      questionCount: event.properties.questions.length,
+    })
+
+    // Emit question event via SSE
+    TaskEmitter.question(
+      taskID,
+      event.properties.id,
+      event.properties.questions,
+    )
   })
 
   try {
@@ -634,6 +653,7 @@ async function executeTask(
     TaskEmitter.finish(taskID, false, undefined, errorMsg)
   } finally {
     unsubscribePermission()
+    unsubscribeQuestion()
   }
 }
 
@@ -886,6 +906,49 @@ export async function interactTask(req: HttpRequest, params: RouteParams): Promi
       data: updatedTask,
     })
   } catch (error) {
+    return errorResponse(error instanceof Error ? error.message : String(error), 500)
+  }
+}
+
+/**
+ * POST /api/v1/questions/:requestId/reply
+ * Reply to a question from the AI
+ */
+export async function replyToQuestion(req: HttpRequest, params: RouteParams): Promise<HttpResponse> {
+  try {
+    const { requestId } = params
+
+    if (!requestId) {
+      return errorResponse("Request ID is required", 400)
+    }
+
+    const body = await readRequestBody(req.body)
+    const input = JSON.parse(body)
+
+    // Validate input
+    if (!input.answers || !Array.isArray(input.answers)) {
+      return errorResponse("answers must be an array", 400)
+    }
+
+    log.info("replying to question", {
+      requestID: requestId,
+      answers: input.answers,
+    })
+
+    // Reply to the question
+    await Question.reply({
+      requestID: requestId,
+      answers: input.answers,
+    })
+
+    return jsonResponse({
+      success: true,
+      message: "Question answered",
+    })
+  } catch (error) {
+    log.error("failed to reply to question", {
+      error: error instanceof Error ? error.message : String(error),
+    })
     return errorResponse(error instanceof Error ? error.message : String(error), 500)
   }
 }

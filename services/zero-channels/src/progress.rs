@@ -15,8 +15,8 @@ use crate::debug::{self, AgentUsage, DebugContext, ModelUsage};
 use crate::message::{ChannelMessage, ChannelType, OutgoingContent};
 use crate::outbound::OutboundRouter;
 use crate::safe_truncate;
-use crate::sse::{AgentInfoData, DebugInfoData, FinishData, ProgressData, SkillUseData, TaskEvent, ToolUseData};
-use crate::telegram::TelegramChannel;
+use crate::sse::{AgentInfoData, DebugInfoData, FinishData, ProgressData, QuestionData, SkillUseData, TaskEvent, ToolUseData};
+use crate::telegram::{InlineButton, TelegramChannel};
 use anyhow::Result;
 use async_trait::async_trait;
 use dashmap::DashMap;
@@ -55,6 +55,9 @@ pub trait ProgressHandler: Send + Sync {
 
     /// Called when agent information is available.
     async fn on_agent_info(&self, msg: &ChannelMessage, event: &AgentInfoData) -> Result<()>;
+
+    /// Called when AI asks user a question.
+    async fn on_question(&self, msg: &ChannelMessage, event: &QuestionData) -> Result<()>;
 
     /// Called when task completes (success or failure).
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()>;
@@ -109,6 +112,8 @@ struct MessageTracker {
     task_id: Option<String>,
     /// Progress message ID (for editing)
     progress_message_id: Option<i64>,
+    /// Thought message IDs (for cleanup on finish)
+    thought_message_ids: Vec<i64>,
     /// Last update timestamp (for throttling)
     last_update: Instant,
     /// Current progress text
@@ -140,6 +145,7 @@ impl MessageTracker {
             trace_id: trace_id.clone(),
             task_id: None,
             progress_message_id: None,
+            thought_message_ids: Vec::new(),
             last_update: Instant::now(),
             current_text: String::new(),
             task_start: Instant::now(),
@@ -569,11 +575,39 @@ impl ImProgressHandler {
             text: text.to_string(),
         };
 
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "📤 [TRACE] send_new_message: calling router.send_direct"
+        );
+
         // Use send_direct to avoid the pending entry being removed
-        let result = self
+        // Add timeout to prevent blocking
+        let send_future = self
             .router
-            .send_direct(msg.channel_type, msg.channel_id.clone(), content)
-            .await;
+            .send_direct(msg.channel_type, msg.channel_id.clone(), content);
+
+        let result = match tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            send_future
+        ).await {
+            Ok(r) => r,
+            Err(_) => {
+                tracing::error!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    "⏰ [TRACE] send_new_message: TIMEOUT after 15s"
+                );
+                return Ok(None);
+            }
+        };
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            success = result.success,
+            "📤 [TRACE] send_new_message: completed"
+        );
 
         if !result.success {
             tracing::warn!(
@@ -600,21 +634,75 @@ impl ImProgressHandler {
             return Ok(());
         };
 
-        match telegram.edit_message_text(chat_id, message_id, text).await {
-            Ok(_) => {
+        // Add timeout to prevent blocking
+        let edit_result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            telegram.edit_message_text(chat_id, message_id, text)
+        ).await;
+
+        match edit_result {
+            Ok(Ok(_)) => {
                 tracing::debug!(
                     chat_id = %chat_id,
                     message_id = message_id,
                     "Edited Telegram message"
                 );
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 // Don't fail on edit errors (rate limits, message not found, etc.)
                 tracing::warn!(
                     chat_id = %chat_id,
                     message_id = message_id,
                     error = %e,
                     "Failed to edit Telegram message, falling back to new message"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    chat_id = %chat_id,
+                    message_id = message_id,
+                    "⏰ edit_telegram_message timeout after 10s"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Delete a Telegram message.
+    async fn delete_telegram_message(&self, chat_id: &str, message_id: i64) -> Result<()> {
+        let Some(ref telegram) = self.telegram else {
+            return Ok(());
+        };
+
+        // Add timeout to prevent blocking
+        let delete_result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            telegram.delete_message(chat_id, message_id)
+        ).await;
+
+        match delete_result {
+            Ok(Ok(_)) => {
+                tracing::debug!(
+                    chat_id = %chat_id,
+                    message_id = message_id,
+                    "Deleted Telegram message"
+                );
+            }
+            Ok(Err(e)) => {
+                // Don't fail on delete errors (rate limits, message not found, etc.)
+                tracing::warn!(
+                    chat_id = %chat_id,
+                    message_id = message_id,
+                    error = %e,
+                    "Failed to delete Telegram message"
+                );
+            }
+            Err(_) => {
+                tracing::warn!(
+                    chat_id = %chat_id,
+                    message_id = message_id,
+                    "⏰ delete_telegram_message timeout after 10s"
                 );
             }
         }
@@ -638,6 +726,12 @@ impl ProgressHandler for ImProgressHandler {
             "📍 Starting progress tracking"
         );
 
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_start: step 1 - initializing tracker"
+        );
+
         // Check if debug mode is requested (from message metadata or global setting)
         let debug_mode = self.debug_mode
             || msg.metadata.get("debug_mode").map(|v| v == "true").unwrap_or(false);
@@ -650,10 +744,29 @@ impl ProgressHandler for ImProgressHandler {
 
         self.trackers.insert(msg.id.clone(), Mutex::new(tracker));
 
-        // Send initial message and track it
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_start: step 2 - sending initial message"
+        );
+
+        // Send initial message and track it (with timeout protection in send_new_message)
         let send_result = self.send_new_message(msg, &text).await;
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_start: step 3 - acquiring tracker lock"
+        );
+
         let tracker_ref = self.get_tracker(&msg.id);
         let mut tracker = tracker_ref.lock().await;
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_start: step 4 - updating tracker state"
+        );
 
         match send_result {
             Ok(Some(progress_msg_id)) => {
@@ -678,24 +791,41 @@ impl ProgressHandler for ImProgressHandler {
         // This allows on_output to properly accumulate actual content
         tracker.current_text = "[started]".to_string();
 
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_start: complete"
+        );
+
         Ok(())
     }
 
     async fn on_progress(&self, msg: &ChannelMessage, event: &ProgressData) -> Result<()> {
-        let tracker_ref = self.get_tracker(&msg.id);
-        let mut tracker = tracker_ref.lock().await;
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            stage = %event.stage,
+            "🔍 [TRACE] on_progress: entry"
+        );
 
-        // Throttle progress updates
-        if tracker.last_update.elapsed() < self.throttle_interval {
-            tracing::debug!(
-                message_id = %msg.id,
-                stage = %event.stage,
-                "Throttling progress update"
-            );
-            return Ok(());
-        }
+        // Get state needed for processing, then release lock
+        let (_should_throttle, progress_msg_id) = {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
 
-        tracker.last_update = Instant::now();
+            // Throttle progress updates
+            if tracker.last_update.elapsed() < self.throttle_interval {
+                tracing::debug!(
+                    message_id = %msg.id,
+                    stage = %event.stage,
+                    "Throttling progress update"
+                );
+                return Ok(());
+            }
+
+            tracker.last_update = Instant::now();
+            (false, tracker.progress_message_id)
+        }; // Lock released here
 
         // Format progress text
         let progress_text = match event.percentage {
@@ -705,39 +835,81 @@ impl ProgressHandler for ImProgressHandler {
 
         // Try to edit existing message if on Telegram
         if msg.channel_type == ChannelType::Telegram {
-            if let Some(progress_msg_id) = tracker.progress_message_id {
-                self.edit_telegram_message(&msg.channel_id, progress_msg_id, &progress_text)
+            if let Some(prog_msg_id) = progress_msg_id {
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    "🔍 [TRACE] on_progress: editing telegram message"
+                );
+                self.edit_telegram_message(&msg.channel_id, prog_msg_id, &progress_text)
                     .await?;
+
+                // Update tracker after network call completes
+                let tracker_ref = self.get_tracker(&msg.id);
+                let mut tracker = tracker_ref.lock().await;
                 tracker.current_text = progress_text;
+
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    "🔍 [TRACE] on_progress: complete (edit)"
+                );
                 return Ok(());
             }
         }
 
         // Fallback: send new message (for non-Telegram or first progress)
-        if let Ok(Some(new_msg_id)) = self.send_new_message(msg, &progress_text).await {
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_progress: sending new message"
+        );
+        let send_result = self.send_new_message(msg, &progress_text).await;
+
+        // Update tracker after network call completes
+        let tracker_ref = self.get_tracker(&msg.id);
+        let mut tracker = tracker_ref.lock().await;
+        if let Ok(Some(new_msg_id)) = send_result {
             tracker.progress_message_id = Some(new_msg_id);
         }
         tracker.current_text = progress_text;
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_progress: complete (new msg)"
+        );
 
         Ok(())
     }
 
     async fn on_thought(&self, msg: &ChannelMessage, thought: &str) -> Result<()> {
-        let tracker_ref = self.get_tracker(&msg.id);
-        let mut tracker = tracker_ref.lock().await;
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_thought: entry"
+        );
 
-        // Deduplicate: skip if same as last thought
-        if tracker.last_thought == thought {
-            return Ok(());
-        }
+        // Get state needed for processing, then release lock
+        let (_should_skip, _should_throttle, progress_msg_id, current_text) = {
+            let tracker_ref = self.get_tracker(&msg.id);
+            let mut tracker = tracker_ref.lock().await;
 
-        // Throttle thought updates
-        if tracker.last_update.elapsed() < self.thought_throttle_interval {
-            return Ok(());
-        }
+            // Deduplicate: skip if same as last thought
+            if tracker.last_thought == thought {
+                return Ok(());
+            }
 
-        tracker.last_update = Instant::now();
-        tracker.last_thought = thought.to_string();
+            // Throttle thought updates
+            if tracker.last_update.elapsed() < self.thought_throttle_interval {
+                return Ok(());
+            }
+
+            tracker.last_update = Instant::now();
+            tracker.last_thought = thought.to_string();
+
+            (false, false, tracker.progress_message_id, tracker.current_text.clone())
+        }; // Lock released here
 
         // Truncate thought for display (max 200 chars)
         let truncated = if thought.len() > 200 {
@@ -758,17 +930,47 @@ impl ProgressHandler for ImProgressHandler {
         };
 
         // Try to edit existing progress message
+        // NOTE: We display thoughts in real-time progress messages but do NOT accumulate them
+        // into current_text. This ensures thoughts are excluded from the final conclusion message.
         if msg.channel_type == ChannelType::Telegram {
-            if let Some(progress_msg_id) = tracker.progress_message_id {
-                let combined_text = format!("{}\n\n{}", tracker.current_text, display_thought);
-                self.edit_telegram_message(&msg.channel_id, progress_msg_id, &combined_text)
+            if let Some(prog_msg_id) = progress_msg_id {
+                // Show thought in progress message (temporary display only)
+                // Use a status prefix instead of current_text to avoid accumulation
+                let status_prefix = if current_text == "[started]" {
+                    "🚀 处理中...".to_string()
+                } else {
+                    "⏳ 思考中...".to_string()
+                };
+                let progress_display = format!("{}\n\n{}", status_prefix, display_thought);
+
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    "🔍 [TRACE] on_thought: calling edit_telegram_message"
+                );
+
+                self.edit_telegram_message(&msg.channel_id, prog_msg_id, &progress_display)
                     .await?;
-                tracker.current_text = combined_text;
+
+                // NOTE: Intentionally NOT updating tracker.current_text with thoughts
+                // Thoughts are for real-time display only, not for final output
+
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    "🔍 [TRACE] on_thought: edit complete"
+                );
                 return Ok(());
             }
         }
 
         // Fallback: send new message
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_thought: sending new message (fallback)"
+        );
+
         let result = self
             .router
             .send_direct(
@@ -778,12 +980,26 @@ impl ProgressHandler for ImProgressHandler {
             )
             .await;
 
-        // Track send result
+        // Track send result and capture message ID for cleanup
         {
             let tracker_ref = self.get_tracker(&msg.id);
             let mut tracker = tracker_ref.lock().await;
             tracker.record_send(result.success);
-            if !result.success {
+
+            // Store thought message ID for cleanup in on_finish
+            if result.success {
+                if let Some(ref msg_id_str) = result.message_id {
+                    if let Ok(thought_msg_id) = msg_id_str.parse::<i64>() {
+                        tracker.thought_message_ids.push(thought_msg_id);
+                        tracing::debug!(
+                            trace_id = %msg.trace_id,
+                            thought_msg_id = thought_msg_id,
+                            total_thoughts = tracker.thought_message_ids.len(),
+                            "Tracked thought message for cleanup"
+                        );
+                    }
+                }
+            } else {
                 tracing::warn!(
                     trace_id = %msg.trace_id,
                     message_id = %msg.id,
@@ -792,6 +1008,12 @@ impl ProgressHandler for ImProgressHandler {
                 );
             }
         }
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            "🔍 [TRACE] on_thought: complete"
+        );
 
         Ok(())
     }
@@ -863,6 +1085,13 @@ impl ProgressHandler for ImProgressHandler {
     }
 
     async fn on_tool_use(&self, msg: &ChannelMessage, event: &ToolUseData) -> Result<()> {
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            tool = %event.tool,
+            "🔍 [TRACE] on_tool_use: entry"
+        );
+
         // Track tool usage for summary and debug context
         {
             let tracker_ref = self.get_tracker(&msg.id);
@@ -874,7 +1103,7 @@ impl ProgressHandler for ImProgressHandler {
             if tracker.debug_mode {
                 tracker.debug_context.add_tool_usage(event.tool.clone());
             }
-        }
+        } // Lock released before network call
 
         let tool_display = Self::format_tool_name(&event.tool);
         let text = if let Some(ref result) = event.result {
@@ -952,6 +1181,13 @@ impl ProgressHandler for ImProgressHandler {
                 );
             }
         }
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            tool = %event.tool,
+            "🔍 [TRACE] on_tool_use: complete"
+        );
 
         Ok(())
     }
@@ -1047,13 +1283,87 @@ impl ProgressHandler for ImProgressHandler {
         Ok(())
     }
 
+    async fn on_question(&self, msg: &ChannelMessage, event: &QuestionData) -> Result<()> {
+        tracing::info!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            request_id = %event.request_id,
+            question_count = event.questions.len(),
+            "Question event received"
+        );
+
+        // For Telegram, send questions with inline buttons
+        if msg.channel_type == ChannelType::Telegram {
+            for (i, q) in event.questions.iter().enumerate() {
+                // Build question text
+                let question_text = format!("❓ {}\n\n{}", q.header, q.question);
+
+                // Build inline buttons from options
+                let buttons: Vec<InlineButton> = q.options.iter().enumerate().map(|(opt_idx, opt)| {
+                    // Callback data format: "q:{request_id}:{question_idx}:{option_idx}"
+                    let callback_data = format!("q:{}:{}:{}", event.request_id, i, opt_idx);
+                    InlineButton::new(&opt.label, callback_data)
+                }).collect();
+
+                // Send question with inline keyboard
+                if let Some(ref telegram) = self.telegram {
+                    if let Err(e) = telegram.send_with_inline_keyboard(
+                        &msg.channel_id,
+                        &question_text,
+                        vec![buttons], // Single row of buttons
+                    ).await {
+                        tracing::warn!(
+                            message_id = %msg.id,
+                            error = %e,
+                            "Failed to send question with inline keyboard"
+                        );
+                    }
+                } else {
+                    // Fallback: send as text with numbered options
+                    let mut fallback_text = question_text;
+                    fallback_text.push_str("\n\n请输入选项编号回复：\n");
+                    for (opt_idx, opt) in q.options.iter().enumerate() {
+                        fallback_text.push_str(&format!("{}) {} - {}\n", opt_idx + 1, opt.label, opt.description));
+                    }
+                    let _ = self.router.send_direct(
+                        msg.channel_type,
+                        msg.channel_id.clone(),
+                        OutgoingContent::Text { text: fallback_text },
+                    ).await;
+                }
+            }
+        } else {
+            // Non-Telegram: send as formatted text
+            for q in &event.questions {
+                let mut text = format!("❓ {}\n\n{}\n\n请选择：\n", q.header, q.question);
+                for (opt_idx, opt) in q.options.iter().enumerate() {
+                    text.push_str(&format!("{}) {} - {}\n", opt_idx + 1, opt.label, opt.description));
+                }
+                let _ = self.router.send_direct(
+                    msg.channel_type,
+                    msg.channel_id.clone(),
+                    OutgoingContent::Text { text },
+                ).await;
+            }
+        }
+
+        Ok(())
+    }
+
     async fn on_finish(&self, msg: &ChannelMessage, event: &FinishData) -> Result<()> {
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            success = event.success,
+            "🔍 [TRACE] on_finish: entry"
+        );
+
         // Transition to Finishing stage
         {
             let tracker_ref = self.get_tracker(&msg.id);
             let mut tracker = tracker_ref.lock().await;
             tracker.transition_to(MessageStage::Finishing);
-        }
+        } // Lock released before processing
 
         tracing::info!(
             message_id = %msg.id,
@@ -1074,7 +1384,7 @@ impl ProgressHandler for ImProgressHandler {
         }
 
         // Get tracker data for summary and debug info before cleanup
-        let (summary, debug_info_text, accumulated_text) = {
+        let (summary, debug_info_text, accumulated_text, progress_message_id, thought_message_ids) = {
             let tracker_ref = self.get_tracker(&msg.id);
             let tracker = tracker_ref.lock().await;
             let summary = Self::generate_summary(&tracker);
@@ -1093,10 +1403,40 @@ impl ProgressHandler for ImProgressHandler {
             tracing::info!(
                 message_id = %msg.id,
                 accumulated_length = accumulated.as_ref().map_or(0, |s| s.len()),
+                thought_messages_count = tracker.thought_message_ids.len(),
                 "Accumulated text from on_output events"
             );
-            (summary, debug_info_text, accumulated)
+            (summary, debug_info_text, accumulated, tracker.progress_message_id, tracker.thought_message_ids.clone())
         };
+
+        // Clean up progress message (which may contain thinking content)
+        // Edit it to show a completion marker instead of thinking
+        if msg.channel_type == ChannelType::Telegram {
+            if let Some(prog_msg_id) = progress_message_id {
+                let cleanup_text = "✅ 处理完成";
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    progress_message_id = prog_msg_id,
+                    "🔍 [TRACE] on_finish: cleaning up progress message"
+                );
+                // Best effort - don't fail if edit fails
+                let _ = self.edit_telegram_message(&msg.channel_id, prog_msg_id, cleanup_text).await;
+            }
+
+            // Delete all thought messages that were sent as separate messages
+            if !thought_message_ids.is_empty() {
+                tracing::debug!(
+                    message_id = %msg.id,
+                    trace_id = %msg.trace_id,
+                    count = thought_message_ids.len(),
+                    "🔍 [TRACE] on_finish: deleting thought messages"
+                );
+                for thought_msg_id in &thought_message_ids {
+                    let _ = self.delete_telegram_message(&msg.channel_id, *thought_msg_id).await;
+                }
+            }
+        }
 
         // Format final response with optional debug info
         // Use accumulated text from streaming if available, otherwise use event.output
@@ -1199,7 +1539,27 @@ impl ProgressHandler for ImProgressHandler {
 impl ImProgressHandler {
     /// Process a task event and dispatch to appropriate handler.
     pub async fn handle_event(&self, msg: &ChannelMessage, event: TaskEvent) -> Result<bool> {
-        match event {
+        let event_type = match &event {
+            TaskEvent::Progress(_) => "Progress",
+            TaskEvent::Thought(_) => "Thought",
+            TaskEvent::Output(_) => "Output",
+            TaskEvent::ToolUse(_) => "ToolUse",
+            TaskEvent::Finish(_) => "Finish",
+            TaskEvent::DebugInfo(_) => "DebugInfo",
+            TaskEvent::AgentInfo(_) => "AgentInfo",
+            TaskEvent::SkillUse(_) => "SkillUse",
+            TaskEvent::Question(_) => "Question",
+            TaskEvent::Confirmation(_) => "Confirmation",
+        };
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            event_type = event_type,
+            "🔍 [TRACE] handle_event: BEFORE dispatch"
+        );
+
+        let result = match event {
             TaskEvent::Progress(data) => {
                 self.on_progress(msg, &data).await?;
                 Ok(false) // Not finished
@@ -1232,6 +1592,10 @@ impl ImProgressHandler {
                 self.on_skill_use(msg, &data).await?;
                 Ok(false)
             }
+            TaskEvent::Question(data) => {
+                self.on_question(msg, &data).await?;
+                Ok(false) // Question pauses but doesn't finish
+            }
             TaskEvent::Confirmation(_) => {
                 // TODO: Implement confirmation handling via inline buttons
                 tracing::warn!(
@@ -1240,7 +1604,17 @@ impl ImProgressHandler {
                 );
                 Ok(false)
             }
-        }
+        };
+
+        tracing::debug!(
+            message_id = %msg.id,
+            trace_id = %msg.trace_id,
+            event_type = event_type,
+            success = result.is_ok(),
+            "🔍 [TRACE] handle_event: AFTER dispatch"
+        );
+
+        result
     }
 }
 

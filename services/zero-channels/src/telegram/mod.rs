@@ -567,6 +567,32 @@ impl TelegramChannel {
         Ok(())
     }
 
+    /// Delete a message
+    pub async fn delete_message(
+        &self,
+        chat_id: &str,
+        message_id: i64,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "chat_id": chat_id,
+            "message_id": message_id,
+        });
+
+        let resp = self
+            .client
+            .post(self.api_url("deleteMessage"))
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let err = resp.text().await?;
+            anyhow::bail!("Telegram deleteMessage failed: {err}");
+        }
+
+        Ok(())
+    }
+
     fn parse_callback_query(&self, callback: &serde_json::Value) -> Option<CallbackQuery> {
         let id = callback.get("id")?.as_str()?.to_string();
         let data = callback.get("data")?.as_str()?.to_string();
@@ -593,7 +619,8 @@ impl TelegramChannel {
     }
 
     /// Send a single message chunk with HTML parsing.
-    async fn send_single_chunk(&self, message: &str, chat_id: &str) -> anyhow::Result<()> {
+    /// Returns the Telegram message ID on success.
+    async fn send_single_chunk(&self, message: &str, chat_id: &str) -> anyhow::Result<i64> {
         let converted = format::convert_to_telegram_html(message);
 
         let body = serde_json::json!({
@@ -610,7 +637,14 @@ impl TelegramChannel {
             .await?;
 
         if resp.status().is_success() {
-            return Ok(());
+            // Parse response to get message_id
+            let result: serde_json::Value = resp.json().await?;
+            let message_id = result
+                .get("result")
+                .and_then(|r| r.get("message_id"))
+                .and_then(|id| id.as_i64())
+                .unwrap_or(0);
+            return Ok(message_id);
         }
 
         let status = resp.status();
@@ -636,7 +670,14 @@ impl TelegramChannel {
                 .await?;
 
             if resp_plain.status().is_success() {
-                return Ok(());
+                // Parse response to get message_id
+                let result: serde_json::Value = resp_plain.json().await?;
+                let message_id = result
+                    .get("result")
+                    .and_then(|r| r.get("message_id"))
+                    .and_then(|id| id.as_i64())
+                    .unwrap_or(0);
+                return Ok(message_id);
             }
 
             let plain_error = resp_plain.text().await.unwrap_or_default();
@@ -711,6 +752,8 @@ impl Channel for TelegramChannel {
     async fn send(&self, message: OutgoingMessage) -> ChannelResult<String> {
         const MAX_MESSAGE_LEN: usize = 4096;
 
+        let first_message_id: i64;
+
         match message.content {
             OutgoingContent::Text { text } | OutgoingContent::Markdown { text } => {
                 // Very long messages: convert to Markdown file attachment
@@ -728,28 +771,36 @@ impl Channel for TelegramChannel {
                     return self
                         .send_document_bytes(&message.channel_id, text.into_bytes(), &filename, None)
                         .await
-                        .map(|_| uuid::Uuid::new_v4().to_string())
+                        .map(|_| "0".to_string()) // Documents don't return message_id easily
                         .map_err(|e| ChannelError::SendFailed(e.to_string()));
                 }
 
                 // Medium-length messages: split into multiple chunks
                 let chunks = split_message(&text, MAX_MESSAGE_LEN);
-                for chunk in chunks {
-                    self.send_single_chunk(&chunk, &message.channel_id)
+                let mut captured_id: i64 = 0;
+                for (i, chunk) in chunks.iter().enumerate() {
+                    let msg_id = self.send_single_chunk(chunk, &message.channel_id)
                         .await
                         .map_err(|e| ChannelError::SendFailed(e.to_string()))?;
+                    // Capture the first message ID (the one we want to track/edit)
+                    if i == 0 {
+                        captured_id = msg_id;
+                    }
                 }
+                first_message_id = captured_id;
             }
             OutgoingContent::Voice { data, format } => {
                 let filename = format!("voice.{format}");
                 self.send_voice_bytes(&message.channel_id, data, &filename, None)
                     .await
                     .map_err(|e| ChannelError::SendFailed(e.to_string()))?;
+                first_message_id = 0; // Voice messages don't return ID easily
             }
             OutgoingContent::File { data, filename } => {
                 self.send_document_bytes(&message.channel_id, data, &filename, None)
                     .await
                     .map_err(|e| ChannelError::SendFailed(e.to_string()))?;
+                first_message_id = 0; // Documents don't return ID easily
             }
             OutgoingContent::Image { data, caption } => {
                 let part = Part::bytes(data).file_name("image.png".to_string());
@@ -773,10 +824,11 @@ impl Channel for TelegramChannel {
                     let err = resp.text().await.unwrap_or_default();
                     return Err(ChannelError::SendFailed(format!("sendPhoto failed: {err}")));
                 }
+                first_message_id = 0; // Images don't return ID easily
             }
         }
 
-        Ok(uuid::Uuid::new_v4().to_string())
+        Ok(first_message_id.to_string())
     }
 
     async fn listen<F>(&self, callback: F) -> ChannelResult<()>

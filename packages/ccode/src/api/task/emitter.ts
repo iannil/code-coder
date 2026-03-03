@@ -312,6 +312,24 @@ export namespace TaskEmitter {
   }
 
   /**
+   * Emit a question event (AI asking user for input)
+   */
+  export function question(taskID: string, requestID: string, questions: Array<{
+    question: string
+    header: string
+    options: Array<{ label: string; description: string }>
+    multiple?: boolean
+  }>): void {
+    emit(taskID, {
+      type: "question",
+      data: {
+        requestID,
+        questions,
+      },
+    })
+  }
+
+  /**
    * Emit a heartbeat event (for timeout management)
    */
   export function heartbeat(taskID: string, elapsedMs: number, stage?: string): void {
