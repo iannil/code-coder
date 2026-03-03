@@ -759,6 +759,79 @@ export namespace AutonomousEvent {
       confidence: z.number(),
     }),
   )
+
+  // ============================================================================
+  // Unified PDCA Cycle Events
+  // ============================================================================
+
+  export const PDCACycleStarted = BusEvent.define(
+    "autonomous.pdca.cycle_started",
+    z.object({
+      sessionId: z.string(),
+      taskType: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+      cycle: z.number(),
+      maxCycles: z.number(),
+      strategy: z.string(),
+    }),
+  )
+
+  export const PDCAPhaseChanged = BusEvent.define(
+    "autonomous.pdca.phase_changed",
+    z.object({
+      sessionId: z.string(),
+      phase: z.enum(["do", "check", "act"]),
+      cycle: z.number(),
+      taskType: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+    }),
+  )
+
+  export const PDCACheckCompleted = BusEvent.define(
+    "autonomous.pdca.check_completed",
+    z.object({
+      sessionId: z.string(),
+      taskType: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+      cycle: z.number(),
+      passed: z.boolean(),
+      closeScore: z.object({
+        convergence: z.number(),
+        leverage: z.number(),
+        optionality: z.number(),
+        surplus: z.number(),
+        evolution: z.number(),
+        total: z.number(),
+      }),
+      recommendation: z.enum(["pass", "fix", "rework"]),
+      issueCount: z.number(),
+      durationMs: z.number(),
+    }),
+  )
+
+  export const PDCAActCompleted = BusEvent.define(
+    "autonomous.pdca.act_completed",
+    z.object({
+      sessionId: z.string(),
+      taskType: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+      cycle: z.number(),
+      fixed: z.boolean(),
+      fixedCount: z.number(),
+      remainingCount: z.number(),
+      shouldRecheck: z.boolean(),
+      durationMs: z.number(),
+    }),
+  )
+
+  export const PDCACycleCompleted = BusEvent.define(
+    "autonomous.pdca.cycle_completed",
+    z.object({
+      sessionId: z.string(),
+      taskType: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+      cycle: z.number(),
+      success: z.boolean(),
+      closeScore: z.number(),
+      totalDurationMs: z.number(),
+      reason: z.string().optional(),
+    }),
+  )
 }
 
 const BusPromise = import("@/bus").then((m) => m.Bus)

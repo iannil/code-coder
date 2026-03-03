@@ -217,13 +217,11 @@ function isActionableTask(message: string): boolean {
 /**
  * Execute chat with Research Loop for research/analysis tasks.
  *
- * Flow:
- * 1. Understanding - Parse topic, dimensions, search strategy
- * 2. Searching - Multi-source parallel search
- * 3. Synthesizing - Dedupe, validate, annotate sources
- * 4. Analyzing - LLM-based analysis and insight extraction
- * 5. Reporting - Generate structured report (inline or file)
- * 6. Learning - Sediment patterns, suggest Hands
+ * Flow (with PDCA):
+ * 1. DO: Execute research (Understanding → Searching → Synthesizing → Analyzing → Reporting)
+ * 2. CHECK: Validate source credibility, coverage, freshness, accuracy, insights
+ * 3. ACT: If issues found, retry search or expand sources
+ * 4. Loop until passed or max cycles reached
  */
 async function executeResearchChat(
   input: ChatRequest,
@@ -232,13 +230,16 @@ async function executeResearchChat(
   startTime: number
 ): Promise<HttpResponse> {
   const { createResearchLoop } = await import("../../../autonomous/execution/research-loop")
+  const { createPDCAController } = await import("../../../autonomous/pdca")
 
   const sessionId = await getOrCreateSession(input.conversation_id)
+  const topic = classification.researchTopic ?? input.message
 
   logLifecycleEvent(ctx, "http_request", {
     function: "executeResearchChat",
-    topic: classification.researchTopic ?? input.message,
+    topic,
     confidence: classification.confidence,
+    pdcaEnabled: true,
   })
 
   const researchLoop = createResearchLoop({
@@ -248,38 +249,104 @@ async function executeResearchChat(
     enableHandCreation: true,
   })
 
+  // Create PDCA controller for research task
+  const pdca = createPDCAController<{
+    topic: string
+    summary: string
+    report: string
+    sources: Array<{
+      url: string
+      title: string
+      snippet: string
+      credibility: "high" | "medium" | "low"
+      content?: string
+    }>
+    insights: string[]
+    outputPath?: string
+    handCreated?: string
+  }>({
+    taskType: "research",
+    sessionId,
+    maxCycles: 2, // Research tasks get 2 cycles max
+    passThreshold: 6.0,
+    fixThreshold: 4.0,
+    enableFix: true,
+    enableLearning: true,
+  })
+
   try {
-    const result = await researchLoop.research({
-      sessionId,
-      topic: classification.researchTopic ?? input.message,
-      maxSources: 10,
-    })
+    // Execute PDCA cycle
+    const pdcaResult = await pdca.execute(
+      // DO phase: Execute research
+      async () => {
+        const result = await researchLoop.research({
+          sessionId,
+          topic,
+          maxSources: 10,
+        })
+
+        return {
+          taskType: "research" as const,
+          success: result.success,
+          output: {
+            topic: result.topic,
+            summary: result.summary,
+            report: result.report,
+            sources: result.sources.map((s) => ({
+              url: s.url,
+              title: s.title,
+              snippet: s.snippet,
+              credibility: s.credibility,
+              content: s.content,
+            })),
+            insights: result.insights,
+            outputPath: result.outputPath,
+            handCreated: result.handCreated,
+          },
+          durationMs: result.durationMs,
+        }
+      },
+      input.message,
+    )
 
     const durationMs = Math.round(performance.now() - startTime)
 
     logLifecycleEvent(ctx, "function_end", {
       function: "executeResearchChat",
       duration_ms: durationMs,
-      success: result.success,
-      sourceCount: result.sources.length,
-      insightCount: result.insights.length,
-      reportMode: result.outputPath ? "file" : "inline",
+      pdca_success: pdcaResult.success,
+      pdca_cycles: pdcaResult.cycles,
+      pdca_close_score: pdcaResult.checkResult?.closeScore.total,
+      sourceCount: pdcaResult.result?.output?.sources.length ?? 0,
+      insightCount: pdcaResult.result?.output?.insights.length ?? 0,
+      reportMode: pdcaResult.result?.output?.outputPath ? "file" : "inline",
     })
+
+    const output = pdcaResult.result?.output
+    const checkResult = pdcaResult.checkResult
 
     return jsonResponse({
       success: true,
       data: {
-        message: result.report || result.summary,
+        message: output?.report || output?.summary || "Research completed but no content generated.",
         conversation_id: input.conversation_id ?? sessionId,
         agent: "research",
         research_result: {
-          success: result.success,
-          topic: result.topic,
-          sourceCount: result.sources.length,
-          insightCount: result.insights.length,
-          outputPath: result.outputPath,
-          handCreated: result.handCreated,
-          durationMs: result.durationMs,
+          success: pdcaResult.success,
+          topic: output?.topic ?? topic,
+          sourceCount: output?.sources?.length ?? 0,
+          insightCount: output?.insights?.length ?? 0,
+          outputPath: output?.outputPath,
+          handCreated: output?.handCreated,
+          durationMs: pdcaResult.totalDurationMs,
+        },
+        pdca_result: {
+          success: pdcaResult.success,
+          cycles: pdcaResult.cycles,
+          closeScore: checkResult?.closeScore,
+          recommendation: checkResult?.recommendation,
+          issueCount: checkResult?.issues?.length ?? 0,
+          reason: pdcaResult.reason,
         },
       },
     })
@@ -414,17 +481,40 @@ async function executeAutonomousChat(
       })
     }
 
-    // === Evolution Loop for Actionable Tasks ===
+    // === Evolution Loop with PDCA for Actionable Tasks ===
     let evolutionResult: EvolutionResultType | null = null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pdcaResult: any = null
 
     if (isActionable) {
       logLifecycleEvent(ctx, "http_request", {
         function: "executeAutonomousChat.evolutionLoop",
         status: "starting",
         message_preview: input.message.slice(0, 100),
+        pdcaEnabled: true,
       })
 
-      // Create and run Evolution Loop
+      // Import PDCA controller
+      const { createPDCAController } = await import("../../../autonomous/pdca")
+
+      // Create PDCA controller for implementation task
+      const pdca = createPDCAController<{
+        summary: string
+        solved: boolean
+        solution?: string
+        knowledgeId?: string
+        learnedToolId?: string
+      }>({
+        taskType: "implementation",
+        sessionId,
+        maxCycles: 2, // Implementation tasks get 2 PDCA cycles
+        passThreshold: 6.0,
+        fixThreshold: 4.0,
+        enableFix: true,
+        enableLearning: true,
+      })
+
+      // Create Evolution Loop
       const evolutionLoop = createEvolutionLoop({
         maxRetries: 3,
         enableWebSearch: true,
@@ -434,31 +524,66 @@ async function executeAutonomousChat(
         enableSedimentation: true,
         enableGithubScout: true,
         enableAutoBuilder: true,
-        enableAutoMetaBuilder: true, // Enable auto-building new concepts
+        enableAutoMetaBuilder: true,
         autoBuilderMinAttempts: 2,
         autoBuilderCloseThreshold: 5.5,
       })
 
       try {
-        evolutionResult = await evolutionLoop.evolve({
-          sessionId,
-          description: input.message,
-          errorMessage: undefined,
-          technology: detectTechnology(input.message),
-          workingDir: process.cwd(),
-          maxRetries: 3,
-          enableWebSearch: true,
-          enableCodeExecution: true,
-        })
+        // Execute PDCA cycle wrapping Evolution Loop
+        pdcaResult = await pdca.execute(
+          // DO phase: Execute evolution loop
+          async () => {
+            const result = await evolutionLoop.evolve({
+              sessionId,
+              description: input.message,
+              errorMessage: undefined,
+              technology: detectTechnology(input.message),
+              workingDir: process.cwd(),
+              maxRetries: 3,
+              enableWebSearch: true,
+              enableCodeExecution: true,
+            })
+
+            // Store evolution result for later use
+            evolutionResult = result
+
+            return {
+              taskType: "implementation" as const,
+              success: result.solved,
+              output: {
+                summary: result.summary,
+                solved: result.solved,
+                solution: result.solution,
+                knowledgeId: result.knowledgeId,
+                learnedToolId: result.learnedToolId,
+              },
+              durationMs: result.durationMs,
+              metadata: {
+                workingDir: process.cwd(),
+                attempts: result.attempts.length,
+                gapDetected: result.gapDetected,
+                buildAttempted: result.buildAttempted,
+              },
+            }
+          },
+          input.message,
+        )
+
+        // Type cast since evolutionResult is set inside the callback
+        const evoResult = evolutionResult as EvolutionResultType | null
 
         logLifecycleEvent(ctx, "http_request", {
           function: "executeAutonomousChat.evolutionLoop",
           status: "completed",
-          solved: evolutionResult.solved,
-          attempts: evolutionResult.attempts.length,
-          gapDetected: !!evolutionResult.gapDetected,
-          buildAttempted: evolutionResult.buildAttempted,
-          durationMs: evolutionResult.durationMs,
+          solved: evoResult?.solved ?? false,
+          attempts: evoResult?.attempts.length ?? 0,
+          gapDetected: !!evoResult?.gapDetected,
+          buildAttempted: evoResult?.buildAttempted,
+          durationMs: evoResult?.durationMs,
+          pdca_success: pdcaResult.success,
+          pdca_cycles: pdcaResult.cycles,
+          pdca_close_score: pdcaResult.checkResult?.closeScore.total,
         })
       } catch (evolutionError) {
         logLifecycleEvent(ctx, "error", {
@@ -471,6 +596,9 @@ async function executeAutonomousChat(
       }
     }
 
+    // Type cast evolutionResult since it was set inside a callback
+    const evoResult = evolutionResult as EvolutionResultType | null
+
     // === Generate Response ===
     let responseText = ""
     let usage = {
@@ -479,12 +607,31 @@ async function executeAutonomousChat(
       total_tokens: 0,
     }
 
-    // If Evolution Loop solved the problem, format the result
-    if (evolutionResult?.solved) {
-      responseText = formatEvolutionSuccess(evolutionResult, autonomousState.autonomyLevel)
-    } else if (evolutionResult && !evolutionResult.solved) {
-      // Evolution Loop failed - include gap detection info
-      responseText = formatEvolutionFailure(evolutionResult, autonomousState.autonomyLevel)
+    // If PDCA cycle succeeded (or evolution solved), format the result
+    if (pdcaResult?.success || evoResult?.solved) {
+      responseText = formatEvolutionSuccess(evoResult!, autonomousState.autonomyLevel)
+      // Add PDCA summary if available
+      if (pdcaResult?.checkResult) {
+        responseText += `\n\n### PDCA 验收结果\n`
+        responseText += `- **CLOSE 分数**: ${pdcaResult.checkResult.closeScore.total.toFixed(1)}/10\n`
+        responseText += `- **循环次数**: ${pdcaResult.cycles}\n`
+        responseText += `- **问题数**: ${pdcaResult.checkResult.issues.length}\n`
+      }
+    } else if (evoResult && !evoResult.solved) {
+      // Evolution Loop failed - include gap detection and PDCA info
+      responseText = formatEvolutionFailure(evoResult, autonomousState.autonomyLevel)
+      // Add PDCA rejection info
+      if (pdcaResult?.checkResult) {
+        responseText += `\n\n### PDCA 验收失败\n`
+        responseText += `- **CLOSE 分数**: ${pdcaResult.checkResult.closeScore.total.toFixed(1)}/10\n`
+        responseText += `- **建议**: ${pdcaResult.checkResult.recommendation}\n`
+        if (pdcaResult.checkResult.issues.length > 0) {
+          responseText += `\n**主要问题**:\n`
+          for (const issue of pdcaResult.checkResult.issues.slice(0, 3)) {
+            responseText += `- [${issue.severity}] ${issue.description}\n`
+          }
+        }
+      }
     } else {
       // Fallback to regular agent for non-actionable tasks or Evolution Loop failure
       const { getRegistry } = await import("../../../agent/registry")
@@ -536,7 +683,7 @@ CLOSE 评估结果:
     const response: ChatResponse = {
       message: responseText,
       conversation_id: input.conversation_id ?? sessionId,
-      agent: evolutionResult?.solved ? "autonomous-evolution" : "autonomous",
+      agent: pdcaResult?.success ? "autonomous-pdca" : evoResult?.solved ? "autonomous-evolution" : "autonomous",
       usage,
     }
 
@@ -547,9 +694,12 @@ CLOSE 评估结果:
       success: true,
       autonomous_mode: true,
       close_score: decision.score.total,
-      evolution_solved: evolutionResult?.solved,
-      gap_detected: !!evolutionResult?.gapDetected,
-      build_attempted: evolutionResult?.buildAttempted,
+      evolution_solved: evoResult?.solved,
+      gap_detected: !!evoResult?.gapDetected,
+      build_attempted: evoResult?.buildAttempted,
+      pdca_success: pdcaResult?.success,
+      pdca_cycles: pdcaResult?.cycles,
+      pdca_close_score: pdcaResult?.checkResult?.closeScore.total,
     })
 
     return jsonResponse({
@@ -558,13 +708,21 @@ CLOSE 评估结果:
         ...response,
         autonomous_mode: true,
         close_score: decision.score,
-        evolution_result: evolutionResult ? {
-          solved: evolutionResult.solved,
-          attempts: evolutionResult.attempts.length,
-          summary: evolutionResult.summary,
-          gapDetected: evolutionResult.gapDetected?.type,
-          buildAttempted: evolutionResult.buildAttempted,
-          durationMs: evolutionResult.durationMs,
+        evolution_result: evoResult ? {
+          solved: evoResult.solved,
+          attempts: evoResult.attempts.length,
+          summary: evoResult.summary,
+          gapDetected: evoResult.gapDetected?.type,
+          buildAttempted: evoResult.buildAttempted,
+          durationMs: evoResult.durationMs,
+        } : undefined,
+        pdca_result: pdcaResult ? {
+          success: pdcaResult.success,
+          cycles: pdcaResult.cycles,
+          closeScore: pdcaResult.checkResult?.closeScore,
+          recommendation: pdcaResult.checkResult?.recommendation,
+          issueCount: pdcaResult.checkResult?.issues?.length ?? 0,
+          reason: pdcaResult.reason,
         } : undefined,
       },
     })

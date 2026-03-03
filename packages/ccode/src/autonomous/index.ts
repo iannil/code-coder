@@ -181,6 +181,9 @@ export type {
 // Classification
 export * from "./classification"
 
+// PDCA Framework
+export * from "./pdca"
+
 // LLM Solver (Phase 1 Enhancement)
 export { LLMSolver, getLLMSolver, createLLMSolver } from "./execution/llm-solver"
 export type {
