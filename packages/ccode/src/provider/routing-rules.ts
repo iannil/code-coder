@@ -5,9 +5,20 @@
  * and routing strategies for intelligent LLM selection.
  *
  * Part of Phase 14: Intelligent LLM Router
+ * Updated in Phase 3 of hardcoded keywords cleanup: Configuration now loaded from JSON.
  */
 
 import { z } from "zod"
+import path from "path"
+import os from "os"
+import { parse as parseJsonc, type ParseError as JsoncParseError, printParseErrorCode } from "jsonc-parser"
+import { mergeDeep } from "remeda"
+import { Log } from "@/util/log"
+
+// Import default routing configuration
+import defaultRoutingConfig from "@/config/routing.default.json"
+
+const log = Log.create({ service: "routing-config" })
 
 // Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])
 const defaultArray = <T extends z.ZodTypeAny>(schema: T) =>
@@ -107,6 +118,15 @@ export const RoutingDecision = z.object({
 })
 export type RoutingDecision = z.infer<typeof RoutingDecision>
 
+/** Task-to-model preferences schema */
+export const TaskModelPreferences = z.object({
+  coding: z.array(z.string()).default([]),
+  analysis: z.array(z.string()).default([]),
+  chat: z.array(z.string()).default([]),
+  sensitive: z.array(z.string()).default([]),
+})
+export type TaskModelPreferences = z.infer<typeof TaskModelPreferences>
+
 /** Routing configuration */
 export const RoutingConfig = z.object({
   /** Whether routing is enabled */
@@ -125,275 +145,184 @@ export const RoutingConfig = z.object({
   enableDlpIntegration: z.boolean().default(true),
   /** Force local model for DLP-detected sensitive content */
   forceLocalForSensitive: z.boolean().default(true),
+  /** Task-to-model preferences */
+  taskModelPreferences: TaskModelPreferences.optional(),
 })
 export type RoutingConfig = z.infer<typeof RoutingConfig>
 
 // ============================================================================
-// Default Configuration
+// Configuration Paths
 // ============================================================================
 
-/** Default classification rules */
-export const DEFAULT_CLASSIFICATION_RULES: ClassificationRule[] = [
-  // Coding tasks - highest priority for code-related content
-  {
-    id: "rule-coding-codeblock",
-    taskType: "coding",
-    priority: 1,
-    patterns: ["```[a-z]*\\n", "\\bfunction\\s+\\w+", "\\bclass\\s+\\w+", "\\bconst\\s+\\w+\\s*=", "\\bimport\\s+[{\\w]"],
-    keywords: [],
-    agents: ["@dev", "@code", "@tdd", "@architect", "@code-reverse"],
-    enabled: true,
-  },
-  {
-    id: "rule-coding-keywords",
-    taskType: "coding",
-    priority: 2,
-    patterns: [],
-    keywords: [
-      "code",
-      "implement",
-      "function",
-      "class",
-      "debug",
-      "fix bug",
-      "refactor",
-      "typescript",
-      "javascript",
-      "python",
-      "rust",
-      "golang",
-      "api",
-      "endpoint",
-      "compile",
-      "build",
-      "test",
-      "unittest",
-    ],
-    agents: [],
-    enabled: true,
-  },
+/** User configuration directory */
+const CONFIG_DIR = path.join(os.homedir(), ".codecoder")
 
-  // Analysis tasks - deep reasoning required
-  {
-    id: "rule-analysis-agents",
-    taskType: "analysis",
-    priority: 1,
-    patterns: [],
-    keywords: [],
-    agents: ["@macro", "@decision", "@trader", "@picker", "@observer", "@ai-engineer"],
-    enabled: true,
-  },
-  {
-    id: "rule-analysis-keywords",
-    taskType: "analysis",
-    priority: 2,
-    patterns: ["\\banalyze\\b", "\\bevaluate\\b", "\\bassess\\b", "\\bcompare\\b.*\\bvs\\b"],
-    keywords: [
-      "analyze",
-      "analysis",
-      "evaluate",
-      "assessment",
-      "decision",
-      "strategy",
-      "trade-off",
-      "pros and cons",
-      "deep dive",
-      "architecture",
-      "design review",
-      "CLOSE framework",
-      "PMI",
-      "macroeconomic",
-    ],
-    agents: [],
-    enabled: true,
-  },
+/** User routing configuration file */
+const ROUTING_CONFIG_PATH = path.join(CONFIG_DIR, "routing.json")
 
-  // Sensitive content - local model required
-  {
-    id: "rule-sensitive-dlp",
-    taskType: "sensitive",
-    priority: 0, // Highest priority
-    patterns: [
-      "\\b\\d{3}-\\d{2}-\\d{4}\\b", // SSN
-      "\\b(?:\\d{4}[- ]?){3}\\d{4}\\b", // Credit card
-      "AKIA[0-9A-Z]{16}", // AWS key
-      "(sk|pk|api|token)[-_][a-zA-Z0-9]{20,}", // API keys
-    ],
-    keywords: ["password", "secret", "credential", "private key", "api key", "access token", "ssn", "social security"],
-    agents: [],
-    enabled: true,
-  },
+// ============================================================================
+// Configuration Loading
+// ============================================================================
 
-  // Chat - default for simple conversations
-  {
-    id: "rule-chat-default",
-    taskType: "chat",
-    priority: 100, // Lowest priority (fallback)
-    patterns: [],
-    keywords: ["hello", "hi", "thanks", "help", "what is", "how do", "explain", "tell me about"],
-    agents: ["@general"],
-    enabled: true,
-  },
-]
+/**
+ * Load a JSON/JSONC file.
+ * Returns null if file doesn't exist or parsing fails.
+ */
+async function loadJsonFile<T>(filepath: string): Promise<T | null> {
+  try {
+    const text = await Bun.file(filepath).text()
+    const errors: JsoncParseError[] = []
+    const data = parseJsonc(text, errors, { allowTrailingComma: true })
 
-/** Default available models */
-export const DEFAULT_MODELS: RoutableModel[] = [
-  // Anthropic models
-  {
-    id: "claude-3-5-sonnet",
-    name: "Claude 3.5 Sonnet",
-    provider: "anthropic",
-    tier: "standard",
-    optimizedFor: ["coding"],
-    costPer1M: 3,
-    available: true,
-    isLocal: false,
-  },
-  {
-    id: "claude-3-opus",
-    name: "Claude 3 Opus",
-    provider: "anthropic",
-    tier: "premium",
-    optimizedFor: ["analysis", "coding"],
-    costPer1M: 15,
-    available: true,
-    isLocal: false,
-  },
-  {
-    id: "claude-3-haiku",
-    name: "Claude 3 Haiku",
-    provider: "anthropic",
-    tier: "budget",
-    optimizedFor: ["chat"],
-    costPer1M: 0.25,
-    available: true,
-    isLocal: false,
-  },
+    if (errors.length) {
+      const errorDetails = errors.map((e) => printParseErrorCode(e.error)).join(", ")
+      log.warn("JSONC parse errors", { path: filepath, errors: errorDetails })
+      return null
+    }
 
-  // OpenAI models
-  {
-    id: "gpt-4o",
-    name: "GPT-4o",
-    provider: "openai",
-    tier: "standard",
-    optimizedFor: ["coding", "analysis"],
-    costPer1M: 5,
-    available: true,
-    isLocal: false,
-  },
-  {
-    id: "gpt-4o-mini",
-    name: "GPT-4o Mini",
-    provider: "openai",
-    tier: "budget",
-    optimizedFor: ["chat"],
-    costPer1M: 0.15,
-    available: true,
-    isLocal: false,
-  },
-  {
-    id: "o1",
-    name: "OpenAI O1",
-    provider: "openai",
-    tier: "premium",
-    optimizedFor: ["analysis"],
-    costPer1M: 15,
-    available: true,
-    isLocal: false,
-  },
-
-  // Local models (Ollama)
-  {
-    id: "ollama-llama3",
-    name: "Llama 3 (Local)",
-    provider: "ollama",
-    tier: "local",
-    optimizedFor: ["chat", "sensitive"],
-    costPer1M: 0,
-    available: true,
-    isLocal: true,
-  },
-  {
-    id: "ollama-codellama",
-    name: "Code Llama (Local)",
-    provider: "ollama",
-    tier: "local",
-    optimizedFor: ["coding", "sensitive"],
-    costPer1M: 0,
-    available: true,
-    isLocal: true,
-  },
-  {
-    id: "ollama-deepseek-coder",
-    name: "DeepSeek Coder (Local)",
-    provider: "ollama",
-    tier: "local",
-    optimizedFor: ["coding", "sensitive"],
-    costPer1M: 0,
-    available: true,
-    isLocal: true,
-  },
-]
-
-/** Default role permissions (RBAC) */
-export const DEFAULT_ROLE_PERMISSIONS: RolePermission[] = [
-  {
-    role: "admin",
-    allowedTiers: ["premium", "standard", "budget", "local"],
-    allowedModels: [],
-    deniedModels: [],
-    dailyTokenLimit: 100_000_000, // 100M tokens/day
-    monthlyTokenLimit: 1_000_000_000, // 1B tokens/month
-  },
-  {
-    role: "developer",
-    allowedTiers: ["standard", "budget", "local"],
-    allowedModels: [],
-    deniedModels: ["o1"], // Expensive reasoning model
-    dailyTokenLimit: 10_000_000, // 10M tokens/day
-    monthlyTokenLimit: 100_000_000, // 100M tokens/month
-  },
-  {
-    role: "intern",
-    allowedTiers: ["budget", "local"],
-    allowedModels: [],
-    deniedModels: ["claude-3-opus", "o1", "gpt-4o"],
-    dailyTokenLimit: 1_000_000, // 1M tokens/day
-    monthlyTokenLimit: 10_000_000, // 10M tokens/month
-  },
-  {
-    role: "guest",
-    allowedTiers: ["local"],
-    allowedModels: ["gpt-4o-mini"], // Allow one cheap cloud model
-    deniedModels: [],
-    dailyTokenLimit: 100_000, // 100K tokens/day
-    monthlyTokenLimit: 1_000_000, // 1M tokens/month
-  },
-]
-
-/** Default routing configuration */
-export const DEFAULT_ROUTING_CONFIG: RoutingConfig = {
-  enabled: true,
-  defaultModelId: "claude-3-5-sonnet",
-  defaultRole: "guest",
-  rules: DEFAULT_CLASSIFICATION_RULES,
-  rolePermissions: DEFAULT_ROLE_PERMISSIONS,
-  models: DEFAULT_MODELS,
-  enableDlpIntegration: true,
-  forceLocalForSensitive: true,
+    return data as T
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null
+    }
+    log.error("Failed to load config file", { path: filepath, error })
+    return null
+  }
 }
+
+/** Cached routing configuration */
+let cachedConfig: RoutingConfig | null = null
+
+/**
+ * Get the default routing configuration from bundled JSON.
+ */
+function getDefaultConfig(): RoutingConfig {
+  return defaultRoutingConfig as unknown as RoutingConfig
+}
+
+/**
+ * Load routing configuration.
+ *
+ * Priority (lowest to highest):
+ * 1. Default routing config (bundled)
+ * 2. User routing config (~/.codecoder/routing.json)
+ */
+export async function loadRoutingConfig(): Promise<RoutingConfig> {
+  // Start with default configuration
+  let config = getDefaultConfig()
+
+  // Try to load user configuration
+  const userConfig = await loadJsonFile<Partial<RoutingConfig>>(ROUTING_CONFIG_PATH)
+
+  if (userConfig) {
+    // Deep merge user config on top of defaults
+    config = mergeDeep(config, userConfig) as RoutingConfig
+    log.debug("Loaded user routing config", {
+      path: ROUTING_CONFIG_PATH,
+      models: userConfig.models?.length ?? 0,
+      rules: userConfig.rules?.length ?? 0,
+    })
+  }
+
+  return config
+}
+
+/**
+ * Get routing configuration (cached).
+ *
+ * Loads configuration on first call and caches it for subsequent calls.
+ */
+export async function getRoutingConfig(): Promise<RoutingConfig> {
+  if (!cachedConfig) {
+    cachedConfig = await loadRoutingConfig()
+  }
+  return cachedConfig
+}
+
+/**
+ * Get routing configuration synchronously (uses default if not loaded).
+ *
+ * Call `getRoutingConfig()` first to ensure user config is loaded.
+ */
+export function getRoutingConfigSync(): RoutingConfig {
+  return cachedConfig ?? getDefaultConfig()
+}
+
+/**
+ * Reload routing configuration (clears cache).
+ */
+export async function reloadRoutingConfig(): Promise<RoutingConfig> {
+  cachedConfig = null
+  return getRoutingConfig()
+}
+
+// ============================================================================
+// Default Configuration Exports (for backward compatibility)
+// ============================================================================
+
+/**
+ * @deprecated Use getRoutingConfigSync().rules instead
+ */
+export const DEFAULT_CLASSIFICATION_RULES: ClassificationRule[] = getDefaultConfig().rules
+
+/**
+ * @deprecated Use getRoutingConfigSync().models instead
+ */
+export const DEFAULT_MODELS: RoutableModel[] = getDefaultConfig().models
+
+/**
+ * @deprecated Use getRoutingConfigSync().rolePermissions instead
+ */
+export const DEFAULT_ROLE_PERMISSIONS: RolePermission[] = getDefaultConfig().rolePermissions
+
+/**
+ * @deprecated Use getRoutingConfigSync() instead
+ */
+export const DEFAULT_ROUTING_CONFIG: RoutingConfig = getDefaultConfig()
 
 // ============================================================================
 // Task-to-Model Mapping
 // ============================================================================
 
-/** Recommended model per task type (in order of preference) */
-export const TASK_MODEL_PREFERENCES: Record<TaskType, string[]> = {
-  coding: ["claude-3-5-sonnet", "gpt-4o", "ollama-codellama", "ollama-deepseek-coder"],
-  analysis: ["claude-3-opus", "o1", "gpt-4o", "claude-3-5-sonnet"],
-  chat: ["gpt-4o-mini", "claude-3-haiku", "ollama-llama3"],
-  sensitive: ["ollama-llama3", "ollama-codellama", "ollama-deepseek-coder"],
+/**
+ * Get task model preferences from config.
+ * Falls back to default preferences if not configured.
+ */
+export function getTaskModelPreferences(): Record<TaskType, string[]> {
+  const config = getRoutingConfigSync()
+  const prefs = config.taskModelPreferences
+  if (prefs) {
+    return {
+      coding: prefs.coding,
+      analysis: prefs.analysis,
+      chat: prefs.chat,
+      sensitive: prefs.sensitive,
+    }
+  }
+  // Fallback to defaults from JSON config
+  const defaultConfig = getDefaultConfig()
+  const defaultPrefs = defaultConfig.taskModelPreferences
+  if (defaultPrefs) {
+    return {
+      coding: defaultPrefs.coding,
+      analysis: defaultPrefs.analysis,
+      chat: defaultPrefs.chat,
+      sensitive: defaultPrefs.sensitive,
+    }
+  }
+  // Ultimate fallback
+  return {
+    coding: ["claude-3-5-sonnet", "gpt-4o", "ollama-codellama", "ollama-deepseek-coder"],
+    analysis: ["claude-3-opus", "o1", "gpt-4o", "claude-3-5-sonnet"],
+    chat: ["gpt-4o-mini", "claude-3-haiku", "ollama-llama3"],
+    sensitive: ["ollama-llama3", "ollama-codellama", "ollama-deepseek-coder"],
+  }
 }
+
+/**
+ * @deprecated Use getTaskModelPreferences() instead
+ */
+export const TASK_MODEL_PREFERENCES: Record<TaskType, string[]> = getTaskModelPreferences()
 
 // ============================================================================
 // Helper Functions
@@ -456,7 +385,7 @@ export function findBestModel(
   models: RoutableModel[],
   permissions: RolePermission[],
 ): RoutableModel | undefined {
-  const preferences = TASK_MODEL_PREFERENCES[taskType]
+  const preferences = getTaskModelPreferences()[taskType]
 
   // Try each preferred model in order
   for (const modelId of preferences) {

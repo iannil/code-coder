@@ -360,6 +360,83 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })
 
+    const command = iife(() => {
+      const [commandStore, setCommandStore] = createStore<{
+        ready: boolean
+        favorite: string[]
+        recent: string[]
+      }>({
+        ready: false,
+        favorite: [],
+        recent: [],
+      })
+
+      const file = Bun.file(path.join(Global.Path.state, "command.json"))
+      const state = {
+        pending: false,
+      }
+
+      function save() {
+        if (!commandStore.ready) {
+          state.pending = true
+          return
+        }
+        state.pending = false
+        Bun.write(
+          file,
+          JSON.stringify({
+            recent: commandStore.recent,
+            favorite: commandStore.favorite,
+          }),
+        )
+      }
+
+      file
+        .json()
+        .then((x) => {
+          if (Array.isArray(x.recent)) setCommandStore("recent", x.recent)
+          if (Array.isArray(x.favorite)) setCommandStore("favorite", x.favorite)
+        })
+        .catch(() => {})
+        .finally(() => {
+          setCommandStore("ready", true)
+          if (state.pending) save()
+        })
+
+      return {
+        get ready() {
+          return commandStore.ready
+        },
+        favorite() {
+          return commandStore.favorite
+        },
+        recent() {
+          return commandStore.recent
+        },
+        isFavorite(name: string) {
+          return commandStore.favorite.includes(name)
+        },
+        toggleFavorite(name: string) {
+          batch(() => {
+            const exists = commandStore.favorite.includes(name)
+            const next = exists
+              ? commandStore.favorite.filter((x) => x !== name)
+              : [name, ...commandStore.favorite]
+            setCommandStore("favorite", next)
+            save()
+          })
+        },
+        addRecent(name: string) {
+          batch(() => {
+            const uniq = [name, ...commandStore.recent.filter((x) => x !== name)]
+            if (uniq.length > 10) uniq.pop()
+            setCommandStore("recent", uniq)
+            save()
+          })
+        },
+      }
+    })
+
     const mcp = {
       isEnabled(name: string) {
         const status = sync.data.mcp[name]
@@ -398,6 +475,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     const result = {
       model,
       agent,
+      command,
       mcp,
     }
     return result

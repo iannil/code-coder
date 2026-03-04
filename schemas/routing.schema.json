@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://code-coder.com/schemas/routing.json",
+  "title": "CodeCoder LLM Routing Configuration",
+  "description": "Configuration for intelligent LLM routing including task classification rules, model definitions, and role-based permissions",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON schema reference for configuration validation"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "default": "1.0.0",
+      "description": "Configuration schema version"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether intelligent routing is enabled"
+    },
+    "defaultModelId": {
+      "type": "string",
+      "default": "claude-3-5-sonnet",
+      "description": "Default model for unclassified tasks"
+    },
+    "defaultRole": {
+      "$ref": "#/$defs/UserRole",
+      "default": "guest",
+      "description": "Default role for unknown users"
+    },
+    "enableDlpIntegration": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable DLP integration for sensitive content detection"
+    },
+    "forceLocalForSensitive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Force local model for DLP-detected sensitive content"
+    },
+    "rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ClassificationRule" },
+      "default": [],
+      "description": "Task classification rules"
+    },
+    "models": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/RoutableModel" },
+      "default": [],
+      "description": "Available models for routing"
+    },
+    "rolePermissions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/RolePermission" },
+      "default": [],
+      "description": "Role-based permissions and quotas"
+    },
+    "taskModelPreferences": {
+      "type": "object",
+      "description": "Recommended models per task type (in order of preference)",
+      "properties": {
+        "coding": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Preferred models for coding tasks"
+        },
+        "analysis": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Preferred models for analysis tasks"
+        },
+        "chat": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Preferred models for chat tasks"
+        },
+        "sensitive": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Preferred models for sensitive content (usually local)"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "TaskType": {
+      "type": "string",
+      "enum": ["coding", "analysis", "chat", "sensitive"],
+      "description": "Task type for classification"
+    },
+    "UserRole": {
+      "type": "string",
+      "enum": ["admin", "developer", "intern", "guest"],
+      "description": "User role for RBAC"
+    },
+    "ModelTier": {
+      "type": "string",
+      "enum": ["premium", "standard", "budget", "local"],
+      "description": "Model tier category"
+    },
+    "ClassificationRule": {
+      "type": "object",
+      "description": "Rule for classifying task types based on patterns, keywords, or agent names",
+      "required": ["id", "taskType"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique rule identifier"
+        },
+        "taskType": {
+          "$ref": "#/$defs/TaskType",
+          "description": "Task type this rule detects"
+        },
+        "priority": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10,
+          "description": "Priority (lower = higher priority)"
+        },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Regex patterns to match (any match triggers rule)"
+        },
+        "keywords": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Keywords to match (any match triggers rule)"
+        },
+        "agents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Agent names that trigger this task type (e.g., @dev, @macro)"
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether rule is enabled"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RoutableModel": {
+      "type": "object",
+      "description": "Model definition for routing",
+      "required": ["id", "name", "provider", "tier"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Model ID (e.g., claude-3-opus, gpt-4o-mini)"
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name"
+        },
+        "provider": {
+          "type": "string",
+          "description": "Provider (anthropic, openai, google, ollama)"
+        },
+        "tier": {
+          "$ref": "#/$defs/ModelTier",
+          "description": "Model tier for permission checks"
+        },
+        "optimizedFor": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TaskType" },
+          "default": [],
+          "description": "Task types this model is optimized for"
+        },
+        "costPer1M": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0,
+          "description": "Cost per 1M tokens (for cost optimization)"
+        },
+        "available": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether model is available"
+        },
+        "isLocal": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether model runs locally (for sensitive data)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "RolePermission": {
+      "type": "object",
+      "description": "Role permission configuration for RBAC",
+      "required": ["role", "allowedTiers"],
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/UserRole",
+          "description": "Role name"
+        },
+        "allowedTiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ModelTier" },
+          "description": "Allowed model tiers"
+        },
+        "allowedModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Specific model IDs allowed (overrides tier restrictions)"
+        },
+        "deniedModels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Specific model IDs denied (overrides tier allowances)"
+        },
+        "dailyTokenLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 1000000,
+          "description": "Daily token limit"
+        },
+        "monthlyTokenLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10000000,
+          "description": "Monthly token limit"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

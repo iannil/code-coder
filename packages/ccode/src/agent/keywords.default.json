@@ -102,18 +102,34 @@
       "triggers": [
         { "type": "keyword", "value": "macro", "priority": 10 },
         { "type": "keyword", "value": "GDP", "priority": 9 },
-        { "type": "keyword", "value": "economy", "priority": 8 }
+        { "type": "keyword", "value": "economy", "priority": 8 },
+        { "type": "keyword", "value": "A股", "priority": 9 },
+        { "type": "keyword", "value": "股市", "priority": 8 },
+        { "type": "keyword", "value": "走势", "priority": 7 },
+        { "type": "keyword", "value": "大盘", "priority": 8 },
+        { "type": "keyword", "value": "市场分析", "priority": 8 },
+        { "type": "keyword", "value": "指数", "priority": 7 },
+        { "type": "keyword", "value": "沪深", "priority": 8 },
+        { "type": "keyword", "value": "创业板", "priority": 7 },
+        { "type": "keyword", "value": "科创板", "priority": 7 }
       ],
-      "aliases": ["macro", "宏观", "经济"],
+      "aliases": ["macro", "宏观", "经济", "股市分析", "大盘分析"],
       "priority": 6
     },
     "trader": {
       "triggers": [
         { "type": "keyword", "value": "trade", "priority": 10 },
         { "type": "keyword", "value": "trading", "priority": 9 },
-        { "type": "keyword", "value": "技术分析", "priority": 8 }
+        { "type": "keyword", "value": "技术分析", "priority": 8 },
+        { "type": "keyword", "value": "K线", "priority": 9 },
+        { "type": "keyword", "value": "均线", "priority": 8 },
+        { "type": "keyword", "value": "MACD", "priority": 8 },
+        { "type": "keyword", "value": "买入", "priority": 7 },
+        { "type": "keyword", "value": "卖出", "priority": 7 },
+        { "type": "keyword", "value": "持仓", "priority": 7 },
+        { "type": "keyword", "value": "止损", "priority": 8 }
       ],
-      "aliases": ["trader", "交易", "trading"],
+      "aliases": ["trader", "交易", "trading", "技术分析"],
       "priority": 6
     },
     "picker": {
@@ -148,6 +164,6 @@
     "agent": "general",
     "cli_agent": "build",
     "im_agent": "autonomous",
-    "use_implicit_matching": false
+    "use_implicit_matching": true
   }
 }

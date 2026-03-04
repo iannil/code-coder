@@ -11,6 +11,7 @@ import {
 } from "solid-js"
 import { useKeyboard } from "@opentui/solid"
 import { useKeybind } from "@tui/context/keybind"
+import { useLocal } from "@tui/context/local"
 import type { KeybindsConfig } from "@/types"
 
 type Context = ReturnType<typeof init>
@@ -140,13 +141,54 @@ export function CommandProvider(props: ParentProps) {
 
 function DialogCommand(props: { options: CommandOption[]; suggestedOptions: CommandOption[] }) {
   let ref: DialogSelectRef<string>
+  const local = useLocal()
+  const keybind = useKeybind()
+
   const list = () => {
     const options = props.options
     const suggested = props.suggestedOptions
+    const favorites = local.command.favorite()
+
+    // When filtering, show flat list without categories
     if (ref?.filter) return options && options.length > 0 ? Array.from(options) : []
+
     const optionsArr = options && options.length > 0 ? Array.from(options) : []
     const suggestedArr = suggested && suggested.length > 0 ? Array.from(suggested) : []
-    return [...suggestedArr, ...optionsArr]
+
+    // Create favorite options (commands that are in favorites list)
+    const favoriteOptions = optionsArr
+      .filter((opt) => favorites.includes(opt.value))
+      .map((opt) => ({
+        ...opt,
+        value: `favorite:${opt.value}`,
+        category: "Favorites",
+      }))
+
+    // Filter out favorites from main list to avoid duplicates
+    const nonFavoriteOptions = optionsArr.filter((opt) => !favorites.includes(opt.value))
+
+    return [...favoriteOptions, ...suggestedArr, ...nonFavoriteOptions]
   }
-  return <DialogSelect ref={(r) => (ref = r)} title="Commands" options={list()} />
+
+  return (
+    <DialogSelect
+      ref={(r) => (ref = r)}
+      title="Commands"
+      options={list()}
+      keybind={[
+        {
+          keybind: keybind.all.command_favorite_toggle?.[0],
+          title: "Favorite",
+          onTrigger: (option) => {
+            // Extract the actual command name (remove prefix if present)
+            const value = option.value as string
+            const name = value.startsWith("favorite:") ? value.slice(9)
+              : value.startsWith("suggested:") ? value.slice(10)
+              : value
+            local.command.toggleFavorite(name)
+          },
+        },
+      ]}
+    />
+  )
 }

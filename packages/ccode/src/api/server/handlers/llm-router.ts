@@ -8,6 +8,7 @@
  * - DLP sensitive content detection
  *
  * Part of Phase 14: Intelligent LLM Router
+ * Updated in Phase 3: Uses configurable routing rules from ~/.codecoder/routing.json
  */
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
@@ -23,8 +24,7 @@ import {
   type ClassificationRule,
   type RoutableModel,
   type RolePermission,
-  DEFAULT_ROUTING_CONFIG,
-  TASK_MODEL_PREFERENCES,
+  getRoutingConfigSync,
   canRoleAccessModel,
   findBestModel,
 } from "@/provider/routing-rules"
@@ -43,12 +43,17 @@ async function loadConfig(): Promise<RoutingConfig> {
   await ensureRouterDir()
   const configFile = path.join(ROUTER_DIR, "config.json")
 
+  // Get base config from routing rules (includes user config from ~/.codecoder/routing.json)
+  const baseConfig = getRoutingConfigSync()
+
   try {
+    // Load runtime overrides from local storage
     const content = await fs.readFile(configFile, "utf-8")
-    return { ...DEFAULT_ROUTING_CONFIG, ...JSON.parse(content) }
+    return { ...baseConfig, ...JSON.parse(content) }
   } catch {
-    await saveConfig(DEFAULT_ROUTING_CONFIG)
-    return DEFAULT_ROUTING_CONFIG
+    // No local overrides, use base config
+    await saveConfig(baseConfig)
+    return baseConfig
   }
 }
 

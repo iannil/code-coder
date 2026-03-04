@@ -597,51 +597,379 @@ Check for contradictions or inconsistencies. Rate accuracy 0-10.`,
   // Fix Implementations
   // ==========================================================================
 
+  /**
+   * Try to find better sources by searching high-credibility domains.
+   * This targets authoritative sources like Reuters, Bloomberg, government sites.
+   */
   private async tryFindBetterSources(
     issue: PDCAIssue,
     context: TaskExecutionResult<ResearchOutput>,
     config: PDCAConfig,
   ): Promise<boolean> {
-    // Would need to re-run search with domain filters
-    // For now, log the attempt
-    log.debug("Attempting to find better sources", { issueId: issue.id })
-    return false
+    log.info("Attempting to find better sources", {
+      issueId: issue.id,
+      sessionId: config.sessionId,
+      currentSourceCount: context.output?.sources?.length ?? 0,
+    })
+
+    try {
+      const { createWebSearcher } = await import("../../execution/web-search")
+      const webSearcher = createWebSearcher(config.sessionId, { confidenceThreshold: 1.1 })
+      const topic = context.output?.topic ?? ""
+
+      // Search with high-credibility domain focus
+      const highCredQueries = [
+        `site:reuters.com ${topic}`,
+        `site:bloomberg.com ${topic}`,
+        `site:gov.cn ${topic}`,
+        `${topic} 官方 数据`,
+      ]
+
+      let foundNewSources = false
+      for (const query of highCredQueries) {
+        try {
+          const result = await webSearcher.search({
+            sessionId: config.sessionId,
+            problem: query,
+            previousAttempts: [],
+          })
+
+          if (result?.sources && result.sources.length > 0) {
+            // Add new high-credibility sources to context
+            const newSources = result.sources.map((s) => ({
+              url: s.url,
+              title: s.title,
+              snippet: s.snippet ?? "",
+              credibility: "high" as const,
+              content: result.fetchedContent?.find((f) => f.url === s.url)?.content,
+            }))
+
+            if (context.output?.sources) {
+              context.output.sources.push(...newSources)
+              foundNewSources = true
+              log.info("Added high-credibility sources", { count: newSources.length })
+            }
+          }
+        } catch (searchError) {
+          log.debug("High-cred search query failed", { query, error: searchError })
+        }
+      }
+
+      return foundNewSources
+    } catch (error) {
+      log.warn("Failed to find better sources", { error })
+      return false
+    }
   }
 
+  /**
+   * Try to expand coverage by searching for missing dimensions.
+   * Extracts missing dimensions from the issue and performs targeted searches.
+   */
   private async tryExpandCoverage(
     issue: PDCAIssue,
     context: TaskExecutionResult<ResearchOutput>,
     config: PDCAConfig,
   ): Promise<boolean> {
-    log.debug("Attempting to expand coverage", { issueId: issue.id })
-    return false
+    log.info("Attempting to expand coverage", {
+      issueId: issue.id,
+      sessionId: config.sessionId,
+      issueDescription: issue.description,
+    })
+
+    try {
+      // Extract missing dimensions from the issue description
+      const missingMatch = issue.description.match(/Missing dimensions?:\s*(.+)/i)
+      if (!missingMatch) {
+        log.debug("No missing dimensions found in issue")
+        return false
+      }
+
+      const missingDimensions = missingMatch[1].split(/[,，、]/).map((d) => d.trim()).filter(Boolean)
+      if (missingDimensions.length === 0) return false
+
+      const { createWebSearcher } = await import("../../execution/web-search")
+      const webSearcher = createWebSearcher(config.sessionId, { confidenceThreshold: 1.1 })
+      const topic = context.output?.topic ?? ""
+
+      let expandedCoverage = false
+      for (const dimension of missingDimensions.slice(0, 3)) {
+        try {
+          const result = await webSearcher.search({
+            sessionId: config.sessionId,
+            problem: `${topic} ${dimension}`,
+            previousAttempts: [],
+          })
+
+          if (result?.sources && result.sources.length > 0) {
+            const newSources = result.sources.map((s) => ({
+              url: s.url,
+              title: s.title,
+              snippet: s.snippet ?? "",
+              credibility: this.assessCredibility(s.url),
+              content: result.fetchedContent?.find((f) => f.url === s.url)?.content,
+            }))
+
+            if (context.output?.sources) {
+              context.output.sources.push(...newSources)
+              expandedCoverage = true
+              log.info("Added coverage sources for dimension", { dimension, count: newSources.length })
+            }
+          }
+        } catch (searchError) {
+          log.debug("Coverage expansion search failed", { dimension, error: searchError })
+        }
+      }
+
+      return expandedCoverage
+    } catch (error) {
+      log.warn("Failed to expand coverage", { error })
+      return false
+    }
   }
 
+  /**
+   * Try to find more recent sources by adding date filters to searches.
+   */
   private async tryFindRecentSources(
     issue: PDCAIssue,
     context: TaskExecutionResult<ResearchOutput>,
     config: PDCAConfig,
   ): Promise<boolean> {
-    log.debug("Attempting to find recent sources", { issueId: issue.id })
-    return false
+    log.info("Attempting to find recent sources", {
+      issueId: issue.id,
+      sessionId: config.sessionId,
+    })
+
+    try {
+      const { createWebSearcher } = await import("../../execution/web-search")
+      const webSearcher = createWebSearcher(config.sessionId, { confidenceThreshold: 1.1 })
+      const topic = context.output?.topic ?? ""
+
+      // Add date-focused queries
+      const today = new Date().toISOString().split("T")[0]
+      const recentQueries = [
+        `${topic} ${today}`,
+        `${topic} 最新 今日`,
+        `${topic} latest news`,
+      ]
+
+      let foundRecentSources = false
+      for (const query of recentQueries) {
+        try {
+          const result = await webSearcher.search({
+            sessionId: config.sessionId,
+            problem: query,
+            previousAttempts: [],
+          })
+
+          if (result?.sources && result.sources.length > 0) {
+            const newSources = result.sources.map((s) => ({
+              url: s.url,
+              title: s.title,
+              snippet: s.snippet ?? "",
+              credibility: this.assessCredibility(s.url),
+              content: result.fetchedContent?.find((f) => f.url === s.url)?.content,
+              publishedDate: today, // Mark as recent
+            }))
+
+            if (context.output?.sources) {
+              context.output.sources.push(...newSources)
+              foundRecentSources = true
+              log.info("Added recent sources", { count: newSources.length })
+            }
+          }
+        } catch (searchError) {
+          log.debug("Recent source search failed", { query, error: searchError })
+        }
+      }
+
+      return foundRecentSources
+    } catch (error) {
+      log.warn("Failed to find recent sources", { error })
+      return false
+    }
   }
 
+  /**
+   * Try to verify accuracy by cross-referencing with additional sources.
+   */
   private async tryVerifyAccuracy(
     issue: PDCAIssue,
     context: TaskExecutionResult<ResearchOutput>,
     config: PDCAConfig,
   ): Promise<boolean> {
-    log.debug("Attempting to verify accuracy", { issueId: issue.id })
-    return false
+    log.info("Attempting to verify accuracy", {
+      issueId: issue.id,
+      sessionId: config.sessionId,
+      issueDescription: issue.description,
+    })
+
+    try {
+      // Extract the contradiction or claim that needs verification
+      const contradictionMatch = issue.description.match(/contradictions?:\s*(.+)/i)
+      if (!contradictionMatch) {
+        log.debug("No specific contradiction found to verify")
+        return false
+      }
+
+      const claimToVerify = contradictionMatch[1].slice(0, 100)
+      const { createWebSearcher } = await import("../../execution/web-search")
+      const webSearcher = createWebSearcher(config.sessionId, { confidenceThreshold: 1.1 })
+
+      // Search for verification with fact-checking focus
+      const verifyQueries = [
+        `${claimToVerify} fact check`,
+        `${claimToVerify} verification`,
+        `${context.output?.topic} ${claimToVerify}`,
+      ]
+
+      let verified = false
+      for (const query of verifyQueries) {
+        try {
+          const result = await webSearcher.search({
+            sessionId: config.sessionId,
+            problem: query,
+            previousAttempts: [],
+          })
+
+          if (result?.sources && result.sources.length > 0) {
+            // Check if verification sources agree
+            const highCredSources = result.sources.filter((s) =>
+              HIGH_CREDIBILITY_DOMAINS.some((d) => s.url.includes(d))
+            )
+
+            if (highCredSources.length > 0) {
+              const newSources = highCredSources.map((s) => ({
+                url: s.url,
+                title: s.title,
+                snippet: s.snippet ?? "",
+                credibility: "high" as const,
+                content: result.fetchedContent?.find((f) => f.url === s.url)?.content,
+              }))
+
+              if (context.output?.sources) {
+                context.output.sources.push(...newSources)
+                verified = true
+                log.info("Added verification sources", { count: newSources.length })
+              }
+            }
+          }
+        } catch (searchError) {
+          log.debug("Verification search failed", { query, error: searchError })
+        }
+      }
+
+      return verified
+    } catch (error) {
+      log.warn("Failed to verify accuracy", { error })
+      return false
+    }
   }
 
+  /**
+   * Try to improve insights by regenerating them with more context.
+   * Uses LLM to extract additional insights from source content.
+   */
   private async tryImproveInsights(
     issue: PDCAIssue,
     context: TaskExecutionResult<ResearchOutput>,
     config: PDCAConfig,
   ): Promise<boolean> {
-    log.debug("Attempting to improve insights", { issueId: issue.id })
-    return false
+    log.info("Attempting to improve insights", {
+      issueId: issue.id,
+      sessionId: config.sessionId,
+      currentInsightCount: context.output?.insights?.length ?? 0,
+    })
+
+    try {
+      if (!context.output?.sources || context.output.sources.length === 0) {
+        log.debug("No sources to extract insights from")
+        return false
+      }
+
+      const { generateObject } = await import("ai")
+      const { Provider } = await import("@/provider/provider")
+      const z = await import("zod").then((m) => m.default)
+
+      const defaultModel = await Provider.defaultModel()
+      const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
+      const language = await Provider.getLanguage(model)
+
+      // Concatenate source content for analysis
+      const sourceContent = context.output.sources
+        .filter((s) => s.content)
+        .map((s) => s.content)
+        .join("\n\n")
+        .slice(0, 4000)
+
+      const existingInsights = context.output.insights?.join("\n") ?? ""
+
+      const result = await generateObject({
+        temperature: 0.3,
+        messages: [
+          {
+            role: "system",
+            content: `You are a research analyst. Extract valuable, actionable insights from the provided content.
+Focus on:
+- Specific data points and statistics
+- Trends and patterns
+- Actionable recommendations
+- Key findings not mentioned in existing insights`,
+          },
+          {
+            role: "user",
+            content: `Topic: ${context.output.topic}
+
+Existing Insights:
+${existingInsights}
+
+Source Content:
+${sourceContent}
+
+Extract 3-5 NEW, specific, actionable insights that are not already covered.`,
+          },
+        ],
+        model: language,
+        schema: z.object({
+          newInsights: z.array(z.string()).min(1).max(5),
+          improvementReasoning: z.string(),
+        }),
+      })
+
+      if (result.object.newInsights.length > 0) {
+        // Add new insights to context
+        if (!context.output.insights) {
+          context.output.insights = []
+        }
+        context.output.insights.push(...result.object.newInsights)
+
+        log.info("Added improved insights", {
+          newCount: result.object.newInsights.length,
+          totalCount: context.output.insights.length,
+        })
+        return true
+      }
+
+      return false
+    } catch (error) {
+      log.warn("Failed to improve insights", { error })
+      return false
+    }
+  }
+
+  /**
+   * Helper to assess source credibility based on URL domain.
+   */
+  private assessCredibility(url: string): "high" | "medium" | "low" {
+    try {
+      const domain = new URL(url).hostname.replace("www.", "")
+      if (HIGH_CREDIBILITY_DOMAINS.some((d) => domain.includes(d))) return "high"
+      if (MEDIUM_CREDIBILITY_DOMAINS.some((d) => domain.includes(d))) return "medium"
+    } catch {
+      // Invalid URL
+    }
+    return "low"
   }
 
   // ==========================================================================

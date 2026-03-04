@@ -618,6 +618,7 @@ export namespace Config {
       model_cycle_favorite: z.string().optional().default("none").describe("Next favorite model"),
       model_cycle_favorite_reverse: z.string().optional().default("none").describe("Previous favorite model"),
       command_list: z.string().optional().default("ctrl+p").describe("List available commands"),
+      command_favorite_toggle: z.string().optional().default("ctrl+f").describe("Toggle command favorite status"),
       agent_list: z.string().optional().default("<leader>a").describe("List agents"),
       agent_cycle: z.string().optional().default("tab").describe("Next agent"),
       agent_cycle_reverse: z.string().optional().default("shift+tab").describe("Previous agent"),

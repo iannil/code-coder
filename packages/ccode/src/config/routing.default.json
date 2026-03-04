@@ -1,0 +1,265 @@
+{
+  "$schema": "../../schemas/routing.schema.json",
+  "version": "1.0.0",
+  "enabled": true,
+  "defaultModelId": "claude-3-5-sonnet",
+  "defaultRole": "guest",
+  "enableDlpIntegration": true,
+  "forceLocalForSensitive": true,
+  "rules": [
+    {
+      "id": "rule-coding-codeblock",
+      "taskType": "coding",
+      "priority": 1,
+      "patterns": [
+        "```[a-z]*\\n",
+        "\\bfunction\\s+\\w+",
+        "\\bclass\\s+\\w+",
+        "\\bconst\\s+\\w+\\s*=",
+        "\\bimport\\s+[{\\w]"
+      ],
+      "keywords": [],
+      "agents": ["@dev", "@code", "@tdd", "@architect", "@code-reverse"],
+      "enabled": true
+    },
+    {
+      "id": "rule-coding-keywords",
+      "taskType": "coding",
+      "priority": 2,
+      "patterns": [],
+      "keywords": [
+        "code",
+        "implement",
+        "function",
+        "class",
+        "debug",
+        "fix bug",
+        "refactor",
+        "typescript",
+        "javascript",
+        "python",
+        "rust",
+        "golang",
+        "api",
+        "endpoint",
+        "compile",
+        "build",
+        "test",
+        "unittest"
+      ],
+      "agents": [],
+      "enabled": true
+    },
+    {
+      "id": "rule-analysis-agents",
+      "taskType": "analysis",
+      "priority": 1,
+      "patterns": [],
+      "keywords": [],
+      "agents": ["@macro", "@decision", "@trader", "@picker", "@observer", "@ai-engineer"],
+      "enabled": true
+    },
+    {
+      "id": "rule-analysis-keywords",
+      "taskType": "analysis",
+      "priority": 2,
+      "patterns": [
+        "\\banalyze\\b",
+        "\\bevaluate\\b",
+        "\\bassess\\b",
+        "\\bcompare\\b.*\\bvs\\b"
+      ],
+      "keywords": [
+        "analyze",
+        "analysis",
+        "evaluate",
+        "assessment",
+        "decision",
+        "strategy",
+        "trade-off",
+        "pros and cons",
+        "deep dive",
+        "architecture",
+        "design review",
+        "CLOSE framework",
+        "PMI",
+        "macroeconomic"
+      ],
+      "agents": [],
+      "enabled": true
+    },
+    {
+      "id": "rule-sensitive-dlp",
+      "taskType": "sensitive",
+      "priority": 0,
+      "patterns": [
+        "\\b\\d{3}-\\d{2}-\\d{4}\\b",
+        "\\b(?:\\d{4}[- ]?){3}\\d{4}\\b",
+        "AKIA[0-9A-Z]{16}",
+        "(sk|pk|api|token)[-_][a-zA-Z0-9]{20,}"
+      ],
+      "keywords": [
+        "password",
+        "secret",
+        "credential",
+        "private key",
+        "api key",
+        "access token",
+        "ssn",
+        "social security"
+      ],
+      "agents": [],
+      "enabled": true
+    },
+    {
+      "id": "rule-chat-default",
+      "taskType": "chat",
+      "priority": 100,
+      "patterns": [],
+      "keywords": [
+        "hello",
+        "hi",
+        "thanks",
+        "help",
+        "what is",
+        "how do",
+        "explain",
+        "tell me about"
+      ],
+      "agents": ["@general"],
+      "enabled": true
+    }
+  ],
+  "models": [
+    {
+      "id": "claude-3-5-sonnet",
+      "name": "Claude 3.5 Sonnet",
+      "provider": "anthropic",
+      "tier": "standard",
+      "optimizedFor": ["coding"],
+      "costPer1M": 3,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "claude-3-opus",
+      "name": "Claude 3 Opus",
+      "provider": "anthropic",
+      "tier": "premium",
+      "optimizedFor": ["analysis", "coding"],
+      "costPer1M": 15,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "claude-3-haiku",
+      "name": "Claude 3 Haiku",
+      "provider": "anthropic",
+      "tier": "budget",
+      "optimizedFor": ["chat"],
+      "costPer1M": 0.25,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "gpt-4o",
+      "name": "GPT-4o",
+      "provider": "openai",
+      "tier": "standard",
+      "optimizedFor": ["coding", "analysis"],
+      "costPer1M": 5,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "gpt-4o-mini",
+      "name": "GPT-4o Mini",
+      "provider": "openai",
+      "tier": "budget",
+      "optimizedFor": ["chat"],
+      "costPer1M": 0.15,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "o1",
+      "name": "OpenAI O1",
+      "provider": "openai",
+      "tier": "premium",
+      "optimizedFor": ["analysis"],
+      "costPer1M": 15,
+      "available": true,
+      "isLocal": false
+    },
+    {
+      "id": "ollama-llama3",
+      "name": "Llama 3 (Local)",
+      "provider": "ollama",
+      "tier": "local",
+      "optimizedFor": ["chat", "sensitive"],
+      "costPer1M": 0,
+      "available": true,
+      "isLocal": true
+    },
+    {
+      "id": "ollama-codellama",
+      "name": "Code Llama (Local)",
+      "provider": "ollama",
+      "tier": "local",
+      "optimizedFor": ["coding", "sensitive"],
+      "costPer1M": 0,
+      "available": true,
+      "isLocal": true
+    },
+    {
+      "id": "ollama-deepseek-coder",
+      "name": "DeepSeek Coder (Local)",
+      "provider": "ollama",
+      "tier": "local",
+      "optimizedFor": ["coding", "sensitive"],
+      "costPer1M": 0,
+      "available": true,
+      "isLocal": true
+    }
+  ],
+  "rolePermissions": [
+    {
+      "role": "admin",
+      "allowedTiers": ["premium", "standard", "budget", "local"],
+      "allowedModels": [],
+      "deniedModels": [],
+      "dailyTokenLimit": 100000000,
+      "monthlyTokenLimit": 1000000000
+    },
+    {
+      "role": "developer",
+      "allowedTiers": ["standard", "budget", "local"],
+      "allowedModels": [],
+      "deniedModels": ["o1"],
+      "dailyTokenLimit": 10000000,
+      "monthlyTokenLimit": 100000000
+    },
+    {
+      "role": "intern",
+      "allowedTiers": ["budget", "local"],
+      "allowedModels": [],
+      "deniedModels": ["claude-3-opus", "o1", "gpt-4o"],
+      "dailyTokenLimit": 1000000,
+      "monthlyTokenLimit": 10000000
+    },
+    {
+      "role": "guest",
+      "allowedTiers": ["local"],
+      "allowedModels": ["gpt-4o-mini"],
+      "deniedModels": [],
+      "dailyTokenLimit": 100000,
+      "monthlyTokenLimit": 1000000
+    }
+  ],
+  "taskModelPreferences": {
+    "coding": ["claude-3-5-sonnet", "gpt-4o", "ollama-codellama", "ollama-deepseek-coder"],
+    "analysis": ["claude-3-opus", "o1", "gpt-4o", "claude-3-5-sonnet"],
+    "chat": ["gpt-4o-mini", "claude-3-haiku", "ollama-llama3"],
+    "sensitive": ["ollama-llama3", "ollama-codellama", "ollama-deepseek-coder"]
+  }
+}
