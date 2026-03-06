@@ -31,7 +31,28 @@ export interface McpClientConfig {
   headers?: Record<string, string>
   /** Working directory (for stdio transport) */
   cwd?: string
+  /** OAuth configuration */
+  oauth?: OAuthConfig
+  /** Whether OAuth is disabled */
+  oauthDisabled?: boolean
 }
+
+/**
+ * OAuth configuration for an MCP server
+ */
+export interface OAuthConfig {
+  /** Pre-registered client ID (optional) */
+  clientId?: string
+  /** Pre-registered client secret (optional) */
+  clientSecret?: string
+  /** OAuth scopes to request */
+  scope?: string
+}
+
+/**
+ * OAuth authentication status
+ */
+export type AuthStatus = 'not_authenticated' | 'authenticated' | 'expired'
 
 /**
  * MCP connection status
@@ -111,6 +132,22 @@ export interface IMcpClientManager {
   remove(name: string): Promise<void>
   /** Close all connections */
   closeAll(): Promise<void>
+
+  // OAuth methods
+  /** Load OAuth credentials from storage */
+  loadOAuth(): Promise<void>
+  /** Start OAuth authentication flow, returns authorization URL */
+  startOAuth(serverName: string, serverUrl: string, redirectUri: string, config?: OAuthConfig): Promise<string>
+  /** Complete OAuth authentication with authorization code */
+  finishOAuth(serverName: string, authorizationCode: string, state: string): Promise<void>
+  /** Remove OAuth credentials for a server */
+  removeOAuth(serverName: string): Promise<void>
+  /** Get OAuth authentication status for a server */
+  getOAuthStatus(serverName: string): Promise<AuthStatus>
+  /** Check if we have OAuth credentials for a server */
+  hasOAuthCredentials(serverName: string): Promise<boolean>
+  /** Cancel any pending OAuth flow for a server */
+  cancelOAuth(serverName: string): Promise<void>
 }
 
 // ============================================================================

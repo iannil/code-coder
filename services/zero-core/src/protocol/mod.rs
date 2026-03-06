@@ -3,10 +3,12 @@
 //! This module provides:
 //! - **mcp**: Model Context Protocol server
 //! - **mcp_client**: Model Context Protocol client
+//! - **mcp_oauth**: OAuth 2.0 PKCE support for MCP
 //! - **lsp**: Language Server Protocol support
 
 pub mod mcp;
 pub mod mcp_client;
+pub mod mcp_oauth;
 pub mod lsp;
 
 // Re-export main types from mcp server
@@ -15,6 +17,11 @@ pub use mcp::{McpClient, McpResource, McpServer, McpTool, McpToolResult};
 // Re-export main types from mcp client
 pub use mcp_client::{
     McpClientConfig, McpClientInstance, McpClientManager, McpConnectionStatus, McpTransportType,
+};
+
+// Re-export OAuth types
+pub use mcp_oauth::{
+    McpOAuthManager, OAuthConfig, OAuthCredentials, OAuthMetadata, OAuthTokens, AuthStatus,
 };
 
 // Re-export main types from lsp

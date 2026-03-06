@@ -13,6 +13,9 @@ use crate::protocol::{
         McpClientConfig as RustMcpClientConfig, McpClientManager as RustMcpClientManager,
         McpConnectionStatus as RustMcpConnectionStatus, McpTransportType as RustMcpTransportType,
     },
+    mcp_oauth::{
+        AuthStatus as RustAuthStatus, OAuthConfig as RustOAuthConfig,
+    },
     lsp::{LspServerManager as RustLspServerManager, LspServerStatus as RustLspServerStatus},
 };
 
@@ -57,6 +60,31 @@ pub struct McpClientConfig {
     pub headers: Option<HashMap<String, String>>,
     /// Working directory (for stdio)
     pub cwd: Option<String>,
+    /// OAuth configuration
+    pub oauth: Option<OAuthConfig>,
+    /// Whether OAuth is disabled
+    pub oauth_disabled: Option<bool>,
+}
+
+/// OAuth configuration for an MCP server
+#[napi(object)]
+pub struct OAuthConfig {
+    /// Pre-registered client ID (optional)
+    pub client_id: Option<String>,
+    /// Pre-registered client secret (optional)
+    pub client_secret: Option<String>,
+    /// OAuth scopes to request
+    pub scope: Option<String>,
+}
+
+impl From<OAuthConfig> for RustOAuthConfig {
+    fn from(config: OAuthConfig) -> Self {
+        RustOAuthConfig {
+            client_id: config.client_id,
+            client_secret: config.client_secret,
+            scope: config.scope,
+        }
+    }
 }
 
 impl From<McpClientConfig> for RustMcpClientConfig {
@@ -76,6 +104,29 @@ impl From<McpClientConfig> for RustMcpClientConfig {
             timeout_ms: config.timeout_ms.unwrap_or(30000) as u64,
             headers: config.headers.unwrap_or_default(),
             cwd: config.cwd,
+            oauth: config.oauth.map(|o| o.into()),
+            oauth_disabled: config.oauth_disabled.unwrap_or(false),
+        }
+    }
+}
+
+/// OAuth authentication status
+#[napi(string_enum)]
+pub enum AuthStatus {
+    /// Not authenticated
+    NotAuthenticated,
+    /// Authenticated with valid tokens
+    Authenticated,
+    /// Token expired but can be refreshed
+    Expired,
+}
+
+impl From<RustAuthStatus> for AuthStatus {
+    fn from(status: RustAuthStatus) -> Self {
+        match status {
+            RustAuthStatus::NotAuthenticated => AuthStatus::NotAuthenticated,
+            RustAuthStatus::Authenticated => AuthStatus::Authenticated,
+            RustAuthStatus::Expired => AuthStatus::Expired,
         }
     }
 }
@@ -229,6 +280,86 @@ impl McpClientManagerHandle {
             .await
             .map_err(|e| Error::from_reason(e.to_string()))
     }
+
+    // ========================================================================
+    // OAuth methods
+    // ========================================================================
+
+    /// Load OAuth credentials from storage
+    #[napi]
+    pub async fn load_oauth(&self) -> Result<()> {
+        let manager = self.inner.read().await;
+        manager
+            .load_oauth()
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Start OAuth authentication flow for a server
+    /// Returns the authorization URL that should be opened in a browser
+    #[napi]
+    pub async fn start_oauth(
+        &self,
+        server_name: String,
+        server_url: String,
+        redirect_uri: String,
+        config: Option<OAuthConfig>,
+    ) -> Result<String> {
+        let manager = self.inner.read().await;
+        let rust_config = config.map(|c| c.into());
+        manager
+            .start_oauth(&server_name, &server_url, rust_config.as_ref(), &redirect_uri)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Complete OAuth authentication with the authorization code
+    #[napi]
+    pub async fn finish_oauth(
+        &self,
+        server_name: String,
+        authorization_code: String,
+        state: String,
+    ) -> Result<()> {
+        let manager = self.inner.read().await;
+        manager
+            .finish_oauth(&server_name, &authorization_code, &state)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Remove OAuth credentials for a server
+    #[napi]
+    pub async fn remove_oauth(&self, server_name: String) -> Result<()> {
+        let manager = self.inner.read().await;
+        manager
+            .remove_oauth(&server_name)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Get OAuth authentication status for a server
+    #[napi]
+    pub async fn get_oauth_status(&self, server_name: String) -> Result<AuthStatus> {
+        let manager = self.inner.read().await;
+        let status = manager.get_oauth_status(&server_name).await;
+        Ok(status.into())
+    }
+
+    /// Check if we have OAuth credentials for a server
+    #[napi]
+    pub async fn has_oauth_credentials(&self, server_name: String) -> Result<bool> {
+        let manager = self.inner.read().await;
+        Ok(manager.has_oauth_credentials(&server_name).await)
+    }
+
+    /// Cancel any pending OAuth flow for a server
+    #[napi]
+    pub async fn cancel_oauth(&self, server_name: String) -> Result<()> {
+        let manager = self.inner.read().await;
+        manager.cancel_oauth(&server_name).await;
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -265,6 +396,114 @@ impl From<RustLspServerStatus> for LspServerStatus {
                 status: "not_found".to_string(),
                 error: None,
             },
+        }
+    }
+}
+
+/// LSP location (file + range)
+#[napi(object)]
+pub struct LspLocation {
+    /// File URI
+    pub uri: String,
+    /// Start line (0-indexed)
+    pub start_line: u32,
+    /// Start character (0-indexed)
+    pub start_character: u32,
+    /// End line (0-indexed)
+    pub end_line: u32,
+    /// End character (0-indexed)
+    pub end_character: u32,
+}
+
+impl From<crate::protocol::lsp::LspLocation> for LspLocation {
+    fn from(loc: crate::protocol::lsp::LspLocation) -> Self {
+        LspLocation {
+            uri: loc.uri,
+            start_line: loc.start_line,
+            start_character: loc.start_character,
+            end_line: loc.end_line,
+            end_character: loc.end_character,
+        }
+    }
+}
+
+/// LSP document symbol
+#[napi(object)]
+pub struct LspSymbol {
+    /// Symbol name
+    pub name: String,
+    /// Symbol kind (Function, Class, Method, etc.)
+    pub kind: String,
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+}
+
+impl From<crate::protocol::lsp::LspSymbol> for LspSymbol {
+    fn from(sym: crate::protocol::lsp::LspSymbol) -> Self {
+        LspSymbol {
+            name: sym.name,
+            kind: sym.kind,
+            start_line: sym.start_line,
+            start_character: sym.start_character,
+            end_line: sym.end_line,
+            end_character: sym.end_character,
+        }
+    }
+}
+
+/// LSP completion item
+#[napi(object)]
+pub struct LspCompletionItem {
+    /// Display label
+    pub label: String,
+    /// Completion kind (Function, Variable, etc.)
+    pub kind: Option<String>,
+    /// Additional detail
+    pub detail: Option<String>,
+    /// Text to insert
+    pub insert_text: Option<String>,
+}
+
+impl From<crate::protocol::lsp::LspCompletionItem> for LspCompletionItem {
+    fn from(item: crate::protocol::lsp::LspCompletionItem) -> Self {
+        LspCompletionItem {
+            label: item.label,
+            kind: item.kind,
+            detail: item.detail,
+            insert_text: item.insert_text,
+        }
+    }
+}
+
+/// LSP text edit
+#[napi(object)]
+pub struct LspTextEdit {
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+    /// New text to insert
+    pub new_text: String,
+}
+
+impl From<crate::protocol::lsp::LspTextEdit> for LspTextEdit {
+    fn from(edit: crate::protocol::lsp::LspTextEdit) -> Self {
+        LspTextEdit {
+            start_line: edit.start_line,
+            start_character: edit.start_character,
+            end_line: edit.end_line,
+            end_character: edit.end_character,
+            new_text: edit.new_text,
         }
     }
 }
@@ -347,5 +586,166 @@ impl LspServerManagerHandle {
             .stop_all()
             .await
             .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    // ========================================================================
+    // Convenience methods for common LSP operations
+    // ========================================================================
+
+    /// Get hover information at a position
+    #[napi]
+    pub async fn hover(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    ) -> Result<Option<String>> {
+        self.inner
+            .hover(&key, &uri, line, character)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Go to definition
+    #[napi]
+    pub async fn goto_definition(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspLocation>> {
+        let locations = self.inner
+            .goto_definition(&key, &uri, line, character)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(locations.into_iter().map(|l| l.into()).collect())
+    }
+
+    /// Go to type definition
+    #[napi]
+    pub async fn goto_type_definition(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspLocation>> {
+        let locations = self.inner
+            .goto_type_definition(&key, &uri, line, character)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(locations.into_iter().map(|l| l.into()).collect())
+    }
+
+    /// Find references
+    #[napi]
+    pub async fn find_references(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+        include_declaration: Option<bool>,
+    ) -> Result<Vec<LspLocation>> {
+        let locations = self.inner
+            .find_references(&key, &uri, line, character, include_declaration.unwrap_or(true))
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(locations.into_iter().map(|l| l.into()).collect())
+    }
+
+    /// Get document symbols
+    #[napi]
+    pub async fn document_symbols(
+        &self,
+        key: String,
+        uri: String,
+    ) -> Result<Vec<LspSymbol>> {
+        let symbols = self.inner
+            .document_symbols(&key, &uri)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(symbols.into_iter().map(|s| s.into()).collect())
+    }
+
+    /// Get completions at a position
+    #[napi]
+    pub async fn completion(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspCompletionItem>> {
+        let completions = self.inner
+            .completion(&key, &uri, line, character)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(completions.into_iter().map(|c| c.into()).collect())
+    }
+
+    /// Format document
+    #[napi]
+    pub async fn format_document(
+        &self,
+        key: String,
+        uri: String,
+        tab_size: Option<u32>,
+        insert_spaces: Option<bool>,
+    ) -> Result<Vec<LspTextEdit>> {
+        let edits = self.inner
+            .format_document(&key, &uri, tab_size.unwrap_or(2), insert_spaces.unwrap_or(true))
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(edits.into_iter().map(|e| e.into()).collect())
+    }
+
+    /// Notify document opened
+    #[napi]
+    pub async fn did_open(
+        &self,
+        key: String,
+        uri: String,
+        language_id: String,
+        version: u32,
+        text: String,
+    ) -> Result<()> {
+        self.inner
+            .did_open(&key, &uri, &language_id, version, &text)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Notify document closed
+    #[napi]
+    pub async fn did_close(&self, key: String, uri: String) -> Result<()> {
+        self.inner
+            .did_close(&key, &uri)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Notify document changed
+    #[napi]
+    pub async fn did_change(
+        &self,
+        key: String,
+        uri: String,
+        version: u32,
+        text: String,
+    ) -> Result<()> {
+        self.inner
+            .did_change(&key, &uri, version, &text)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Detect language ID from file extension
+    #[napi]
+    pub fn detect_language_id(extension: String) -> String {
+        use crate::protocol::lsp::LspServerManager;
+        LspServerManager::detect_language_id(&extension).to_string()
     }
 }

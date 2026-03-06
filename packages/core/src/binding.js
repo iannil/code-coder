@@ -493,9 +493,27 @@ module.exports.getToolBaseRisk = nativeBinding.getToolBaseRisk
 module.exports.checkRiskThreshold = nativeBinding.checkRiskThreshold
 module.exports.parseRiskLevel = nativeBinding.parseRiskLevel
 
+// Phase: Auto-Approve Engine
+module.exports.AutoApproveEngineHandle = nativeBinding.AutoApproveEngineHandle
+module.exports.createAutoApproveEngine = nativeBinding.createAutoApproveEngine
+module.exports.createSafeOnlyEngine = nativeBinding.createSafeOnlyEngine
+module.exports.createPermissiveEngine = nativeBinding.createPermissiveEngine
+module.exports.evaluateAutoApprove = nativeBinding.evaluateAutoApprove
+module.exports.evaluateAdaptiveAutoApprove = nativeBinding.evaluateAdaptiveAutoApprove
+module.exports.canSafeAutoApprove = nativeBinding.canSafeAutoApprove
+
 // Phase 8.1: Git Operations (native libgit2)
 module.exports.GitOpsHandle = nativeBinding.GitOpsHandle
 module.exports.openGitRepo = nativeBinding.openGitRepo
 module.exports.initGitRepo = nativeBinding.initGitRepo
 module.exports.cloneGitRepo = nativeBinding.cloneGitRepo
 module.exports.isGitRepo = nativeBinding.isGitRepo
+
+// Config Loader (JSONC parsing, config merging, schema validation)
+module.exports.ConfigLoaderHandle = nativeBinding.ConfigLoaderHandle
+module.exports.createConfigLoader = nativeBinding.createConfigLoader
+
+// Phase: Compaction (context window management)
+module.exports.CompactorHandle = nativeBinding.CompactorHandle
+module.exports.createCompactor = nativeBinding.createCompactor
+module.exports.createCompactorWithLimits = nativeBinding.createCompactorWithLimits

@@ -66,6 +66,26 @@ export * from './history.js'
 export * from './context-cache.js'
 export * from './pty.js'
 export * from './lsp.js'
+export * from './mcp.js'
+export * from './compaction.js'
+
+// Export permission module (selective to avoid conflicts)
+export {
+  AutoApproveEngine,
+  evaluateToolApproval,
+  evaluateAdaptiveToolApproval,
+  canToolBeSafeAutoApproved,
+  isPermissionNative,
+  type AutoApproveConfig,
+  type ToolInput,
+  type ApprovalDecision,
+  type ExecutionContext,
+  type AdaptiveRiskResult,
+  type PermissionRiskLevel,
+  // Note: RiskResult and AuditEntry are renamed to avoid conflicts
+  type RiskResult as PermissionRiskResult,
+  type AuditEntry as PermissionAuditEntry,
+} from './permission.js'
 
 // Try to load native bindings, fall back to JS implementation
 let nativeBindings: typeof import('./binding.js') | null = null
@@ -172,6 +192,21 @@ export const getToolBaseRisk = nativeBindings?.getToolBaseRisk
 export const checkRiskThreshold = nativeBindings?.checkRiskThreshold
 export const parseRiskLevel = nativeBindings?.parseRiskLevel
 
+// Phase: Auto-Approve Engine
+export const AutoApproveEngineHandle = nativeBindings?.AutoApproveEngineHandle
+export const createAutoApproveEngine = nativeBindings?.createAutoApproveEngine
+export const createSafeOnlyEngine = nativeBindings?.createSafeOnlyEngine
+export const createPermissiveEngine = nativeBindings?.createPermissiveEngine
+export const evaluateAutoApprove = nativeBindings?.evaluateAutoApprove
+export const evaluateAdaptiveAutoApprove = nativeBindings?.evaluateAdaptiveAutoApprove
+export const canSafeAutoApprove = nativeBindings?.canSafeAutoApprove
+
+// Phase: Compaction (context window management)
+export const CompactorHandle = nativeBindings?.CompactorHandle
+export const createCompactor = nativeBindings?.createCompactor
+export const createCompactorWithLimits = nativeBindings?.createCompactorWithLimits
+// Note: estimateTokens is exported from fallback.js and compaction.js provides estimateTokenCount
+
 // Enums
 export const AutonomousState = nativeBindings?.AutonomousState
 export const StateCategory = nativeBindings?.StateCategory
@@ -203,6 +238,10 @@ export const openGitRepo = nativeBindings?.openGitRepo
 export const initGitRepo = nativeBindings?.initGitRepo
 export const cloneGitRepo = nativeBindings?.cloneGitRepo
 export const isGitRepo = nativeBindings?.isGitRepo
+
+// Config Loader (JSONC parsing, config merging, schema validation)
+export const ConfigLoaderHandle = nativeBindings?.ConfigLoaderHandle
+export const createConfigLoader = nativeBindings?.createConfigLoader
 
 // Phase 11: Markdown Parser (native pulldown-cmark)
 export const parseMarkdown = nativeBindings?.parseMarkdown
@@ -245,4 +284,16 @@ export type {
   NapiPtyInfo,
   PtySessionHandle as PtySessionHandleType,
   PtyManagerHandle as PtyManagerHandleType,
+  // Config Loader types
+  NapiProviderConfig,
+  NapiAgentConfig,
+  NapiCommandConfig,
+  NapiSecretsConfig,
+  NapiConfig,
+  NapiValidationIssue,
+  ConfigLoaderHandle as ConfigLoaderHandleType,
+  // Compaction types
+  NapiCompactionStrategy,
+  NapiCompactionResult,
+  CompactorHandle as CompactorHandleType,
 } from './binding.d.ts'

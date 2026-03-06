@@ -187,6 +187,61 @@ export interface NapiSessionData {
 }
 
 // ============================================================================
+// Compaction Module Types
+// ============================================================================
+
+/** Compaction strategy enum */
+export declare const enum NapiCompactionStrategy {
+  /** Remove oldest messages first */
+  RemoveOldest = 'RemoveOldest',
+  /** Summarize older messages (requires LLM - falls back to RemoveOldest in Rust) */
+  Summarize = 'Summarize',
+  /** Hybrid: summarize then remove */
+  Hybrid = 'Hybrid'
+}
+
+/** Result of compaction operation */
+export interface NapiCompactionResult {
+  /** Number of messages before compaction */
+  messagesBefore: number
+  /** Number of messages after compaction */
+  messagesAfter: number
+  /** Tokens before compaction */
+  tokensBefore: number
+  /** Tokens after compaction */
+  tokensAfter: number
+  /** Summary generated (if any) */
+  summary?: string
+}
+
+/** Combined result containing both metrics and compacted messages */
+export interface NapiCompactResult {
+  /** Compaction metrics (before/after counts) */
+  result: NapiCompactionResult
+  /** The compacted messages */
+  messages: NapiMessage[]
+}
+
+/** Handle to a Compactor for managing context window */
+export declare class CompactorHandle {
+  /** Check if compaction is needed for the given messages */
+  needsCompaction(messages: NapiMessage[]): boolean
+  /** Compact messages to fit within token limit */
+  compact(messages: NapiMessage[]): NapiCompactResult
+  /** Set the compaction strategy */
+  setStrategy(strategy: NapiCompactionStrategy): void
+}
+
+/** Create a new compactor with default settings (128k max, 100k target) */
+export declare function createCompactor(): CompactorHandle
+
+/** Create a compactor with custom token limits */
+export declare function createCompactorWithLimits(maxTokens: number, targetTokens: number): CompactorHandle
+
+/** Estimate token count for text (fast, approximate) */
+export declare function estimateTokens(text: string): number
+
+// ============================================================================
 // Audit Module Types
 // ============================================================================
 
@@ -380,10 +435,75 @@ export interface NapiScoredFile {
 }
 
 // ============================================================================
-// PTY Module Types
+// LSP Module Types
 // ============================================================================
 
+/** LSP location (file + range) */
+export interface LspLocation {
+  /** File URI */
+  uri: string
+  /** Start line (0-indexed) */
+  startLine: number
+  /** Start character (0-indexed) */
+  startCharacter: number
+  /** End line (0-indexed) */
+  endLine: number
+  /** End character (0-indexed) */
+  endCharacter: number
+}
+
+/** LSP document symbol */
+export interface LspSymbol {
+  /** Symbol name */
+  name: string
+  /** Symbol kind (Function, Class, Method, etc.) */
+  kind: string
+  /** Start line */
+  startLine: number
+  /** Start character */
+  startCharacter: number
+  /** End line */
+  endLine: number
+  /** End character */
+  endCharacter: number
+}
+
+/** LSP completion item */
+export interface LspCompletionItem {
+  /** Display label */
+  label: string
+  /** Completion kind (Function, Variable, etc.) */
+  kind?: string
+  /** Additional detail */
+  detail?: string
+  /** Documentation */
+  documentation?: string
+  /** Text to insert */
+  insertText?: string
+}
+
+/** LSP text edit */
+export interface LspTextEdit {
+  /** Start line */
+  startLine: number
+  /** Start character */
+  startCharacter: number
+  /** End line */
+  endLine: number
+  /** End character */
+  endCharacter: number
+  /** New text to insert */
+  newText: string
+}
+
+/** LSP server status */
+export interface LspServerStatus {
+  status: string
+  error?: string
+}
+
 export declare class LspServerManagerHandle {
+  // Basic methods
   startForFile(filePath: string): Promise<string>
   start(serverId: string, root: string): Promise<string>
   request(key: string, method: string, params: any): Promise<any>
@@ -391,14 +511,21 @@ export declare class LspServerManagerHandle {
   status(key: string): Promise<LspServerStatus>
   allStatuses(): Promise<Record<string, LspServerStatus>>
   stopAll(): Promise<void>
+  // Convenience methods
+  hover(key: string, uri: string, line: number, character: number): Promise<string | null>
+  gotoDefinition(key: string, uri: string, line: number, character: number): Promise<LspLocation[]>
+  gotoTypeDefinition(key: string, uri: string, line: number, character: number): Promise<LspLocation[]>
+  findReferences(key: string, uri: string, line: number, character: number, includeDeclaration?: boolean): Promise<LspLocation[]>
+  documentSymbols(key: string, uri: string): Promise<LspSymbol[]>
+  completion(key: string, uri: string, line: number, character: number): Promise<LspCompletionItem[]>
+  formatDocument(key: string, uri: string, tabSize?: number, insertSpaces?: boolean): Promise<LspTextEdit[]>
+  didOpen(key: string, uri: string, languageId: string, version: number, text: string): Promise<void>
+  didClose(key: string, uri: string): Promise<void>
+  didChange(key: string, uri: string, version: number, text: string): Promise<void>
 }
 
 export declare function createLspServerManager(): LspServerManagerHandle
-
-export interface LspServerStatus {
-  status: string
-  error?: string
-}
+export declare function detectLanguageId(extension: string): string
 
 // ============================================================================
 // Storage Module Types
@@ -452,11 +579,89 @@ export declare function isDangerousCommand(command: string): boolean
 // Risk Assessment Types
 // ============================================================================
 
-export declare function assessBashRisk(command: string): any
-export declare function assessFileRisk(path: string): any
-export declare function getToolBaseRisk(tool: string): any
-export declare function checkRiskThreshold(risk: any, threshold: any): boolean
-export declare function parseRiskLevel(level: string): any
+export interface RiskResult {
+  risk: string
+  reason: string
+  autoApprovable: boolean
+}
+
+export declare function assessBashRisk(command: string): RiskResult
+export declare function assessFileRisk(path: string): RiskResult
+export declare function getToolBaseRisk(tool: string): string
+export declare function checkRiskThreshold(risk: string, threshold: string): boolean
+export declare function parseRiskLevel(level: string): string
+
+// ============================================================================
+// Auto-Approve Engine Types
+// ============================================================================
+
+export interface AutoApproveConfig {
+  enabled: boolean
+  allowedTools: string[]
+  riskThreshold: string
+  timeoutMs: number
+  unattended: boolean
+}
+
+export interface ToolInput {
+  inputType: string
+  command?: string
+  path?: string
+  json?: string
+}
+
+export interface ApprovalDecision {
+  approved: boolean
+  risk: string
+  reason: string
+  timeoutApproved: boolean
+  autoApprovable: boolean
+}
+
+export interface ExecutionContext {
+  sessionId: string
+  iteration: number
+  errors: number
+  successes: number
+  projectPath?: string
+  isProduction: boolean
+}
+
+export interface AdaptiveRiskResult {
+  baseRisk: string
+  adjustedRisk: string
+  adjustment: number
+  adjustmentReason: string
+}
+
+export interface AuditEntry {
+  timestamp: string
+  permissionId?: string
+  tool: string
+  pattern?: string[]
+  risk: string
+  decision: string
+  reason: string
+}
+
+export declare class AutoApproveEngineHandle {
+  config(): AutoApproveConfig
+  setConfig(config: AutoApproveConfig): void
+  evaluate(tool: string, input?: ToolInput): ApprovalDecision
+  evaluateAdaptive(tool: string, input: ToolInput | undefined, ctx: ExecutionContext): ApprovalDecision
+  canAutoApprove(tool: string): boolean
+  assessRisk(tool: string, input?: ToolInput): RiskResult
+  evaluateAdaptiveRisk(tool: string, input: ToolInput | undefined, ctx: ExecutionContext): AdaptiveRiskResult
+  auditLog(): AuditEntry[]
+  clearAuditLog(): void
+}
+
+export declare function createAutoApproveEngine(config: AutoApproveConfig): AutoApproveEngineHandle
+export declare function createSafeOnlyEngine(unattended: boolean): AutoApproveEngineHandle
+export declare function createPermissiveEngine(unattended: boolean): AutoApproveEngineHandle
+export declare function evaluateAutoApprove(config: AutoApproveConfig, tool: string, input?: ToolInput): ApprovalDecision
+export declare function evaluateAdaptiveAutoApprove(config: AutoApproveConfig, tool: string, input: ToolInput | undefined, ctx: ExecutionContext): ApprovalDecision
+export declare function canSafeAutoApprove(tool: string): boolean
 
 // ============================================================================
 // Autonomous State Types
@@ -648,10 +853,54 @@ export declare class McpAuthStoreHandle {
 }
 
 export declare class McpClientManagerHandle {
-  connect(url: string, config?: any): Promise<void>
-  disconnect(url: string): Promise<void>
-  call(url: string, method: string, params: any): Promise<any>
-  listConnections(): string[]
+  /** Add a client */
+  add(name: string, config: {
+    name: string
+    transport: string
+    command?: string[]
+    url?: string
+    environment?: Record<string, string>
+    timeout_ms?: number
+    headers?: Record<string, string>
+    cwd?: string
+    oauth?: {
+      client_id?: string
+      client_secret?: string
+      scope?: string
+    }
+    oauth_disabled?: boolean
+  }): Promise<{
+    status: string
+    error?: string
+  }>
+  /** Get connection status for all clients */
+  status(): Promise<Record<string, { status: string; error?: string }>>
+  /** List all tools from all connected clients */
+  listTools(): Promise<Record<string, { name: string; description: string; input_schema: unknown }>>
+  /** Call a tool on a specific client */
+  callTool(clientName: string, toolName: string, args: unknown): Promise<{ content: unknown[]; is_error: boolean }>
+  /** Remove a client */
+  remove(name: string): Promise<void>
+  /** Close all connections */
+  closeAll(): Promise<void>
+  /** Load OAuth credentials from storage */
+  loadOauth(): Promise<void>
+  /** Start OAuth authentication flow */
+  startOauth(serverName: string, serverUrl: string, redirectUri: string, config?: {
+    client_id?: string
+    client_secret?: string
+    scope?: string
+  }): Promise<string>
+  /** Complete OAuth authentication */
+  finishOauth(serverName: string, authorizationCode: string, state: string): Promise<void>
+  /** Remove OAuth credentials */
+  removeOauth(serverName: string): Promise<void>
+  /** Get OAuth authentication status */
+  getOauthStatus(serverName: string): Promise<string>
+  /** Check if we have OAuth credentials */
+  hasOauthCredentials(serverName: string): Promise<boolean>
+  /** Cancel pending OAuth flow */
+  cancelOauth(serverName: string): Promise<void>
 }
 
 export declare function createMcpAuthStore(): McpAuthStoreHandle
@@ -1023,3 +1272,143 @@ export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
 
 /** Spawn a new PTY session with a specific command */
 export declare function spawnPtyCommand(command: string, args: string[], config: NapiPtyConfig): PtySessionHandle
+
+// ============================================================================
+// Config Loader Types
+// ============================================================================
+
+/** Provider configuration from NAPI */
+export interface NapiProviderConfig {
+  apiKey?: string
+  baseUrl?: string
+  organization?: string
+  whitelist: string[]
+  blacklist: string[]
+}
+
+/** Agent configuration from NAPI */
+export interface NapiAgentConfig {
+  model?: string
+  temperature?: number
+  topP?: number
+  prompt?: string
+  description?: string
+  disable?: boolean
+  mode?: string
+  hidden?: boolean
+  color?: string
+  steps?: number
+}
+
+/** Command configuration from NAPI */
+export interface NapiCommandConfig {
+  template: string
+  description?: string
+  agent?: string
+  model?: string
+  subtask?: boolean
+}
+
+/** Secrets configuration from NAPI */
+export interface NapiSecretsConfig {
+  llm: Record<string, string | null>
+  channels: Record<string, string | null>
+  external: Record<string, string | null>
+}
+
+/** Main configuration object from NAPI */
+export interface NapiConfig {
+  theme?: string
+  logLevel?: string
+  model?: string
+  smallModel?: string
+  defaultAgent?: string
+  username?: string
+  disabledProviders: string[]
+  enabledProviders: string[]
+  instructions: string[]
+}
+
+/** Validation issue from schema validation */
+export interface NapiValidationIssue {
+  path: string
+  message: string
+}
+
+/** Handle to a configuration loader for high-performance operations */
+export declare class ConfigLoaderHandle {
+  /** Get the config directory path */
+  configDir(): string
+  /** Get the home directory path */
+  homeDir(): string
+  /** Add a search path */
+  addPath(path: string): void
+  /** Load configuration from a single file (returns JSON string) */
+  loadFile(path: string): string
+  /** Parse JSONC content (returns JSON string) */
+  parseJsonc(content: string): string
+  /** Load merged configuration from all paths (returns JSON string) */
+  loadMerged(): string
+  /** Get simplified config object (call loadMerged first) */
+  getConfig(): NapiConfig
+  /** Get provider configurations (call loadMerged first) */
+  getProviders(): Record<string, NapiProviderConfig>
+  /** Get agent configurations (call loadMerged first) */
+  getAgents(): Record<string, NapiAgentConfig>
+  /** Get command configurations (call loadMerged first) */
+  getCommands(): Record<string, NapiCommandConfig>
+  /** Get secrets configuration (call loadMerged first) */
+  getSecrets(): NapiSecretsConfig | null
+  /** Scan directory for .codecoder directories */
+  scanDirectory(start: string, stop?: string): string[]
+  /** Find config files in a directory */
+  findConfigFiles(dir: string): string[]
+  /** Save configuration to file */
+  save(configJson: string): void
+  /** Load secrets from secrets.json */
+  loadSecrets(): Record<string, string>
+  /** Merge two configs (base + source), returns JSON string */
+  mergeConfigs(baseJson: string, sourceJson: string): string
+  /** Validate configuration against schema */
+  validateSchema(configJson: string, schemaJson: string): NapiValidationIssue[]
+  /** Check if configuration is valid against schema */
+  isValidSchema(configJson: string, schemaJson: string): boolean
+}
+
+/** Create a new config loader */
+export declare function createConfigLoader(paths?: string[]): ConfigLoaderHandle
+
+// ============================================================================
+// Compaction Types
+// ============================================================================
+
+/** Compaction strategy */
+export type NapiCompactionStrategy = 'none' | 'prune' | 'summary' | 'hybrid'
+
+/** Compaction result */
+export interface NapiCompactionResult {
+  compacted: boolean
+  strategy: NapiCompactionStrategy
+  originalTokens: number
+  newTokens: number
+  savedTokens: number
+  summary?: string
+}
+
+/** Handle to a compactor for context window management */
+export declare class CompactorHandle {
+  /** Check if compaction is needed */
+  needsCompaction(currentTokens: number): boolean
+  /** Perform compaction on messages (returns JSON string) */
+  compact(messagesJson: string): string
+  /** Get current strategy */
+  getStrategy(): NapiCompactionStrategy
+  /** Set compaction strategy */
+  setStrategy(strategy: NapiCompactionStrategy): void
+}
+
+/** Create a new compactor with default settings */
+export declare function createCompactor(): CompactorHandle
+
+/** Create a new compactor with custom limits */
+export declare function createCompactorWithLimits(contextLimit: number, targetRatio: number): CompactorHandle

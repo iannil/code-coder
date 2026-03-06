@@ -2,6 +2,7 @@
 //!
 //! Provides a client for connecting to MCP (Model Context Protocol) servers.
 //! Supports multiple transports: Stdio, HTTP, and SSE.
+//! Includes OAuth 2.0 PKCE authentication support for HTTP/SSE transports.
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
@@ -17,6 +18,7 @@ use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{debug, error, info, warn};
 
 use super::mcp::{McpResource, McpTool, McpToolResult};
+use super::mcp_oauth::{McpOAuthManager, OAuthConfig, AuthStatus};
 
 /// MCP Transport type
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +66,10 @@ pub struct McpClientConfig {
     pub headers: HashMap<String, String>,
     /// Working directory for stdio transport
     pub cwd: Option<String>,
+    /// OAuth configuration for remote transports
+    pub oauth: Option<OAuthConfig>,
+    /// Whether OAuth is explicitly disabled (default: false)
+    pub oauth_disabled: bool,
 }
 
 impl Default for McpClientConfig {
@@ -77,6 +83,8 @@ impl Default for McpClientConfig {
             timeout_ms: 30000,
             headers: HashMap::new(),
             cwd: None,
+            oauth: None,
+            oauth_disabled: false,
         }
     }
 }
@@ -283,10 +291,14 @@ struct HttpTransport {
     client: reqwest::Client,
     url: String,
     request_id: AtomicU64,
+    /// OAuth manager for token management (optional)
+    oauth_manager: Option<Arc<McpOAuthManager>>,
+    /// Server name for OAuth lookups
+    server_name: Option<String>,
 }
 
 impl HttpTransport {
-    async fn new(config: &McpClientConfig) -> Result<Self> {
+    async fn new(config: &McpClientConfig, oauth_manager: Option<Arc<McpOAuthManager>>) -> Result<Self> {
         let url = config
             .url
             .as_ref()
@@ -309,7 +321,23 @@ impl HttpTransport {
             client,
             url: url.clone(),
             request_id: AtomicU64::new(1),
+            oauth_manager,
+            server_name: Some(config.name.clone()),
         })
+    }
+
+    /// Get authorization header value, fetching fresh token if needed
+    async fn get_auth_header(&self) -> Option<String> {
+        let oauth_manager = self.oauth_manager.as_ref()?;
+        let server_name = self.server_name.as_ref()?;
+
+        match oauth_manager.get_access_token(server_name).await {
+            Ok(token) => Some(format!("Bearer {}", token)),
+            Err(e) => {
+                debug!("Failed to get access token: {}", e);
+                None
+            }
+        }
     }
 }
 
@@ -327,10 +355,14 @@ impl McpTransport for HttpTransport {
             params,
         };
 
-        let response = self
-            .client
-            .post(&self.url)
-            .json(&request)
+        let mut req_builder = self.client.post(&self.url).json(&request);
+
+        // Add OAuth Authorization header if available
+        if let Some(auth_header) = self.get_auth_header().await {
+            req_builder = req_builder.header("Authorization", auth_header);
+        }
+
+        let response = req_builder
             .send()
             .await
             .context("HTTP request failed")?;
@@ -374,12 +406,20 @@ pub struct McpClientInstance {
 impl McpClientInstance {
     /// Connect to an MCP server
     pub async fn connect(config: McpClientConfig) -> Result<Self> {
+        Self::connect_with_oauth(config, None).await
+    }
+
+    /// Connect to an MCP server with OAuth support
+    pub async fn connect_with_oauth(
+        config: McpClientConfig,
+        oauth_manager: Option<Arc<McpOAuthManager>>,
+    ) -> Result<Self> {
         info!("Connecting to MCP server: {}", config.name);
 
         let transport: Box<dyn McpTransport> = match config.transport {
             McpTransportType::Stdio => Box::new(StdioTransport::new(&config).await?),
             McpTransportType::Http | McpTransportType::Sse => {
-                Box::new(HttpTransport::new(&config).await?)
+                Box::new(HttpTransport::new(&config, oauth_manager).await?)
             }
         };
 
@@ -525,19 +565,45 @@ impl Drop for McpClientInstance {
 /// MCP Client Manager for managing multiple MCP connections
 pub struct McpClientManager {
     clients: RwLock<HashMap<String, Arc<McpClientInstance>>>,
+    /// OAuth manager for authentication
+    oauth_manager: Arc<McpOAuthManager>,
 }
 
 impl McpClientManager {
     /// Create a new MCP client manager
     pub fn new() -> Self {
+        // Use default storage path
+        let storage_path = dirs::data_local_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("codecoder")
+            .join("mcp");
+        Self::with_storage(storage_path)
+    }
+
+    /// Create a new MCP client manager with a custom storage path
+    pub fn with_storage(storage_path: std::path::PathBuf) -> Self {
         Self {
             clients: RwLock::new(HashMap::new()),
+            oauth_manager: Arc::new(McpOAuthManager::new(storage_path)),
         }
+    }
+
+    /// Load OAuth credentials from storage
+    pub async fn load_oauth(&self) -> Result<()> {
+        self.oauth_manager.load().await
     }
 
     /// Add a client
     pub async fn add(&self, name: &str, config: McpClientConfig) -> Result<McpConnectionStatus> {
-        match McpClientInstance::connect(config).await {
+        // Use OAuth manager for HTTP/SSE transports
+        let oauth_manager = match config.transport {
+            McpTransportType::Http | McpTransportType::Sse if !config.oauth_disabled => {
+                Some(self.oauth_manager.clone())
+            }
+            _ => None,
+        };
+
+        match McpClientInstance::connect_with_oauth(config, oauth_manager).await {
             Ok(client) => {
                 let status = client.status().await;
                 let mut clients = self.clients.write().await;
@@ -545,10 +611,15 @@ impl McpClientManager {
                 Ok(status)
             }
             Err(e) => {
-                warn!("Failed to connect MCP client {}: {}", name, e);
-                Ok(McpConnectionStatus::Failed {
-                    error: e.to_string(),
-                })
+                let error_msg = e.to_string();
+                warn!("Failed to connect MCP client {}: {}", name, error_msg);
+
+                // Check if this is an auth error
+                if error_msg.contains("Unauthorized") || error_msg.contains("401") {
+                    return Ok(McpConnectionStatus::NeedsAuth);
+                }
+
+                Ok(McpConnectionStatus::Failed { error: error_msg })
             }
         }
     }
@@ -604,6 +675,56 @@ impl McpClientManager {
             }
         }
         Ok(())
+    }
+
+    // ========================================================================
+    // OAuth methods
+    // ========================================================================
+
+    /// Start OAuth authentication flow for a server
+    /// Returns the authorization URL that should be opened in a browser
+    pub async fn start_oauth(
+        &self,
+        server_name: &str,
+        server_url: &str,
+        config: Option<&OAuthConfig>,
+        redirect_uri: &str,
+    ) -> Result<String> {
+        self.oauth_manager
+            .start_auth(server_name, server_url, config, redirect_uri)
+            .await
+    }
+
+    /// Complete OAuth authentication with the authorization code
+    pub async fn finish_oauth(
+        &self,
+        server_name: &str,
+        authorization_code: &str,
+        state: &str,
+    ) -> Result<()> {
+        self.oauth_manager
+            .finish_auth(server_name, authorization_code, state)
+            .await
+    }
+
+    /// Remove OAuth credentials for a server
+    pub async fn remove_oauth(&self, server_name: &str) -> Result<()> {
+        self.oauth_manager.remove_credentials(server_name).await
+    }
+
+    /// Get OAuth authentication status for a server
+    pub async fn get_oauth_status(&self, server_name: &str) -> AuthStatus {
+        self.oauth_manager.get_auth_status(server_name).await
+    }
+
+    /// Check if we have OAuth credentials for a server
+    pub async fn has_oauth_credentials(&self, server_name: &str) -> bool {
+        self.oauth_manager.has_credentials(server_name).await
+    }
+
+    /// Cancel any pending OAuth flow for a server
+    pub async fn cancel_oauth(&self, server_name: &str) {
+        self.oauth_manager.cancel_pending(server_name).await
     }
 }
 

@@ -1537,8 +1537,11 @@ export namespace Config {
   async function loadJsonFile<T>(filepath: string): Promise<T | null> {
     try {
       const text = await Bun.file(filepath).text()
-      // Use native JSONC parsing (4x faster than JS)
-      return (await parseJsoncNative(text)) as T
+      // Use TypeScript JSONC parsing (native parser adds config defaults)
+      const errors: JsoncParseError[] = []
+      const data = parseJsonc(text, errors, { allowTrailingComma: true })
+      if (errors.length > 0) return null
+      return data as T
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null
@@ -1643,9 +1646,18 @@ export namespace Config {
       }
     }
 
-    // Use native JSONC parsing (4x faster than JS)
-    const data = await parseJsoncNative(text)
-    log.debug("parsed config with native JSONC parser", { path: configFilepath })
+    // Parse JSONC using the TypeScript parser
+    // Note: The native parseJsoncNative applies config-specific defaults which
+    // conflict with the TypeScript schema. Use the pure JSONC parser instead.
+    const errors: JsoncParseError[] = []
+    const data = parseJsonc(text, errors, { allowTrailingComma: true })
+    if (errors.length > 0) {
+      throw new JsonError({
+        path: configFilepath,
+        message: errors.map((e) => `${printParseErrorCode(e.error)} at ${e.offset}`).join(", "),
+      })
+    }
+    log.debug("parsed config with JSONC parser", { path: configFilepath })
 
     const parsed = Info.safeParse(data)
     if (parsed.success) {

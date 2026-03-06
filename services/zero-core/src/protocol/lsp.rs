@@ -200,50 +200,15 @@ pub mod servers {
         pub initialization_options: Option<Value>,
     }
 
+    // ========================================================================
+    // JavaScript/TypeScript family
+    // ========================================================================
+
     /// TypeScript language server (typescript-language-server)
     pub fn typescript(_root: &Path) -> Option<SpawnConfig> {
         if let Ok(tls) = which::which("typescript-language-server") {
             return Some(SpawnConfig {
                 command: tls.to_string_lossy().to_string(),
-                args: vec!["--stdio".to_string()],
-                env: HashMap::new(),
-                initialization_options: None,
-            });
-        }
-        None
-    }
-
-    /// Rust Analyzer
-    pub fn rust_analyzer(_root: &Path) -> Option<SpawnConfig> {
-        if let Ok(ra) = which::which("rust-analyzer") {
-            return Some(SpawnConfig {
-                command: ra.to_string_lossy().to_string(),
-                args: vec![],
-                env: HashMap::new(),
-                initialization_options: None,
-            });
-        }
-        None
-    }
-
-    /// Gopls (Go language server)
-    pub fn gopls(_root: &Path) -> Option<SpawnConfig> {
-        if let Ok(gopls) = which::which("gopls") {
-            return Some(SpawnConfig {
-                command: gopls.to_string_lossy().to_string(),
-                args: vec![],
-                env: HashMap::new(),
-                initialization_options: None,
-            });
-        }
-        None
-    }
-
-    /// Pyright (Python language server)
-    pub fn pyright(_root: &Path) -> Option<SpawnConfig> {
-        if let Ok(pyright) = which::which("pyright-langserver") {
-            return Some(SpawnConfig {
-                command: pyright.to_string_lossy().to_string(),
                 args: vec!["--stdio".to_string()],
                 env: HashMap::new(),
                 initialization_options: None,
@@ -271,6 +236,92 @@ pub mod servers {
         None
     }
 
+    /// Vue language server
+    pub fn vue(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(vue) = which::which("vue-language-server") {
+            return Some(SpawnConfig {
+                command: vue.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Svelte language server
+    pub fn svelte(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(svelte) = which::which("svelteserver") {
+            return Some(SpawnConfig {
+                command: svelte.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Astro language server
+    pub fn astro(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(astro) = which::which("astro-ls") {
+            return Some(SpawnConfig {
+                command: astro.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Linters and formatters
+    // ========================================================================
+
+    /// Biome (JS/TS linter and formatter)
+    pub fn biome(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(biome) = which::which("biome") {
+            return Some(SpawnConfig {
+                command: biome.to_string_lossy().to_string(),
+                args: vec!["lsp-proxy".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Oxlint (fast JS/TS linter)
+    pub fn oxlint(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(oxc) = which::which("oxc_language_server") {
+            return Some(SpawnConfig {
+                command: oxc.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Systems programming
+    // ========================================================================
+
+    /// Rust Analyzer
+    pub fn rust_analyzer(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(ra) = which::which("rust-analyzer") {
+            return Some(SpawnConfig {
+                command: ra.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
     /// Clangd (C/C++ language server)
     pub fn clangd(_root: &Path) -> Option<SpawnConfig> {
         if let Ok(clangd) = which::which("clangd") {
@@ -284,20 +335,454 @@ pub mod servers {
         None
     }
 
+    /// Gopls (Go language server)
+    pub fn gopls(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(gopls) = which::which("gopls") {
+            return Some(SpawnConfig {
+                command: gopls.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Zig Language Server (zls)
+    pub fn zls(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(zls) = which::which("zls") {
+            return Some(SpawnConfig {
+                command: zls.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Python
+    // ========================================================================
+
+    /// Pyright (Python language server)
+    pub fn pyright(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(pyright) = which::which("pyright-langserver") {
+            return Some(SpawnConfig {
+                command: pyright.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// ty (fast Python type checker)
+    pub fn ty(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(ty) = which::which("ty") {
+            return Some(SpawnConfig {
+                command: ty.to_string_lossy().to_string(),
+                args: vec!["server".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // JVM languages
+    // ========================================================================
+
+    /// Java (Eclipse JDT Language Server)
+    pub fn jdtls(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(jdtls) = which::which("jdtls") {
+            return Some(SpawnConfig {
+                command: jdtls.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Kotlin Language Server
+    pub fn kotlin(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(kotlin) = which::which("kotlin-language-server") {
+            return Some(SpawnConfig {
+                command: kotlin.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // .NET languages
+    // ========================================================================
+
+    /// C# (OmniSharp)
+    pub fn csharp(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(omnisharp) = which::which("OmniSharp") {
+            return Some(SpawnConfig {
+                command: omnisharp.to_string_lossy().to_string(),
+                args: vec!["-lsp".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// F# (fsautocomplete)
+    pub fn fsharp(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(fsac) = which::which("fsautocomplete") {
+            return Some(SpawnConfig {
+                command: fsac.to_string_lossy().to_string(),
+                args: vec!["--adaptive-lsp-server-enabled".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Scripting languages
+    // ========================================================================
+
+    /// Ruby (Rubocop LSP)
+    pub fn rubocop(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(rubocop) = which::which("rubocop") {
+            return Some(SpawnConfig {
+                command: rubocop.to_string_lossy().to_string(),
+                args: vec!["--lsp".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Elixir (ElixirLS)
+    pub fn elixir(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(elixir) = which::which("elixir-ls") {
+            return Some(SpawnConfig {
+                command: elixir.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Lua Language Server
+    pub fn lua(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(lua) = which::which("lua-language-server") {
+            return Some(SpawnConfig {
+                command: lua.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// PHP (Intelephense)
+    pub fn php(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(php) = which::which("intelephense") {
+            return Some(SpawnConfig {
+                command: php.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Bash Language Server
+    pub fn bash(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(bash) = which::which("bash-language-server") {
+            return Some(SpawnConfig {
+                command: bash.to_string_lossy().to_string(),
+                args: vec!["start".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Functional languages
+    // ========================================================================
+
+    /// Swift (SourceKit-LSP)
+    pub fn swift(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(swift) = which::which("sourcekit-lsp") {
+            return Some(SpawnConfig {
+                command: swift.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Dart Language Server
+    pub fn dart(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(dart) = which::which("dart") {
+            return Some(SpawnConfig {
+                command: dart.to_string_lossy().to_string(),
+                args: vec!["language-server".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// OCaml Language Server
+    pub fn ocaml(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(ocaml) = which::which("ocamllsp") {
+            return Some(SpawnConfig {
+                command: ocaml.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Haskell Language Server
+    pub fn haskell(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(hls) = which::which("haskell-language-server-wrapper") {
+            return Some(SpawnConfig {
+                command: hls.to_string_lossy().to_string(),
+                args: vec!["--lsp".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Clojure (clojure-lsp)
+    pub fn clojure(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(clj) = which::which("clojure-lsp") {
+            return Some(SpawnConfig {
+                command: clj.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Gleam Language Server
+    pub fn gleam(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(gleam) = which::which("gleam") {
+            return Some(SpawnConfig {
+                command: gleam.to_string_lossy().to_string(),
+                args: vec!["lsp".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Infrastructure and config
+    // ========================================================================
+
+    /// YAML Language Server
+    pub fn yaml(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(yaml) = which::which("yaml-language-server") {
+            return Some(SpawnConfig {
+                command: yaml.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Terraform Language Server
+    pub fn terraform(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(tf) = which::which("terraform-ls") {
+            return Some(SpawnConfig {
+                command: tf.to_string_lossy().to_string(),
+                args: vec!["serve".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Dockerfile Language Server
+    pub fn dockerfile(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(docker) = which::which("docker-langserver") {
+            return Some(SpawnConfig {
+                command: docker.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Nix (nixd)
+    pub fn nix(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(nixd) = which::which("nixd") {
+            return Some(SpawnConfig {
+                command: nixd.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Database and schema
+    // ========================================================================
+
+    /// Prisma Language Server
+    pub fn prisma(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(prisma) = which::which("prisma-language-server") {
+            return Some(SpawnConfig {
+                command: prisma.to_string_lossy().to_string(),
+                args: vec!["--stdio".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Document and typesetting
+    // ========================================================================
+
+    /// TexLab (LaTeX)
+    pub fn texlab(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(texlab) = which::which("texlab") {
+            return Some(SpawnConfig {
+                command: texlab.to_string_lossy().to_string(),
+                args: vec![],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    /// Tinymist (Typst)
+    pub fn typst(_root: &Path) -> Option<SpawnConfig> {
+        if let Ok(tinymist) = which::which("tinymist") {
+            return Some(SpawnConfig {
+                command: tinymist.to_string_lossy().to_string(),
+                args: vec!["lsp".to_string()],
+                env: HashMap::new(),
+                initialization_options: None,
+            });
+        }
+        None
+    }
+
+    // ========================================================================
+    // Extension to server mapping
+    // ========================================================================
+
     /// Get spawn config for a language by extension
     pub fn for_extension(extension: &str, root: &Path) -> Option<(String, SpawnConfig)> {
         match extension {
-            "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" => {
+            // JavaScript/TypeScript family
+            "ts" | "tsx" | "mts" | "cts" => {
                 // Check for Deno first
                 if let Some(config) = deno(root) {
                     return Some(("deno".to_string(), config));
                 }
                 typescript(root).map(|c| ("typescript".to_string(), c))
             }
+            "js" | "jsx" | "mjs" | "cjs" => {
+                if let Some(config) = deno(root) {
+                    return Some(("deno".to_string(), config));
+                }
+                typescript(root).map(|c| ("typescript".to_string(), c))
+            }
+            "vue" => vue(root).map(|c| ("vue".to_string(), c)),
+            "svelte" => svelte(root).map(|c| ("svelte".to_string(), c)),
+            "astro" => astro(root).map(|c| ("astro".to_string(), c)),
+
+            // Systems programming
             "rs" => rust_analyzer(root).map(|c| ("rust-analyzer".to_string(), c)),
+            "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" | "hxx" => {
+                clangd(root).map(|c| ("clangd".to_string(), c))
+            }
             "go" => gopls(root).map(|c| ("gopls".to_string(), c)),
-            "py" | "pyi" => pyright(root).map(|c| ("pyright".to_string(), c)),
-            "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" => clangd(root).map(|c| ("clangd".to_string(), c)),
+            "zig" => zls(root).map(|c| ("zls".to_string(), c)),
+
+            // Python
+            "py" | "pyi" => {
+                // Try ty first (faster), then pyright
+                if let Some(config) = ty(root) {
+                    return Some(("ty".to_string(), config));
+                }
+                pyright(root).map(|c| ("pyright".to_string(), c))
+            }
+
+            // JVM languages
+            "java" => jdtls(root).map(|c| ("jdtls".to_string(), c)),
+            "kt" | "kts" => kotlin(root).map(|c| ("kotlin".to_string(), c)),
+
+            // .NET languages
+            "cs" => csharp(root).map(|c| ("csharp".to_string(), c)),
+            "fs" | "fsx" | "fsi" => fsharp(root).map(|c| ("fsharp".to_string(), c)),
+
+            // Scripting languages
+            "rb" => rubocop(root).map(|c| ("rubocop".to_string(), c)),
+            "ex" | "exs" => elixir(root).map(|c| ("elixir".to_string(), c)),
+            "lua" => lua(root).map(|c| ("lua".to_string(), c)),
+            "php" => php(root).map(|c| ("php".to_string(), c)),
+            "sh" | "bash" | "zsh" => bash(root).map(|c| ("bash".to_string(), c)),
+
+            // Functional languages
+            "swift" => swift(root).map(|c| ("swift".to_string(), c)),
+            "dart" => dart(root).map(|c| ("dart".to_string(), c)),
+            "ml" | "mli" => ocaml(root).map(|c| ("ocaml".to_string(), c)),
+            "hs" | "lhs" => haskell(root).map(|c| ("haskell".to_string(), c)),
+            "clj" | "cljs" | "cljc" | "edn" => clojure(root).map(|c| ("clojure".to_string(), c)),
+            "gleam" => gleam(root).map(|c| ("gleam".to_string(), c)),
+
+            // Infrastructure and config
+            "yaml" | "yml" => yaml(root).map(|c| ("yaml".to_string(), c)),
+            "tf" | "tfvars" => terraform(root).map(|c| ("terraform".to_string(), c)),
+            "dockerfile" => dockerfile(root).map(|c| ("dockerfile".to_string(), c)),
+            "nix" => nix(root).map(|c| ("nix".to_string(), c)),
+
+            // Database and schema
+            "prisma" => prisma(root).map(|c| ("prisma".to_string(), c)),
+
+            // Document and typesetting
+            "tex" | "bib" => texlab(root).map(|c| ("texlab".to_string(), c)),
+            "typ" => typst(root).map(|c| ("typst".to_string(), c)),
+
             _ => None,
         }
     }
@@ -351,12 +836,52 @@ impl LspServerManager {
     /// Start a specific language server
     pub async fn start(&self, server_id: &str, root: &Path) -> Result<String> {
         let config = match server_id {
+            // JavaScript/TypeScript family
             "typescript" => servers::typescript(root),
-            "rust-analyzer" => servers::rust_analyzer(root),
-            "gopls" => servers::gopls(root),
-            "pyright" => servers::pyright(root),
             "deno" => servers::deno(root),
+            "vue" => servers::vue(root),
+            "svelte" => servers::svelte(root),
+            "astro" => servers::astro(root),
+            // Linters
+            "biome" => servers::biome(root),
+            "oxlint" => servers::oxlint(root),
+            // Systems programming
+            "rust-analyzer" => servers::rust_analyzer(root),
             "clangd" => servers::clangd(root),
+            "gopls" => servers::gopls(root),
+            "zls" => servers::zls(root),
+            // Python
+            "pyright" => servers::pyright(root),
+            "ty" => servers::ty(root),
+            // JVM languages
+            "jdtls" | "java" => servers::jdtls(root),
+            "kotlin" => servers::kotlin(root),
+            // .NET languages
+            "csharp" | "omnisharp" => servers::csharp(root),
+            "fsharp" | "fsautocomplete" => servers::fsharp(root),
+            // Scripting languages
+            "rubocop" | "ruby" => servers::rubocop(root),
+            "elixir" | "elixir-ls" => servers::elixir(root),
+            "lua" | "lua-language-server" => servers::lua(root),
+            "php" | "intelephense" => servers::php(root),
+            "bash" | "bash-language-server" => servers::bash(root),
+            // Functional languages
+            "swift" | "sourcekit-lsp" => servers::swift(root),
+            "dart" => servers::dart(root),
+            "ocaml" | "ocamllsp" => servers::ocaml(root),
+            "haskell" | "hls" => servers::haskell(root),
+            "clojure" | "clojure-lsp" => servers::clojure(root),
+            "gleam" => servers::gleam(root),
+            // Infrastructure and config
+            "yaml" | "yaml-language-server" => servers::yaml(root),
+            "terraform" | "terraform-ls" => servers::terraform(root),
+            "dockerfile" | "docker-langserver" => servers::dockerfile(root),
+            "nix" | "nixd" => servers::nix(root),
+            // Database and schema
+            "prisma" => servers::prisma(root),
+            // Document and typesetting
+            "texlab" | "latex" => servers::texlab(root),
+            "typst" | "tinymist" => servers::typst(root),
             _ => None,
         }
         .ok_or_else(|| anyhow!("Unknown or unavailable language server: {}", server_id))?;
@@ -1067,17 +1592,67 @@ impl LspServerManager {
     fn find_project_root(&self, file_path: &Path) -> Result<PathBuf> {
         let mut current = file_path.parent().unwrap_or(file_path).to_path_buf();
 
+        // Markers for various project types, ordered by specificity
         let markers = [
+            // JavaScript/TypeScript
             "package.json",
-            "Cargo.toml",
-            "go.mod",
-            "pyproject.toml",
-            "setup.py",
-            ".git",
+            "package-lock.json",
+            "bun.lockb",
+            "pnpm-lock.yaml",
+            "yarn.lock",
             "deno.json",
             "deno.jsonc",
             "tsconfig.json",
+            "jsconfig.json",
+            // Rust
+            "Cargo.toml",
+            // Go
+            "go.mod",
+            "go.work",
+            // Python
+            "pyproject.toml",
+            "setup.py",
+            "setup.cfg",
+            "requirements.txt",
+            ".python-version",
+            // Java/JVM
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+            "settings.gradle.kts",
+            ".gradle",
+            // .NET
+            ".sln",
+            ".csproj",
+            ".fsproj",
+            // Ruby
+            "Gemfile",
+            "Rakefile",
+            ".ruby-version",
+            // Elixir
+            "mix.exs",
+            // Zig
+            "build.zig",
+            // Swift
+            "Package.swift",
+            // Dart/Flutter
+            "pubspec.yaml",
+            // Haskell
+            "stack.yaml",
+            "cabal.project",
+            // C/C++
+            "CMakeLists.txt",
+            "Makefile",
             "compile_commands.json",
+            "meson.build",
+            // Terraform
+            "main.tf",
+            ".terraform",
+            // Generic VCS
+            ".git",
+            ".hg",
+            ".svn",
         ];
 
         while current.parent().is_some() {
@@ -1093,6 +1668,72 @@ impl LspServerManager {
 
         // Fallback to file's directory
         Ok(file_path.parent().unwrap_or(file_path).to_path_buf())
+    }
+
+    /// Detect language ID from file extension
+    pub fn detect_language_id(extension: &str) -> &'static str {
+        match extension {
+            // JavaScript/TypeScript family
+            "ts" | "mts" | "cts" => "typescript",
+            "tsx" => "typescriptreact",
+            "js" | "mjs" | "cjs" => "javascript",
+            "jsx" => "javascriptreact",
+            "vue" => "vue",
+            "svelte" => "svelte",
+            "astro" => "astro",
+            // Systems programming
+            "rs" => "rust",
+            "c" => "c",
+            "cpp" | "cc" | "cxx" => "cpp",
+            "h" => "c",
+            "hpp" | "hxx" => "cpp",
+            "go" => "go",
+            "zig" => "zig",
+            // Python
+            "py" | "pyi" => "python",
+            // JVM languages
+            "java" => "java",
+            "kt" | "kts" => "kotlin",
+            // .NET languages
+            "cs" => "csharp",
+            "fs" | "fsx" | "fsi" => "fsharp",
+            // Scripting languages
+            "rb" => "ruby",
+            "ex" | "exs" => "elixir",
+            "lua" => "lua",
+            "php" => "php",
+            "sh" | "bash" => "shellscript",
+            "zsh" => "zsh",
+            // Functional languages
+            "swift" => "swift",
+            "dart" => "dart",
+            "ml" | "mli" => "ocaml",
+            "hs" | "lhs" => "haskell",
+            "clj" => "clojure",
+            "cljs" => "clojurescript",
+            "cljc" => "clojurec",
+            "gleam" => "gleam",
+            // Infrastructure and config
+            "yaml" | "yml" => "yaml",
+            "json" => "json",
+            "jsonc" => "jsonc",
+            "toml" => "toml",
+            "tf" | "tfvars" => "terraform",
+            "nix" => "nix",
+            // Database and schema
+            "prisma" => "prisma",
+            "sql" => "sql",
+            // Document and typesetting
+            "tex" => "latex",
+            "bib" => "bibtex",
+            "typ" => "typst",
+            "md" | "markdown" => "markdown",
+            // Other
+            "dockerfile" => "dockerfile",
+            "graphql" | "gql" => "graphql",
+            "proto" => "proto3",
+            _ => "plaintext",
+        }
     }
 }
 

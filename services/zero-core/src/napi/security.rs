@@ -1,10 +1,12 @@
 //! NAPI bindings for security - prompt injection scanner and risk assessment
 //!
-//! This module exposes the prompt injection scanner and risk assessment to Node.js.
+//! This module exposes the prompt injection scanner, risk assessment,
+//! and auto-approve engine to Node.js.
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use crate::security::injection::{
     InjectionScanner as RustInjectionScanner,
@@ -22,6 +24,16 @@ use crate::security::risk::{
     assess_file_risk as rust_assess_file_risk,
     tool_base_risk as rust_tool_base_risk,
     risk_at_or_below_threshold as rust_risk_at_or_below_threshold,
+};
+
+use crate::security::auto_approve::{
+    AutoApproveConfig as RustAutoApproveConfig,
+    AutoApproveEngine as RustAutoApproveEngine,
+    ApprovalDecision as RustApprovalDecision,
+    ToolInput as RustToolInput,
+    ExecutionContext as RustExecutionContext,
+    AdaptiveRiskResult as RustAdaptiveRiskResult,
+    AuditEntry as RustAuditEntry,
 };
 
 // ============================================================================
@@ -355,4 +367,394 @@ pub fn parse_risk_level(level: String) -> String {
         .unwrap_or(RustRiskLevel::Medium)
         .as_str()
         .to_string()
+}
+
+// ============================================================================
+// Auto-Approve Engine Types
+// ============================================================================
+
+/// Auto-approve configuration for NAPI
+#[napi(object)]
+pub struct AutoApproveConfig {
+    /// Enable auto-approval
+    pub enabled: bool,
+
+    /// Tools allowed for auto-approval (whitelist)
+    pub allowed_tools: Vec<String>,
+
+    /// Maximum risk level for auto-approval ("safe", "low", "medium", "high")
+    pub risk_threshold: String,
+
+    /// Timeout in milliseconds before auto-approving
+    pub timeout_ms: u32,
+
+    /// Whether running in unattended mode
+    pub unattended: bool,
+}
+
+impl From<AutoApproveConfig> for RustAutoApproveConfig {
+    fn from(c: AutoApproveConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            allowed_tools: c.allowed_tools,
+            risk_threshold: RustRiskLevel::parse(&c.risk_threshold)
+                .unwrap_or(RustRiskLevel::Low),
+            timeout_ms: c.timeout_ms as u64,
+            unattended: c.unattended,
+        }
+    }
+}
+
+impl From<&RustAutoApproveConfig> for AutoApproveConfig {
+    fn from(c: &RustAutoApproveConfig) -> Self {
+        Self {
+            enabled: c.enabled,
+            allowed_tools: c.allowed_tools.clone(),
+            risk_threshold: c.risk_threshold.as_str().to_string(),
+            timeout_ms: c.timeout_ms as u32,
+            unattended: c.unattended,
+        }
+    }
+}
+
+/// Tool input for risk assessment
+#[napi(object)]
+pub struct ToolInput {
+    /// Input type: "bash", "file", "json", or "none"
+    pub input_type: String,
+
+    /// Command string (for bash type)
+    pub command: Option<String>,
+
+    /// File path (for file type)
+    pub path: Option<String>,
+
+    /// JSON data (for json type)
+    pub json: Option<String>,
+}
+
+impl From<ToolInput> for RustToolInput {
+    fn from(i: ToolInput) -> Self {
+        match i.input_type.as_str() {
+            "bash" => RustToolInput::Bash {
+                command: i.command.unwrap_or_default(),
+            },
+            "file" => RustToolInput::File {
+                path: i.path.unwrap_or_default(),
+            },
+            "json" => {
+                let json_str = i.json.unwrap_or_else(|| "{}".to_string());
+                let value = serde_json::from_str(&json_str).unwrap_or(serde_json::Value::Null);
+                RustToolInput::Json(value)
+            }
+            _ => RustToolInput::None,
+        }
+    }
+}
+
+/// Approval decision result
+#[napi(object)]
+pub struct ApprovalDecision {
+    /// Whether the operation is approved
+    pub approved: bool,
+
+    /// Risk level of the operation
+    pub risk: String,
+
+    /// Reason for the decision
+    pub reason: String,
+
+    /// Whether this was a timeout-based approval
+    pub timeout_approved: bool,
+
+    /// Whether the operation can potentially be auto-approved
+    pub auto_approvable: bool,
+}
+
+impl From<RustApprovalDecision> for ApprovalDecision {
+    fn from(d: RustApprovalDecision) -> Self {
+        Self {
+            approved: d.approved,
+            risk: d.risk.as_str().to_string(),
+            reason: d.reason,
+            timeout_approved: d.timeout_approved,
+            auto_approvable: d.auto_approvable,
+        }
+    }
+}
+
+/// Execution context for adaptive risk assessment
+#[napi(object)]
+pub struct ExecutionContext {
+    /// Session ID
+    pub session_id: String,
+
+    /// Current iteration
+    pub iteration: u32,
+
+    /// Errors in this session
+    pub errors: u32,
+
+    /// Successful operations in session
+    pub successes: u32,
+
+    /// Project path
+    pub project_path: Option<String>,
+
+    /// Is production environment
+    pub is_production: bool,
+}
+
+impl From<ExecutionContext> for RustExecutionContext {
+    fn from(c: ExecutionContext) -> Self {
+        Self {
+            session_id: c.session_id,
+            iteration: c.iteration,
+            errors: c.errors,
+            successes: c.successes,
+            project_path: c.project_path,
+            is_production: c.is_production,
+        }
+    }
+}
+
+/// Adaptive risk assessment result
+#[napi(object)]
+pub struct AdaptiveRiskResult {
+    /// Base risk level
+    pub base_risk: String,
+
+    /// Adjusted risk level
+    pub adjusted_risk: String,
+
+    /// Adjustment applied
+    pub adjustment: i32,
+
+    /// Reason for adjustment
+    pub adjustment_reason: String,
+}
+
+impl From<RustAdaptiveRiskResult> for AdaptiveRiskResult {
+    fn from(r: RustAdaptiveRiskResult) -> Self {
+        Self {
+            base_risk: r.base_risk.as_str().to_string(),
+            adjusted_risk: r.adjusted_risk.as_str().to_string(),
+            adjustment: r.adjustment,
+            adjustment_reason: r.adjustment_reason,
+        }
+    }
+}
+
+/// Audit entry for auto-approve decisions
+#[napi(object)]
+pub struct AuditEntry {
+    /// ISO 8601 timestamp
+    pub timestamp: String,
+
+    /// Permission request ID
+    pub permission_id: Option<String>,
+
+    /// Tool name
+    pub tool: String,
+
+    /// Associated patterns
+    pub pattern: Option<Vec<String>>,
+
+    /// Risk level
+    pub risk: String,
+
+    /// Decision made
+    pub decision: String,
+
+    /// Reason for decision
+    pub reason: String,
+}
+
+impl From<RustAuditEntry> for AuditEntry {
+    fn from(e: RustAuditEntry) -> Self {
+        Self {
+            timestamp: e.timestamp,
+            permission_id: e.permission_id,
+            tool: e.tool,
+            pattern: e.pattern,
+            risk: e.risk.as_str().to_string(),
+            decision: e.decision,
+            reason: e.reason,
+        }
+    }
+}
+
+// ============================================================================
+// Auto-Approve Engine Handle
+// ============================================================================
+
+/// Handle to an auto-approve engine instance
+#[napi]
+pub struct AutoApproveEngineHandle {
+    inner: Mutex<RustAutoApproveEngine>,
+}
+
+/// Create a new auto-approve engine with configuration
+#[napi]
+pub fn create_auto_approve_engine(config: AutoApproveConfig) -> AutoApproveEngineHandle {
+    AutoApproveEngineHandle {
+        inner: Mutex::new(RustAutoApproveEngine::new(config.into())),
+    }
+}
+
+/// Create a safe-only auto-approve engine
+#[napi]
+pub fn create_safe_only_engine(unattended: bool) -> AutoApproveEngineHandle {
+    AutoApproveEngineHandle {
+        inner: Mutex::new(RustAutoApproveEngine::safe_only(unattended)),
+    }
+}
+
+/// Create a permissive auto-approve engine
+#[napi]
+pub fn create_permissive_engine(unattended: bool) -> AutoApproveEngineHandle {
+    AutoApproveEngineHandle {
+        inner: Mutex::new(RustAutoApproveEngine::permissive(unattended)),
+    }
+}
+
+#[napi]
+impl AutoApproveEngineHandle {
+    /// Get the current configuration
+    #[napi]
+    pub fn config(&self) -> napi::Result<AutoApproveConfig> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.config().into())
+    }
+
+    /// Update configuration
+    #[napi]
+    pub fn set_config(&self, config: AutoApproveConfig) -> napi::Result<()> {
+        let mut guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.set_config(config.into());
+        Ok(())
+    }
+
+    /// Evaluate a tool operation for auto-approval
+    #[napi]
+    pub fn evaluate(&self, tool: String, input: Option<ToolInput>) -> napi::Result<ApprovalDecision> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let rust_input = input.map(Into::into);
+        Ok(guard.evaluate(&tool, rust_input).into())
+    }
+
+    /// Evaluate with adaptive risk assessment
+    #[napi]
+    pub fn evaluate_adaptive(
+        &self,
+        tool: String,
+        input: Option<ToolInput>,
+        ctx: ExecutionContext,
+    ) -> napi::Result<ApprovalDecision> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let rust_input = input.map(Into::into);
+        let rust_ctx: RustExecutionContext = ctx.into();
+        Ok(guard.evaluate_adaptive(&tool, rust_input, &rust_ctx).into())
+    }
+
+    /// Quick check if a tool can be auto-approved
+    #[napi]
+    pub fn can_auto_approve(&self, tool: String) -> napi::Result<bool> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.can_auto_approve(&tool))
+    }
+
+    /// Assess risk for a tool operation
+    #[napi]
+    pub fn assess_risk(&self, tool: String, input: Option<ToolInput>) -> napi::Result<RiskResult> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let rust_input = input.map(Into::into).unwrap_or(RustToolInput::None);
+        Ok(guard.assess_risk(&tool, &rust_input).into())
+    }
+
+    /// Evaluate adaptive risk
+    #[napi]
+    pub fn evaluate_adaptive_risk(
+        &self,
+        tool: String,
+        input: Option<ToolInput>,
+        ctx: ExecutionContext,
+    ) -> napi::Result<AdaptiveRiskResult> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let rust_input = input.map(Into::into).unwrap_or(RustToolInput::None);
+        let rust_ctx: RustExecutionContext = ctx.into();
+        Ok(guard.evaluate_adaptive_risk(&tool, &rust_input, &rust_ctx).into())
+    }
+
+    /// Get the audit log
+    #[napi]
+    pub fn audit_log(&self) -> napi::Result<Vec<AuditEntry>> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.audit_log().iter().cloned().map(Into::into).collect())
+    }
+
+    /// Clear the audit log
+    #[napi]
+    pub fn clear_audit_log(&self) -> napi::Result<()> {
+        let mut guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.clear_audit_log();
+        Ok(())
+    }
+}
+
+// ============================================================================
+// Convenience Functions
+// ============================================================================
+
+/// Evaluate a tool operation for auto-approval (stateless)
+///
+/// Creates a temporary engine with the given config and evaluates the operation.
+#[napi]
+pub fn evaluate_auto_approve(
+    config: AutoApproveConfig,
+    tool: String,
+    input: Option<ToolInput>,
+) -> ApprovalDecision {
+    let engine = RustAutoApproveEngine::new(config.into());
+    let rust_input = input.map(Into::into);
+    engine.evaluate(&tool, rust_input).into()
+}
+
+/// Evaluate with adaptive risk (stateless)
+#[napi]
+pub fn evaluate_adaptive_auto_approve(
+    config: AutoApproveConfig,
+    tool: String,
+    input: Option<ToolInput>,
+    ctx: ExecutionContext,
+) -> ApprovalDecision {
+    let engine = RustAutoApproveEngine::new(config.into());
+    let rust_input = input.map(Into::into);
+    let rust_ctx: RustExecutionContext = ctx.into();
+    engine.evaluate_adaptive(&tool, rust_input, &rust_ctx).into()
+}
+
+/// Quick check if a tool can be auto-approved with safe-only config
+#[napi]
+pub fn can_safe_auto_approve(tool: String) -> bool {
+    let engine = RustAutoApproveEngine::safe_only(false);
+    engine.can_auto_approve(&tool)
 }

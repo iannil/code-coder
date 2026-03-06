@@ -19,6 +19,7 @@
 //! subsequent calls are pure matching (~1μs).
 
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
 // ============================================================================
@@ -26,7 +27,7 @@ use std::sync::OnceLock;
 // ============================================================================
 
 /// Risk levels for tool operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum RiskLevel {
     /// No side effects, read-only

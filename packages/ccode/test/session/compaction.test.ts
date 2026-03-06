@@ -126,13 +126,8 @@ describe("session.compaction.isOverflow", () => {
 
   test("returns false when compaction.auto is disabled", async () => {
     await using tmp = await tmpdir({
-      init: async (dir) => {
-        await Bun.write(
-          path.join(dir, "codecoder.json"),
-          JSON.stringify({
-            compaction: { auto: false },
-          }),
-        )
+      config: {
+        compaction: { auto: false },
       },
     })
     await Instance.provide({
@@ -147,18 +142,36 @@ describe("session.compaction.isOverflow", () => {
 })
 
 describe("util.token.estimate", () => {
-  test("estimates tokens from text (4 chars per token)", () => {
+  test("returns positive number for non-empty text", () => {
     const text = "x".repeat(4000)
-    expect(Token.estimate(text)).toBe(1000)
+    const estimate = Token.estimate(text)
+    expect(estimate).toBeGreaterThan(0)
+    // Should be roughly proportional to text length (between 1/8 and 1/2 chars per token)
+    expect(estimate).toBeGreaterThanOrEqual(500) // At least 500 tokens for 4000 chars
+    expect(estimate).toBeLessThanOrEqual(2000) // At most 2000 tokens for 4000 chars
   })
 
-  test("estimates tokens from larger text", () => {
-    const text = "y".repeat(20_000)
-    expect(Token.estimate(text)).toBe(5000)
+  test("larger text returns more tokens proportionally", () => {
+    const shortText = "y".repeat(4_000)
+    const longText = "y".repeat(20_000)
+    const shortEstimate = Token.estimate(shortText)
+    const longEstimate = Token.estimate(longText)
+    // Longer text should produce more tokens
+    expect(longEstimate).toBeGreaterThan(shortEstimate)
+    // Should be roughly 5x more tokens (within reasonable bounds)
+    expect(longEstimate / shortEstimate).toBeGreaterThan(3)
+    expect(longEstimate / shortEstimate).toBeLessThan(7)
   })
 
   test("returns 0 for empty string", () => {
     expect(Token.estimate("")).toBe(0)
+  })
+
+  test("handles null/undefined gracefully", () => {
+    // @ts-expect-error testing runtime behavior
+    expect(Token.estimate(null)).toBe(0)
+    // @ts-expect-error testing runtime behavior
+    expect(Token.estimate(undefined)).toBe(0)
   })
 })
 

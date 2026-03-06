@@ -2,7 +2,7 @@
  * Auto-Approve Permission Handler
  *
  * Provides risk-based automatic approval for tool calls in autonomous/unattended mode.
- * Inspired by OpenFang's approval gates design.
+ * Uses the native Rust AutoApproveEngine from @codecoder-ai/core for performance.
  *
  * @package permission
  */
@@ -11,22 +11,27 @@ import { Log } from "@/util/log"
 import z from "zod"
 import type { Permission } from "./index"
 
-// Import native risk assessment functions (Phase 2.7)
+// Import native AutoApproveEngine from @codecoder-ai/core
 import {
-  assessBashRisk as nativeAssessBashRisk,
-  assessFileRisk as nativeAssessFileRisk,
+  AutoApproveEngine,
+  type AutoApproveConfig as NativeAutoApproveConfig,
+  type ToolInput as NativeToolInput,
+  type ApprovalDecision as NativeApprovalDecision,
+  type ExecutionContext as NativeExecutionContext,
+  type AdaptiveRiskResult as NativeAdaptiveRiskResult,
+  type PermissionRiskLevel,
 } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "permission.auto-approve" })
 
 // ============================================================================
-// Types
+// Types (Re-export for backward compatibility)
 // ============================================================================
 
 /**
  * Risk levels for tool operations
  */
-export type RiskLevel = "safe" | "low" | "medium" | "high" | "critical"
+export type RiskLevel = PermissionRiskLevel
 
 /**
  * Auto-approve configuration
@@ -106,6 +111,27 @@ export interface AutoApproveAudit {
 }
 
 // ============================================================================
+// Native Engine Instance
+// ============================================================================
+
+/** Cached native engine instance */
+let nativeEngine: AutoApproveEngine | null = null
+
+/**
+ * Get or create the native auto-approve engine
+ */
+function getNativeEngine(config: AutoApproveConfig): AutoApproveEngine {
+  // Create engine with config
+  return AutoApproveEngine.create({
+    enabled: config.enabled,
+    allowedTools: config.allowedTools,
+    riskThreshold: config.riskThreshold,
+    timeoutMs: config.timeoutMs,
+    unattended: config.unattended,
+  })
+}
+
+// ============================================================================
 // Risk Level Utilities
 // ============================================================================
 
@@ -140,162 +166,49 @@ export function parseRiskLevel(level: string): RiskLevel {
 }
 
 // ============================================================================
-// Tool Risk Assessment
+// Tool Risk Assessment (Delegates to Native Engine)
 // ============================================================================
 
 /**
- * Tool categories with base risk levels
+ * Convert tool input to native format
  */
-const TOOL_BASE_RISK: Record<string, RiskLevel> = {
-  // Safe - No side effects, read-only
-  Read: "safe",
-  Glob: "safe",
-  Grep: "safe",
-  LS: "safe",
-  NotebookRead: "safe",
-  TaskList: "safe",
-  TaskGet: "safe",
+function toNativeToolInput(tool: string, input: unknown): NativeToolInput | null {
+  if (!input || typeof input !== "object") {
+    return null
+  }
 
-  // Low - External read-only
-  WebFetch: "low",
-  WebSearch: "low",
+  if (tool === "Bash" && "command" in input) {
+    return { inputType: "bash", command: String(input.command) }
+  }
 
-  // Medium - Local reversible writes
-  Write: "medium",
-  Edit: "medium",
-  NotebookEdit: "medium",
-  TaskCreate: "medium",
-  TaskUpdate: "medium",
+  if ((tool === "Write" || tool === "Edit") && "file_path" in input) {
+    return { inputType: "file", path: String(input.file_path) }
+  }
 
-  // High - External side effects or semi-reversible
-  Bash: "high",
-  Task: "high",
-  mcp__playwright__browser_click: "high",
-  mcp__playwright__browser_type: "high",
-  mcp__playwright__browser_navigate: "high",
+  // Try JSON for other inputs
+  try {
+    return { inputType: "json", json: JSON.stringify(input) }
+  } catch {
+    return null
+  }
 }
-
-/**
- * Bash command patterns that elevate risk level
- */
-const BASH_RISK_PATTERNS: Array<{ pattern: RegExp; risk: RiskLevel; reason: string }> = [
-  // Critical - System level, destructive
-  { pattern: /\bsudo\b/, risk: "critical", reason: "sudo command requires elevated privileges" },
-  { pattern: /\brm\s+-rf?\s+\/\s*$/, risk: "critical", reason: "rm on root path is destructive" },
-  { pattern: /\brm\s+-rf?\s+\/[^\/\s]*\s*$/, risk: "high", reason: "recursive file deletion" },
-  { pattern: /\b(shutdown|reboot|init)\b/, risk: "critical", reason: "system control command" },
-  { pattern: /\b(mkfs|fdisk|dd)\b/, risk: "critical", reason: "disk manipulation command" },
-  { pattern: /\b(chmod|chown)\s+(-R\s+)?[0-9]{3}\s+\//, risk: "critical", reason: "permission change on root" },
-
-  // High - External effects, irreversible
-  { pattern: /\bgit\s+push\s+--force/, risk: "critical", reason: "force push is destructive" },
-  { pattern: /\bgit\s+push\b/, risk: "high", reason: "git push has external effects" },
-  { pattern: /\bgit\s+reset\s+--hard/, risk: "high", reason: "hard reset discards changes" },
-  { pattern: /\bcurl\s+.*-X\s*(POST|PUT|DELETE|PATCH)/, risk: "high", reason: "HTTP mutation request" },
-  { pattern: /\bnpm\s+publish\b/, risk: "high", reason: "package publishing has external effects" },
-  { pattern: /\bcargo\s+publish\b/, risk: "high", reason: "package publishing has external effects" },
-  { pattern: /\bdocker\s+(push|rm|rmi)\b/, risk: "high", reason: "docker registry/image manipulation" },
-
-  // Medium - Local changes
-  { pattern: /\bgit\s+(add|commit|checkout|branch)\b/, risk: "medium", reason: "git local operation" },
-  { pattern: /\bnpm\s+(install|uninstall)\b/, risk: "medium", reason: "dependency modification" },
-  { pattern: /\bcargo\s+(add|remove)\b/, risk: "medium", reason: "dependency modification" },
-  { pattern: /\bmkdir\b/, risk: "medium", reason: "directory creation" },
-  { pattern: /\btouch\b/, risk: "medium", reason: "file creation" },
-
-  // Low - Information gathering
-  { pattern: /\bgit\s+(status|log|diff|show|branch\s+-[avl])\b/, risk: "low", reason: "git read operation" },
-  { pattern: /\bcurl\s+.*-X\s*GET/, risk: "low", reason: "HTTP read request" },
-  { pattern: /\bcurl\s+(?!.*-X)(?!.*-d)(?!.*--data)/, risk: "low", reason: "HTTP GET request (default)" },
-  { pattern: /\b(ls|cat|head|tail|less|more|pwd|which|whoami|echo)\b/, risk: "low", reason: "read/info operation" },
-]
 
 /**
  * Assess risk level for a tool operation
  *
- * Uses native Rust implementation when available for better performance,
- * with fallback to TypeScript implementation.
+ * Uses native Rust engine for performance.
  */
 export function assessToolRisk(tool: string, input: unknown): ToolRiskAssessment {
-  // Get base risk for tool
-  let risk: RiskLevel = TOOL_BASE_RISK[tool] ?? "medium"
-  let reason = `Base risk for ${tool}`
-
-  // Special handling for Bash commands
-  if (tool === "Bash" && input && typeof input === "object" && "command" in input) {
-    const command = String(input.command)
-
-    // Try native implementation first (Phase 2.7)
-    if (nativeAssessBashRisk) {
-      const nativeResult = nativeAssessBashRisk(command)
-      return {
-        tool,
-        risk: nativeResult.risk as RiskLevel,
-        reason: nativeResult.reason,
-        autoApprovable: nativeResult.autoApprovable,
-      }
-    }
-
-    // Fallback to TypeScript implementation
-    let bashRisk: RiskLevel = "safe"
-    let bashReason = "No risky patterns detected"
-
-    // Check against risk patterns - take the HIGHEST risk match
-    for (const pattern of BASH_RISK_PATTERNS) {
-      if (pattern.pattern.test(command)) {
-        if (RISK_VALUES[pattern.risk] > RISK_VALUES[bashRisk]) {
-          bashRisk = pattern.risk
-          bashReason = pattern.reason
-        }
-      }
-    }
-
-    // If we found any matching pattern, use that risk, otherwise use base Bash risk
-    if (bashRisk !== "safe") {
-      risk = bashRisk
-      reason = bashReason
-    }
-    // If no pattern matched, Bash commands default to high (could be anything)
-  }
-
-  // Special handling for Write/Edit to sensitive files
-  if ((tool === "Write" || tool === "Edit") && input && typeof input === "object" && "file_path" in input) {
-    const filePath = String(input.file_path)
-
-    // Try native implementation first (Phase 2.7)
-    if (nativeAssessFileRisk) {
-      const nativeResult = nativeAssessFileRisk(filePath)
-      // Only use native result if it's higher risk than base
-      const nativeRiskValue = RISK_VALUES[nativeResult.risk as RiskLevel] ?? RISK_VALUES.medium
-      if (nativeRiskValue > RISK_VALUES[risk]) {
-        return {
-          tool,
-          risk: nativeResult.risk as RiskLevel,
-          reason: nativeResult.reason,
-          autoApprovable: nativeResult.autoApprovable,
-        }
-      }
-    } else {
-      // Fallback to TypeScript implementation
-      // Sensitive file patterns
-      if (/\.(env|pem|key|crt|p12)$/i.test(filePath)) {
-        risk = "high"
-        reason = "Operation on sensitive file (credentials/secrets)"
-      } else if (/\/etc\/|\/usr\/|\/var\//.test(filePath)) {
-        risk = "high"
-        reason = "Operation on system directory"
-      } else if (/package\.json|Cargo\.toml|go\.mod/.test(filePath)) {
-        risk = "medium"
-        reason = "Dependency manifest modification"
-      }
-    }
-  }
+  // Create a temporary safe-only engine for risk assessment
+  const engine = AutoApproveEngine.safeOnly(false)
+  const nativeInput = toNativeToolInput(tool, input)
+  const result = engine.assessRisk(tool, nativeInput)
 
   return {
     tool,
-    risk,
-    reason,
-    autoApprovable: risk !== "critical",
+    risk: result.risk,
+    reason: result.reason,
+    autoApprovable: result.autoApprovable,
   }
 }
 
@@ -345,11 +258,13 @@ export function clearAuditLog(): void {
  * @returns Permission handler callback
  */
 export function createAutoApproveHandler(config: AutoApproveConfig): Permission.AskCallback {
-  const { enabled, allowedTools, riskThreshold, timeoutMs, unattended } = config
+  const { enabled, timeoutMs, unattended } = config
+  const engine = getNativeEngine(config)
 
   return async (info: Permission.Info): Promise<"once" | "always" | "reject"> => {
     const tool = info.type
     const input = info.metadata
+    const nativeInput = toNativeToolInput(tool, input)
 
     // If disabled, always reject (fall back to manual approval)
     if (!enabled) {
@@ -365,47 +280,39 @@ export function createAutoApproveHandler(config: AutoApproveConfig): Permission.
       return "reject"
     }
 
-    // Assess tool risk
-    const assessment = assessToolRisk(tool, input)
+    // Use native engine for evaluation
+    const decision = engine.evaluate(tool, nativeInput)
 
     // Critical operations are ALWAYS rejected
-    if (assessment.risk === "critical") {
+    if (decision.risk === "critical") {
       recordAudit({
         timestamp: new Date().toISOString(),
         permissionId: info.id,
         tool,
         pattern: info.pattern,
-        risk: assessment.risk,
+        risk: decision.risk,
         decision: "rejected",
-        reason: `Critical operation blocked: ${assessment.reason}`,
+        reason: `Critical operation blocked: ${decision.reason}`,
       })
       return "reject"
     }
 
-    // Check whitelist (if provided)
-    const isWhitelisted = allowedTools.length === 0 || allowedTools.includes(tool)
-
-    // Check risk threshold
-    const withinThreshold = riskAtOrBelowThreshold(assessment.risk, riskThreshold)
-
-    // Auto-approve if whitelisted AND within risk threshold
-    if (isWhitelisted && withinThreshold) {
+    // Auto-approved
+    if (decision.approved) {
       recordAudit({
         timestamp: new Date().toISOString(),
         permissionId: info.id,
         tool,
         pattern: info.pattern,
-        risk: assessment.risk,
+        risk: decision.risk,
         decision: "approved",
-        reason: `Auto-approved: ${assessment.reason}`,
+        reason: decision.reason,
       })
-      // Use "once" to avoid blanket approval for all future calls
       return "once"
     }
 
     // If unattended mode and timeout is set, wait then approve
-    // (Critical operations were already rejected above)
-    if (unattended && timeoutMs > 0) {
+    if (unattended && timeoutMs > 0 && decision.autoApprovable) {
       await new Promise((resolve) => setTimeout(resolve, timeoutMs))
 
       recordAudit({
@@ -413,9 +320,9 @@ export function createAutoApproveHandler(config: AutoApproveConfig): Permission.
         permissionId: info.id,
         tool,
         pattern: info.pattern,
-        risk: assessment.risk,
+        risk: decision.risk,
         decision: "timeout_approved",
-        reason: `Timeout auto-approved after ${timeoutMs}ms: ${assessment.reason}`,
+        reason: `Timeout auto-approved after ${timeoutMs}ms: ${decision.reason}`,
       })
       return "once"
     }
@@ -426,9 +333,9 @@ export function createAutoApproveHandler(config: AutoApproveConfig): Permission.
       permissionId: info.id,
       tool,
       pattern: info.pattern,
-      risk: assessment.risk,
+      risk: decision.risk,
       decision: "rejected",
-      reason: `Not in whitelist or exceeds threshold: ${assessment.reason}`,
+      reason: decision.reason,
     })
     return "reject"
   }
@@ -448,7 +355,7 @@ export function createSafeOnlyConfig(unattended = true): AutoApproveConfig {
 }
 
 /**
- * Create permissive auto-approve config for trusted Hands
+ * Create permissive auto-approve config for trusted environments
  */
 export function createPermissiveConfig(unattended = true): AutoApproveConfig {
   return {
@@ -490,20 +397,14 @@ export function shouldAutoApprove(
 ): "once" | "reject" | undefined {
   if (!config.enabled) return undefined
 
-  const assessment = assessToolRisk(tool, input)
+  const engine = getNativeEngine(config)
+  const nativeInput = toNativeToolInput(tool, input)
+  const decision = engine.evaluate(tool, nativeInput)
 
   // Critical operations NEVER auto-approve - defer to manual
-  if (assessment.risk === "critical") return undefined
+  if (decision.risk === "critical") return undefined
 
-  // Check whitelist
-  const isWhitelisted = config.allowedTools.length === 0 || config.allowedTools.includes(tool)
-  if (!isWhitelisted) return undefined
-
-  // Check risk threshold
-  const withinThreshold = riskAtOrBelowThreshold(assessment.risk, config.riskThreshold)
-  if (!withinThreshold) return undefined
-
-  return "once"
+  return decision.approved ? "once" : undefined
 }
 
 // ============================================================================
@@ -569,7 +470,7 @@ export function getAutoApproveFromEnv(): AutoApproveConfigInput | undefined {
 }
 
 // ============================================================================
-// Adaptive Risk Assessment
+// Adaptive Risk Assessment (Delegates to Native Engine)
 // ============================================================================
 
 /**
@@ -649,65 +550,23 @@ export interface ExecutionContext {
 }
 
 /**
- * Determine project sensitivity based on path and environment
+ * Convert to native execution context
  */
-function determineProjectSensitivity(ctx: ExecutionContext): ProjectSensitivity {
-  // Check for production indicators
-  if (ctx.isProduction) return "high"
-
-  const path = ctx.projectPath ?? ""
-
-  // High sensitivity patterns
-  if (/\/(prod|production|live|release)\//i.test(path)) return "high"
-  if (/\/\.env|\/secrets|\/credentials/i.test(path)) return "high"
-
-  // Medium sensitivity patterns
-  if (/\/(staging|pre-prod|uat)\//i.test(path)) return "medium"
-  if (/\/config|\/settings/i.test(path)) return "medium"
-
-  return "low"
-}
-
-/**
- * Determine time of day category
- */
-function determineTimeOfDay(): TimeOfDay {
-  const hour = new Date().getHours()
-  // Business hours: 9 AM - 6 PM local time, Monday-Friday
-  const dayOfWeek = new Date().getDay()
-  const isWeekday = dayOfWeek >= 1 && dayOfWeek <= 5
-  const isBusinessHours = hour >= 9 && hour < 18
-
-  return isWeekday && isBusinessHours ? "business" : "after_hours"
-}
-
-/**
- * Calculate success rate from session stats
- */
-function calculateSuccessRate(ctx: ExecutionContext): number {
-  const total = ctx.successes + ctx.errors
-  if (total === 0) return 1.0 // No data = assume good
-  return ctx.successes / total
-}
-
-/**
- * Adjust risk level by delta
- */
-function adjustRiskLevel(risk: RiskLevel, delta: number): RiskLevel {
-  const levels: RiskLevel[] = ["safe", "low", "medium", "high", "critical"]
-  const currentIndex = levels.indexOf(risk)
-  const newIndex = Math.max(0, Math.min(levels.length - 1, currentIndex + delta))
-  return levels[newIndex]
+function toNativeExecutionContext(ctx: ExecutionContext): NativeExecutionContext {
+  return {
+    sessionId: ctx.sessionId,
+    iteration: ctx.iteration,
+    errors: ctx.errors,
+    successes: ctx.successes,
+    projectPath: ctx.projectPath,
+    isProduction: ctx.isProduction ?? false,
+  }
 }
 
 /**
  * Evaluate adaptive risk for a tool operation
  *
- * Takes base risk assessment and adjusts based on context factors:
- * - High success rate + no errors → risk decreases by 1 level
- * - Session has errors → risk increases by 1 level
- * - After hours + high sensitivity → risk increases by 1 level
- * - Unattended mode → risk increases by 1 level
+ * Uses native Rust engine for performance.
  *
  * @param tool Tool name
  * @param input Tool input
@@ -719,69 +578,27 @@ export function evaluateAdaptiveRisk(
   input: unknown,
   ctx: ExecutionContext,
 ): AdaptiveRiskConfig {
-  // Get base risk assessment
-  const baseAssessment = assessToolRisk(tool, input)
-  const baseRisk = baseAssessment.risk
+  const engine = AutoApproveEngine.permissive(false)
+  const nativeInput = toNativeToolInput(tool, input)
+  const nativeCtx = toNativeExecutionContext(ctx)
+  const result = engine.evaluateAdaptiveRisk(tool, nativeInput, nativeCtx)
 
-  // Build context factors
+  // Build context factors from native result
   const contextFactors: ContextFactors = {
-    projectSensitivity: determineProjectSensitivity(ctx),
-    timeOfDay: determineTimeOfDay(),
-    successRate: calculateSuccessRate(ctx),
+    projectSensitivity: "low", // Simplified - native doesn't expose this directly
+    timeOfDay: "business",
+    successRate: ctx.successes / (ctx.successes + ctx.errors || 1),
     sessionErrorCount: ctx.errors,
     sessionIterations: ctx.iteration,
-    unattended: false, // Will be set by caller
+    unattended: false,
   }
-
-  // Calculate adjustment
-  let adjustment = 0
-  const reasons: string[] = []
-
-  // Success rate factor: high success rate with no errors can reduce risk
-  if (contextFactors.successRate >= 0.95 && contextFactors.sessionErrorCount === 0) {
-    adjustment -= 1
-    reasons.push("High success rate (≥95%) with no errors")
-  }
-
-  // Error factor: errors in session increase risk
-  if (contextFactors.sessionErrorCount > 0) {
-    adjustment += 1
-    reasons.push(`${contextFactors.sessionErrorCount} error(s) in session`)
-  }
-
-  // Additional increase if many errors
-  if (contextFactors.sessionErrorCount >= 3) {
-    adjustment += 1
-    reasons.push("Multiple errors (≥3) in session")
-  }
-
-  // Time + sensitivity factor: after hours on high-sensitivity projects
-  if (
-    contextFactors.timeOfDay === "after_hours" &&
-    contextFactors.projectSensitivity === "high"
-  ) {
-    adjustment += 1
-    reasons.push("After hours operation on high-sensitivity project")
-  }
-
-  // Production environment factor
-  if (contextFactors.projectSensitivity === "high") {
-    // High sensitivity always gets at least +1
-    if (adjustment === 0) {
-      adjustment += 1
-      reasons.push("High-sensitivity project environment")
-    }
-  }
-
-  // Apply adjustment
-  const adjustedRisk = adjustRiskLevel(baseRisk, adjustment)
 
   return {
-    baseRisk,
+    baseRisk: result.baseRisk,
     contextFactors,
-    adjustedRisk,
-    adjustment,
-    adjustmentReason: reasons.length > 0 ? reasons.join("; ") : "No adjustment",
+    adjustedRisk: result.adjustedRisk,
+    adjustment: result.adjustment,
+    adjustmentReason: result.adjustmentReason,
   }
 }
 
@@ -805,42 +622,34 @@ export function adaptiveRiskAllowsApproval(
 /**
  * Create adaptive auto-approve handler
  *
- * Wraps the standard auto-approve handler with adaptive risk assessment.
+ * Uses native engine with adaptive risk assessment.
  */
 export function createAdaptiveAutoApproveHandler(
   baseConfig: AutoApproveConfig,
   ctx: ExecutionContext,
 ): (tool: string, input: unknown) => "once" | "reject" | undefined {
+  const engine = getNativeEngine(baseConfig)
+  const nativeCtx = toNativeExecutionContext(ctx)
+
   return (tool: string, input: unknown) => {
     if (!baseConfig.enabled) return undefined
 
-    // Evaluate adaptive risk
-    const adaptiveRisk = evaluateAdaptiveRisk(tool, input, ctx)
+    const nativeInput = toNativeToolInput(tool, input)
+    const decision = engine.evaluateAdaptive(tool, nativeInput, nativeCtx)
 
-    // Check if auto-approval is allowed with adjusted risk
-    if (!adaptiveRiskAllowsApproval(adaptiveRisk, baseConfig.riskThreshold)) {
+    if (!decision.approved) {
       log.info("Adaptive risk rejected auto-approval", {
         tool,
-        baseRisk: adaptiveRisk.baseRisk,
-        adjustedRisk: adaptiveRisk.adjustedRisk,
-        adjustment: adaptiveRisk.adjustment,
-        reason: adaptiveRisk.adjustmentReason,
+        risk: decision.risk,
+        reason: decision.reason,
       })
       return undefined // Defer to manual approval
     }
 
-    // Check whitelist
-    const isWhitelisted =
-      baseConfig.allowedTools.length === 0 ||
-      baseConfig.allowedTools.includes(tool)
-
-    if (!isWhitelisted) return undefined
-
     log.info("Adaptive risk approved", {
       tool,
-      baseRisk: adaptiveRisk.baseRisk,
-      adjustedRisk: adaptiveRisk.adjustedRisk,
-      adjustment: adaptiveRisk.adjustment,
+      risk: decision.risk,
+      reason: decision.reason,
     })
 
     return "once"
