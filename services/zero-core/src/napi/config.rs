@@ -229,6 +229,15 @@ pub struct NapiConfigLoadResult {
     pub directories: Vec<String>,
 }
 
+/// Validation issue from schema validation
+#[napi(object)]
+pub struct NapiValidationIssue {
+    /// JSON path to the issue
+    pub path: String,
+    /// Human-readable message
+    pub message: String,
+}
+
 // ============================================================================
 // ConfigLoaderHandle
 // ============================================================================
@@ -439,6 +448,46 @@ impl ConfigLoaderHandle {
 
         let merged = loader.merge_configs(base, source);
         serde_json::to_string(&merged).map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Validate configuration against schema
+    #[napi]
+    pub fn validate_schema(
+        &self,
+        config_json: String,
+        schema_json: String,
+    ) -> Result<Vec<NapiValidationIssue>> {
+        let config: serde_json::Value = serde_json::from_str(&config_json)
+            .map_err(|e| Error::from_reason(format!("Invalid config JSON: {}", e)))?;
+        let schema: serde_json::Value = serde_json::from_str(&schema_json)
+            .map_err(|e| Error::from_reason(format!("Invalid schema JSON: {}", e)))?;
+
+        let validator = crate::foundation::SchemaValidator::from_value(schema)
+            .map_err(|e| Error::from_reason(format!("Failed to compile schema: {}", e)))?;
+
+        let issues = validator.validate(&config);
+
+        Ok(issues
+            .into_iter()
+            .map(|i| NapiValidationIssue {
+                path: i.path,
+                message: i.message,
+            })
+            .collect())
+    }
+
+    /// Check if configuration is valid against schema
+    #[napi]
+    pub fn is_valid_schema(&self, config_json: String, schema_json: String) -> Result<bool> {
+        let config: serde_json::Value = serde_json::from_str(&config_json)
+            .map_err(|e| Error::from_reason(format!("Invalid config JSON: {}", e)))?;
+        let schema: serde_json::Value = serde_json::from_str(&schema_json)
+            .map_err(|e| Error::from_reason(format!("Invalid schema JSON: {}", e)))?;
+
+        let validator = crate::foundation::SchemaValidator::from_value(schema)
+            .map_err(|e| Error::from_reason(format!("Failed to compile schema: {}", e)))?;
+
+        Ok(validator.is_valid(&config))
     }
 }
 
