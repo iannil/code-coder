@@ -259,6 +259,26 @@ export const PtyManagerHandle = nativeBindings?.PtyManagerHandle
 export const spawnPty = nativeBindings?.spawnPty
 export const spawnPtyCommand = nativeBindings?.spawnPtyCommand
 
+// Phase: File Watcher (native notify crate - replaces @parcel/watcher)
+export const FileWatcherHandle = nativeBindings?.FileWatcherHandle
+export const createFileWatcher = nativeBindings?.createFileWatcher
+export const createFileWatcherWithConfig = nativeBindings?.createFileWatcherWithConfig
+export const watchPath = nativeBindings?.watchPath
+
+// Phase: Hook Pattern Matching (native regex with SIMD)
+export const PatternSetHandle = nativeBindings?.PatternSetHandle
+export const createPatternSet = nativeBindings?.createPatternSet
+export const scanPatterns = nativeBindings?.scanPatterns
+export const scanContentPatterns = nativeBindings?.scanContentPatterns
+export const matchesPattern = nativeBindings?.matchesPattern
+export const containsPattern = nativeBindings?.containsPattern
+
+// Phase 8: Tool Registry (unified tool discovery and execution)
+export const ToolRegistryHandle = nativeBindings?.ToolRegistryHandle
+export const createToolRegistry = nativeBindings?.createToolRegistry
+export const getBuiltinToolSpecs = nativeBindings?.getBuiltinToolSpecs
+export const getNativeToolNames = nativeBindings?.getNativeToolNames
+
 // Re-export types from binding.d.ts
 export type {
   NapiGitStatus,
@@ -296,4 +316,36 @@ export type {
   NapiCompactionStrategy,
   NapiCompactionResult,
   CompactorHandle as CompactorHandleType,
+  // File Watcher types
+  WatchEvent,
+  WatchEventKind,
+  FileWatcherConfig,
+  FileWatcherHandle as FileWatcherHandleType,
+  // Hook Pattern Matching types
+  PatternMatchResult,
+  ContentMatchResult,
+  PatternSetHandle as PatternSetHandleType,
+  // Tool Registry types
+  NapiToolSpec,
+  NapiToolExecuteResult,
+  NapiValidationResult,
+  ToolRegistryHandle as ToolRegistryHandleType,
+  // Graph types
+  NapiNodeData,
+  NapiPathResult,
+  NapiCycleResult,
+  NapiDecisionNode,
+  NapiActionNode,
+  NapiOutcomeNode,
+  NapiCausalChain,
+  NapiCausalQuery,
+  NapiCausalStats,
+  NapiCallNode,
+  NapiRecursionInfo,
+  NapiSemanticNode,
+  NapiSemanticStats,
+  GraphEngineHandle as GraphEngineHandleType,
+  CausalGraphHandle as CausalGraphHandleType,
+  CallGraphHandle as CallGraphHandleType,
+  SemanticGraphHandle as SemanticGraphHandleType,
 } from './binding.d.ts'

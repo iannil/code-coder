@@ -6,17 +6,27 @@ import { Log } from "@/util/log"
 import { FileIgnore } from "./ignore"
 import { Config } from "../config/config"
 import path from "path"
-import { createWrapper } from "@parcel/watcher/wrapper"
-import { lazy } from "@/util/lazy"
-import { withTimeout } from "@/util/timeout"
-import type ParcelWatcher from "@parcel/watcher"
 import { $ } from "bun"
 import { Flag } from "@/flag/flag"
 import { readdir } from "fs/promises"
 
-const SUBSCRIBE_TIMEOUT_MS = 10_000
+// Native binding imports - NAPI only, no fallback
+import {
+  createFileWatcherWithConfig,
+  type FileWatcherHandleType,
+  type FileWatcherConfig,
+} from "@codecoder-ai/core"
 
-declare const CCODE_LIBC: string | undefined
+// Verify native bindings are available at import time
+if (typeof createFileWatcherWithConfig !== "function") {
+  throw new Error(
+    "@codecoder-ai/core native bindings required: FileWatcher not available. " +
+    "Run: cd services/zero-core && cargo build --features napi-bindings"
+  )
+}
+
+// Non-null reference after verification
+const createWatcher = createFileWatcherWithConfig
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
@@ -31,105 +41,110 @@ export namespace FileWatcher {
     ),
   }
 
-  const watcher = lazy((): typeof import("@parcel/watcher") | undefined => {
-    try {
-      const binding = require(
-        `@parcel/watcher-${process.platform}-${process.arch}${process.platform === "linux" ? `-${CCODE_LIBC || "glibc"}` : ""}`,
-      )
-      // createWrapper returns a synchronous wrapper object, but TypeScript incorrectly
-      // infers it as Promise due to missing/incorrect type declarations.
-      // The cast is safe because createWrapper is verified to be synchronous in wrapper.js
-      const wrapper = createWrapper(binding) as unknown as typeof import("@parcel/watcher")
-      // Runtime validation to ensure wrapper has expected methods
-      if (typeof wrapper?.subscribe !== "function" || typeof wrapper?.unsubscribe !== "function") {
-        log.error("watcher binding missing required methods")
-        return
-      }
-      return wrapper
-    } catch (error) {
-      log.error("failed to load watcher binding", { error })
-      return
-    }
-  })
+  // Watcher state - native handles only
+  interface WatcherState {
+    handles: FileWatcherHandleType[]
+  }
+
+  // Empty state for non-git projects
+  interface EmptyState {
+    empty: true
+  }
+
+  type State = WatcherState | EmptyState
 
   const state = Instance.state(
-    async () => {
-      if (Instance.project.vcs !== "git") return {}
-      log.info("init")
+    async (): Promise<State> => {
+      if (Instance.project.vcs !== "git") return { empty: true }
+
+      log.info("init", { native: true })
+
       const cfg = await Config.get()
-      const backend = (() => {
-        if (process.platform === "win32") return "windows"
-        if (process.platform === "darwin") return "fs-events"
-        if (process.platform === "linux") return "inotify"
-      })()
-      if (!backend) {
-        log.error("watcher backend not supported", { platform: process.platform })
-        return {}
-      }
-      log.info("watcher backend", { platform: process.platform, backend })
-
-      const w = watcher()
-      if (!w) return {}
-
-      const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
-        if (err) return
-        for (const evt of evts) {
-          if (evt.type === "create") Bus.publish(Event.Updated, { file: evt.path, event: "add" })
-          if (evt.type === "update") Bus.publish(Event.Updated, { file: evt.path, event: "change" })
-          if (evt.type === "delete") Bus.publish(Event.Updated, { file: evt.path, event: "unlink" })
-        }
-      }
-
-      const subs: ParcelWatcher.AsyncSubscription[] = []
       const cfgIgnores = cfg.watcher?.ignore ?? []
 
-      if (Flag.CCODE_EXPERIMENTAL_FILEWATCHER) {
-        const pending = w.subscribe(Instance.directory, subscribe, {
-          ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
-          backend,
-        })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to Instance.directory", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
-        })
-        if (sub) subs.push(sub)
-      }
-
-      const vcsDir = await $`git rev-parse --git-dir`
-        .quiet()
-        .nothrow()
-        .cwd(Instance.worktree)
-        .text()
-        .then((x) => path.resolve(Instance.worktree, x.trim()))
-        .catch(() => undefined)
-      if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
-        const gitDirContents = await readdir(vcsDir).catch(() => [])
-        const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
-        const pending = w.subscribe(vcsDir, subscribe, {
-          ignore: ignoreList,
-          backend,
-        })
-        const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
-          log.error("failed to subscribe to vcsDir", { error: err })
-          pending.then((s) => s.unsubscribe()).catch(() => {})
-          return undefined
-        })
-        if (sub) subs.push(sub)
-      }
-
-      return { subs }
+      return initNativeWatcher(cfgIgnores)
     },
     async (state) => {
-      if (!state.subs) return
-      await Promise.all(state.subs.map((sub) => sub?.unsubscribe()))
+      // Cleanup native handles
+      if ("handles" in state && state.handles) {
+        for (const handle of state.handles) {
+          try {
+            handle.unsubscribeAll()
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+      }
     },
   )
+
+  async function initNativeWatcher(cfgIgnores: string[]): Promise<WatcherState> {
+    const handles: FileWatcherHandleType[] = []
+
+    const config: FileWatcherConfig = {
+      debounceMs: 100,
+      recursive: true,
+      ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
+    }
+
+    const callback = (filePath: string, event: string) => {
+      const eventType = event === "add" ? "add" : event === "unlink" ? "unlink" : "change"
+      Bus.publish(Event.Updated, { file: filePath, event: eventType })
+    }
+
+    // Watch project directory
+    if (Flag.CCODE_EXPERIMENTAL_FILEWATCHER) {
+      try {
+        const handle = createWatcher(config)
+        handle.subscribe(Instance.directory, callback)
+        handles.push(handle)
+        log.info("native watcher subscribed", { path: Instance.directory })
+      } catch (err) {
+        log.error("failed to subscribe native watcher to Instance.directory", { error: err })
+      }
+    }
+
+    // Watch .git directory for HEAD changes
+    const vcsDir = await $`git rev-parse --git-dir`
+      .quiet()
+      .nothrow()
+      .cwd(Instance.worktree)
+      .text()
+      .then((x) => path.resolve(Instance.worktree, x.trim()))
+      .catch(() => undefined)
+
+    if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
+      try {
+        const gitDirContents = await readdir(vcsDir).catch(() => [])
+        const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
+
+        const gitConfig: FileWatcherConfig = {
+          debounceMs: 100,
+          recursive: false, // Only watch top-level .git files
+          ignore: ignoreList,
+        }
+
+        const handle = createWatcher(gitConfig)
+        handle.subscribe(vcsDir, callback)
+        handles.push(handle)
+        log.info("native watcher subscribed to vcs", { path: vcsDir })
+      } catch (err) {
+        log.error("failed to subscribe native watcher to vcsDir", { error: err })
+      }
+    }
+
+    return { handles }
+  }
 
   export function init() {
     if (Flag.CCODE_EXPERIMENTAL_DISABLE_FILEWATCHER) {
       return
     }
     state()
+  }
+
+  /** Check if using native watcher (always true now) */
+  export function isNative(): boolean {
+    return true
   }
 }

@@ -63,7 +63,7 @@ function requireNative() {
   if (process.platform === 'android') {
     if (process.arch === 'arm64') {
       try {
-        return require('./codecoder-core.android-arm64.node')
+        return require('../codecoder-core.android-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -75,7 +75,7 @@ function requireNative() {
 
     } else if (process.arch === 'arm') {
       try {
-        return require('./codecoder-core.android-arm-eabi.node')
+        return require('../codecoder-core.android-arm-eabi.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -91,7 +91,7 @@ function requireNative() {
   } else if (process.platform === 'win32') {
     if (process.arch === 'x64') {
       try {
-        return require('./codecoder-core.win32-x64-msvc.node')
+        return require('../codecoder-core.win32-x64-msvc.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -103,7 +103,7 @@ function requireNative() {
 
     } else if (process.arch === 'ia32') {
       try {
-        return require('./codecoder-core.win32-ia32-msvc.node')
+        return require('../codecoder-core.win32-ia32-msvc.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -115,7 +115,7 @@ function requireNative() {
 
     } else if (process.arch === 'arm64') {
       try {
-        return require('./codecoder-core.win32-arm64-msvc.node')
+        return require('../codecoder-core.win32-arm64-msvc.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -130,7 +130,7 @@ function requireNative() {
     }
   } else if (process.platform === 'darwin') {
     try {
-        return require('./codecoder-core.darwin-universal.node')
+        return require('../codecoder-core.darwin-universal.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -142,7 +142,7 @@ function requireNative() {
 
     if (process.arch === 'x64') {
       try {
-        return require('./codecoder-core.darwin-x64.node')
+        return require('../codecoder-core.darwin-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -154,7 +154,7 @@ function requireNative() {
 
     } else if (process.arch === 'arm64') {
       try {
-        return require('./codecoder-core.darwin-arm64.node')
+        return require('../codecoder-core.darwin-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -170,7 +170,7 @@ function requireNative() {
   } else if (process.platform === 'freebsd') {
     if (process.arch === 'x64') {
       try {
-        return require('./codecoder-core.freebsd-x64.node')
+        return require('../codecoder-core.freebsd-x64.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -182,7 +182,7 @@ function requireNative() {
 
     } else if (process.arch === 'arm64') {
       try {
-        return require('./codecoder-core.freebsd-arm64.node')
+        return require('../codecoder-core.freebsd-arm64.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -199,7 +199,7 @@ function requireNative() {
     if (process.arch === 'x64') {
       if (isMusl()) {
         try {
-        return require('./codecoder-core.linux-x64-musl.node')
+        return require('../codecoder-core.linux-x64-musl.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -211,7 +211,7 @@ function requireNative() {
 
       } else {
         try {
-        return require('./codecoder-core.linux-x64-gnu.node')
+        return require('../codecoder-core.linux-x64-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -225,7 +225,7 @@ function requireNative() {
     } else if (process.arch === 'arm64') {
       if (isMusl()) {
         try {
-        return require('./codecoder-core.linux-arm64-musl.node')
+        return require('../codecoder-core.linux-arm64-musl.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -237,7 +237,7 @@ function requireNative() {
 
       } else {
         try {
-        return require('./codecoder-core.linux-arm64-gnu.node')
+        return require('../codecoder-core.linux-arm64-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -251,7 +251,7 @@ function requireNative() {
     } else if (process.arch === 'arm') {
       if (isMusl()) {
         try {
-        return require('./codecoder-core.linux-arm-musleabihf.node')
+        return require('../codecoder-core.linux-arm-musleabihf.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -263,7 +263,7 @@ function requireNative() {
 
       } else {
         try {
-        return require('./codecoder-core.linux-arm-gnueabihf.node')
+        return require('../codecoder-core.linux-arm-gnueabihf.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -277,7 +277,7 @@ function requireNative() {
     } else if (process.arch === 'riscv64') {
       if (isMusl()) {
         try {
-        return require('./codecoder-core.linux-riscv64-musl.node')
+        return require('../codecoder-core.linux-riscv64-musl.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -289,7 +289,7 @@ function requireNative() {
 
       } else {
         try {
-        return require('./codecoder-core.linux-riscv64-gnu.node')
+        return require('../codecoder-core.linux-riscv64-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -302,7 +302,7 @@ function requireNative() {
       }
     } else if (process.arch === 'ppc64') {
       try {
-        return require('./codecoder-core.linux-ppc64-gnu.node')
+        return require('../codecoder-core.linux-ppc64-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -314,7 +314,7 @@ function requireNative() {
 
     } else if (process.arch === 's390x') {
       try {
-        return require('./codecoder-core.linux-s390x-gnu.node')
+        return require('../codecoder-core.linux-s390x-gnu.node')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -336,7 +336,7 @@ nativeBinding = requireNative()
 
 if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   try {
-    nativeBinding = require('./codecoder-core.wasi.cjs')
+    nativeBinding = require('../codecoder-core.wasi.cjs')
   } catch (err) {
     if (process.env.NAPI_RS_FORCE_WASI) {
       loadErrors.push(err)
@@ -517,3 +517,62 @@ module.exports.createConfigLoader = nativeBinding.createConfigLoader
 module.exports.CompactorHandle = nativeBinding.CompactorHandle
 module.exports.createCompactor = nativeBinding.createCompactor
 module.exports.createCompactorWithLimits = nativeBinding.createCompactorWithLimits
+
+// Phase: File Watcher (native notify crate - replaces @parcel/watcher)
+module.exports.FileWatcherHandle = nativeBinding.FileWatcherHandle
+module.exports.createFileWatcher = nativeBinding.createFileWatcher
+module.exports.createFileWatcherWithConfig = nativeBinding.createFileWatcherWithConfig
+module.exports.watchPath = nativeBinding.watchPath
+module.exports.WatchEventKind = nativeBinding.WatchEventKind
+
+// Phase: Hook Pattern Matching (native regex with SIMD)
+module.exports.PatternSetHandle = nativeBinding.PatternSetHandle
+module.exports.createPatternSet = nativeBinding.createPatternSet
+module.exports.scanPatterns = nativeBinding.scanPatterns
+module.exports.scanContentPatterns = nativeBinding.scanContentPatterns
+module.exports.matchesPattern = nativeBinding.matchesPattern
+module.exports.containsPattern = nativeBinding.containsPattern
+
+// Phase: Context Cache (project analysis caching)
+module.exports.ContextCacheStoreHandle = nativeBinding.ContextCacheStoreHandle
+module.exports.createMemoryContextCacheStore = nativeBinding.createMemoryContextCacheStore
+module.exports.openContextCacheStore = nativeBinding.openContextCacheStore
+module.exports.buildProjectCache = nativeBinding.buildProjectCache
+module.exports.NapiCacheEntryType = nativeBinding.NapiCacheEntryType
+module.exports.NapiComponentType = nativeBinding.NapiComponentType
+module.exports.NapiRouteType = nativeBinding.NapiRouteType
+
+// Extended token and fuzzy functions
+module.exports.estimateTokensBatch = nativeBinding.estimateTokensBatch
+module.exports.fitsTokenBudget = nativeBinding.fitsTokenBudget
+module.exports.truncateToTokens = nativeBinding.truncateToTokens
+module.exports.estimateChunkTokensNative = nativeBinding.estimateChunkTokensNative
+module.exports.fuzzyFind = nativeBinding.fuzzyFind
+module.exports.findBestFuzzyMatch = nativeBinding.findBestFuzzyMatch
+module.exports.jaroSimilarity = nativeBinding.jaroSimilarity
+module.exports.jaroWinklerSimilarity = nativeBinding.jaroWinklerSimilarity
+
+// Phase 11: Markdown Parser
+module.exports.parseMarkdown = nativeBinding.parseMarkdown
+module.exports.extractMarkdownHeadings = nativeBinding.extractMarkdownHeadings
+module.exports.extractMarkdownCodeBlocks = nativeBinding.extractMarkdownCodeBlocks
+module.exports.extractMarkdownLinks = nativeBinding.extractMarkdownLinks
+module.exports.extractMarkdownImages = nativeBinding.extractMarkdownImages
+module.exports.renderMarkdownToHtml = nativeBinding.renderMarkdownToHtml
+module.exports.extractMarkdownFrontmatter = nativeBinding.extractMarkdownFrontmatter
+module.exports.stripMarkdownFrontmatter = nativeBinding.stripMarkdownFrontmatter
+
+// Phase 12: PTY (native portable-pty)
+module.exports.NapiPtyState = nativeBinding.NapiPtyState
+module.exports.spawnPty = nativeBinding.spawnPty
+module.exports.spawnPtyCommand = nativeBinding.spawnPtyCommand
+
+// File edit and decision types
+module.exports.FileEditType = nativeBinding.FileEditType
+module.exports.DecisionType = nativeBinding.DecisionType
+module.exports.AdrStatus = nativeBinding.AdrStatus
+module.exports.FileStatusType = nativeBinding.FileStatusType
+module.exports.NapiCompactionStrategy = nativeBinding.NapiCompactionStrategy
+module.exports.NapiCommandRiskLevel = nativeBinding.NapiCommandRiskLevel
+module.exports.RiskLevel = nativeBinding.RiskLevel
+module.exports.AuthStatus = nativeBinding.AuthStatus

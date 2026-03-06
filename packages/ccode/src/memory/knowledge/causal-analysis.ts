@@ -9,14 +9,9 @@
  */
 
 import { Log } from "@/util/log"
-import { CausalGraph } from "./causal-graph"
-import type {
-  CausalPattern,
-  CausalSuggestion,
-  CausalChain,
-  ActionType,
-  OutcomeStatus,
-} from "./causal-types"
+import { CausalGraph } from "./graph"
+import type { CausalPattern, CausalSuggestion, ActionType, OutcomeStatus } from "./causal-types"
+import type { NapiCausalChain } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "memory.knowledge.causal-analysis" })
 
@@ -56,10 +51,10 @@ export namespace CausalAnalysis {
 
     for (const chain of chains) {
       for (const action of chain.actions) {
-        const key = `${chain.decision.agentId}:${action.actionType}`
+        const key = `${chain.decision.agent_id}:${action.action_type}`
         const existing = patternMap.get(key) || {
-          agentId: chain.decision.agentId,
-          actionType: action.actionType as ActionType,
+          agentId: chain.decision.agent_id,
+          actionType: action.action_type as ActionType,
           occurrences: 0,
           successes: 0,
           confidenceSum: 0,
@@ -71,7 +66,7 @@ export namespace CausalAnalysis {
         existing.decisionIds.push(chain.decision.id)
 
         // Check if this action led to success
-        const actionOutcomes = chain.outcomes.filter((o) => o.actionId === action.id)
+        const actionOutcomes = chain.outcomes.filter((o) => o.action_id === action.id)
         const hasSuccess = actionOutcomes.some((o) => o.status === "success")
         if (hasSuccess) existing.successes++
 
@@ -174,7 +169,7 @@ export namespace CausalAnalysis {
           id: `sug_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           type: "similar_decision",
           confidence: similar.similarity * (successOutcomes.length / (chain.outcomes.length || 1)),
-          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." succeeded with ${chain.actions[0]?.actionType || "unknown"} approach`,
+          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." succeeded with ${chain.actions[0]?.action_type || "unknown"} approach`,
           basedOn: [similar.decision.id],
           suggestedAction: chain.actions[0]?.description,
         })
@@ -184,7 +179,7 @@ export namespace CausalAnalysis {
           id: `sug_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           type: "avoid_pattern",
           confidence: similar.similarity * (failureOutcomes.length / (chain.outcomes.length || 1)),
-          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." failed with ${chain.actions[0]?.actionType || "unknown"} approach`,
+          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." failed with ${chain.actions[0]?.action_type || "unknown"} approach`,
           basedOn: [similar.decision.id],
         })
       }
@@ -214,9 +209,9 @@ export namespace CausalAnalysis {
   async function findSimilarDecisions(
     prompt: string,
     agentId: string,
-  ): Promise<Array<{ decision: CausalChain["decision"]; similarity: number }>> {
+  ): Promise<Array<{ decision: NapiCausalChain["decision"]; similarity: number }>> {
     const chains = await CausalGraph.query({ agentId, limit: 100 })
-    const results: Array<{ decision: CausalChain["decision"]; similarity: number }> = []
+    const results: Array<{ decision: NapiCausalChain["decision"]; similarity: number }> = []
 
     const promptWords = extractKeywords(prompt)
 
@@ -293,8 +288,8 @@ export namespace CausalAnalysis {
     })
 
     // Split into before and after periods
-    const beforePeriod: CausalChain[] = []
-    const afterPeriod: CausalChain[] = []
+    const beforePeriod: NapiCausalChain[] = []
+    const afterPeriod: NapiCausalChain[] = []
 
     for (const chain of chains) {
       const decisionDate = new Date(chain.decision.timestamp)
@@ -334,7 +329,7 @@ export namespace CausalAnalysis {
     }
   }
 
-  function calculatePeriodSuccessRate(chains: CausalChain[]): number {
+  function calculatePeriodSuccessRate(chains: NapiCausalChain[]): number {
     let totalOutcomes = 0
     let successOutcomes = 0
 
@@ -346,16 +341,16 @@ export namespace CausalAnalysis {
     return totalOutcomes > 0 ? successOutcomes / totalOutcomes : 0
   }
 
-  function calculatePeriodConfidence(chains: CausalChain[]): number {
+  function calculatePeriodConfidence(chains: NapiCausalChain[]): number {
     if (chains.length === 0) return 0
     return chains.reduce((sum, c) => sum + c.decision.confidence, 0) / chains.length
   }
 
-  function countActionTypes(chains: CausalChain[]): Record<string, number> {
+  function countActionTypes(chains: NapiCausalChain[]): Record<string, number> {
     const counts: Record<string, number> = {}
     for (const chain of chains) {
       for (const action of chain.actions) {
-        counts[action.actionType] = (counts[action.actionType] || 0) + 1
+        counts[action.action_type] = (counts[action.action_type] || 0) + 1
       }
     }
     return counts
@@ -378,16 +373,16 @@ export namespace CausalAnalysis {
     const outcome = await CausalGraph.getOutcome(outcomeId)
     if (!outcome) return null
 
-    const action = await CausalGraph.getAction(outcome.actionId)
+    const action = await CausalGraph.getAction(outcome.action_id)
     if (!action) return null
 
-    const decision = await CausalGraph.getDecision(action.decisionId)
+    const decision = await CausalGraph.getDecision(action.decision_id)
     if (!decision) return null
 
     // Find similar decisions
     const similarChains = await CausalGraph.query({
-      agentId: decision.agentId,
-      actionType: action.actionType as ActionType,
+      agentId: decision.agent_id,
+      actionType: action.action_type as ActionType,
       limit: 10,
     })
 
@@ -397,17 +392,17 @@ export namespace CausalAnalysis {
 
     let lesson: string
     if (outcome.status === "success") {
-      lesson = `${action.actionType} action succeeded: ${outcome.description}`
+      lesson = `${action.action_type} action succeeded: ${outcome.description}`
     } else if (outcome.status === "failure") {
-      lesson = `${action.actionType} action failed: ${outcome.description}. Consider alternative approaches.`
+      lesson = `${action.action_type} action failed: ${outcome.description}. Consider alternative approaches.`
     } else {
-      lesson = `${action.actionType} action partially succeeded: ${outcome.description}. May need refinement.`
+      lesson = `${action.action_type} action partially succeeded: ${outcome.description}. May need refinement.`
     }
 
     return {
       lesson,
-      actionType: action.actionType as ActionType,
-      status: outcome.status,
+      actionType: action.action_type as ActionType,
+      status: outcome.status as OutcomeStatus,
       confidence: decision.confidence,
       relatedDecisions,
     }
@@ -425,10 +420,10 @@ export namespace CausalAnalysis {
     recentTrend: "improving" | "declining" | "stable"
     suggestions: string[]
   }> {
-    const stats = await CausalGraph.getStats()
-    const agentStats = stats.topAgents.find((a) => a.agentId === agentId)
+    // Get chains for this agent to compute stats
+    const chains = await CausalGraph.query({ agentId, limit: 1000 })
 
-    if (!agentStats) {
+    if (chains.length === 0) {
       return {
         totalDecisions: 0,
         successRate: 0,
@@ -439,6 +434,23 @@ export namespace CausalAnalysis {
         suggestions: ["No historical data available for this agent"],
       }
     }
+
+    // Calculate agent-specific stats
+    const totalDecisions = chains.length
+    let totalSuccesses = 0
+    let totalOutcomes = 0
+    let confidenceSum = 0
+
+    for (const chain of chains) {
+      confidenceSum += chain.decision.confidence
+      for (const outcome of chain.outcomes) {
+        totalOutcomes++
+        if (outcome.status === "success") totalSuccesses++
+      }
+    }
+
+    const successRate = totalOutcomes > 0 ? totalSuccesses / totalOutcomes : 0
+    const avgConfidence = confidenceSum / totalDecisions
 
     const patterns = await findPatterns({ agentId, minOccurrences: 2 })
 
@@ -471,9 +483,9 @@ export namespace CausalAnalysis {
     }
 
     return {
-      totalDecisions: agentStats.decisionCount,
-      successRate: agentStats.successRate,
-      avgConfidence: stats.avgConfidence,
+      totalDecisions,
+      successRate,
+      avgConfidence,
       strongestActionType: strongestPattern?.actionType ?? null,
       weakestActionType: weakestPattern?.actionType ?? null,
       recentTrend,

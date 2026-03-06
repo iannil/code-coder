@@ -9,7 +9,7 @@
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
-import { SemanticGraph } from "../../../memory/knowledge/semantic-graph"
+import { SemanticGraph } from "../../../memory/knowledge/graph"
 import z from "zod"
 
 // ============================================================================
@@ -117,8 +117,8 @@ function summarizeGraph(graph: SemanticGraph.Graph): string {
   // Group nodes by type
   const nodesByType: Record<string, SemanticGraph.Node[]> = {}
   for (const node of graph.nodes) {
-    if (!nodesByType[node.type]) nodesByType[node.type] = []
-    nodesByType[node.type].push(node)
+    if (!nodesByType[node.node_type]) nodesByType[node.node_type] = []
+    nodesByType[node.node_type].push(node)
   }
 
   // Summarize each type
@@ -252,7 +252,7 @@ export async function assessFeasibility(req: HttpRequest, _params: RouteParams):
     const depth = input.options?.depth ?? "standard"
 
     // Load semantic graph (builds if not exists)
-    const graph = await SemanticGraph.load()
+    const graph = await SemanticGraph.getAsGraph()
 
     // Build the analysis prompt
     const analysisPrompt = buildAnalysisPrompt(input.query, graph, depth)
@@ -336,16 +336,16 @@ export async function assessFeasibility(req: HttpRequest, _params: RouteParams):
 export async function assessHealth(_req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
     // Check if SemanticGraph is accessible
-    const graph = await SemanticGraph.get()
-    const hasGraph = !!graph
+    const graph = await SemanticGraph.getAsGraph()
+    const hasGraph = graph.nodes.length > 0
 
     return jsonResponse({
       success: true,
       data: {
         status: "healthy",
         semantic_graph: hasGraph ? "available" : "needs_build",
-        nodes_count: graph?.nodes.length ?? 0,
-        edges_count: graph?.edges.length ?? 0,
+        nodes_count: graph.nodes.length,
+        edges_count: graph.edges.length,
       },
     })
   } catch (error) {

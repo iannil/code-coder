@@ -267,6 +267,151 @@ export namespace Storage {
   }
 
   // ============================================================================
+  // Batch Operations (for session performance)
+  // ============================================================================
+
+  /**
+   * Set multiple values in a single transaction
+   * This is more efficient than calling write() multiple times
+   */
+  export async function batchWrite<T>(items: Array<{ key: string[]; value: T }>): Promise<void> {
+    const store = await getStore() as NativeKVStoreHandle & {
+      batchSet?: (items: Array<{ key: string[]; value: string }>) => Promise<void>
+    }
+
+    // Check if batch operations are available
+    if (typeof store.batchSet === "function") {
+      await store.batchSet(
+        items.map((item) => ({
+          key: item.key,
+          value: JSON.stringify(item.value),
+        }))
+      )
+    } else {
+      // Fallback to sequential writes
+      for (const item of items) {
+        await store.set(item.key, JSON.stringify(item.value))
+      }
+    }
+  }
+
+  /**
+   * Read multiple values by keys in a single operation
+   * Returns values in the same order as the input keys (throws if any key not found)
+   */
+  export async function batchRead<T>(keys: string[][]): Promise<T[]> {
+    const store = await getStore() as NativeKVStoreHandle & {
+      batchGet?: (keys: string[][]) => Promise<(string | null)[]>
+    }
+
+    let values: (string | null)[]
+
+    // Check if batch operations are available
+    if (typeof store.batchGet === "function") {
+      values = await store.batchGet(keys)
+    } else {
+      // Fallback to sequential reads
+      values = await Promise.all(keys.map((key) => store.get(key)))
+    }
+
+    return values.map((value, index) => {
+      if (value === null) {
+        throw new NotFoundError({ message: `Resource not found: ${keys[index].join("/")}` })
+      }
+      try {
+        return JSON.parse(value) as T
+      } catch (e) {
+        throw new CorruptedError({
+          path: keys[index].join("/"),
+          message: "Failed to parse JSON from KV store",
+          originalError: e instanceof Error ? e.message : String(e),
+          recovered: false,
+        })
+      }
+    })
+  }
+
+  /**
+   * Read multiple values, returning null for missing keys instead of throwing
+   */
+  export async function batchReadOptional<T>(keys: string[][]): Promise<(T | null)[]> {
+    const store = await getStore() as NativeKVStoreHandle & {
+      batchGet?: (keys: string[][]) => Promise<(string | null)[]>
+    }
+
+    let values: (string | null)[]
+
+    if (typeof store.batchGet === "function") {
+      values = await store.batchGet(keys)
+    } else {
+      values = await Promise.all(keys.map((key) => store.get(key)))
+    }
+
+    return values.map((value, index) => {
+      if (value === null) return null
+      try {
+        return JSON.parse(value) as T
+      } catch (e) {
+        log.warn("Failed to parse JSON in batchReadOptional", {
+          key: keys[index].join("/"),
+          error: e,
+        })
+        return null
+      }
+    })
+  }
+
+  /**
+   * Delete multiple keys in a single transaction
+   */
+  export async function batchRemove(keys: string[][]): Promise<number> {
+    const store = await getStore() as NativeKVStoreHandle & {
+      batchDelete?: (keys: string[][]) => Promise<number>
+    }
+
+    if (typeof store.batchDelete === "function") {
+      return store.batchDelete(keys)
+    }
+
+    // Fallback to sequential deletes
+    let deleted = 0
+    for (const key of keys) {
+      if (await store.delete(key)) deleted++
+    }
+    return deleted
+  }
+
+  /**
+   * Get all key-value pairs matching a prefix (more efficient than list + individual reads)
+   */
+  export async function readPrefix<T>(prefix: string[]): Promise<Array<{ key: string[]; value: T }>> {
+    const store = await getStore() as NativeKVStoreHandle & {
+      getPrefix?: (prefix: string[]) => Promise<Array<{ key: string[]; value: string }>>
+    }
+
+    if (typeof store.getPrefix === "function") {
+      const items = await store.getPrefix(prefix)
+      return items.map((item) => ({
+        key: item.key,
+        value: JSON.parse(item.value) as T,
+      }))
+    }
+
+    // Fallback to list + sequential reads
+    const keys = await list(prefix)
+    const result: Array<{ key: string[]; value: T }> = []
+    for (const key of keys) {
+      try {
+        const value = await read<T>(key)
+        result.push({ key, value })
+      } catch (e) {
+        if (!NotFoundError.isInstance(e)) throw e
+      }
+    }
+    return result
+  }
+
+  // ============================================================================
   // Deprecated Functions (kept for backward compatibility)
   // ============================================================================
 

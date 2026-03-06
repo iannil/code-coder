@@ -343,6 +343,128 @@ impl KVStore {
         .await?
     }
 
+    // ========================================================================
+    // Batch Operations (for session performance)
+    // ========================================================================
+
+    /// Set multiple key-value pairs in a single transaction
+    pub async fn batch_set(&self, items: Vec<(Vec<String>, String)>) -> Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+
+        let now = chrono::Utc::now().timestamp_millis();
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let mut conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let tx = conn.transaction()?;
+
+            {
+                let mut stmt = tx.prepare_cached(
+                    r#"
+                    INSERT INTO kv_store (key, value, created_at, updated_at)
+                    VALUES (?1, ?2, ?3, ?3)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    "#,
+                )?;
+
+                for (key, value) in items {
+                    let key_str = key.join("/");
+                    stmt.execute(params![key_str, value, now])?;
+                }
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
+        .await?
+    }
+
+    /// Get multiple values by key paths in a single query
+    pub async fn batch_get(&self, keys: Vec<Vec<String>>) -> Result<Vec<Option<String>>> {
+        if keys.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<Option<String>>> {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+
+            // For a reasonable number of keys, use individual queries
+            // (SQLite IN clause is efficient up to ~1000 items)
+            let mut results = Vec::with_capacity(keys.len());
+
+            let mut stmt = conn.prepare_cached("SELECT value FROM kv_store WHERE key = ?1")?;
+
+            for key in keys {
+                let key_str = key.join("/");
+                let value: Option<String> = stmt
+                    .query_row(params![key_str], |row| row.get(0))
+                    .ok();
+                results.push(value);
+            }
+
+            Ok(results)
+        })
+        .await?
+    }
+
+    /// Delete multiple keys in a single transaction
+    pub async fn batch_delete(&self, keys: Vec<Vec<String>>) -> Result<usize> {
+        if keys.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<usize> {
+            let mut conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let tx = conn.transaction()?;
+
+            let mut deleted = 0;
+            {
+                let mut stmt = tx.prepare_cached("DELETE FROM kv_store WHERE key = ?1")?;
+
+                for key in keys {
+                    let key_str = key.join("/");
+                    deleted += stmt.execute(params![key_str])?;
+                }
+            }
+
+            tx.commit()?;
+            Ok(deleted)
+        })
+        .await?
+    }
+
+    /// Get all values matching a prefix (returns key-value pairs)
+    pub async fn get_prefix(&self, prefix: &[&str]) -> Result<Vec<(String, String)>> {
+        let prefix_str = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", prefix.join("/"))
+        };
+        let conn = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>> {
+            let conn = conn.lock().map_err(|e| anyhow::anyhow!("Lock error: {}", e))?;
+            let mut stmt = conn.prepare("SELECT key, value FROM kv_store WHERE key LIKE ?1 ORDER BY key")?;
+            let pattern = format!("{}%", prefix_str);
+
+            let pairs: Vec<(String, String)> = stmt
+                .query_map(params![pattern], |row| Ok((row.get(0)?, row.get(1)?)))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            Ok(pairs)
+        })
+        .await?
+    }
+
     /// Get the database file path
     pub fn path(&self) -> &Path {
         &self.db_path

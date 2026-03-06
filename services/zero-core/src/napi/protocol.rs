@@ -1019,9 +1019,9 @@ impl LspServerManagerHandle {
     pub async fn incoming_calls(
         &self,
         key: String,
-        item: &LspCallHierarchyItem,
+        item: LspCallHierarchyItem,
     ) -> Result<Vec<LspCallHierarchyIncomingCall>> {
-        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = item.into();
+        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = (&item).into();
         let calls = self.inner
             .incoming_calls(&key, &rust_item)
             .await
@@ -1034,9 +1034,9 @@ impl LspServerManagerHandle {
     pub async fn outgoing_calls(
         &self,
         key: String,
-        item: &LspCallHierarchyItem,
+        item: LspCallHierarchyItem,
     ) -> Result<Vec<LspCallHierarchyOutgoingCall>> {
-        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = item.into();
+        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = (&item).into();
         let calls = self.inner
             .outgoing_calls(&key, &rust_item)
             .await

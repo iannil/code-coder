@@ -7,6 +7,33 @@ import { Global } from "../global"
 import { BusEvent } from "../bus/bus-event"
 import { CausalRecorder } from "../agent/hooks/causal-recorder"
 
+// Import native pattern matching - NAPI only, no fallback
+import {
+  scanPatterns as nativeScanPatterns,
+  scanContentPatterns as nativeScanContentPatterns,
+  matchesPattern as nativeMatchesPattern,
+  containsPattern as nativeContainsPattern,
+} from "@codecoder-ai/core"
+
+// Verify native bindings are available at import time
+if (
+  typeof nativeScanPatterns !== "function" ||
+  typeof nativeScanContentPatterns !== "function" ||
+  typeof nativeMatchesPattern !== "function" ||
+  typeof nativeContainsPattern !== "function"
+) {
+  throw new Error(
+    "@codecoder-ai/core native bindings required: Pattern matching not available. " +
+    "Run: cd services/zero-core && cargo build --features napi-bindings"
+  )
+}
+
+// Non-null references after verification
+const scanPatterns = nativeScanPatterns
+const scanContentPatterns = nativeScanContentPatterns
+const matchesPatternNative = nativeMatchesPattern
+const containsPatternNative = nativeContainsPattern
+
 export namespace Hook {
   const log = Log.create({ service: "hook" })
 
@@ -135,34 +162,20 @@ export namespace Hook {
     return configs
   }
 
+  // Pattern matching functions - native NAPI implementation
   function matchesPattern(pattern: string, value: string): boolean {
     if (!pattern) return true
-    const regex = new RegExp(`^${pattern}$`)
-    return regex.test(value)
+    return matchesPatternNative(pattern, value)
   }
 
   function matchesCommandPattern(pattern: string | undefined, command: string | undefined): boolean {
     if (!pattern || !command) return !pattern
-    const regex = new RegExp(pattern)
-    return regex.test(command)
+    return containsPatternNative(pattern, command)
   }
 
   function matchesFilePattern(pattern: string | undefined, filePath: string | undefined): boolean {
     if (!pattern || !filePath) return !pattern
-    const regex = new RegExp(pattern)
-    return regex.test(filePath)
-  }
-
-  async function scanForPatterns(content: string, patterns: string[]): Promise<{ found: boolean; matches: string[] }> {
-    const matches: string[] = []
-    for (const pattern of patterns) {
-      const regex = new RegExp(pattern, "gm")
-      const match = content.match(regex)
-      if (match) {
-        matches.push(...match)
-      }
-    }
-    return { found: matches.length > 0, matches }
+    return containsPatternNative(pattern, filePath)
   }
 
   async function executeAction(
@@ -195,36 +208,30 @@ export namespace Hook {
 
         // Scan both input and output (output is relevant for PostToolUse)
         const combinedContent = [inputContent, outputContent].join(" ")
-        const { found, matches } = await scanForPatterns(combinedContent, action.patterns)
-        if (found && action.block) {
-          const msg = action.message?.replace("{match}", matches.join(", ")) ?? "Sensitive pattern detected"
+        const result = scanPatterns(combinedContent, action.patterns)
+        if (result.found && action.block) {
+          const msg = action.message?.replace("{match}", result.matches.join(", ")) ?? "Sensitive pattern detected"
           return { blocked: true, message: msg }
         }
-        if (found && action.message) {
-          log.warn(hookName, { message: action.message.replace("{match}", matches.join(", ")) })
+        if (result.found && action.message) {
+          log.warn(hookName, { message: action.message.replace("{match}", result.matches.join(", ")) })
         }
         return { blocked: false }
       }
 
       case "scan_content": {
         if (!action.patterns || !ctx.fileContent) return { blocked: false }
-        const { found, matches } = await scanForPatterns(ctx.fileContent, action.patterns)
-        if (found) {
-          const lines: string[] = []
-          const contentLines = ctx.fileContent.split("\n")
-          for (const pattern of action.patterns) {
-            const regex = new RegExp(pattern, "gm")
-            for (let i = 0; i < contentLines.length; i++) {
-              if (regex.test(contentLines[i])) {
-                lines.push(`Line ${i + 1}`)
-              }
-            }
-          }
+
+        // Use native pattern scanning with line numbers
+        const result = scanContentPatterns(ctx.fileContent, action.patterns)
+        const lines = result.lines.map((n) => `Line ${n}`)
+
+        if (result.found) {
           const msg =
             action.message
               ?.replace("{file}", ctx.filePath ?? "unknown")
               .replace("{line}", lines.join(", "))
-              .replace("{match}", matches.join(", ")) ?? "Pattern detected in content"
+              .replace("{match}", result.matches.join(", ")) ?? "Pattern detected in content"
           if (action.block) {
             return { blocked: true, message: msg }
           }
@@ -238,8 +245,7 @@ export namespace Hook {
         const envValue = process.env[action.variable]
         const status = envValue ? "active" : "not set"
         if (action.command_pattern && ctx.command) {
-          const regex = new RegExp(action.command_pattern)
-          if (regex.test(ctx.command)) {
+          if (containsPatternNative(action.command_pattern, ctx.command)) {
             const msg =
               action.message?.replace("{status}", status) ?? `Environment check: ${action.variable} is ${status}`
             if (action.block && !envValue) {
@@ -385,5 +391,10 @@ export namespace Hook {
         tool: z.string().optional(),
       }),
     ),
+  }
+
+  /** Check if native pattern matching is being used (always true now) */
+  export function isNative(): boolean {
+    return true
   }
 }

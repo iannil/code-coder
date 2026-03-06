@@ -8,9 +8,10 @@
  */
 
 import { Log } from "@/util/log"
-import { CausalGraph } from "@/memory/knowledge/causal-graph"
+import { CausalGraph } from "@/memory/knowledge/graph"
 import { CausalAnalysis } from "@/memory/knowledge/causal-analysis"
-import type { ActionType, CausalChain } from "@/memory/knowledge/causal-types"
+import type { ActionType } from "@/memory/knowledge/causal-types"
+import type { NapiCausalChain } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "agent.hooks.causal-recorder" })
 
@@ -256,7 +257,7 @@ export namespace CausalRecorder {
   /**
    * Format causal chains as readable Markdown
    */
-  function formatChainsForDisplay(chains: CausalChain[]): string {
+  function formatChainsForDisplay(chains: NapiCausalChain[]): string {
     if (chains.length === 0) {
       return "暂无决策历史记录。"
     }
@@ -280,11 +281,11 @@ export namespace CausalRecorder {
           ? chain.decision.prompt.slice(0, 60) + "..."
           : chain.decision.prompt
 
-        const actionTypes = [...new Set(chain.actions.map((a) => a.actionType))].join(", ")
+        const actionTypes = [...new Set(chain.actions.map((a) => a.action_type))].join(", ")
 
         return [
           `### ${statusEmoji} ${promptPreview}`,
-          `- **Agent**: ${chain.decision.agentId}`,
+          `- **Agent**: ${chain.decision.agent_id}`,
           `- **置信度**: ${(chain.decision.confidence * 100).toFixed(0)}%`,
           `- **操作数**: ${chain.actions.length} (${actionTypes || "无"})`,
           `- **结果**: ${successCount} 成功 / ${failureCount} 失败`,

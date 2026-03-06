@@ -28,6 +28,9 @@ mod graph;
 mod history;
 
 #[cfg(feature = "napi-bindings")]
+mod hook;
+
+#[cfg(feature = "napi-bindings")]
 mod java;
 
 #[cfg(feature = "napi-bindings")]
@@ -61,7 +64,13 @@ mod storage;
 mod tools;
 
 #[cfg(feature = "napi-bindings")]
+mod tool_registry;
+
+#[cfg(feature = "napi-bindings")]
 mod trace;
+
+#[cfg(feature = "napi-bindings")]
+mod watcher;
 
 #[cfg(feature = "napi-bindings")]
 mod web;
@@ -89,6 +98,9 @@ pub use graph::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use history::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use hook::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use java::*;
@@ -124,7 +136,13 @@ pub use storage::*;
 pub use tools::*;
 
 #[cfg(feature = "napi-bindings")]
+pub use tool_registry::*;
+
+#[cfg(feature = "napi-bindings")]
 pub use trace::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use watcher::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use web::*;

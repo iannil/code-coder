@@ -141,28 +141,64 @@ export namespace Session {
       const msgs = await messages({ sessionID: input.sessionID })
       const idMap = new Map<string, string>()
 
+      // Collect all items to write in batch
+      const messageItems: Array<{ key: string[]; value: MessageV2.Info }> = []
+      const partItems: Array<{ key: string[]; value: MessageV2.Part }> = []
+      const clonedMessages: MessageV2.Info[] = []
+      const clonedParts: Array<{ part: MessageV2.Part; messageID: string }> = []
+
       for (const msg of msgs) {
         if (input.messageID && msg.info.id >= input.messageID) break
         const newID = Identifier.ascending("message")
         idMap.set(msg.info.id, newID)
 
         const parentID = msg.info.role === "assistant" && msg.info.parentID ? idMap.get(msg.info.parentID) : undefined
-        const cloned = await updateMessage({
+        const clonedMsg: MessageV2.Info = {
           ...msg.info,
           sessionID: session.id,
           id: newID,
           ...(parentID && { parentID }),
+        }
+
+        messageItems.push({
+          key: ["message", session.id, newID],
+          value: clonedMsg,
         })
+        clonedMessages.push(clonedMsg)
 
         for (const part of msg.parts) {
-          await updatePart({
+          const newPartID = Identifier.ascending("part")
+          const clonedPart: MessageV2.Part = {
             ...part,
-            id: Identifier.ascending("part"),
-            messageID: cloned.id,
+            id: newPartID,
+            messageID: newID,
             sessionID: session.id,
+          }
+
+          partItems.push({
+            key: ["part", newID, newPartID],
+            value: clonedPart,
           })
+          clonedParts.push({ part: clonedPart, messageID: newID })
         }
       }
+
+      // Batch write all messages and parts (more efficient than sequential writes)
+      if (messageItems.length > 0) {
+        await Storage.batchWrite(messageItems)
+      }
+      if (partItems.length > 0) {
+        await Storage.batchWrite(partItems)
+      }
+
+      // Publish bus events after successful writes
+      for (const msg of clonedMessages) {
+        Bus.publish(MessageV2.Event.Updated, { info: msg })
+      }
+      for (const { part } of clonedParts) {
+        Bus.publish(MessageV2.Event.PartUpdated, { part, delta: undefined })
+      }
+
       return session
     },
   )
@@ -274,16 +310,30 @@ export namespace Session {
     const project = Instance.project
     try {
       const session = await get(sessionID)
+
+      // Recursively remove child sessions first
       for (const child of await children(sessionID)) {
         await remove(child.id)
       }
-      for (const msg of await Storage.list(["message", sessionID])) {
-        for (const part of await Storage.list(["part", msg.at(-1)!])) {
-          await Storage.remove(part)
-        }
-        await Storage.remove(msg)
-      }
+
+      // Optimized: Use deletePrefix for messages and batch operations for parts
+      // Parts are keyed as ["part", messageID, partID], so we need message IDs
+      const messageKeys = await Storage.list(["message", sessionID])
+
+      // Collect all part deletion tasks
+      const partDeletionPromises = messageKeys.map(msg =>
+        Storage.deletePrefix(["part", msg.at(-1)!])
+      )
+
+      // Delete all parts in parallel (each deletePrefix is a single transaction)
+      await Promise.all(partDeletionPromises)
+
+      // Delete all messages with one deletePrefix call
+      await Storage.deletePrefix(["message", sessionID])
+
+      // Delete the session itself
       await Storage.remove(["session", project.id, sessionID])
+
       Bus.publish(Event.Deleted, {
         info: session,
       })

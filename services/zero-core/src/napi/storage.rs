@@ -169,4 +169,72 @@ impl KVStoreHandle {
     pub fn path(&self) -> String {
         self.inner.path().to_string_lossy().to_string()
     }
+
+    // ========================================================================
+    // Batch Operations (for session performance)
+    // ========================================================================
+
+    /// Set multiple key-value pairs in a single transaction
+    /// This is more efficient than calling set() multiple times
+    #[napi]
+    pub async fn batch_set(&self, items: Vec<NapiBatchItem>) -> Result<()> {
+        let items: Vec<(Vec<String>, String)> = items
+            .into_iter()
+            .map(|item| (item.key, item.value))
+            .collect();
+
+        self.inner
+            .batch_set(items)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Get multiple values by key paths in a single operation
+    /// Returns values in the same order as the input keys (None if not found)
+    #[napi]
+    pub async fn batch_get(&self, keys: Vec<Vec<String>>) -> Result<Vec<Option<String>>> {
+        self.inner
+            .batch_get(keys)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Delete multiple keys in a single transaction
+    /// Returns the number of keys actually deleted
+    #[napi]
+    pub async fn batch_delete(&self, keys: Vec<Vec<String>>) -> Result<u32> {
+        self.inner
+            .batch_delete(keys)
+            .await
+            .map(|c| c as u32)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Get all key-value pairs matching a prefix
+    /// More efficient than list() + individual get() calls
+    #[napi]
+    pub async fn get_prefix(&self, prefix: Vec<String>) -> Result<Vec<NapiBatchItem>> {
+        let prefix_refs: Vec<&str> = prefix.iter().map(|s| s.as_str()).collect();
+        let pairs = self.inner
+            .get_prefix(&prefix_refs)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(pairs
+            .into_iter()
+            .map(|(key, value)| NapiBatchItem {
+                key: key.split('/').map(String::from).collect(),
+                value,
+            })
+            .collect())
+    }
+}
+
+/// Key-value pair for batch operations
+#[napi(object)]
+pub struct NapiBatchItem {
+    /// Key path as array of strings (e.g., ["session", "abc123"])
+    pub key: Vec<String>,
+    /// JSON-encoded value
+    pub value: String,
 }

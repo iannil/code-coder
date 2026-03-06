@@ -11,7 +11,7 @@
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { z } from "zod"
-import { CausalGraph } from "@/memory/knowledge/causal-graph"
+import { CausalGraph } from "@/memory/knowledge/graph"
 import { CausalAnalysis } from "@/memory/knowledge/causal-analysis"
 import {
   RecordDecisionRequestSchema,
@@ -411,18 +411,17 @@ export async function getLessons(_req: HttpRequest, params: RouteParams): Promis
  * Get full graph data for visualization
  */
 export async function getCausalGraphData(_req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
-  const graph = await CausalGraph.load()
+  const stats = await CausalGraph.getStats()
 
   return jsonResponse({
     success: true,
     data: {
       nodes: {
-        decisions: graph.nodes.decisions.length,
-        actions: graph.nodes.actions.length,
-        outcomes: graph.nodes.outcomes.length,
+        decisions: stats.total_decisions,
+        actions: stats.total_actions,
+        outcomes: stats.total_outcomes,
       },
-      edges: graph.edges.length,
-      time: graph.time,
+      edges: stats.total_edges,
     },
   })
 }
@@ -454,20 +453,20 @@ export async function getCausalMermaid(req: HttpRequest, _params: RouteParams): 
  */
 export async function causalHealth(_req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    const graph = await CausalGraph.load()
+    const stats = await CausalGraph.getStats()
 
     return jsonResponse({
       success: true,
       data: {
         status: "healthy",
-        projectId: graph.projectId,
         counts: {
-          decisions: graph.nodes.decisions.length,
-          actions: graph.nodes.actions.length,
-          outcomes: graph.nodes.outcomes.length,
-          edges: graph.edges.length,
+          decisions: stats.total_decisions,
+          actions: stats.total_actions,
+          outcomes: stats.total_outcomes,
+          edges: stats.total_edges,
         },
-        lastUpdated: new Date(graph.time.updated).toISOString(),
+        successRate: stats.success_rate,
+        avgConfidence: stats.avg_confidence,
       },
     })
   } catch (error) {

@@ -623,6 +623,22 @@ export declare class KvStoreHandle {
   healthCheck(): Promise<boolean>
   compact(): Promise<void>
   path(): string
+  /** Set multiple key-value pairs in a single transaction */
+  batchSet(items: NapiBatchItem[]): Promise<void>
+  /** Get multiple values by key paths in a single operation */
+  batchGet(keys: string[][]): Promise<(string | null)[]>
+  /** Delete multiple keys in a single transaction */
+  batchDelete(keys: string[][]): Promise<number>
+  /** Get all key-value pairs matching a prefix */
+  getPrefix(prefix: string[]): Promise<NapiBatchItem[]>
+}
+
+/** Key-value pair for batch operations */
+export interface NapiBatchItem {
+  /** Key path as array of strings (e.g., ["session", "abc123"]) */
+  key: string[]
+  /** JSON-encoded value */
+  value: string
 }
 
 export type KVStoreHandle = KvStoreHandle
@@ -821,36 +837,233 @@ export declare const InjectionType: any
 export declare function scoreRelevanceWithConfig(query: string, content: string, config: any): NapiRelevanceScore
 
 // ============================================================================
-// Graph Module Types
+// Graph Module Types (matches napi/graph.rs)
 // ============================================================================
 
-export declare class CallGraphHandle {
-  addCall(caller: string, callee: string): void
-  getCallers(fn: string): string[]
-  getCallees(fn: string): string[]
-  clear(): void
+/** Node data for graphs */
+export interface NapiNodeData {
+  id: string
+  node_type: string
+  payload: string
+  created_at: number
+  updated_at: number
 }
 
-export declare class CausalGraphHandle {
-  addCause(effect: string, cause: string): void
-  getCauses(effect: string): string[]
-  getEffects(cause: string): string[]
-  clear(): void
+/** Path finding result */
+export interface NapiPathResult {
+  found: boolean
+  path: string[]
+  nodes_visited: number
 }
 
+/** Cycle detection result */
+export interface NapiCycleResult {
+  has_cycles: boolean
+  cycles: string[][]
+}
+
+/** Generic graph engine */
 export declare class GraphEngineHandle {
-  addNode(id: string, data: any): void
-  addEdge(from: string, to: string, data: any): void
-  getNode(id: string): any
-  getNeighbors(id: string): string[]
+  constructor()
+  addNode(id: string, nodeType: string, payload: string): string
+  getNode(id: string): NapiNodeData | null
+  containsNode(id: string): boolean
+  addEdge(source: string, target: string, relationship: string): string | null
+  getSuccessors(id: string): string[]
+  getPredecessors(id: string): string[]
+  nodeCount(): number
+  edgeCount(): number
+  bfs(start: string): string[]
+  dfs(start: string): string[]
+  findPath(from: string, to: string): NapiPathResult
+  hasCycles(): boolean
+  detectCycles(): NapiCycleResult
+  topologicalSort(): string[]
+  getReachable(start: string, maxDepth: number): string[]
+  toJson(): string
+  static fromJson(json: string): GraphEngineHandle
   clear(): void
 }
 
+// --- Causal Graph Types ---
+
+export interface NapiDecisionNode {
+  id: string
+  session_id: string
+  agent_id: string
+  prompt: string
+  reasoning: string
+  confidence: number
+  timestamp: string
+  context?: string
+}
+
+export interface NapiActionNode {
+  id: string
+  decision_id: string
+  action_type: string
+  description: string
+  input?: string
+  output?: string
+  timestamp: string
+  duration?: number
+}
+
+export interface NapiOutcomeNode {
+  id: string
+  action_id: string
+  status: string
+  description: string
+  metrics?: string
+  feedback?: string
+  timestamp: string
+}
+
+export interface NapiCausalChain {
+  decision: NapiDecisionNode
+  actions: NapiActionNode[]
+  outcomes: NapiOutcomeNode[]
+}
+
+export interface NapiCausalQuery {
+  agent_id?: string
+  session_id?: string
+  action_type?: string
+  status?: string
+  min_confidence?: number
+  date_from?: string
+  date_to?: string
+  limit?: number
+}
+
+export interface NapiCausalStats {
+  total_decisions: number
+  total_actions: number
+  total_outcomes: number
+  total_edges: number
+  success_rate: number
+  avg_confidence: number
+}
+
+/** Causal graph for Decision → Action → Outcome tracking */
+export declare class CausalGraphHandle {
+  constructor(projectId: string)
+  recordDecision(
+    sessionId: string,
+    agentId: string,
+    prompt: string,
+    reasoning: string,
+    confidence: number,
+    context?: string
+  ): NapiDecisionNode
+  recordAction(
+    decisionId: string,
+    actionType: string,
+    description: string,
+    input?: string,
+    output?: string,
+    duration?: number
+  ): NapiActionNode
+  recordOutcome(
+    actionId: string,
+    status: string,
+    description: string,
+    metrics?: string,
+    feedback?: string
+  ): NapiOutcomeNode
+  getDecision(id: string): NapiDecisionNode | null
+  getDecisions(): NapiDecisionNode[]
+  getCausalChain(decisionId: string): NapiCausalChain | null
+  query(query: NapiCausalQuery): NapiCausalChain[]
+  getSuccessRate(agentId?: string): number
+  getStats(): NapiCausalStats
+  hasCycles(): boolean
+  toJson(): string
+  static fromJson(json: string): CausalGraphHandle
+}
+
+// --- Call Graph Types ---
+
+export interface NapiCallNode {
+  id: string
+  name: string
+  kind: string
+  file: string
+  line: number
+  character: number
+  detail?: string
+}
+
+export interface NapiRecursionInfo {
+  node: NapiCallNode
+  recursion_type: string
+  cycle: string[]
+}
+
+/** Call graph for function call relationships */
+export declare class CallGraphHandle {
+  constructor(projectId: string)
+  addFunction(
+    name: string,
+    file: string,
+    line: number,
+    character: number,
+    kind: string,
+    detail?: string
+  ): NapiCallNode
+  addCall(callerId: string, calleeId: string, line: number, character: number): string | null
+  getNode(id: string): NapiCallNode | null
+  getNodes(): NapiCallNode[]
+  getCallers(calleeId: string): NapiCallNode[]
+  getCallees(callerId: string): NapiCallNode[]
+  detectRecursion(): NapiRecursionInfo[]
+  getEntryPoints(): NapiCallNode[]
+  getLeafFunctions(): NapiCallNode[]
+  toJson(): string
+  static fromJson(json: string): CallGraphHandle
+}
+
+// --- Semantic Graph Types ---
+
+export interface NapiSemanticNode {
+  id: string
+  node_type: string
+  name: string
+  file: string
+  metadata?: string
+}
+
+export interface NapiSemanticStats {
+  total_nodes: number
+  total_edges: number
+  files: number
+  functions: number
+  classes: number
+  interfaces: number
+  has_cycles: boolean
+}
+
+/** Semantic graph for code entity relationships */
 export declare class SemanticGraphHandle {
-  addConcept(id: string, data: any): void
-  addRelation(from: string, to: string, relation: string): void
-  getRelated(id: string, relation?: string): string[]
-  clear(): void
+  constructor(projectId: string)
+  addFunction(name: string, file: string, signature?: string, exported?: boolean): NapiSemanticNode
+  addClass(name: string, file: string, extendsClass?: string, methods?: string[]): NapiSemanticNode
+  addInterface(name: string, file: string, extendsInterface?: string): NapiSemanticNode
+  addFile(path: string): NapiSemanticNode
+  addImport(importer: string, imported: string): string | null
+  addExtends(child: string, parent: string): string | null
+  addImplements(implementor: string, interfaceId: string): string | null
+  addContains(container: string, contained: string): string | null
+  getNode(id: string): NapiSemanticNode | null
+  getNodes(): NapiSemanticNode[]
+  getNodesByType(nodeType: string): NapiSemanticNode[]
+  getImports(entityId: string): NapiSemanticNode[]
+  getImporters(entityId: string): NapiSemanticNode[]
+  getInheritanceChain(classId: string): NapiSemanticNode[]
+  hasCircularDependencies(): boolean
+  stats(): NapiSemanticStats
+  toJson(): string
+  static fromJson(json: string): SemanticGraphHandle
 }
 
 // ============================================================================
@@ -1528,3 +1741,180 @@ export declare function createCompactor(): CompactorHandle
 
 /** Create a new compactor with custom limits */
 export declare function createCompactorWithLimits(contextLimit: number, targetRatio: number): CompactorHandle
+
+// ============================================================================
+// File Watcher Module Types
+// ============================================================================
+
+/** Watch event kind enum */
+export declare const enum WatchEventKind {
+  /** File created */
+  Add = 'Add',
+  /** File modified */
+  Change = 'Change',
+  /** File deleted */
+  Unlink = 'Unlink',
+  /** File renamed */
+  Rename = 'Rename'
+}
+
+/** File watch event */
+export interface WatchEvent {
+  /** Affected file path */
+  path: string
+  /** Event type: 'add' | 'change' | 'unlink' | 'rename' */
+  kind: string
+  /** Timestamp (Unix ms) */
+  timestamp: number
+}
+
+/** File watcher configuration */
+export interface FileWatcherConfig {
+  /** Debounce duration in milliseconds (default: 100) */
+  debounceMs?: number
+  /** Whether to watch recursively (default: true) */
+  recursive?: boolean
+  /** Patterns to ignore (gitignore style) */
+  ignore?: string[]
+}
+
+/** Handle to a file watcher */
+export declare class FileWatcherHandle {
+  /** Subscribe to file changes in a directory */
+  subscribe(path: string, callback: (path: string, event: string) => void): void
+  /** Unsubscribe from all watchers */
+  unsubscribeAll(): void
+  /** Get the number of active subscriptions */
+  subscriptionCount(): number
+  /** Check if currently watching any paths */
+  isWatching(): boolean
+}
+
+/** Create a new file watcher with default configuration */
+export declare function createFileWatcher(): FileWatcherHandle
+
+/** Create a new file watcher with custom configuration */
+export declare function createFileWatcherWithConfig(config: FileWatcherConfig): FileWatcherHandle
+
+/** Watch a single path with a callback (convenience function) */
+export declare function watchPath(
+  path: string,
+  callback: (path: string, event: string) => void,
+  config?: FileWatcherConfig
+): FileWatcherHandle
+
+// ============================================================================
+// Hook Pattern Matching Module Types
+// ============================================================================
+
+/** Result of pattern matching */
+export interface PatternMatchResult {
+  /** Whether any pattern matched */
+  found: boolean
+  /** All matched strings */
+  matches: string[]
+  /** Map of pattern to its matches */
+  matchesByPattern: Record<string, string[]>
+}
+
+/** Line match information for content scanning */
+export interface ContentMatchResult {
+  /** Whether any pattern matched */
+  found: boolean
+  /** All matched strings */
+  matches: string[]
+  /** Lines where matches were found (1-indexed) */
+  lines: number[]
+  /** Map of pattern to line numbers where it matched */
+  linesByPattern: Record<string, number[]>
+}
+
+/** Handle to a compiled pattern set for reuse */
+export declare class PatternSetHandle {
+  /** Scan content for any matching patterns */
+  scan(content: string): PatternMatchResult
+  /** Scan content and report line numbers for matches */
+  scanContent(content: string): ContentMatchResult
+  /** Check if a tool name matches a pattern */
+  matchesTool(tool: string): boolean
+  /** Get the number of patterns in this set */
+  patternCount(): number
+}
+
+/** Create a compiled pattern set for efficient reuse */
+export declare function createPatternSet(patterns: string[]): PatternSetHandle
+
+/** Scan content for patterns (one-shot, no precompilation) */
+export declare function scanPatterns(content: string, patterns: string[]): PatternMatchResult
+
+/** Scan content for patterns and report line numbers (one-shot) */
+export declare function scanContentPatterns(content: string, patterns: string[]): ContentMatchResult
+
+/** Check if a string matches a regex pattern (anchored: ^pattern$) */
+export declare function matchesPattern(pattern: string, value: string): boolean
+
+/** Check if a string matches a regex pattern (unanchored) */
+export declare function containsPattern(pattern: string, value: string): boolean
+
+// ============================================================================
+// Tool Registry Module Types
+// ============================================================================
+
+/** Tool specification for LLM function calling */
+export interface NapiToolSpec {
+  /** Tool name (unique identifier) */
+  name: string
+  /** Human-readable description for the LLM */
+  description: string
+  /** JSON Schema for the tool's parameters (as JSON string) */
+  parametersSchema: string
+  /** Whether this tool is implemented natively in Rust */
+  native: boolean
+}
+
+/** Result of tool execution */
+export interface NapiToolExecuteResult {
+  /** Whether the tool succeeded */
+  success: boolean
+  /** Tool output (stdout, result text, etc.) */
+  output: string
+  /** Error message if failed */
+  error?: string
+  /** Execution duration in milliseconds */
+  durationMs: number
+}
+
+/** Result of argument validation */
+export interface NapiValidationResult {
+  /** Whether the arguments are valid */
+  valid: boolean
+  /** Validation error messages */
+  errors: string[]
+}
+
+/** Handle to the tool registry for unified tool discovery and execution */
+export declare class ToolRegistryHandle {
+  constructor()
+  /** List all available tool specifications */
+  listTools(): NapiToolSpec[]
+  /** Get a specific tool's specification by name */
+  getSpec(name: string): NapiToolSpec | null
+  /** Check if a tool exists in the registry */
+  hasTool(name: string): boolean
+  /** Get the number of registered tools */
+  toolCount(): number
+  /** Validate tool arguments against its schema */
+  validateArgs(name: string, argsJson: string): NapiValidationResult
+  /** Execute a tool with the given arguments (async) */
+  execute(name: string, argsJson: string): Promise<NapiToolExecuteResult>
+}
+
+/** Create a new tool registry with all built-in tools */
+export declare function createToolRegistry(): ToolRegistryHandle
+
+/** Get specifications for all built-in Rust tools (without creating a registry) */
+export declare function getBuiltinToolSpecs(): NapiToolSpec[]
+
+/** Get the list of tool names that have native Rust implementations */
+export declare function getNativeToolNames(): string[]
+
