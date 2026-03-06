@@ -50,6 +50,9 @@ dirs = "5.0"
 # Config parsing (JSONC/JSON5)
 json5 = "0.4"
 
+# JSON Schema validation
+jsonschema = "0.26"
+
 # Binary lookup
 which = "7.0"
 
