@@ -33,31 +33,14 @@ impl SchemaValidator {
     }
 
     /// Validate a configuration value
-    pub fn validate(&self, config: &Value) -> Result<Vec<ValidationIssue>> {
-        let result = self.schema.validate(config);
-        match result {
-            Ok(_) => Ok(vec![]),
-            Err(err) => {
-                // validate() returns only first error, use iter_errors for all
-                let issues: Vec<_> = self
-                    .schema
-                    .iter_errors(config)
-                    .map(|e| ValidationIssue {
-                        path: e.instance_path.to_string(),
-                        message: e.to_string(),
-                    })
-                    .collect();
-                if issues.is_empty() {
-                    // Shouldn't happen, but just in case - return the first error
-                    Ok(vec![ValidationIssue {
-                        path: String::new(),
-                        message: err.to_string(),
-                    }])
-                } else {
-                    Ok(issues)
-                }
-            }
-        }
+    pub fn validate(&self, config: &Value) -> Vec<ValidationIssue> {
+        self.schema
+            .iter_errors(config)
+            .map(|e| ValidationIssue {
+                path: e.instance_path.to_string(),
+                message: e.to_string(),
+            })
+            .collect()
     }
 
     /// Check if config is valid (no issues)
@@ -116,7 +99,7 @@ mod tests {
 
         // Invalid: port is a string instead of integer
         let invalid = json!({ "port": "not-a-number" });
-        let issues = validator.validate(&invalid).unwrap();
+        let issues = validator.validate(&invalid);
         assert!(!issues.is_empty());
         assert!(issues[0].message.contains("type"));
     }
