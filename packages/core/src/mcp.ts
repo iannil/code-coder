@@ -42,6 +42,10 @@ import type {
   McpClientConfig,
   McpConnectionStatus,
   McpContentItem,
+  McpPrompt,
+  McpPromptMessage,
+  McpPromptResult,
+  McpResource,
   McpTool,
   McpToolResult,
   OAuthConfig,
@@ -249,6 +253,49 @@ export class McpClientManager implements IMcpClientManager {
   async closeAll(): Promise<void> {
     const handle = this.ensureHandle()
     await handle.closeAll()
+  }
+
+  // Resource methods
+
+  async listResources(clientName: string): Promise<McpResource[]> {
+    const handle = this.ensureHandle()
+    const resources = await handle.listResources(clientName)
+    return resources.map((r: { uri: string; name: string; description?: string; mime_type?: string }) => ({
+      uri: r.uri,
+      name: r.name,
+      description: r.description,
+      mimeType: r.mime_type,
+    }))
+  }
+
+  async readResource(clientName: string, uri: string): Promise<unknown> {
+    const handle = this.ensureHandle()
+    return handle.readResource(clientName, uri)
+  }
+
+  // Prompt methods
+
+  async listPrompts(clientName: string): Promise<McpPrompt[]> {
+    const handle = this.ensureHandle()
+    const prompts = await handle.listPrompts(clientName)
+    return prompts.map((p: { name: string; description?: string; arguments: Array<{ name: string; description?: string; required: boolean }> }) => ({
+      name: p.name,
+      description: p.description,
+      arguments: p.arguments.map(a => ({
+        name: a.name,
+        description: a.description,
+        required: a.required,
+      })),
+    }))
+  }
+
+  async getPrompt(clientName: string, promptName: string, args?: Record<string, unknown>): Promise<McpPromptResult> {
+    const handle = this.ensureHandle()
+    const result = await handle.getPrompt(clientName, promptName, args)
+    return {
+      description: result.description,
+      messages: result.messages as McpPromptMessage[],
+    }
   }
 
   // OAuth methods

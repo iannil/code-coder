@@ -502,6 +502,82 @@ export interface LspServerStatus {
   error?: string
 }
 
+/** LSP range */
+export interface LspRange {
+  /** Start line */
+  startLine: number
+  /** Start character */
+  startCharacter: number
+  /** End line */
+  endLine: number
+  /** End character */
+  endCharacter: number
+}
+
+/** LSP workspace symbol (includes container name and file URI) */
+export interface LspWorkspaceSymbol {
+  /** Symbol name */
+  name: string
+  /** Symbol kind (Function, Class, Method, etc.) */
+  kind: string
+  /** Container name (e.g., class name for a method) */
+  containerName?: string
+  /** File URI */
+  uri: string
+  /** Start line */
+  startLine: number
+  /** Start character */
+  startCharacter: number
+  /** End line */
+  endLine: number
+  /** End character */
+  endCharacter: number
+}
+
+/** LSP call hierarchy item */
+export interface LspCallHierarchyItem {
+  /** Symbol name */
+  name: string
+  /** Symbol kind (Function, Method, etc.) */
+  kind: string
+  /** Detail (e.g., signature) */
+  detail?: string
+  /** File URI */
+  uri: string
+  /** Range start line */
+  startLine: number
+  /** Range start character */
+  startCharacter: number
+  /** Range end line */
+  endLine: number
+  /** Range end character */
+  endCharacter: number
+  /** Selection range start line */
+  selectionStartLine: number
+  /** Selection range start character */
+  selectionStartCharacter: number
+  /** Selection range end line */
+  selectionEndLine: number
+  /** Selection range end character */
+  selectionEndCharacter: number
+}
+
+/** LSP call hierarchy incoming call */
+export interface LspCallHierarchyIncomingCall {
+  /** The item that makes the call */
+  from: LspCallHierarchyItem
+  /** Ranges where this call happens */
+  fromRanges: LspRange[]
+}
+
+/** LSP call hierarchy outgoing call */
+export interface LspCallHierarchyOutgoingCall {
+  /** The item being called */
+  to: LspCallHierarchyItem
+  /** Ranges where this call happens */
+  fromRanges: LspRange[]
+}
+
 export declare class LspServerManagerHandle {
   // Basic methods
   startForFile(filePath: string): Promise<string>
@@ -517,6 +593,10 @@ export declare class LspServerManagerHandle {
   gotoTypeDefinition(key: string, uri: string, line: number, character: number): Promise<LspLocation[]>
   findReferences(key: string, uri: string, line: number, character: number, includeDeclaration?: boolean): Promise<LspLocation[]>
   documentSymbols(key: string, uri: string): Promise<LspSymbol[]>
+  workspaceSymbol(key: string, query: string): Promise<LspWorkspaceSymbol[]>
+  prepareCallHierarchy(key: string, uri: string, line: number, character: number): Promise<LspCallHierarchyItem[]>
+  incomingCalls(key: string, item: LspCallHierarchyItem): Promise<LspCallHierarchyIncomingCall[]>
+  outgoingCalls(key: string, item: LspCallHierarchyItem): Promise<LspCallHierarchyOutgoingCall[]>
   completion(key: string, uri: string, line: number, character: number): Promise<LspCompletionItem[]>
   formatDocument(key: string, uri: string, tabSize?: number, insertSpaces?: boolean): Promise<LspTextEdit[]>
   didOpen(key: string, uri: string, languageId: string, version: number, text: string): Promise<void>
@@ -852,6 +932,34 @@ export declare class McpAuthStoreHandle {
   list(): string[]
 }
 
+/** MCP resource definition */
+export interface McpResource {
+  uri: string
+  name: string
+  description?: string
+  mime_type?: string
+}
+
+/** MCP prompt argument */
+export interface McpPromptArgument {
+  name: string
+  description?: string
+  required: boolean
+}
+
+/** MCP prompt definition */
+export interface McpPrompt {
+  name: string
+  description?: string
+  arguments: McpPromptArgument[]
+}
+
+/** MCP prompt result */
+export interface McpPromptResult {
+  description?: string
+  messages: unknown[]
+}
+
 export declare class McpClientManagerHandle {
   /** Add a client */
   add(name: string, config: {
@@ -883,6 +991,14 @@ export declare class McpClientManagerHandle {
   remove(name: string): Promise<void>
   /** Close all connections */
   closeAll(): Promise<void>
+  /** List resources from a specific client */
+  listResources(clientName: string): Promise<McpResource[]>
+  /** Read a resource from a specific client */
+  readResource(clientName: string, uri: string): Promise<unknown>
+  /** List prompts from a specific client */
+  listPrompts(clientName: string): Promise<McpPrompt[]>
+  /** Get a prompt from a specific client */
+  getPrompt(clientName: string, promptName: string, args?: unknown): Promise<McpPromptResult>
   /** Load OAuth credentials from storage */
   loadOauth(): Promise<void>
   /** Start OAuth authentication flow */

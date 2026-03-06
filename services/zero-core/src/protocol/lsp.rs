@@ -87,6 +87,87 @@ pub struct LspTextEdit {
     pub new_text: String,
 }
 
+/// LSP range
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspRange {
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+}
+
+/// LSP workspace symbol (includes container name)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspWorkspaceSymbol {
+    /// Symbol name
+    pub name: String,
+    /// Symbol kind (Function, Class, Method, etc.)
+    pub kind: String,
+    /// Container name (e.g., class name for a method)
+    pub container_name: Option<String>,
+    /// File URI
+    pub uri: String,
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+}
+
+/// LSP call hierarchy item
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspCallHierarchyItem {
+    /// Symbol name
+    pub name: String,
+    /// Symbol kind (Function, Method, etc.)
+    pub kind: String,
+    /// Detail (e.g., signature)
+    pub detail: Option<String>,
+    /// File URI
+    pub uri: String,
+    /// Range start line
+    pub start_line: u32,
+    /// Range start character
+    pub start_character: u32,
+    /// Range end line
+    pub end_line: u32,
+    /// Range end character
+    pub end_character: u32,
+    /// Selection range start line
+    pub selection_start_line: u32,
+    /// Selection range start character
+    pub selection_start_character: u32,
+    /// Selection range end line
+    pub selection_end_line: u32,
+    /// Selection range end character
+    pub selection_end_character: u32,
+}
+
+/// LSP call hierarchy incoming call
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspCallHierarchyIncomingCall {
+    /// The item that makes the call
+    pub from: LspCallHierarchyItem,
+    /// Ranges where this call happens
+    pub from_ranges: Vec<LspRange>,
+}
+
+/// LSP call hierarchy outgoing call
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LspCallHierarchyOutgoingCall {
+    /// The item being called
+    pub to: LspCallHierarchyItem,
+    /// Ranges where this call happens
+    pub from_ranges: Vec<LspRange>,
+}
+
 /// LSP server status
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
@@ -1380,6 +1461,211 @@ impl LspServerManager {
         self.notify(key, "textDocument/didChange", params).await
     }
 
+    /// Search for symbols in the workspace
+    pub async fn workspace_symbol(&self, key: &str, query: &str) -> Result<Vec<LspWorkspaceSymbol>> {
+        let params = serde_json::json!({
+            "query": query
+        });
+
+        let result = self.request(key, "workspace/symbol", params).await?;
+
+        if result.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let symbols: Vec<LspWorkspaceSymbol> = result
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        let name = v.get("name")?.as_str()?.to_string();
+                        let kind = v.get("kind")?.as_u64()? as u32;
+
+                        // Get location
+                        let location = v.get("location")?;
+                        let uri = location.get("uri")?.as_str()?.to_string();
+                        let range = location.get("range")?;
+
+                        let start_line = range.get("start")?.get("line")?.as_u64()? as u32;
+                        let start_char = range.get("start")?.get("character")?.as_u64()? as u32;
+                        let end_line = range.get("end")?.get("line")?.as_u64()? as u32;
+                        let end_char = range.get("end")?.get("character")?.as_u64()? as u32;
+
+                        let container_name = v.get("containerName")
+                            .and_then(|c| c.as_str())
+                            .map(|s| s.to_string());
+
+                        Some(LspWorkspaceSymbol {
+                            name,
+                            kind: Self::symbol_kind_name(kind),
+                            container_name,
+                            uri,
+                            start_line,
+                            start_character: start_char,
+                            end_line,
+                            end_character: end_char,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(symbols)
+    }
+
+    /// Prepare call hierarchy items at a position
+    pub async fn prepare_call_hierarchy(&self, key: &str, uri: &str, line: u32, character: u32) -> Result<Vec<LspCallHierarchyItem>> {
+        let params = serde_json::json!({
+            "textDocument": { "uri": uri },
+            "position": { "line": line, "character": character }
+        });
+
+        let result = self.request(key, "textDocument/prepareCallHierarchy", params).await?;
+
+        if result.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let items: Vec<LspCallHierarchyItem> = result
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| Self::parse_call_hierarchy_item(v))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(items)
+    }
+
+    /// Get incoming calls for a call hierarchy item
+    pub async fn incoming_calls(&self, key: &str, item: &LspCallHierarchyItem) -> Result<Vec<LspCallHierarchyIncomingCall>> {
+        let params = serde_json::json!({
+            "item": {
+                "name": item.name,
+                "kind": Self::symbol_kind_number(&item.kind),
+                "uri": item.uri,
+                "range": {
+                    "start": { "line": item.start_line, "character": item.start_character },
+                    "end": { "line": item.end_line, "character": item.end_character }
+                },
+                "selectionRange": {
+                    "start": { "line": item.selection_start_line, "character": item.selection_start_character },
+                    "end": { "line": item.selection_end_line, "character": item.selection_end_character }
+                }
+            }
+        });
+
+        let result = self.request(key, "callHierarchy/incomingCalls", params).await?;
+
+        if result.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let calls: Vec<LspCallHierarchyIncomingCall> = result
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        let from = v.get("from")?;
+                        let from_item = Self::parse_call_hierarchy_item(from)?;
+
+                        let from_ranges = v.get("fromRanges")
+                            .and_then(|r| r.as_array())
+                            .map(|ranges| {
+                                ranges.iter()
+                                    .filter_map(|range| {
+                                        let start_line = range.get("start")?.get("line")?.as_u64()? as u32;
+                                        let start_char = range.get("start")?.get("character")?.as_u64()? as u32;
+                                        let end_line = range.get("end")?.get("line")?.as_u64()? as u32;
+                                        let end_char = range.get("end")?.get("character")?.as_u64()? as u32;
+                                        Some(LspRange {
+                                            start_line,
+                                            start_character: start_char,
+                                            end_line,
+                                            end_character: end_char,
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        Some(LspCallHierarchyIncomingCall {
+                            from: from_item,
+                            from_ranges,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(calls)
+    }
+
+    /// Get outgoing calls from a call hierarchy item
+    pub async fn outgoing_calls(&self, key: &str, item: &LspCallHierarchyItem) -> Result<Vec<LspCallHierarchyOutgoingCall>> {
+        let params = serde_json::json!({
+            "item": {
+                "name": item.name,
+                "kind": Self::symbol_kind_number(&item.kind),
+                "uri": item.uri,
+                "range": {
+                    "start": { "line": item.start_line, "character": item.start_character },
+                    "end": { "line": item.end_line, "character": item.end_character }
+                },
+                "selectionRange": {
+                    "start": { "line": item.selection_start_line, "character": item.selection_start_character },
+                    "end": { "line": item.selection_end_line, "character": item.selection_end_character }
+                }
+            }
+        });
+
+        let result = self.request(key, "callHierarchy/outgoingCalls", params).await?;
+
+        if result.is_null() {
+            return Ok(Vec::new());
+        }
+
+        let calls: Vec<LspCallHierarchyOutgoingCall> = result
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| {
+                        let to = v.get("to")?;
+                        let to_item = Self::parse_call_hierarchy_item(to)?;
+
+                        let from_ranges = v.get("fromRanges")
+                            .and_then(|r| r.as_array())
+                            .map(|ranges| {
+                                ranges.iter()
+                                    .filter_map(|range| {
+                                        let start_line = range.get("start")?.get("line")?.as_u64()? as u32;
+                                        let start_char = range.get("start")?.get("character")?.as_u64()? as u32;
+                                        let end_line = range.get("end")?.get("line")?.as_u64()? as u32;
+                                        let end_char = range.get("end")?.get("character")?.as_u64()? as u32;
+                                        Some(LspRange {
+                                            start_line,
+                                            start_character: start_char,
+                                            end_line,
+                                            end_character: end_char,
+                                        })
+                                    })
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+
+                        Some(LspCallHierarchyOutgoingCall {
+                            to: to_item,
+                            from_ranges,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(calls)
+    }
+
     /// Send a notification to a language server
     pub async fn notify(&self, key: &str, method: &str, params: Value) -> Result<()> {
         let servers = self.servers.read().await;
@@ -1476,6 +1762,72 @@ impl LspServerManager {
             .unwrap_or_default();
 
         Ok(edits)
+    }
+
+    fn parse_call_hierarchy_item(v: &Value) -> Option<LspCallHierarchyItem> {
+        let name = v.get("name")?.as_str()?.to_string();
+        let kind = v.get("kind")?.as_u64()? as u32;
+        let detail = v.get("detail").and_then(|d| d.as_str()).map(|s| s.to_string());
+        let uri = v.get("uri")?.as_str()?.to_string();
+
+        let range = v.get("range")?;
+        let start_line = range.get("start")?.get("line")?.as_u64()? as u32;
+        let start_char = range.get("start")?.get("character")?.as_u64()? as u32;
+        let end_line = range.get("end")?.get("line")?.as_u64()? as u32;
+        let end_char = range.get("end")?.get("character")?.as_u64()? as u32;
+
+        let selection_range = v.get("selectionRange")?;
+        let selection_start_line = selection_range.get("start")?.get("line")?.as_u64()? as u32;
+        let selection_start_char = selection_range.get("start")?.get("character")?.as_u64()? as u32;
+        let selection_end_line = selection_range.get("end")?.get("line")?.as_u64()? as u32;
+        let selection_end_char = selection_range.get("end")?.get("character")?.as_u64()? as u32;
+
+        Some(LspCallHierarchyItem {
+            name,
+            kind: Self::symbol_kind_name(kind),
+            detail,
+            uri,
+            start_line,
+            start_character: start_char,
+            end_line,
+            end_character: end_char,
+            selection_start_line,
+            selection_start_character: selection_start_char,
+            selection_end_line,
+            selection_end_character: selection_end_char,
+        })
+    }
+
+    fn symbol_kind_number(kind: &str) -> u32 {
+        match kind {
+            "File" => 1,
+            "Module" => 2,
+            "Namespace" => 3,
+            "Package" => 4,
+            "Class" => 5,
+            "Method" => 6,
+            "Property" => 7,
+            "Field" => 8,
+            "Constructor" => 9,
+            "Enum" => 10,
+            "Interface" => 11,
+            "Function" => 12,
+            "Variable" => 13,
+            "Constant" => 14,
+            "String" => 15,
+            "Number" => 16,
+            "Boolean" => 17,
+            "Array" => 18,
+            "Object" => 19,
+            "Key" => 20,
+            "Null" => 21,
+            "EnumMember" => 22,
+            "Struct" => 23,
+            "Event" => 24,
+            "Operator" => 25,
+            "TypeParameter" => 26,
+            _ => 0,
+        }
     }
 
     fn symbol_kind_name(kind: u32) -> String {

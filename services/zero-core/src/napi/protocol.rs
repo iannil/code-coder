@@ -180,6 +180,69 @@ pub struct McpToolResult {
     pub is_error: bool,
 }
 
+/// MCP resource definition
+#[napi(object)]
+pub struct McpResource {
+    pub uri: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub mime_type: Option<String>,
+}
+
+impl From<crate::protocol::mcp::McpResource> for McpResource {
+    fn from(r: crate::protocol::mcp::McpResource) -> Self {
+        McpResource {
+            uri: r.uri,
+            name: r.name,
+            description: r.description,
+            mime_type: r.mime_type,
+        }
+    }
+}
+
+/// MCP prompt definition
+#[napi(object)]
+pub struct McpPrompt {
+    pub name: String,
+    pub description: Option<String>,
+    pub arguments: Vec<McpPromptArgument>,
+}
+
+impl From<crate::protocol::mcp::McpPrompt> for McpPrompt {
+    fn from(p: crate::protocol::mcp::McpPrompt) -> Self {
+        McpPrompt {
+            name: p.name,
+            description: p.description,
+            arguments: p.arguments.into_iter().map(|a| a.into()).collect(),
+        }
+    }
+}
+
+/// MCP prompt argument
+#[napi(object)]
+pub struct McpPromptArgument {
+    pub name: String,
+    pub description: Option<String>,
+    pub required: bool,
+}
+
+impl From<crate::protocol::mcp::McpPromptArgument> for McpPromptArgument {
+    fn from(a: crate::protocol::mcp::McpPromptArgument) -> Self {
+        McpPromptArgument {
+            name: a.name,
+            description: a.description,
+            required: a.required,
+        }
+    }
+}
+
+/// MCP prompt result
+#[napi(object)]
+pub struct McpPromptResult {
+    pub description: Option<String>,
+    pub messages: Vec<serde_json::Value>,
+}
+
 /// Handle to an MCP client manager
 #[napi]
 pub struct McpClientManagerHandle {
@@ -279,6 +342,94 @@ impl McpClientManagerHandle {
             .close_all()
             .await
             .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    // ========================================================================
+    // Resource methods
+    // ========================================================================
+
+    /// List resources from a specific client
+    #[napi]
+    pub async fn list_resources(&self, client_name: String) -> Result<Vec<McpResource>> {
+        let manager = self.inner.read().await;
+        let client = manager
+            .get(&client_name)
+            .await
+            .ok_or_else(|| Error::from_reason(format!("Client not found: {}", client_name)))?;
+
+        let resources = client
+            .list_resources()
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(resources.into_iter().map(|r| r.into()).collect())
+    }
+
+    /// Read a resource from a specific client
+    #[napi]
+    pub async fn read_resource(&self, client_name: String, uri: String) -> Result<serde_json::Value> {
+        let manager = self.inner.read().await;
+        let client = manager
+            .get(&client_name)
+            .await
+            .ok_or_else(|| Error::from_reason(format!("Client not found: {}", client_name)))?;
+
+        client
+            .read_resource(&uri)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    // ========================================================================
+    // Prompt methods
+    // ========================================================================
+
+    /// List prompts from a specific client
+    #[napi]
+    pub async fn list_prompts(&self, client_name: String) -> Result<Vec<McpPrompt>> {
+        let manager = self.inner.read().await;
+        let client = manager
+            .get(&client_name)
+            .await
+            .ok_or_else(|| Error::from_reason(format!("Client not found: {}", client_name)))?;
+
+        let prompts = client
+            .list_prompts()
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(prompts.into_iter().map(|p| p.into()).collect())
+    }
+
+    /// Get a prompt from a specific client
+    #[napi]
+    pub async fn get_prompt(
+        &self,
+        client_name: String,
+        prompt_name: String,
+        arguments: Option<serde_json::Value>,
+    ) -> Result<McpPromptResult> {
+        let manager = self.inner.read().await;
+        let client = manager
+            .get(&client_name)
+            .await
+            .ok_or_else(|| Error::from_reason(format!("Client not found: {}", client_name)))?;
+
+        let result = client
+            .get_prompt(&prompt_name, arguments)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        // Convert messages to JSON values
+        let messages: Vec<serde_json::Value> = result.messages
+            .into_iter()
+            .map(|m| serde_json::to_value(m).unwrap_or_default())
+            .collect();
+
+        Ok(McpPromptResult {
+            description: result.description,
+            messages,
+        })
     }
 
     // ========================================================================
@@ -508,6 +659,169 @@ impl From<crate::protocol::lsp::LspTextEdit> for LspTextEdit {
     }
 }
 
+/// LSP range
+#[napi(object)]
+pub struct LspRange {
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+}
+
+impl From<crate::protocol::lsp::LspRange> for LspRange {
+    fn from(r: crate::protocol::lsp::LspRange) -> Self {
+        LspRange {
+            start_line: r.start_line,
+            start_character: r.start_character,
+            end_line: r.end_line,
+            end_character: r.end_character,
+        }
+    }
+}
+
+/// LSP workspace symbol (includes container name)
+#[napi(object)]
+pub struct LspWorkspaceSymbol {
+    /// Symbol name
+    pub name: String,
+    /// Symbol kind (Function, Class, Method, etc.)
+    pub kind: String,
+    /// Container name (e.g., class name for a method)
+    pub container_name: Option<String>,
+    /// File URI
+    pub uri: String,
+    /// Start line
+    pub start_line: u32,
+    /// Start character
+    pub start_character: u32,
+    /// End line
+    pub end_line: u32,
+    /// End character
+    pub end_character: u32,
+}
+
+impl From<crate::protocol::lsp::LspWorkspaceSymbol> for LspWorkspaceSymbol {
+    fn from(sym: crate::protocol::lsp::LspWorkspaceSymbol) -> Self {
+        LspWorkspaceSymbol {
+            name: sym.name,
+            kind: sym.kind,
+            container_name: sym.container_name,
+            uri: sym.uri,
+            start_line: sym.start_line,
+            start_character: sym.start_character,
+            end_line: sym.end_line,
+            end_character: sym.end_character,
+        }
+    }
+}
+
+/// LSP call hierarchy item
+#[napi(object)]
+pub struct LspCallHierarchyItem {
+    /// Symbol name
+    pub name: String,
+    /// Symbol kind (Function, Method, etc.)
+    pub kind: String,
+    /// Detail (e.g., signature)
+    pub detail: Option<String>,
+    /// File URI
+    pub uri: String,
+    /// Range start line
+    pub start_line: u32,
+    /// Range start character
+    pub start_character: u32,
+    /// Range end line
+    pub end_line: u32,
+    /// Range end character
+    pub end_character: u32,
+    /// Selection range start line
+    pub selection_start_line: u32,
+    /// Selection range start character
+    pub selection_start_character: u32,
+    /// Selection range end line
+    pub selection_end_line: u32,
+    /// Selection range end character
+    pub selection_end_character: u32,
+}
+
+impl From<crate::protocol::lsp::LspCallHierarchyItem> for LspCallHierarchyItem {
+    fn from(item: crate::protocol::lsp::LspCallHierarchyItem) -> Self {
+        LspCallHierarchyItem {
+            name: item.name,
+            kind: item.kind,
+            detail: item.detail,
+            uri: item.uri,
+            start_line: item.start_line,
+            start_character: item.start_character,
+            end_line: item.end_line,
+            end_character: item.end_character,
+            selection_start_line: item.selection_start_line,
+            selection_start_character: item.selection_start_character,
+            selection_end_line: item.selection_end_line,
+            selection_end_character: item.selection_end_character,
+        }
+    }
+}
+
+impl From<&LspCallHierarchyItem> for crate::protocol::lsp::LspCallHierarchyItem {
+    fn from(item: &LspCallHierarchyItem) -> Self {
+        crate::protocol::lsp::LspCallHierarchyItem {
+            name: item.name.clone(),
+            kind: item.kind.clone(),
+            detail: item.detail.clone(),
+            uri: item.uri.clone(),
+            start_line: item.start_line,
+            start_character: item.start_character,
+            end_line: item.end_line,
+            end_character: item.end_character,
+            selection_start_line: item.selection_start_line,
+            selection_start_character: item.selection_start_character,
+            selection_end_line: item.selection_end_line,
+            selection_end_character: item.selection_end_character,
+        }
+    }
+}
+
+/// LSP call hierarchy incoming call
+#[napi(object)]
+pub struct LspCallHierarchyIncomingCall {
+    /// The item that makes the call
+    pub from: LspCallHierarchyItem,
+    /// Ranges where this call happens
+    pub from_ranges: Vec<LspRange>,
+}
+
+impl From<crate::protocol::lsp::LspCallHierarchyIncomingCall> for LspCallHierarchyIncomingCall {
+    fn from(call: crate::protocol::lsp::LspCallHierarchyIncomingCall) -> Self {
+        LspCallHierarchyIncomingCall {
+            from: call.from.into(),
+            from_ranges: call.from_ranges.into_iter().map(|r| r.into()).collect(),
+        }
+    }
+}
+
+/// LSP call hierarchy outgoing call
+#[napi(object)]
+pub struct LspCallHierarchyOutgoingCall {
+    /// The item being called
+    pub to: LspCallHierarchyItem,
+    /// Ranges where this call happens
+    pub from_ranges: Vec<LspRange>,
+}
+
+impl From<crate::protocol::lsp::LspCallHierarchyOutgoingCall> for LspCallHierarchyOutgoingCall {
+    fn from(call: crate::protocol::lsp::LspCallHierarchyOutgoingCall) -> Self {
+        LspCallHierarchyOutgoingCall {
+            to: call.to.into(),
+            from_ranges: call.from_ranges.into_iter().map(|r| r.into()).collect(),
+        }
+    }
+}
+
 /// Handle to an LSP server manager
 #[napi]
 pub struct LspServerManagerHandle {
@@ -668,6 +982,66 @@ impl LspServerManagerHandle {
             .await
             .map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(symbols.into_iter().map(|s| s.into()).collect())
+    }
+
+    /// Search for symbols in the workspace
+    #[napi]
+    pub async fn workspace_symbol(
+        &self,
+        key: String,
+        query: String,
+    ) -> Result<Vec<LspWorkspaceSymbol>> {
+        let symbols = self.inner
+            .workspace_symbol(&key, &query)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(symbols.into_iter().map(|s| s.into()).collect())
+    }
+
+    /// Prepare call hierarchy items at a position
+    #[napi]
+    pub async fn prepare_call_hierarchy(
+        &self,
+        key: String,
+        uri: String,
+        line: u32,
+        character: u32,
+    ) -> Result<Vec<LspCallHierarchyItem>> {
+        let items = self.inner
+            .prepare_call_hierarchy(&key, &uri, line, character)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(items.into_iter().map(|i| i.into()).collect())
+    }
+
+    /// Get incoming calls for a call hierarchy item
+    #[napi]
+    pub async fn incoming_calls(
+        &self,
+        key: String,
+        item: &LspCallHierarchyItem,
+    ) -> Result<Vec<LspCallHierarchyIncomingCall>> {
+        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = item.into();
+        let calls = self.inner
+            .incoming_calls(&key, &rust_item)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(calls.into_iter().map(|c| c.into()).collect())
+    }
+
+    /// Get outgoing calls from a call hierarchy item
+    #[napi]
+    pub async fn outgoing_calls(
+        &self,
+        key: String,
+        item: &LspCallHierarchyItem,
+    ) -> Result<Vec<LspCallHierarchyOutgoingCall>> {
+        let rust_item: crate::protocol::lsp::LspCallHierarchyItem = item.into();
+        let calls = self.inner
+            .outgoing_calls(&key, &rust_item)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(calls.into_iter().map(|c| c.into()).collect())
     }
 
     /// Get completions at a position

@@ -16,6 +16,21 @@ export type {
   LspCompletionItem,
   LspHover,
   SupportedLspServer,
+  LspDocumentSymbol,
+  LspWorkspaceSymbol,
+  LspCallHierarchyItem,
+  LspCallRange,
+  LspCallHierarchyIncomingCall,
+  LspCallHierarchyOutgoingCall,
+} from './protocol.js'
+
+// Import types for internal use
+import type {
+  LspWorkspaceSymbol,
+  LspCallHierarchyItem,
+  LspCallRange,
+  LspCallHierarchyIncomingCall,
+  LspCallHierarchyOutgoingCall,
 } from './protocol.js'
 
 // ============================================================================
@@ -90,6 +105,11 @@ import type {
   LspSymbol as NativeLspSymbol,
   LspCompletionItem as NativeLspCompletionItem,
   LspTextEdit as NativeLspTextEdit,
+  LspWorkspaceSymbol as NativeLspWorkspaceSymbol,
+  LspCallHierarchyItem as NativeLspCallHierarchyItem,
+  LspCallHierarchyIncomingCall as NativeLspCallHierarchyIncomingCall,
+  LspCallHierarchyOutgoingCall as NativeLspCallHierarchyOutgoingCall,
+  LspRange as NativeLspRange,
 } from './binding.d.ts'
 
 let createNativeLspServerManager: (() => LspServerManagerHandle) | null = null
@@ -443,6 +463,58 @@ export class LspServerManager {
   }
 
   /**
+   * Search for symbols in the workspace
+   * @param key Server key
+   * @param query Search query
+   * @returns Array of workspace symbols
+   */
+  async workspaceSymbol(key: string, query: string): Promise<LspWorkspaceSymbol[]> {
+    const handle = this.ensureHandle()
+    const symbols = await handle.workspaceSymbol(key, query)
+    return symbols.map(this.fromNativeWorkspaceSymbol)
+  }
+
+  /**
+   * Prepare call hierarchy items at a position
+   * @param key Server key
+   * @param uri Document URI
+   * @param line Line number (0-indexed)
+   * @param character Character offset (0-indexed)
+   * @returns Array of call hierarchy items
+   */
+  async prepareCallHierarchy(key: string, uri: string, line: number, character: number): Promise<LspCallHierarchyItem[]> {
+    const handle = this.ensureHandle()
+    const items = await handle.prepareCallHierarchy(key, uri, line, character)
+    return items.map(this.fromNativeCallHierarchyItem)
+  }
+
+  /**
+   * Get incoming calls for a call hierarchy item
+   * @param key Server key
+   * @param item Call hierarchy item
+   * @returns Array of incoming calls
+   */
+  async incomingCalls(key: string, item: LspCallHierarchyItem): Promise<LspCallHierarchyIncomingCall[]> {
+    const handle = this.ensureHandle()
+    const nativeItem = this.toNativeCallHierarchyItem(item)
+    const calls = await handle.incomingCalls(key, nativeItem)
+    return calls.map(this.fromNativeIncomingCall)
+  }
+
+  /**
+   * Get outgoing calls from a call hierarchy item
+   * @param key Server key
+   * @param item Call hierarchy item
+   * @returns Array of outgoing calls
+   */
+  async outgoingCalls(key: string, item: LspCallHierarchyItem): Promise<LspCallHierarchyOutgoingCall[]> {
+    const handle = this.ensureHandle()
+    const nativeItem = this.toNativeCallHierarchyItem(item)
+    const calls = await handle.outgoingCalls(key, nativeItem)
+    return calls.map(this.fromNativeOutgoingCall)
+  }
+
+  /**
    * Get completion items at a position
    * @param key Server key
    * @param uri Document URI
@@ -544,6 +616,76 @@ export class LspServerManager {
       endLine: edit.endLine,
       endCharacter: edit.endCharacter,
       newText: edit.newText,
+    }
+  }
+
+  private fromNativeWorkspaceSymbol(sym: NativeLspWorkspaceSymbol): LspWorkspaceSymbol {
+    return {
+      name: sym.name,
+      kind: sym.kind,
+      containerName: sym.containerName,
+      uri: sym.uri,
+      startLine: sym.startLine,
+      startCharacter: sym.startCharacter,
+      endLine: sym.endLine,
+      endCharacter: sym.endCharacter,
+    }
+  }
+
+  private fromNativeCallHierarchyItem(item: NativeLspCallHierarchyItem): LspCallHierarchyItem {
+    return {
+      name: item.name,
+      kind: item.kind,
+      detail: item.detail,
+      uri: item.uri,
+      startLine: item.startLine,
+      startCharacter: item.startCharacter,
+      endLine: item.endLine,
+      endCharacter: item.endCharacter,
+      selectionStartLine: item.selectionStartLine,
+      selectionStartCharacter: item.selectionStartCharacter,
+      selectionEndLine: item.selectionEndLine,
+      selectionEndCharacter: item.selectionEndCharacter,
+    }
+  }
+
+  private toNativeCallHierarchyItem(item: LspCallHierarchyItem): NativeLspCallHierarchyItem {
+    return {
+      name: item.name,
+      kind: item.kind,
+      detail: item.detail,
+      uri: item.uri,
+      startLine: item.startLine,
+      startCharacter: item.startCharacter,
+      endLine: item.endLine,
+      endCharacter: item.endCharacter,
+      selectionStartLine: item.selectionStartLine,
+      selectionStartCharacter: item.selectionStartCharacter,
+      selectionEndLine: item.selectionEndLine,
+      selectionEndCharacter: item.selectionEndCharacter,
+    }
+  }
+
+  private fromNativeRange(r: NativeLspRange): LspCallRange {
+    return {
+      startLine: r.startLine,
+      startCharacter: r.startCharacter,
+      endLine: r.endLine,
+      endCharacter: r.endCharacter,
+    }
+  }
+
+  private fromNativeIncomingCall(call: NativeLspCallHierarchyIncomingCall): LspCallHierarchyIncomingCall {
+    return {
+      from: this.fromNativeCallHierarchyItem(call.from),
+      fromRanges: call.fromRanges.map(this.fromNativeRange),
+    }
+  }
+
+  private fromNativeOutgoingCall(call: NativeLspCallHierarchyOutgoingCall): LspCallHierarchyOutgoingCall {
+    return {
+      to: this.fromNativeCallHierarchyItem(call.to),
+      fromRanges: call.fromRanges.map(this.fromNativeRange),
     }
   }
 }

@@ -245,14 +245,18 @@ export async function finishMcpAuth(req: HttpRequest, params: RouteParams): Prom
     }
 
     const body = await readRequestBody(req.body)
-    const { code } = JSON.parse(body) as { code: string }
+    const { code, state } = JSON.parse(body) as { code: string; state: string }
 
     if (!code) {
       return errorResponse("Authorization code is required", 400)
     }
 
+    if (!state) {
+      return errorResponse("OAuth state is required", 400)
+    }
+
     const { MCP } = await import("../../../mcp")
-    const status = await MCP.finishAuth(name, code)
+    const status = await MCP.finishAuth(name, code, state)
 
     return jsonResponse({
       success: true,

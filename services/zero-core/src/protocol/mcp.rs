@@ -54,6 +54,107 @@ pub struct McpResource {
     pub mime_type: Option<String>,
 }
 
+/// MCP Prompt definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPrompt {
+    /// Prompt name
+    pub name: String,
+    /// Prompt description
+    pub description: Option<String>,
+    /// Prompt arguments schema
+    #[serde(default)]
+    pub arguments: Vec<McpPromptArgument>,
+}
+
+/// MCP Prompt argument definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptArgument {
+    /// Argument name
+    pub name: String,
+    /// Argument description
+    pub description: Option<String>,
+    /// Whether the argument is required
+    #[serde(default)]
+    pub required: bool,
+}
+
+/// MCP Prompt result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptResult {
+    /// Description of the prompt result
+    pub description: Option<String>,
+    /// Messages from the prompt
+    pub messages: Vec<McpPromptMessage>,
+}
+
+/// MCP Prompt message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptMessage {
+    /// Role of the message (user, assistant)
+    pub role: String,
+    /// Content of the message
+    pub content: McpPromptContent,
+}
+
+/// MCP Prompt content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpPromptContent {
+    /// Text content
+    Text(McpPromptTextContent),
+    /// Image content
+    Image(McpPromptImageContent),
+    /// Resource content
+    Resource(McpPromptResourceContent),
+}
+
+/// MCP Prompt text content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptTextContent {
+    /// Content type
+    #[serde(rename = "type")]
+    pub content_type: String,
+    /// Text value
+    pub text: String,
+}
+
+/// MCP Prompt image content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptImageContent {
+    /// Content type
+    #[serde(rename = "type")]
+    pub content_type: String,
+    /// Base64-encoded image data
+    pub data: String,
+    /// MIME type of the image
+    #[serde(rename = "mimeType")]
+    pub mime_type: String,
+}
+
+/// MCP Prompt resource content
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpPromptResourceContent {
+    /// Content type
+    #[serde(rename = "type")]
+    pub content_type: String,
+    /// Resource reference
+    pub resource: McpEmbeddedResource,
+}
+
+/// MCP Embedded resource reference
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpEmbeddedResource {
+    /// Resource URI
+    pub uri: String,
+    /// MIME type
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+    /// Text content
+    pub text: Option<String>,
+    /// Binary blob (base64)
+    pub blob: Option<String>,
+}
+
 /// MCP Tool call result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct McpToolResult {

@@ -17,7 +17,7 @@ use serde_json::Value;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{debug, error, info, warn};
 
-use super::mcp::{McpResource, McpTool, McpToolResult};
+use super::mcp::{McpPrompt, McpPromptResult, McpResource, McpTool, McpToolResult};
 use super::mcp_oauth::{McpOAuthManager, OAuthConfig, AuthStatus};
 
 /// MCP Transport type
@@ -537,6 +537,39 @@ impl McpClientInstance {
         self.transport
             .send_request("resources/read", Some(params))
             .await
+    }
+
+    /// List available prompts
+    pub async fn list_prompts(&self) -> Result<Vec<McpPrompt>> {
+        let result = self
+            .transport
+            .send_request("prompts/list", None)
+            .await?;
+
+        if let Some(prompts_array) = result.get("prompts").and_then(|p| p.as_array()) {
+            let prompts: Vec<McpPrompt> = prompts_array
+                .iter()
+                .filter_map(|p| serde_json::from_value(p.clone()).ok())
+                .collect();
+            return Ok(prompts);
+        }
+
+        Ok(Vec::new())
+    }
+
+    /// Get a specific prompt with arguments
+    pub async fn get_prompt(&self, name: &str, arguments: Option<Value>) -> Result<McpPromptResult> {
+        let params = serde_json::json!({
+            "name": name,
+            "arguments": arguments.unwrap_or(Value::Null)
+        });
+
+        let result = self
+            .transport
+            .send_request("prompts/get", Some(params))
+            .await?;
+
+        serde_json::from_value(result).context("Failed to parse prompt result")
     }
 
     /// Get connection status
