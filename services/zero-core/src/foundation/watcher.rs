@@ -126,7 +126,7 @@ impl FileWatcher {
         let (tx, rx) = mpsc::channel(1000);
 
         let config = self.config.clone();
-        let watched_paths = self.watched_paths.clone();
+        let _watched_paths = self.watched_paths.clone();
 
         // Create the notify watcher with debouncing
         let notify_config = Config::default()
@@ -400,7 +400,7 @@ mod tests {
         fs::write(&file_path, "hello").unwrap();
 
         // Wait for event with timeout
-        let event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        let _event = tokio::time::timeout(Duration::from_secs(2), rx.recv())
             .await
             .ok()
             .flatten();
