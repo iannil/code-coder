@@ -31,6 +31,7 @@ pub mod doctor;
 pub mod health;
 pub mod heartbeat;
 pub mod integrations;
+pub mod ipc;
 pub mod mcp;
 pub mod memory;
 pub mod migration;

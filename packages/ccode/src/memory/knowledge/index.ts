@@ -3,6 +3,9 @@ import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import z from "zod"
 
+// Export native bindings for graph operations
+export * as NativeGraph from "./native"
+
 const log = Log.create({ service: "memory.knowledge" })
 
 export namespace Knowledge {

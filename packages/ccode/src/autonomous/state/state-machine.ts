@@ -1,35 +1,129 @@
+/**
+ * State Machine for Autonomous Mode
+ *
+ * This module provides a TypeScript wrapper around the native Rust state machine implementation.
+ * The native implementation offers:
+ * - Compile-time state transition validation where possible
+ * - Efficient state history tracking with bounded memory
+ * - Loop detection for preventing infinite state cycles
+ * - Time tracking for performance analysis
+ *
+ * @package autonomous
+ * @see services/zero-core/src/autonomous/state.rs - Rust implementation
+ * @see services/zero-core/src/napi/autonomous.rs - NAPI bindings
+ */
+
 import { Log } from "@/util/log"
-import { AutonomousState, isValidTransition, isTerminal, StateMetadata, getStateCategory } from "./states"
+import { AutonomousState, isValidTransition, StateMetadata, getStateCategory } from "./states"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
+import { createStateMachine as rawNativeCreateStateMachine } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "autonomous.state-machine" })
 
-/**
- * State transition options
- */
+// ============================================================================
+// Native Type Definitions
+// ============================================================================
+
+interface NativeStateMachineConfig {
+  maxHistory?: number
+}
+
+interface NativeStateMetadata {
+  state: string
+  enteredAt: number
+  previousState?: string
+  reason?: string
+}
+
+interface NativeTransitionResult {
+  success: boolean
+  fromState: string
+  toState: string
+  metadata?: NativeStateMetadata
+  error?: string
+}
+
+interface NativeStateMachineHandle {
+  state(): string
+  category(): string
+  isState(state: string): boolean
+  isTerminal(): boolean
+  isRecoverable(): boolean
+  validTransitions(): string[]
+  canTransitionTo(target: string): boolean
+  transition(to: string, reason?: string): NativeTransitionResult
+  forceTransition(to: string, reason?: string): NativeTransitionResult
+  history(): NativeStateMetadata[]
+  previousState(): string | null
+  stateVisitCount(state: string): number
+  detectLoop(state: string, threshold: number): boolean
+  reset(): void
+  timeInCurrentState(): number
+  totalTimeInState(state: string): number
+  serialize(): string
+}
+
+type NativeCreateStateMachine = (config?: NativeStateMachineConfig) => NativeStateMachineHandle
+
+// Cast the raw import to our properly typed function
+const nativeCreateStateMachine = rawNativeCreateStateMachine as unknown as NativeCreateStateMachine | undefined
+
+// ============================================================================
+// Native Binding Validation
+// ============================================================================
+
+if (!nativeCreateStateMachine) {
+  throw new Error(
+    "Native state machine bindings not available. Ensure @codecoder-ai/core is built with 'bun run build' in packages/core",
+  )
+}
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
 export interface TransitionOptions {
   reason?: string
   metadata?: Record<string, unknown>
 }
 
-/**
- * State machine configuration
- */
 export interface StateMachineConfig {
   onStateChange?: (from: AutonomousState, to: AutonomousState, metadata: StateMetadata) => void | Promise<void>
   onInvalidTransition?: (from: AutonomousState, to: AutonomousState) => void | Promise<void>
   maxStateHistory?: number
 }
 
+// ============================================================================
+// State Conversion Helpers
+// ============================================================================
+
+// State mapping (TS snake_case → Native PascalCase)
+function toNativeState(state: AutonomousState): string {
+  return state
+    .split("_")
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase())
+    .join("")
+}
+
+// State mapping (Native PascalCase → TS snake_case)
+function fromNativeState(state: string): AutonomousState {
+  const snakeCase = state.replace(/([A-Z])/g, "_$1").toLowerCase().slice(1)
+  return (snakeCase as AutonomousState) || AutonomousState.IDLE
+}
+
+// ============================================================================
+// State Machine Class
+// ============================================================================
+
 /**
- * State machine for Autonomous Mode
+ * State machine for autonomous mode execution.
  *
- * Manages state transitions with validation and history tracking
+ * Manages state transitions with validation, history tracking, and event publishing.
+ * Uses native Rust implementation via NAPI bindings for performance.
  */
 export class StateMachine {
-  private currentState: AutonomousState = AutonomousState.IDLE
-  private stateHistory: StateMetadata[] = []
+  private native: NativeStateMachineHandle
   private config: StateMachineConfig
 
   constructor(config: StateMachineConfig = {}) {
@@ -37,67 +131,81 @@ export class StateMachine {
       maxStateHistory: 100,
       ...config,
     }
+
+    // Create native state machine (fail-fast if unavailable)
+    // Note: nativeCreateStateMachine is validated as non-null at module load
+    this.native = nativeCreateStateMachine!({
+      maxHistory: this.config.maxStateHistory,
+    })
+
+    log.debug("StateMachine created", { maxHistory: this.config.maxStateHistory })
   }
 
   /**
-   * Get current state
+   * Get the current state
    */
   getState(): AutonomousState {
-    return this.currentState
+    return fromNativeState(this.native.state())
   }
 
   /**
    * Check if in a specific state
    */
   is(state: AutonomousState): boolean {
-    return this.currentState === state
+    return this.getState() === state
   }
 
   /**
    * Check if in any of the given states
    */
   isIn(states: AutonomousState[]): boolean {
-    return states.includes(this.currentState)
+    return states.includes(this.getState())
   }
 
   /**
    * Get state history
    */
   getHistory(): StateMetadata[] {
-    return [...this.stateHistory]
+    const history = this.native.history()
+    return history.map((h) => ({
+      state: fromNativeState(h.state),
+      enteredAt: h.enteredAt,
+      previousState: h.previousState ? fromNativeState(h.previousState) : undefined,
+      reason: h.reason,
+    }))
   }
 
   /**
-   * Get last state (before current)
+   * Get previous state
    */
   getPreviousState(): AutonomousState | undefined {
-    if (this.stateHistory.length < 2) return undefined
-    return this.stateHistory[this.stateHistory.length - 2]?.state
+    const prev = this.native.previousState()
+    return prev ? fromNativeState(prev) : undefined
   }
 
   /**
-   * Get count of visits to a state
+   * Count how many times a state has been visited
    */
   getStateVisitCount(state: AutonomousState): number {
-    return this.stateHistory.filter((s) => s.state === state).length
+    return this.native.stateVisitCount(toNativeState(state))
   }
 
   /**
-   * Check if we're in a loop (same state visited multiple times)
+   * Detect if we're in a loop (state visited threshold times in recent history)
    */
   detectLoop(state: AutonomousState, threshold = 3): boolean {
-    const recent = this.stateHistory.slice(-threshold * 2)
-    const count = recent.filter((s) => s.state === state).length
-    return count >= threshold
+    return this.native.detectLoop(toNativeState(state), threshold)
   }
 
   /**
    * Attempt a state transition
+   *
+   * @returns true if transition succeeded, false if invalid
    */
   async transition(to: AutonomousState, options: TransitionOptions = {}): Promise<boolean> {
-    const from = this.currentState
+    const from = this.getState()
 
-    // Validate transition
+    // Validate transition using TS rules (matches Rust implementation)
     if (!isValidTransition(from, to)) {
       log.warn("Invalid state transition", { from, to })
       await this.config.onInvalidTransition?.(from, to)
@@ -109,24 +217,20 @@ export class StateMachine {
       return false
     }
 
-    // Record state history
+    // Execute transition in native
+    const result = this.native.transition(toNativeState(to), options.reason)
+    if (!result.success) {
+      log.warn("Native transition failed", { error: result.error })
+      return false
+    }
+
+    // Create metadata for callbacks
     const metadata: StateMetadata = {
       state: to,
       enteredAt: Date.now(),
       previousState: from,
       reason: options.reason,
     }
-
-    this.stateHistory.push(metadata)
-
-    // Trim history if needed
-    if (this.config.maxStateHistory && this.stateHistory.length > this.config.maxStateHistory) {
-      this.stateHistory = this.stateHistory.slice(-this.config.maxStateHistory)
-    }
-
-    // Update state
-    const previous = this.currentState
-    this.currentState = to
 
     log.info("State transition", {
       from,
@@ -135,7 +239,7 @@ export class StateMachine {
       reason: options.reason,
     })
 
-    // Notify listeners
+    // Fire callbacks and events
     await this.config.onStateChange?.(from, to, metadata)
     await Bus.publish(AutonomousEvent.StateChanged, {
       from,
@@ -147,10 +251,12 @@ export class StateMachine {
   }
 
   /**
-   * Force transition (bypasses validation - use with caution)
+   * Force a transition (bypasses validation)
    */
   async forceTransition(to: AutonomousState, options: TransitionOptions = {}): Promise<void> {
-    const from = this.currentState
+    const from = this.getState()
+
+    this.native.forceTransition(toNativeState(to), options.reason ?? "Forced transition")
 
     const metadata: StateMetadata = {
       state: to,
@@ -158,9 +264,6 @@ export class StateMachine {
       previousState: from,
       reason: options.reason ?? "Forced transition",
     }
-
-    this.stateHistory.push(metadata)
-    this.currentState = to
 
     log.warn("Forced state transition", { from, to })
 
@@ -176,9 +279,9 @@ export class StateMachine {
    * Reset to initial state
    */
   async reset(reason = "Reset to initial state"): Promise<void> {
-    const from = this.currentState
-    this.currentState = AutonomousState.IDLE
-    this.stateHistory = []
+    const from = this.getState()
+
+    this.native.reset()
 
     log.info("State machine reset", { from, to: AutonomousState.IDLE, reason })
 
@@ -190,57 +293,44 @@ export class StateMachine {
   }
 
   /**
-   * Get time spent in current state
+   * Get time spent in current state (ms)
    */
   getTimeInCurrentState(): number {
-    const current = this.stateHistory[this.stateHistory.length - 1]
-    if (!current) return 0
-    return Date.now() - current.enteredAt
+    return this.native.timeInCurrentState()
   }
 
   /**
-   * Get total time in a specific state across history
+   * Get total time spent in a specific state (ms)
    */
   getTotalTimeInState(state: AutonomousState): number {
-    let total = 0
-    for (let i = 0; i < this.stateHistory.length; i++) {
-      if (this.stateHistory[i]?.state !== state) continue
-      const entered = this.stateHistory[i]?.enteredAt ?? 0
-      const exited = this.stateHistory[i + 1]?.enteredAt ?? Date.now()
-      total += exited - entered
-    }
-    return total
+    return this.native.totalTimeInState(toNativeState(state))
   }
 
   /**
    * Serialize state machine for persistence
    */
-  serialize(): {
-    currentState: AutonomousState
-    stateHistory: StateMetadata[]
-  } {
+  serialize(): { currentState: AutonomousState; stateHistory: StateMetadata[] } {
     return {
-      currentState: this.currentState,
-      stateHistory: this.stateHistory,
+      currentState: this.getState(),
+      stateHistory: this.getHistory(),
     }
   }
 
   /**
    * Restore state machine from serialized data
    */
-  static deserialize(data: {
-    currentState: AutonomousState
-    stateHistory: StateMetadata[]
-  }): StateMachine {
+  static deserialize(data: { currentState: AutonomousState; stateHistory: StateMetadata[] }): StateMachine {
     const sm = new StateMachine()
-    sm.currentState = data.currentState
-    sm.stateHistory = data.stateHistory
+    // Force transition to the saved state
+    if (data.currentState !== AutonomousState.IDLE) {
+      sm.native.forceTransition(toNativeState(data.currentState), "Restored from serialized state")
+    }
     return sm
   }
 }
 
 /**
- * Create a new state machine instance
+ * Create a new state machine
  */
 export function createStateMachine(config?: StateMachineConfig): StateMachine {
   return new StateMachine(config)

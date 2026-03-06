@@ -1,6 +1,7 @@
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
+import { cosineSimilarity as nativeCosineSimilarity, normalizeVector } from "@codecoder-ai/core"
 import z from "zod"
 
 const log = Log.create({ service: "memory.vector" })
@@ -206,32 +207,26 @@ export namespace Vector {
       vector[idx] += 0.1
     }
 
-    const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
-    for (let i = 0; i < dimension; i++) {
-      vector[i] /= norm || 1
+    // Use native SIMD-accelerated normalization
+    if (!normalizeVector) {
+      throw new Error("Native bindings required: @codecoder-ai/core normalizeVector not available")
     }
-
-    return Array.from(vector)
+    return normalizeVector(Array.from(vector))
   }
 
   function sin(x: number): number {
     return Math.sin(x)
   }
 
+  /**
+   * Cosine similarity using native SIMD-accelerated Rust implementation.
+   * Requires native bindings from @codecoder-ai/core.
+   */
   function cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0
-
-    let dotProduct = 0
-    let normA = 0
-    let normB = 0
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i]
-      normA += a[i] * a[i]
-      normB += b[i] * b[i]
+    if (!nativeCosineSimilarity) {
+      throw new Error("Native bindings required: @codecoder-ai/core cosineSimilarity not available")
     }
-
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB) || 1)
+    return nativeCosineSimilarity(a, b)
   }
 
   export async function findSimilar(

@@ -28,6 +28,7 @@ pub mod confirmation;
 pub mod context;
 pub mod executor;
 pub mod provider;
+pub mod streaming;
 
 pub use confirmation::{
     get_confirmation_registry, get_notification_sink, handle_confirmation_response,
@@ -38,3 +39,7 @@ pub use confirmation::{
 pub use context::ToolContext;
 pub use executor::{AgentExecutor, ToolCall};
 pub use provider::Provider;
+pub use streaming::{
+    AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
+    ToolDef, Usage,
+};

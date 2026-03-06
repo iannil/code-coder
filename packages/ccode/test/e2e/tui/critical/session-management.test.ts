@@ -11,6 +11,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { createE2ETest } from "../../../helpers/e2e-helper"
+import { TestPaths } from "../../../helpers/paths"
 
 // E2E tests require proper environment and are skipped by default
 // Run with: SKIP_E2E=false bun test test/e2e/tui
@@ -21,7 +22,7 @@ describe.skipIf(skipE2E)("Session Management", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-e2e-new-session"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -47,7 +48,7 @@ describe.skipIf(skipE2E)("Session Management", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-e2e-session-switch"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -74,7 +75,7 @@ describe.skipIf(skipE2E)("Session Management", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-e2e-rename-session"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -109,7 +110,7 @@ describe.skipIf(skipE2E)("Session Management", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-e2e-delete-session"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -138,7 +139,7 @@ describe.skipIf(skipE2E)("Session Management", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-e2e-concurrent"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",

@@ -254,30 +254,28 @@ async function benchmarkGrep(): Promise<BenchmarkResult[]> {
   const projectRoot = path.resolve(import.meta.dir, "../../..")
   const srcDir = path.join(projectRoot, "packages/ccode/src")
 
+  // Use native grep from @codecoder-ai/core
+  const { grep: nativeGrep } = await import("@codecoder-ai/core")
+  if (!nativeGrep) {
+    console.warn("Skipping grep benchmarks: native grep not available")
+    return results
+  }
+
   const testCases: Array<{ name: string; pattern: string; target: number }> = [
     { name: "Grep simple", pattern: "function", target: TARGETS.grep_simple },
     { name: "Grep regex", pattern: "async\\s+function\\s+\\w+", target: TARGETS.grep_regex },
   ]
 
   for (const tc of testCases) {
-    const rgPath = await Ripgrep.filepath()
-
     const { stats, results: matchResults } = await benchmark(tc.name, async () => {
-      const proc = Bun.spawn([rgPath, "-c", "--no-messages", tc.pattern, srcDir], {
-        stdout: "pipe",
-        stderr: "ignore",
+      // Native grep: (pattern, path, options?) - cast through unknown to bypass union type mismatch
+      const grepFn = nativeGrep as unknown as (pattern: string, path: string, options?: any) => Promise<any[]>
+      const result = await grepFn(tc.pattern, srcDir, {
+        outputMode: "count",
       })
 
-      const output = await new Response(proc.stdout).text()
-      await proc.exited
-
-      // Count total matches from ripgrep -c output
-      let totalMatches = 0
-      for (const line of output.trim().split("\n")) {
-        const count = parseInt(line.split(":").pop() || "0", 10)
-        if (!isNaN(count)) totalMatches += count
-      }
-      return totalMatches
+      // Result is array or object with totalMatches
+      return Array.isArray(result) ? result.length : ((result as any).totalMatches ?? 0)
     })
 
     const avgMatches = matchResults.reduce((a, b) => a + b, 0) / matchResults.length

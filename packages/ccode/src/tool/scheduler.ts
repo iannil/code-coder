@@ -14,6 +14,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { ConfigManager } from "@codecoder-ai/util/config"
 import { Log } from "@/util/log"
+import { SCHEDULER_REQUEST_TIMEOUT_MS } from "@/config/timeouts"
 
 const log = Log.create({ service: "tool.scheduler" })
 
@@ -21,7 +22,6 @@ const configManager = new ConfigManager()
 const getSchedulerEndpoint = (): string => {
   return process.env.CODECODER_API_URL || configManager.getCodeCoderEndpoint()
 }
-const REQUEST_TIMEOUT = 10000
 
 /**
  * Task command schema matching the scheduler handler
@@ -66,7 +66,7 @@ async function callSchedulerApi<T>(
   options: RequestInit = {},
 ): Promise<{ data?: T; error?: string; status: number }> {
   const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
+  const timeout = setTimeout(() => controller.abort(), SCHEDULER_REQUEST_TIMEOUT_MS)
 
   try {
     const response = await fetch(`${getSchedulerEndpoint()}${path}`, {

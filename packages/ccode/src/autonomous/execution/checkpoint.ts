@@ -226,7 +226,7 @@ export class CheckpointManager {
    * Capture modified files
    */
   private async captureFiles(): Promise<string[]> {
-    const status = await GitOps.getStatus()
+    const status = GitOps.getStatus()
     return [
       ...status.modified,
       ...status.added,
@@ -238,7 +238,7 @@ export class CheckpointManager {
    * Create a git commit
    */
   private async createGitCommit(reason: string): Promise<string | undefined> {
-    const result = await GitOps.createCommit(`Checkpoint: ${reason || "Auto-save"}\n\nSession: ${this.sessionId}`, {
+    const result = GitOps.createCommit(`Checkpoint: ${reason || "Auto-save"}\n\nSession: ${this.sessionId}`, {
       addAll: true,
       allowEmpty: true,
     })
@@ -273,7 +273,7 @@ export class CheckpointManager {
    * Restore git commit
    */
   private async restoreGitCommit(commitHash: string): Promise<void> {
-    const result = await GitOps.resetToCommit(commitHash, true)
+    const result = GitOps.resetToCommit(commitHash, true)
 
     if (!result.success) {
       log.error("Failed to restore git commit", {

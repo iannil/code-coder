@@ -149,7 +149,7 @@ export class ProjectScaffolder {
       logs.push("Created initial files")
 
       // Initialize git repository
-      const initResult = await GitOps.init(projectPath, {
+      const initResult = GitOps.init(projectPath, {
         initialCommit: true,
         commitMessage: `[project-scaffold] Initial commit: ${options.name}`,
       })
@@ -222,7 +222,7 @@ export class ProjectScaffolder {
       }
 
       // Clone the template repository
-      const cloneResult = await GitOps.clone(options.templateRepo, projectPath, {
+      const cloneResult = GitOps.clone(options.templateRepo, projectPath, {
         depth: 1,
         branch: options.branch,
         reinitialize: true,

@@ -1,6 +1,6 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { Ripgrep } from "../file/ripgrep"
+import { grep as nativeGrep } from "@codecoder-ai/core"
 
 import DESCRIPTION from "./grep.txt"
 import { Instance } from "../project/instance"
@@ -34,6 +34,10 @@ export const GrepTool = Tool.define("grep", {
       throw new Error("pattern is required")
     }
 
+    if (!nativeGrep) {
+      throw new Error("Native bindings required: @codecoder-ai/core grep not available")
+    }
+
     await ctx.ask({
       permission: "grep",
       patterns: [params.pattern],
@@ -49,34 +53,18 @@ export const GrepTool = Tool.define("grep", {
     searchPath = path.isAbsolute(searchPath) ? searchPath : path.resolve(Instance.directory, searchPath)
     await assertExternalDirectory(ctx, searchPath, { kind: "directory" })
 
-    const rgPath = await Ripgrep.filepath()
-    const args = [
-      "-nH",
-      "--hidden",
-      "--follow",
-      "--no-messages",
-      "--field-match-separator=|",
-      "--regexp",
-      params.pattern,
-    ]
-    if (params.include) {
-      args.push("--glob", params.include)
-    }
-    args.push(searchPath)
-
-    const proc = Bun.spawn([rgPath, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
+    // Native API: grep(pattern, path, options?) - cast through unknown to bypass union type mismatch
+    const grepFn = nativeGrep as unknown as (pattern: string, path: string, options?: any) => Promise<any[]>
+    const result = await grepFn(params.pattern, searchPath, {
+      glob: params.include,
+      outputMode: "content",
+      lineNumbers: true,
+      limit: 100,
     })
 
-    const output = await new Response(proc.stdout).text()
-    const errorOutput = await new Response(proc.stderr).text()
-    const exitCode = await proc.exited
-
-    // Exit codes: 0 = matches found, 1 = no matches, 2 = errors (but may still have matches)
-    // With --no-messages, we suppress error output but still get exit code 2 for broken symlinks etc.
-    // Only fail if exit code is 2 AND no output was produced
-    if (exitCode === 1 || (exitCode === 2 && !output.trim())) {
+    // Handle result as array or object with matches
+    const rawMatches = Array.isArray(result) ? result : (result as any).matches ?? []
+    if (rawMatches.length === 0) {
       return {
         title: params.pattern,
         metadata: { matches: 0, truncated: false },
@@ -84,55 +72,34 @@ export const GrepTool = Tool.define("grep", {
       }
     }
 
-    if (exitCode !== 0 && exitCode !== 2) {
-      throw new Error(`ripgrep failed: ${errorOutput}`)
-    }
+    // Get modification times for sorting
+    const matches: Array<{
+      path: string
+      modTime: number
+      lineNum: number
+      lineText: string
+    }> = []
 
-    const hasErrors = exitCode === 2
-
-    // Handle both Unix (\n) and Windows (\r\n) line endings
-    const lines = output.trim().split(/\r?\n/)
-    const matches = []
-
-    for (const line of lines) {
-      if (!line) continue
-
-      const [filePath, lineNumStr, ...lineTextParts] = line.split("|")
-      if (!filePath || !lineNumStr || lineTextParts.length === 0) continue
-
-      const lineNum = parseInt(lineNumStr, 10)
-      const lineText = lineTextParts.join("|")
-
-      const file = Bun.file(filePath)
+    for (const match of rawMatches) {
+      const file = Bun.file(match.path)
       const stats = await file.stat().catch(() => null)
       if (!stats) continue
 
       matches.push({
-        path: filePath,
+        path: match.path,
         modTime: stats.mtime.getTime(),
-        lineNum,
-        lineText,
+        lineNum: match.lineNumber,
+        lineText: match.lineContent,
       })
     }
 
     matches.sort((a, b) => b.modTime - a.modTime)
 
-    const limit = 100
-    const truncated = matches.length > limit
-    const finalMatches = truncated ? matches.slice(0, limit) : matches
-
-    if (finalMatches.length === 0) {
-      return {
-        title: params.pattern,
-        metadata: { matches: 0, truncated: false },
-        output: "No files found",
-      }
-    }
-
-    const outputLines = [`Found ${finalMatches.length} matches`]
+    const truncated = !Array.isArray(result) && (result as any).truncated === true
+    const outputLines = [`Found ${matches.length} matches`]
 
     let currentFile = ""
-    for (const match of finalMatches) {
+    for (const match of matches) {
       if (currentFile !== match.path) {
         if (currentFile !== "") {
           outputLines.push("")
@@ -150,20 +117,15 @@ export const GrepTool = Tool.define("grep", {
       outputLines.push("(Results are truncated. Consider using a more specific path or pattern.)")
     }
 
-    if (hasErrors) {
-      outputLines.push("")
-      outputLines.push("(Some paths were inaccessible and skipped)")
-    }
-
     functionEnd("GrepTool.execute", {
-      matches: finalMatches.length,
+      matches: matches.length,
       truncated,
     }, Date.now() - startTime)
 
     return {
       title: params.pattern,
       metadata: {
-        matches: finalMatches.length,
+        matches: matches.length,
         truncated,
       },
       output: outputLines.join("\n"),

@@ -11,6 +11,12 @@ import { Log } from "@/util/log"
 import z from "zod"
 import type { Permission } from "./index"
 
+// Import native risk assessment functions (Phase 2.7)
+import {
+  assessBashRisk as nativeAssessBashRisk,
+  assessFileRisk as nativeAssessFileRisk,
+} from "@codecoder-ai/core"
+
 const log = Log.create({ service: "permission.auto-approve" })
 
 // ============================================================================
@@ -206,6 +212,9 @@ const BASH_RISK_PATTERNS: Array<{ pattern: RegExp; risk: RiskLevel; reason: stri
 
 /**
  * Assess risk level for a tool operation
+ *
+ * Uses native Rust implementation when available for better performance,
+ * with fallback to TypeScript implementation.
  */
 export function assessToolRisk(tool: string, input: unknown): ToolRiskAssessment {
   // Get base risk for tool
@@ -216,7 +225,18 @@ export function assessToolRisk(tool: string, input: unknown): ToolRiskAssessment
   if (tool === "Bash" && input && typeof input === "object" && "command" in input) {
     const command = String(input.command)
 
-    // For Bash, start with safe and find the highest matching pattern
+    // Try native implementation first (Phase 2.7)
+    if (nativeAssessBashRisk) {
+      const nativeResult = nativeAssessBashRisk(command)
+      return {
+        tool,
+        risk: nativeResult.risk as RiskLevel,
+        reason: nativeResult.reason,
+        autoApprovable: nativeResult.autoApprovable,
+      }
+    }
+
+    // Fallback to TypeScript implementation
     let bashRisk: RiskLevel = "safe"
     let bashReason = "No risky patterns detected"
 
@@ -242,16 +262,32 @@ export function assessToolRisk(tool: string, input: unknown): ToolRiskAssessment
   if ((tool === "Write" || tool === "Edit") && input && typeof input === "object" && "file_path" in input) {
     const filePath = String(input.file_path)
 
-    // Sensitive file patterns
-    if (/\.(env|pem|key|crt|p12)$/i.test(filePath)) {
-      risk = "high"
-      reason = "Operation on sensitive file (credentials/secrets)"
-    } else if (/\/etc\/|\/usr\/|\/var\//.test(filePath)) {
-      risk = "high"
-      reason = "Operation on system directory"
-    } else if (/package\.json|Cargo\.toml|go\.mod/.test(filePath)) {
-      risk = "medium"
-      reason = "Dependency manifest modification"
+    // Try native implementation first (Phase 2.7)
+    if (nativeAssessFileRisk) {
+      const nativeResult = nativeAssessFileRisk(filePath)
+      // Only use native result if it's higher risk than base
+      const nativeRiskValue = RISK_VALUES[nativeResult.risk as RiskLevel] ?? RISK_VALUES.medium
+      if (nativeRiskValue > RISK_VALUES[risk]) {
+        return {
+          tool,
+          risk: nativeResult.risk as RiskLevel,
+          reason: nativeResult.reason,
+          autoApprovable: nativeResult.autoApprovable,
+        }
+      }
+    } else {
+      // Fallback to TypeScript implementation
+      // Sensitive file patterns
+      if (/\.(env|pem|key|crt|p12)$/i.test(filePath)) {
+        risk = "high"
+        reason = "Operation on sensitive file (credentials/secrets)"
+      } else if (/\/etc\/|\/usr\/|\/var\//.test(filePath)) {
+        risk = "high"
+        reason = "Operation on system directory"
+      } else if (/package\.json|Cargo\.toml|go\.mod/.test(filePath)) {
+        risk = "medium"
+        reason = "Dependency manifest modification"
+      }
     }
   }
 

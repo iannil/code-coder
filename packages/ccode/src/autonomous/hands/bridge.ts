@@ -8,6 +8,7 @@
  */
 
 import { Log } from "@/util/log"
+import { HANDS_BRIDGE_TIMEOUT_MS, AUTONOMOUS_HEALTH_CHECK_TIMEOUT_MS } from "@/config/timeouts"
 import z from "zod"
 
 const log = Log.create({ service: "autonomous.hands.bridge" })
@@ -306,7 +307,6 @@ export const HandExecutionSchema = z.object({
 // ============================================================================
 
 const DEFAULT_WORKFLOW_URL = "http://127.0.0.1:4432"
-const DEFAULT_TIMEOUT_MS = 30000
 
 // ============================================================================
 // Hands Bridge Client
@@ -334,7 +334,7 @@ export class HandsBridge {
 
   constructor(config?: Partial<HandsBridgeConfig>) {
     this.baseUrl = (config?.baseUrl ?? DEFAULT_WORKFLOW_URL).replace(/\/$/, "")
-    this.timeoutMs = config?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.timeoutMs = config?.timeoutMs ?? HANDS_BRIDGE_TIMEOUT_MS
   }
 
   // ============================================================================
@@ -532,7 +532,7 @@ export class HandsBridge {
    */
   async health(): Promise<boolean> {
     try {
-      await this.fetch("/health", { timeout: 5000 })
+      await this.fetch("/health", { timeout: AUTONOMOUS_HEALTH_CHECK_TIMEOUT_MS })
       return true
     } catch {
       return false

@@ -1,0 +1,164 @@
+[package]
+name = "zero-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["theonlyhennygod"]
+license = "MIT"
+description = "Unified core library for CodeCoder - high-performance tools, session management, and protocols"
+readme = "README.md"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Internal crates
+zero-common = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# UUID
+uuid = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# File operations
+ignore = "0.4"
+grep-regex = "0.1"
+grep-searcher = "0.1"
+similar = "2.6"
+memmap2 = "0.9"
+notify = "8.0"
+walkdir = "2.5"
+globset = "0.4"
+num_cpus = "1.16"
+dirs = "5.0"
+
+# Config parsing (JSONC/JSON5)
+json5 = "0.4"
+
+# Binary lookup
+which = "7.0"
+
+# HTTP client (for MCP HTTP transport)
+reqwest = { workspace = true }
+
+# Cryptography (for vault)
+chacha20poly1305 = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
+
+# Logging
+tracing-subscriber = { workspace = true }
+
+# Database
+rusqlite = { workspace = true }
+
+# Template engine
+handlebars = "6.2"
+
+# Markdown parsing
+pulldown-cmark = "0.10"
+
+# NAPI bindings (optional, for Node.js integration)
+napi = { version = "2.16", features = ["async", "serde-json", "napi8"], optional = true }
+napi-derive = { version = "2.16", optional = true }
+
+# Regex
+regex = { workspace = true }
+
+# Graph algorithms
+petgraph = { workspace = true }
+
+# Git operations
+git2 = { workspace = true }
+
+# JAR/ZIP handling
+zip = { workspace = true }
+
+# Multi-pattern matching
+aho-corasick = { workspace = true }
+
+# Parallel processing
+rayon = { workspace = true }
+
+# Futures
+futures-util = { workspace = true }
+
+# PTY support
+portable-pty = { workspace = true, optional = true }
+
+# Lazy initialization
+once_cell = { workspace = true }
+
+# Tree-sitter for shell parsing
+tree-sitter = { workspace = true }
+tree-sitter-bash = { workspace = true }
+
+# System keyring integration (optional)
+keyring = { workspace = true, optional = true }
+
+# LSP server
+tower-lsp = { workspace = true, optional = true }
+
+# Process management for LSP
+async-process = { workspace = true, optional = true }
+
+# Hash functions for fingerprinting
+xxhash-rust = { workspace = true }
+
+# Tokenization (for LLM token counting)
+tiktoken-rs = { workspace = true, optional = true }
+
+# LRU cache for tokenizer
+lru = { workspace = true }
+
+# SIMD operations (optional, controlled by feature flag)
+wide = { workspace = true, optional = true }
+
+[features]
+default = ["simd"]
+simd = ["wide"]
+tokenizer = ["tiktoken-rs"]
+keyring-support = ["keyring"]
+napi-bindings = ["napi", "napi-derive", "napi-build"]
+lsp = ["tower-lsp", "async-process"]
+pty = ["portable-pty"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio-test = { workspace = true }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "performance"
+harness = false
+
+[build-dependencies]
+napi-build = { version = "2.1", optional = true }
+
+[package.metadata.napi]
+name = "codecoder-core"
+triples = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "x86_64-unknown-linux-musl",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-unknown-linux-musl",
+    "x86_64-pc-windows-msvc",
+]

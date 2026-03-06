@@ -375,10 +375,10 @@ export const ProjectPushTool = Tool.define("project_push", {
     }
 
     // Check if it's a git repo
-    const isRepo = await GitOps.isGitRepo(project.path)
+    const isRepo = GitOps.isGitRepo(project.path)
     if (!isRepo) {
       // Initialize git if needed
-      const initResult = await GitOps.init(project.path, {
+      const initResult = GitOps.init(project.path, {
         initialCommit: true,
         commitMessage: "[project-push] Initialize repository",
       })
@@ -388,23 +388,23 @@ export const ProjectPushTool = Tool.define("project_push", {
     }
 
     // Check current remote
-    const currentRemote = await GitOps.getRemoteUrl(project.path)
+    const currentRemote = GitOps.getRemoteUrl(project.path)
 
     if (currentRemote && currentRemote !== params.remote) {
       // Remove old remote and add new one
-      await GitOps.removeRemote(project.path)
+      GitOps.removeRemote(project.path)
     }
 
     if (!currentRemote || currentRemote !== params.remote) {
       // Add the remote
-      const addResult = await GitOps.addRemote(project.path, "origin", params.remote)
+      const addResult = GitOps.addRemote(project.path, "origin", params.remote)
       if (!addResult.success) {
         throw new Error(`Failed to add remote: ${addResult.error}`)
       }
     }
 
     // Push to remote
-    const pushResult = await GitOps.push(project.path, "origin", "main", true)
+    const pushResult = GitOps.push(project.path, "origin", "main", true)
 
     if (!pushResult.success) {
       // Publish failure event

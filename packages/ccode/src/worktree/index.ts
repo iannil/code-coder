@@ -12,6 +12,7 @@ import { fn } from "@/util/fn"
 import { Log } from "@/util/log"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
+import { openGitRepo, isNative, type GitOpsHandleType } from "@codecoder-ai/core"
 
 export namespace Worktree {
   const log = Log.create({ service: "worktree" })
@@ -219,7 +220,32 @@ export namespace Worktree {
     return [outputText(result.stderr), outputText(result.stdout)].filter(Boolean).join("\n")
   }
 
+  // Try to get a native git handle, returns null if native bindings unavailable
+  function tryGetGitHandle(): GitOpsHandleType | null {
+    if (!isNative || !openGitRepo) return null
+    try {
+      return openGitRepo(Instance.worktree) as GitOpsHandleType
+    } catch {
+      return null
+    }
+  }
+
+  // Check if a ref exists using native or shell fallback
+  async function refExistsNative(gitHandle: GitOpsHandleType | null, ref: string): Promise<boolean> {
+    if (gitHandle) {
+      try {
+        return gitHandle.refExists(ref)
+      } catch {
+        // Fall through to shell
+      }
+    }
+    const result = await $`git show-ref --verify --quiet ${ref}`.quiet().nothrow().cwd(Instance.worktree)
+    return result.exitCode === 0
+  }
+
   async function candidate(root: string, base?: string) {
+    const gitHandle = tryGetGitHandle()
+
     for (const attempt of Array.from({ length: 26 }, (_, i) => i)) {
       const name = base ? (attempt === 0 ? base : `${base}-${randomName()}`) : randomName()
       const branch = `codecoder/${name}`
@@ -228,8 +254,7 @@ export namespace Worktree {
       if (await exists(directory)) continue
 
       const ref = `refs/heads/${branch}`
-      const branchCheck = await $`git show-ref --verify --quiet ${ref}`.quiet().nothrow().cwd(Instance.worktree)
-      if (branchCheck.exitCode === 0) continue
+      if (await refExistsNative(gitHandle, ref)) continue
 
       return Info.parse({ name, branch, directory })
     }
@@ -255,10 +280,36 @@ export namespace Worktree {
     const base = input?.name ? slug(input.name) : ""
     const info = await candidate(root, base || undefined)
 
-    const created = await $`git worktree add --no-checkout -b ${info.branch} ${info.directory}`
-      .quiet()
-      .nothrow()
-      .cwd(Instance.worktree)
+    // Try native worktree creation first
+    const gitHandle = tryGetGitHandle()
+    let created: { exitCode: number; stdout?: Uint8Array; stderr?: Uint8Array } | null = null
+
+    if (gitHandle) {
+      try {
+        // Native worktree add with the branch
+        const result = gitHandle.addWorktree(info.name, info.directory, info.branch)
+        if (result) {
+          // Native succeeded - populate the worktree
+          const populated = await $`git reset --hard`.quiet().nothrow().cwd(info.directory)
+          if (populated.exitCode !== 0) {
+            throw new CreateFailedError({ message: errorText(populated) || "Failed to populate worktree" })
+          }
+          created = { exitCode: 0 }
+        }
+      } catch (e) {
+        // Native failed, fall back to shell
+        log.warn("Native worktree creation failed, falling back to shell", { error: String(e) })
+      }
+    }
+
+    // Fall back to shell if native failed or unavailable
+    if (!created) {
+      created = await $`git worktree add --no-checkout -b ${info.branch} ${info.directory}`
+        .quiet()
+        .nothrow()
+        .cwd(Instance.worktree)
+    }
+
     if (created.exitCode !== 0) {
       throw new CreateFailedError({ message: errorText(created) || "Failed to create git worktree" })
     }
@@ -355,6 +406,32 @@ export namespace Worktree {
     }
 
     const directory = path.resolve(input.directory)
+    const gitHandle = tryGetGitHandle()
+
+    // Try native worktree removal first
+    if (gitHandle) {
+      try {
+        const worktrees = gitHandle.listWorktrees()
+        const entry = worktrees.find((wt) => path.resolve(wt.path) === directory)
+
+        if (entry) {
+          // Found the worktree - remove it natively
+          const removeResult = gitHandle.removeWorktree(entry.name, true)
+          if (removeResult.success) {
+            // Also delete the branch
+            if (entry.branch) {
+              const branchName = entry.branch.replace(/^refs\/heads\//, "")
+              gitHandle.deleteBranch(branchName, true)
+            }
+            return true
+          }
+        }
+      } catch (e) {
+        log.warn("Native worktree removal failed, falling back to shell", { error: String(e) })
+      }
+    }
+
+    // Fall back to shell
     const list = await $`git worktree list --porcelain`.quiet().nothrow().cwd(Instance.worktree)
     if (list.exitCode !== 0) {
       throw new RemoveFailedError({ message: errorText(list) || "Failed to read git worktrees" })
@@ -408,33 +485,55 @@ export namespace Worktree {
       throw new ResetFailedError({ message: "Cannot reset the primary workspace" })
     }
 
-    const list = await $`git worktree list --porcelain`.quiet().nothrow().cwd(Instance.worktree)
-    if (list.exitCode !== 0) {
-      throw new ResetFailedError({ message: errorText(list) || "Failed to read git worktrees" })
+    // List worktrees to verify this is a valid worktree
+    const gitHandle = tryGetGitHandle()
+    let entryPath: string | undefined
+
+    if (gitHandle) {
+      try {
+        const worktrees = gitHandle.listWorktrees()
+        const entry = worktrees.find((wt) => path.resolve(wt.path) === directory)
+        if (entry) {
+          entryPath = entry.path
+        }
+      } catch {
+        // Fall through to shell
+      }
     }
 
-    const lines = outputText(list.stdout)
-      .split("\n")
-      .map((line) => line.trim())
-    const entries = lines.reduce<{ path?: string; branch?: string }[]>((acc, line) => {
-      if (!line) return acc
-      if (line.startsWith("worktree ")) {
-        acc.push({ path: line.slice("worktree ".length).trim() })
+    if (!entryPath) {
+      // Fall back to shell for worktree lookup
+      const list = await $`git worktree list --porcelain`.quiet().nothrow().cwd(Instance.worktree)
+      if (list.exitCode !== 0) {
+        throw new ResetFailedError({ message: errorText(list) || "Failed to read git worktrees" })
+      }
+
+      const lines = outputText(list.stdout)
+        .split("\n")
+        .map((line) => line.trim())
+      const entries = lines.reduce<{ path?: string; branch?: string }[]>((acc, line) => {
+        if (!line) return acc
+        if (line.startsWith("worktree ")) {
+          acc.push({ path: line.slice("worktree ".length).trim() })
+          return acc
+        }
+        const current = acc[acc.length - 1]
+        if (!current) return acc
+        if (line.startsWith("branch ")) {
+          current.branch = line.slice("branch ".length).trim()
+        }
         return acc
-      }
-      const current = acc[acc.length - 1]
-      if (!current) return acc
-      if (line.startsWith("branch ")) {
-        current.branch = line.slice("branch ".length).trim()
-      }
-      return acc
-    }, [])
+      }, [])
 
-    const entry = entries.find((item) => item.path && path.resolve(item.path) === directory)
-    if (!entry?.path) {
-      throw new ResetFailedError({ message: "Worktree not found" })
+      const entry = entries.find((item) => item.path && path.resolve(item.path) === directory)
+      if (!entry?.path) {
+        throw new ResetFailedError({ message: "Worktree not found" })
+      }
+      entryPath = entry.path
     }
 
+    // The rest of reset uses shell commands as they involve complex operations
+    // (git reset --hard, git clean -fdx, git submodule update, etc.)
     const remoteList = await $`git remote`.quiet().nothrow().cwd(Instance.worktree)
     if (remoteList.exitCode !== 0) {
       throw new ResetFailedError({ message: errorText(remoteList) || "Failed to list git remotes" })
@@ -480,11 +579,7 @@ export namespace Worktree {
       }
     }
 
-    if (!entry.path) {
-      throw new ResetFailedError({ message: "Worktree path not found" })
-    }
-
-    const worktreePath = entry.path
+    const worktreePath = entryPath
 
     const resetToTarget = await $`git reset --hard ${target}`.quiet().nothrow().cwd(worktreePath)
     if (resetToTarget.exitCode !== 0) {

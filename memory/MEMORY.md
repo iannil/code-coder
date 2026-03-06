@@ -399,6 +399,30 @@
   - TypeScript `TaskCommandSchema` 添加回调字段
   - 自动从上下文注入回调渠道信息
 
+### 2026-03-04 ~ 2026-03-06: TypeScript to Rust 迁移完成
+
+- **状态**: Phase 1-8.1 完成，项目进入维护阶段
+- **累计删除**: ~3,500+ 行 TypeScript 代码
+- **性能提升**: 平均 5-10x
+- **最终迁移的模块**:
+  - Phase 1-2: Storage (KV), Security (Vault, Injection)
+  - Phase 3-4: Context (Fingerprint, Relevance), Memory (Vector, Chunker)
+  - Phase 5: Graph (Causal, Call, Semantic)
+  - Phase 6: Trace System
+  - Phase 7: Provider Transform
+  - Phase 8: Tools (18 工具)
+  - Phase 8.1: Shell Parser, Git Operations
+- **不再迁移的模块**: Document (6k 行), Session (5k 行), Autonomous (30k 行)
+- **不迁移原因**: LLM 编排主导，TypeScript AI SDK 生态优势
+- **最终报告**: docs/reports/completed/2026-03-05-ts-to-rust-migration-final-assessment.md
+
+### 2026-03-06: Phase 8.1 Git Operations 完成
+
+- **决策**: 完成 git-ops.ts 的 Rust 迁移
+- **实现**: 删除 TypeScript fallback 代码，统一使用 Rust 实现
+- **影响**: Git 操作性能提升 ~8x
+- **验证**: 单元测试通过，实际 Git 操作验证通过
+
 ## 经验教训
 
 ### 代码清理

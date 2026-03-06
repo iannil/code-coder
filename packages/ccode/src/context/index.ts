@@ -4,12 +4,16 @@ import * as LoaderNS from "./loader"
 import * as CacheNS from "./cache"
 import * as WatcherNS from "./watcher"
 import * as RelevanceNS from "./relevance"
+import * as RelevanceNativeNS from "./relevance-native"
 
 export const { Fingerprint } = FingerprintNS
 export const { Loader } = LoaderNS
 export const { Cache } = CacheNS
 export const { Watcher } = WatcherNS
 export const { Relevance } = RelevanceNS
+
+// Native exports for direct low-level access
+export const RelevanceNative = RelevanceNativeNS
 
 // Types available as: WatcherNS.Watcher.FileChange, RelevanceNS.Relevance.ContextRequest, etc.
 

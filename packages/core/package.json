@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@codecoder-ai/core",
+  "version": "0.1.0",
+  "description": "High-performance Rust-native tools for CodeCoder",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts",
+      "bun": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "*.node"
+  ],
+  "scripts": {
+    "build": "napi build --platform --release --js dist/binding.js --dts dist/binding.d.ts",
+    "build:debug": "napi build --platform --js dist/binding.js --dts dist/binding.d.ts",
+    "prepublishOnly": "napi prepublish -t npm",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "3.0.0-alpha.70",
+    "@types/bun": "catalog:",
+    "tinybench": "^2.9.0",
+    "typescript": "catalog:"
+  },
+  "napi": {
+    "name": "codecoder-core",
+    "triples": {
+      "defaults": false,
+      "additional": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-unknown-linux-musl",
+        "aarch64-unknown-linux-gnu",
+        "aarch64-unknown-linux-musl",
+        "x86_64-pc-windows-msvc"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">= 18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codecoder-ai/codecoder.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "codecoder",
+    "rust",
+    "napi",
+    "grep",
+    "glob",
+    "file-operations"
+  ]
+}

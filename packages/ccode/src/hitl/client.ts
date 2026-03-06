@@ -8,6 +8,7 @@
  */
 
 import { Log } from "@/util/log"
+import { HITL_CLIENT_TIMEOUT_MS, HITL_HEALTH_CHECK_TIMEOUT_MS } from "@/config/timeouts"
 import z from "zod"
 
 const log = Log.create({ service: "hitl.client" })
@@ -177,7 +178,6 @@ const DEFAULT_GATEWAY_URL =
   process.env.GATEWAY_URL ||
   process.env.ZERO_GATEWAY_URL ||
   "http://127.0.0.1:4430"
-const DEFAULT_TIMEOUT_MS = 30000
 
 // ============================================================================
 // HITL Client
@@ -204,7 +204,7 @@ export class HitLClient {
 
   constructor(config?: Partial<HitLClientConfig>) {
     this.baseUrl = (config?.baseUrl ?? DEFAULT_GATEWAY_URL).replace(/\/$/, "")
-    this.timeoutMs = config?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.timeoutMs = config?.timeoutMs ?? HITL_CLIENT_TIMEOUT_MS
   }
 
   // ============================================================================
@@ -288,7 +288,7 @@ export class HitLClient {
    */
   async health(): Promise<boolean> {
     try {
-      await this.fetch("/health", { timeout: 5000 })
+      await this.fetch("/health", { timeout: HITL_HEALTH_CHECK_TIMEOUT_MS })
       return true
     } catch {
       return false

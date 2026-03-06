@@ -1,15 +1,17 @@
 /**
  * Markdown Document Chunker
  *
+ * Thin wrapper around @codecoder-ai/core native Rust implementation.
  * Splits Markdown documents into semantic chunks suitable for embedding and retrieval.
  * Uses structural elements (headings, code blocks, lists) to create meaningful chunks.
  *
  * Part of Phase 2: Global Context Hub
  */
 
-import { Log } from "@/util/log"
-
-const log = Log.create({ service: "memory.chunker" })
+import {
+  chunkText as coreChunkText,
+  estimateTokens as coreEstimateTokens,
+} from "@codecoder-ai/core"
 
 // ============================================================================
 // Types
@@ -65,6 +67,59 @@ const DEFAULT_CONFIG: ChunkerConfig = {
 }
 
 // ============================================================================
+// Conversion Utilities
+// ============================================================================
+
+function convertChunkString(chunkContent: string, source: string, index: number): Chunk {
+  // Determine chunk type from content
+  const type = detectChunkType(chunkContent)
+
+  return {
+    id: generateChunkId(source, index),
+    content: chunkContent,
+    metadata: {
+      source,
+      headings: [], // Not available from simple string chunks
+      type,
+      startLine: 1, // Not tracked in simple chunking
+      endLine: 1,
+      language: type === "code" ? extractCodeLanguage(chunkContent) : undefined,
+    },
+    tokenCount: estimateTokens(chunkContent),
+  }
+}
+
+function detectChunkType(content: string): ChunkMetadata["type"] {
+  const trimmed = content.trim()
+  if (trimmed.startsWith("```")) return "code"
+  if (trimmed.startsWith("#")) return "heading"
+  if (trimmed.startsWith(">")) return "blockquote"
+  if (trimmed.startsWith("|") || trimmed.includes("\n|")) return "table"
+  if (/^[\s]*[-*+]\s+/.test(trimmed) || /^[\s]*\d+\.\s+/.test(trimmed)) return "list"
+  return "paragraph"
+}
+
+function extractCodeLanguage(content: string): string | undefined {
+  const match = content.match(/^```(\w+)?/)
+  return match?.[1] || undefined
+}
+
+function generateChunkId(source: string, index: number): string {
+  const hash = simpleHash(`${source}:${index}`)
+  return `chunk_${hash}`
+}
+
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = (hash << 5) - hash + char
+    hash = hash & hash
+  }
+  return Math.abs(hash).toString(36).slice(0, 8)
+}
+
+// ============================================================================
 // Chunker
 // ============================================================================
 
@@ -79,175 +134,17 @@ export class MarkdownChunker {
    * Chunk a Markdown document into semantic pieces
    */
   chunk(content: string, source: string): Chunk[] {
-    const lines = content.split("\n")
-    const chunks: Chunk[] = []
-    const headingStack: string[] = []
+    // Use native chunker - returns string[]
+    if (!coreChunkText) throw new Error("Native bindings not available")
+    const chunkStrings = coreChunkText(content)
 
-    let currentChunk: string[] = []
-    let currentType: ChunkMetadata["type"] = "paragraph"
-    let currentStartLine = 0
-    let inCodeBlock = false
-    let codeLanguage: string | undefined
+    // Convert to our format with metadata
+    const chunks = chunkStrings.map((c, i) => convertChunkString(c, source, i))
 
-    const flushChunk = (endLine: number) => {
-      if (currentChunk.length === 0) return
+    // Filter by minimum tokens if configured
+    const filtered = chunks.filter((c) => c.tokenCount >= this.config.minTokens || c.metadata.type === "code")
 
-      const text = currentChunk.join("\n").trim()
-      if (!text) return
-
-      const tokenCount = this.estimateTokens(text)
-
-      // Skip chunks that are too small (unless they're code blocks)
-      if (tokenCount < this.config.minTokens && currentType !== "code") {
-        return
-      }
-
-      // Build chunk with heading context
-      let finalContent = text
-      if (this.config.includeHeadingContext && headingStack.length > 0 && currentType !== "code") {
-        const context = headingStack.join(" > ")
-        finalContent = `[${context}]\n\n${text}`
-      }
-
-      const chunk: Chunk = {
-        id: this.generateChunkId(source, currentStartLine),
-        content: finalContent,
-        metadata: {
-          source,
-          headings: [...headingStack],
-          type: currentType,
-          startLine: currentStartLine,
-          endLine,
-          language: currentType === "code" ? codeLanguage : undefined,
-        },
-        tokenCount: this.estimateTokens(finalContent),
-      }
-
-      // Split large chunks
-      if (chunk.tokenCount > this.config.maxTokens) {
-        chunks.push(...this.splitLargeChunk(chunk))
-      } else {
-        chunks.push(chunk)
-      }
-
-      currentChunk = []
-      currentType = "paragraph"
-      currentStartLine = endLine + 1
-    }
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]
-
-      // Handle code blocks
-      if (line.startsWith("```")) {
-        if (inCodeBlock) {
-          // End of code block
-          currentChunk.push(line)
-          if (this.config.preserveCodeBlocks) {
-            flushChunk(i)
-          }
-          inCodeBlock = false
-          codeLanguage = undefined
-        } else {
-          // Start of code block
-          flushChunk(i - 1)
-          inCodeBlock = true
-          currentType = "code"
-          codeLanguage = line.slice(3).trim() || undefined
-          currentChunk.push(line)
-          currentStartLine = i
-        }
-        continue
-      }
-
-      if (inCodeBlock) {
-        currentChunk.push(line)
-        continue
-      }
-
-      // Handle headings
-      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/)
-      if (headingMatch) {
-        flushChunk(i - 1)
-
-        const level = headingMatch[1].length
-        const title = headingMatch[2]
-
-        // Update heading stack
-        while (headingStack.length >= level) {
-          headingStack.pop()
-        }
-        headingStack.push(`${"#".repeat(level)} ${title}`)
-
-        currentType = "heading"
-        currentChunk.push(line)
-        currentStartLine = i
-        continue
-      }
-
-      // Handle lists
-      if (line.match(/^[\s]*[-*+]\s+/) || line.match(/^[\s]*\d+\.\s+/)) {
-        if (currentType !== "list") {
-          flushChunk(i - 1)
-          currentType = "list"
-          currentStartLine = i
-        }
-        currentChunk.push(line)
-        continue
-      }
-
-      // Handle blockquotes
-      if (line.startsWith(">")) {
-        if (currentType !== "blockquote") {
-          flushChunk(i - 1)
-          currentType = "blockquote"
-          currentStartLine = i
-        }
-        currentChunk.push(line)
-        continue
-      }
-
-      // Handle tables
-      if (line.includes("|") && line.trim().startsWith("|")) {
-        if (currentType !== "table") {
-          flushChunk(i - 1)
-          currentType = "table"
-          currentStartLine = i
-        }
-        currentChunk.push(line)
-        continue
-      }
-
-      // Handle empty lines
-      if (line.trim() === "") {
-        // End current paragraph on double newline
-        if (currentChunk.length > 0 && currentChunk[currentChunk.length - 1].trim() === "") {
-          flushChunk(i - 1)
-        } else {
-          currentChunk.push(line)
-        }
-        continue
-      }
-
-      // Regular paragraph
-      if (currentType !== "paragraph" && currentType !== "heading") {
-        flushChunk(i - 1)
-        currentType = "paragraph"
-        currentStartLine = i
-      }
-      currentChunk.push(line)
-    }
-
-    // Flush remaining content
-    flushChunk(lines.length - 1)
-
-    log.debug("Chunked document", {
-      source,
-      totalChunks: chunks.length,
-      avgTokens: Math.round(chunks.reduce((sum, c) => sum + c.tokenCount, 0) / chunks.length),
-    })
-
-    return chunks
+    return filtered
   }
 
   /**
@@ -255,11 +152,9 @@ export class MarkdownChunker {
    */
   chunkMany(documents: Array<{ content: string; source: string }>): Chunk[] {
     const allChunks: Chunk[] = []
-
     for (const doc of documents) {
       allChunks.push(...this.chunk(doc.content, doc.source))
     }
-
     return allChunks
   }
 
@@ -267,96 +162,7 @@ export class MarkdownChunker {
    * Estimate token count for text (rough approximation)
    */
   estimateTokens(text: string): number {
-    // Rough estimate: ~4 characters per token for English
-    return Math.ceil(text.length / 4)
-  }
-
-  // ============================================================================
-  // Private Methods
-  // ============================================================================
-
-  private generateChunkId(source: string, startLine: number): string {
-    const hash = this.simpleHash(`${source}:${startLine}`)
-    return `chunk_${hash}`
-  }
-
-  private simpleHash(str: string): string {
-    let hash = 0
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash
-    }
-    return Math.abs(hash).toString(36).slice(0, 8)
-  }
-
-  private splitLargeChunk(chunk: Chunk): Chunk[] {
-    const { content, metadata } = chunk
-    const maxTokens = this.config.maxTokens
-    const overlapTokens = this.config.overlapTokens
-
-    const sentences = this.splitIntoSentences(content)
-    const result: Chunk[] = []
-    let currentSentences: string[] = []
-    let currentTokens = 0
-    let partIndex = 0
-
-    for (const sentence of sentences) {
-      const sentenceTokens = this.estimateTokens(sentence)
-
-      if (currentTokens + sentenceTokens > maxTokens && currentSentences.length > 0) {
-        // Create chunk from current sentences
-        const chunkContent = currentSentences.join(" ")
-        result.push({
-          id: `${chunk.id}_p${partIndex}`,
-          content: chunkContent,
-          metadata: {
-            ...metadata,
-            parentId: chunk.id,
-          },
-          tokenCount: this.estimateTokens(chunkContent),
-        })
-        partIndex++
-
-        // Keep overlap sentences
-        const overlapSentences: string[] = []
-        let overlapCount = 0
-        for (let i = currentSentences.length - 1; i >= 0 && overlapCount < overlapTokens; i--) {
-          overlapSentences.unshift(currentSentences[i])
-          overlapCount += this.estimateTokens(currentSentences[i])
-        }
-
-        currentSentences = overlapSentences
-        currentTokens = overlapCount
-      }
-
-      currentSentences.push(sentence)
-      currentTokens += sentenceTokens
-    }
-
-    // Add remaining content
-    if (currentSentences.length > 0) {
-      const chunkContent = currentSentences.join(" ")
-      result.push({
-        id: `${chunk.id}_p${partIndex}`,
-        content: chunkContent,
-        metadata: {
-          ...metadata,
-          parentId: chunk.id,
-        },
-        tokenCount: this.estimateTokens(chunkContent),
-      })
-    }
-
-    return result
-  }
-
-  private splitIntoSentences(text: string): string[] {
-    // Simple sentence splitting
-    return text
-      .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
+    return coreEstimateTokens?.(text) ?? Math.ceil(text.length / 4)
   }
 }
 
@@ -389,4 +195,11 @@ export function createChunker(config?: Partial<ChunkerConfig>): MarkdownChunker 
 export function chunkMarkdown(content: string, source: string, config?: Partial<ChunkerConfig>): Chunk[] {
   const chunker = config ? new MarkdownChunker(config) : getChunker()
   return chunker.chunk(content, source)
+}
+
+/**
+ * Estimate token count for text
+ */
+export function estimateTokens(text: string): number {
+  return coreEstimateTokens?.(text) ?? Math.ceil(text.length / 4)
 }

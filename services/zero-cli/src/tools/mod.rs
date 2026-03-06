@@ -15,8 +15,8 @@ pub use skill_search::SkillSearchTool;
 
 // Re-export tool types from zero-tools
 pub use zero_tools::{
-    BrowserTool, CodeCoderTool, FileReadTool, FileWriteTool, MemoryForgetTool, MemoryRecallTool,
-    MemoryStoreTool, ShellTool, Tool, ToolResult,
+    BrowserTool, CodeCoderTool, EditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool,
+    MemoryForgetTool, MemoryRecallTool, MemoryStoreTool, ShellTool, Tool, ToolResult,
 };
 
 // Re-export SecurityPolicy from zero-tools for direct use
@@ -33,7 +33,10 @@ pub fn default_tools(security: Arc<SecurityPolicy>) -> Vec<Box<dyn Tool>> {
     vec![
         Box::new(ShellTool::new(zt_security.clone())),
         Box::new(FileReadTool::new(zt_security.clone())),
-        Box::new(FileWriteTool::new(zt_security)),
+        Box::new(FileWriteTool::new(zt_security.clone())),
+        Box::new(GrepTool::new(zt_security.clone())),
+        Box::new(GlobTool::new(zt_security.clone())),
+        Box::new(EditTool::new(zt_security)),
     ]
 }
 
@@ -53,6 +56,9 @@ pub fn all_tools(
         Box::new(ShellTool::new(zt_security.clone())),
         Box::new(FileReadTool::new(zt_security.clone())),
         Box::new(FileWriteTool::new(zt_security.clone())),
+        Box::new(GrepTool::new(zt_security.clone())),
+        Box::new(GlobTool::new(zt_security.clone())),
+        Box::new(EditTool::new(zt_security.clone())),
         Box::new(MemoryStoreTool::new(memory.clone())),
         Box::new(MemoryRecallTool::new(memory.clone())),
         Box::new(MemoryForgetTool::new(memory)),
@@ -100,10 +106,10 @@ mod tests {
     use zero_tools::ToolSpec;
 
     #[test]
-    fn default_tools_has_three() {
+    fn default_tools_has_six() {
         let security = Arc::new(SecurityPolicy::default());
         let tools = default_tools(security);
-        assert_eq!(tools.len(), 3);
+        assert_eq!(tools.len(), 6);
     }
 
     #[test]
@@ -183,6 +189,9 @@ mod tests {
         assert!(names.contains(&"shell"));
         assert!(names.contains(&"file_read"));
         assert!(names.contains(&"file_write"));
+        assert!(names.contains(&"grep"));
+        assert!(names.contains(&"glob"));
+        assert!(names.contains(&"edit"));
     }
 
     #[test]

@@ -1,12 +1,11 @@
 /**
  * E2E Test Helper
  *
- * Provides utilities for end-to-end testing of the TUI using bun-pty.
- * This helper wraps the bun-pty library to provide a convenient API for TUI testing.
+ * Provides utilities for end-to-end testing of the TUI using native PTY bindings.
+ * This helper wraps the native PTY to provide a convenient API for TUI testing.
  */
 
-import { spawn } from "bun-pty"
-import type { IPty } from "bun-pty"
+import { spawnPty, type NapiPtyConfig, type PtySessionHandleType } from "@codecoder-ai/core"
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync, readdirSync } from "fs"
 import { tmpdir } from "os"
 import { join } from "path"
@@ -21,7 +20,7 @@ export interface E2ETestOptions {
 }
 
 export interface E2ETestContext {
-  pty: IPty
+  handle: PtySessionHandleType
   write: (text: string) => void
   waitForOutput: (pattern: string | RegExp, timeout?: number) => Promise<void>
   waitForOutputAbsent: (pattern: string | RegExp, timeout?: number) => Promise<void>
@@ -56,11 +55,25 @@ export interface ScreenshotData {
 }
 
 export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestContext> {
+  if (!spawnPty) {
+    throw new Error("Native PTY support not available. Ensure zero-core is built with PTY feature.")
+  }
+
   // Capture output from the PTY
   let outputBuffer = ""
+  let pollInterval: Timer | null = null
 
-  const pty = spawn(options.cmd, options.args, {
-    name: "xterm",
+  const rows = options.rows ?? 40
+  const cols = options.cols ?? 120
+
+  // Build command string for native PTY
+  const fullCommand = options.args.length > 0 ? `${options.cmd} ${options.args.join(" ")}` : options.cmd
+
+  const config: NapiPtyConfig = {
+    cols,
+    rows,
+    shell: fullCommand,
+    cwd: options.cwd ?? process.cwd(),
     env: {
       ...process.env,
       // Prevent interactive mode
@@ -69,16 +82,23 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
       ANTHROPIC_API_KEY: "sk-test-key-for-testing",
       OPENAI_API_KEY: "sk-test-key-for-testing",
       ...options.env,
-    },
-    cwd: options.cwd ?? process.cwd(),
-    rows: options.rows ?? 40,
-    cols: options.cols ?? 120,
-  })
+    } as Record<string, string>,
+    inheritEnv: false, // We provide full env above
+  }
 
-  // Subscribe to data events to capture output
-  const disposable = pty.onData((data) => {
-    outputBuffer += data
-  })
+  const handle = spawnPty(config)
+
+  // Start polling for output
+  pollInterval = setInterval(() => {
+    try {
+      const data = handle.read()
+      if (data && data.length > 0) {
+        outputBuffer += data.toString("utf-8")
+      }
+    } catch {
+      // Read error - process may have exited
+    }
+  }, 10)
 
   /**
    * Captures terminal output as a screenshot for debugging
@@ -88,8 +108,8 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
     const data: ScreenshotData = {
       timestamp: Date.now(),
       output: outputBuffer,
-      rows: pty.rows,
-      cols: pty.cols,
+      rows,
+      cols,
     }
     const filePath = join(SCREENSHOT_DIR, `${name}.json`)
     writeFileSync(filePath, JSON.stringify(data, null, 2))
@@ -105,32 +125,32 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
 
     // Handle escape
     if (normalized === "escape" || normalized === "esc") {
-      pty.write("\x1b")
+      handle.write(Buffer.from("\x1b"))
       return
     }
 
     // Handle enter/return
     if (normalized === "enter" || normalized === "return") {
-      pty.write("\r")
+      handle.write(Buffer.from("\r"))
       return
     }
 
     // Handle space (leader key)
     if (normalized === "space") {
-      pty.write(" ")
+      handle.write(Buffer.from(" "))
       return
     }
 
     // Handle tab
     if (normalized === "tab") {
-      pty.write("\t")
+      handle.write(Buffer.from("\t"))
       return
     }
 
     // Handle ctrl+key combinations
     if (normalized.startsWith("ctrl+")) {
       const key = normalized.slice(5)
-      pty.write(`\x1b[${ctrlKeyCode(key)}~`)
+      handle.write(Buffer.from(`\x1b[${ctrlKeyCode(key)}~`))
       return
     }
 
@@ -138,12 +158,12 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
     if (normalized.startsWith("ctrl+shift+")) {
       const key = normalized.slice(11)
       // Send ctrl + shifted key
-      pty.write(`\x1b[${ctrlKeyCode(key)}~`)
+      handle.write(Buffer.from(`\x1b[${ctrlKeyCode(key)}~`))
       return
     }
 
     // Default: just write the key
-    pty.write(keybind)
+    handle.write(Buffer.from(keybind))
   }
 
   /**
@@ -163,7 +183,7 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
    */
   function pasteFile(filePath: string): void {
     // Files are pasted as @<path> in the TUI
-    pty.write(`@${filePath}`)
+    handle.write(Buffer.from(`@${filePath}`))
   }
 
   /**
@@ -173,28 +193,28 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
   function pasteImage(imagePath: string): void {
     // Using iTerm2 image protocol
     const base64 = readFileSync(imagePath, "base64")
-    pty.write(`\x1b]1337;File=inline=1:${base64}\x07`)
+    handle.write(Buffer.from(`\x1b]1337;File=inline=1:${base64}\x07`))
   }
 
   /**
    * Simulates pasting text into the terminal
    */
   function pasteText(text: string): void {
-    pty.write(text)
+    handle.write(Buffer.from(text))
   }
 
   /**
    * Sends Escape key
    */
   function sendEscape(): void {
-    pty.write("\x1b")
+    handle.write(Buffer.from("\x1b"))
   }
 
   /**
    * Sends Enter key
    */
   function sendEnter(): void {
-    pty.write("\r")
+    handle.write(Buffer.from("\r"))
   }
 
   /**
@@ -203,15 +223,15 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
   function sendCtrl(key: string): void {
     const code = ctrlKeyCode(key)
     if (code > 0) {
-      pty.write(String.fromCharCode(code))
+      handle.write(Buffer.from(String.fromCharCode(code)))
     }
   }
 
   return {
-    pty,
+    handle,
 
     write(text: string) {
-      pty.write(text)
+      handle.write(Buffer.from(text))
     },
 
     async waitForOutput(pattern: string | RegExp, timeout = 5000) {
@@ -263,8 +283,15 @@ export async function createE2ETest(options: E2ETestOptions): Promise<E2ETestCon
     sendCtrl,
 
     cleanup() {
-      disposable.dispose()
-      pty.kill()
+      if (pollInterval) {
+        clearInterval(pollInterval)
+        pollInterval = null
+      }
+      try {
+        handle.kill()
+      } catch {
+        // Process may already be dead
+      }
     },
   }
 }

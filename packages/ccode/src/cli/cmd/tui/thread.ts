@@ -1,42 +1,32 @@
 import { cmd } from "@/cli/cmd/cmd"
 import { tui } from "./app"
-import { Rpc } from "@/util/rpc"
-import { type rpc } from "./worker"
 import path from "path"
 import { UI } from "@/cli/ui"
 import { iife } from "@/util/iife"
 import { Log } from "@/util/log"
-import type { Event } from "@/types"
-import type { EventSource } from "./context/sdk"
 import { setRpcClient } from "./context/sdk"
+import { createWorkerBackend, createIpcBackend, type TuiBackend, type BackendMode } from "./backend"
 
-declare global {
-  const CCODE_WORKER_PATH: string
-}
-
-function createEventSource(client: ReturnType<typeof Rpc.client<typeof rpc>>): EventSource {
-  return {
-    on: (handler) => {
-      const unsub = client.on("event", handler)
-      return () => {
-        unsub()
-      }
-    },
-  }
-}
-
-function createSDKRpcClient(client: ReturnType<typeof Rpc.client<typeof rpc>>): {
-  call: (input: { namespace: string; method: string; args: any[] }) => Promise<any>
-  on: (event: string, handler: (data: any) => void) => () => void
-} {
-  return {
-    call: async (input) => {
-      return await client.call("call", input)
-    },
-    on: (event, handler) => client.on(event, handler),
-  }
-}
-
+/**
+ * TUI Thread Command
+ *
+ * Starts the CodeCoder TUI with configurable backend mode:
+ * - **worker** (default): In-process Web Worker running LocalAPI
+ * - **ipc**: Communication with zero-cli via Unix socket
+ *
+ * ## Usage
+ *
+ * ```bash
+ * # Default worker mode
+ * ccode
+ *
+ * # IPC mode (requires zero-cli)
+ * ccode --backend ipc
+ *
+ * # With project path
+ * ccode ./my-project --backend worker
+ * ```
+ */
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
   describe: "start CodeCoder tui",
@@ -68,34 +58,56 @@ export const TuiThreadCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("backend", {
+        type: "string",
+        choices: ["worker", "ipc"] as const,
+        default: "worker" as BackendMode,
+        describe: "backend mode: worker (in-process) or ipc (zero-cli)",
+      })
+      .option("socket", {
+        type: "string",
+        describe: "path to IPC socket (only used with --backend ipc)",
       }),
   handler: async (args) => {
     // Resolve relative paths against PWD to preserve behavior when using --cwd flag
     const baseCwd = process.env.PWD ?? process.cwd()
     const cwd = args.project ? path.resolve(baseCwd, args.project) : process.cwd()
-    const localWorker = new URL("./worker.ts", import.meta.url)
-    const distWorker = new URL("./cli/cmd/tui/worker.js", import.meta.url)
-    const workerPath = await iife(async () => {
-      if (typeof CCODE_WORKER_PATH !== "undefined") return CCODE_WORKER_PATH
-      if (await Bun.file(distWorker).exists()) return distWorker
-      return localWorker
-    })
+
     try {
       process.chdir(cwd)
-    } catch (e) {
+    } catch {
       UI.error("Failed to change directory to " + cwd)
       return
     }
 
-    const worker = new Worker(workerPath, {
-      env: Object.fromEntries(
-        Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
-      ),
-    })
-    worker.onerror = (e) => {
-      Log.Default.error(e)
+    // Create backend based on mode
+    const backendMode = args.backend as BackendMode
+    let backend: TuiBackend
+
+    try {
+      if (backendMode === "ipc") {
+        Log.Default.info("Starting TUI in IPC mode")
+        backend = await createIpcBackend({
+          socketPath: args.socket,
+          autoStart: true,
+        })
+        // Initialize session for IPC backend
+        await (backend as import("./backend/ipc").IpcBackend).initializeSession({
+          cwd: process.cwd(),
+          sessionId: args.session,
+        })
+      } else {
+        Log.Default.info("Starting TUI in Worker mode")
+        backend = await createWorkerBackend()
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      UI.error(`Failed to initialize ${backendMode} backend: ${errorMsg}`)
+      return
     }
-    const client = Rpc.client<typeof rpc>(worker)
+
+    // Set up process event handlers
     process.on("uncaughtException", (e) => {
       Log.Default.error(e)
     })
@@ -103,9 +115,10 @@ export const TuiThreadCommand = cmd({
       Log.Default.error(e)
     })
     process.on("SIGUSR2", async () => {
-      await client.call("reload", undefined)
+      await backend.reload()
     })
 
+    // Read piped input
     const prompt = await iife(async () => {
       // Only read from stdin if it's actually piped (not a TTY and has data available)
       // Using a short timeout to avoid blocking indefinitely when stdin.isTTY is incorrectly false
@@ -120,12 +133,11 @@ export const TuiThreadCommand = cmd({
     })
 
     // Set up the RPC client for SDK calls
-    const sdkRpcClient = createSDKRpcClient(client)
-    setRpcClient(sdkRpcClient)
+    setRpcClient(backend.rpc)
 
     // Use local API directly (no HTTP server needed)
     const url = "http://codecoder.internal"
-    const events = createEventSource(client)
+    const events = backend.events
 
     const tuiPromise = tui({
       url,
@@ -138,7 +150,7 @@ export const TuiThreadCommand = cmd({
         prompt,
       },
       onExit: async () => {
-        await client.call("shutdown", undefined)
+        await backend.shutdown()
       },
     })
 

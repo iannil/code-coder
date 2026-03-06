@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 # Internal crates
 zero-common = { workspace = true }
+zero-core = { workspace = true }
 zero-memory = { workspace = true }
 
 # Async
@@ -25,6 +26,9 @@ futures-util = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
+
+# Base64 encoding
+base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

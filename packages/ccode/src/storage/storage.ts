@@ -1,18 +1,25 @@
+/**
+ * Storage Module
+ *
+ * Provides ACID-compliant key-value storage backed by SQLite via Rust NAPI bindings.
+ * This module requires @codecoder-ai/core native bindings.
+ *
+ * For migrating existing file-based storage, use: bun run src/storage/migrate.ts
+ */
+
 import { Log } from "@/util/log"
 import path from "path"
-import fs from "fs/promises"
 import { Global } from "../global"
-import { Filesystem } from "@/util/filesystem"
 import { lazy } from "@/util/lazy"
-import { Lock } from "@/util/lock"
-import { $ } from "bun"
 import { NamedError } from "@codecoder-ai/util/error"
 import z from "zod"
 
 export namespace Storage {
   const log = Log.create({ service: "storage" })
 
-  type Migration = (dir: string) => Promise<void>
+  // ============================================================================
+  // Error Types
+  // ============================================================================
 
   export const NotFoundError = NamedError.create(
     "NotFoundError",
@@ -31,362 +38,174 @@ export namespace Storage {
     }),
   )
 
-  const MIGRATIONS: Migration[] = [
-    async (dir) => {
-      const project = path.resolve(dir, "../project")
-      if (!(await Filesystem.isDir(project))) return
-      for await (const projectDir of new Bun.Glob("*").scan({
-        cwd: project,
-        onlyFiles: false,
-      })) {
-        log.info(`migrating project ${projectDir}`)
-        let projectID = projectDir
-        const fullProjectDir = path.join(project, projectDir)
-        let worktree = "/"
+  export const StorageUnavailableError = NamedError.create(
+    "StorageUnavailableError",
+    z.object({
+      message: z.string(),
+    }),
+  )
 
-        if (projectID !== "global") {
-          for await (const msgFile of new Bun.Glob("storage/session/message/*/*.json").scan({
-            cwd: path.join(project, projectDir),
-            absolute: true,
-          })) {
-            const json = await Bun.file(msgFile).json()
-            worktree = json.path?.root
-            if (worktree) break
-          }
-          if (!worktree) continue
-          if (!(await Filesystem.isDir(worktree))) continue
-          const [id] = await $`git rev-list --max-parents=0 --all`
-            .quiet()
-            .nothrow()
-            .cwd(worktree)
-            .text()
-            .then((x) =>
-              x
-                .split("\n")
-                .filter(Boolean)
-                .map((x) => x.trim())
-                .toSorted(),
-            )
-          if (!id) continue
-          projectID = id
+  // ============================================================================
+  // Native KV Store Interface
+  // ============================================================================
 
-          await Bun.write(
-            path.join(dir, "project", projectID + ".json"),
-            JSON.stringify({
-              id,
-              vcs: "git",
-              worktree,
-              time: {
-                created: Date.now(),
-                initialized: Date.now(),
-              },
-            }),
-          )
+  interface NativeKVStoreHandle {
+    set(key: string[], value: string): Promise<void>
+    get(key: string[]): Promise<string | null>
+    delete(key: string[]): Promise<boolean>
+    exists(key: string[]): Promise<boolean>
+    list(prefix: string[]): Promise<string[]>
+    count(prefix: string[]): Promise<number>
+    deletePrefix(prefix: string[]): Promise<number>
+    stats(): Promise<{ totalEntries: number; totalSizeBytes: number }>
+    healthCheck(): Promise<boolean>
+    compact(): Promise<void>
+    path(): string
+  }
 
-          log.info(`migrating sessions for project ${projectID}`)
-          for await (const sessionFile of new Bun.Glob("storage/session/info/*.json").scan({
-            cwd: fullProjectDir,
-            absolute: true,
-          })) {
-            const dest = path.join(dir, "session", projectID, path.basename(sessionFile))
-            log.info("copying", {
-              sessionFile,
-              dest,
-            })
-            const session = await Bun.file(sessionFile).json()
-            await Bun.write(dest, JSON.stringify(session))
-            log.info(`migrating messages for session ${session.id}`)
-            for await (const msgFile of new Bun.Glob(`storage/session/message/${session.id}/*.json`).scan({
-              cwd: fullProjectDir,
-              absolute: true,
-            })) {
-              const dest = path.join(dir, "message", session.id, path.basename(msgFile))
-              log.info("copying", {
-                msgFile,
-                dest,
-              })
-              const message = await Bun.file(msgFile).json()
-              await Bun.write(dest, JSON.stringify(message))
+  interface NativeBindings {
+    openKvStore: (path: string) => Promise<NativeKVStoreHandle>
+  }
 
-              log.info(`migrating parts for message ${message.id}`)
-              for await (const partFile of new Bun.Glob(`storage/session/part/${session.id}/${message.id}/*.json`).scan(
-                {
-                  cwd: fullProjectDir,
-                  absolute: true,
-                },
-              )) {
-                const dest = path.join(dir, "part", message.id, path.basename(partFile))
-                const part = await Bun.file(partFile).json()
-                log.info("copying", {
-                  partFile,
-                  dest,
-                })
-                await Bun.write(dest, JSON.stringify(part))
-              }
-            }
-          }
-        }
+  // ============================================================================
+  // Native Store Initialization
+  // ============================================================================
+
+  let kvStore: NativeKVStoreHandle | null = null
+
+  async function loadNativeBindings(): Promise<NativeBindings> {
+    try {
+      const bindings = (await import("@codecoder-ai/core")) as unknown as Record<string, unknown>
+      if (typeof bindings.openKvStore === "function") {
+        return bindings as unknown as NativeBindings
       }
-    },
-    async (dir) => {
-      for await (const item of new Bun.Glob("session/*/*.json").scan({
-        cwd: dir,
-        absolute: true,
-      })) {
-        const session = await Bun.file(item).json()
-        if (!session.projectID) continue
-        if (!session.summary?.diffs) continue
-        const { diffs } = session.summary
-        await Bun.file(path.join(dir, "session_diff", session.id + ".json")).write(JSON.stringify(diffs))
-        await Bun.file(path.join(dir, "session", session.projectID, session.id + ".json")).write(
-          JSON.stringify({
-            ...session,
-            summary: {
-              additions: diffs.reduce((sum: any, x: any) => sum + x.additions, 0),
-              deletions: diffs.reduce((sum: any, x: any) => sum + x.deletions, 0),
-            },
-          }),
-        )
-      }
-    },
-  ]
+    } catch (e) {
+      log.error("Failed to load @codecoder-ai/core native bindings", { error: e })
+    }
+
+    throw new StorageUnavailableError({
+      message:
+        "Native storage bindings not available. " +
+        "Ensure @codecoder-ai/core is installed and built correctly. " +
+        "Run: cd packages/core && bun run build",
+    })
+  }
 
   const state = lazy(async () => {
-    const dir = path.join(Global.Path.data, "storage")
-    const migration = await Bun.file(path.join(dir, "migration"))
-      .json()
-      .then((x) => parseInt(x))
-      .catch(() => 0)
-    for (let index = migration; index < MIGRATIONS.length; index++) {
-      log.info("running migration", { index })
-      const migration = MIGRATIONS[index]
-      await migration(dir).catch(() => log.error("failed to run migration", { index }))
-      await Bun.write(path.join(dir, "migration"), (index + 1).toString())
-    }
-    return {
-      dir,
-    }
+    const bindings = await loadNativeBindings()
+    const dbPath = path.join(Global.Path.data, "storage.db")
+
+    kvStore = await bindings.openKvStore(dbPath)
+    log.info("Using native SQLite KV store", { path: dbPath })
+
+    return { dbPath }
   })
 
-  const BACKUP_RETENTION_DAYS = 7
-  const BACKUP_MAX_COUNT = 3
-
-  async function isolateCorrupted(filepath: string, content: string) {
-    const corrupted = path.join(Global.Path.data, "storage", "_corrupted")
-    const timestamp = Date.now()
-    const dest = path.join(corrupted, `${path.basename(filepath)}.${timestamp}`)
-    await fs.mkdir(corrupted, { recursive: true })
-    await fs.writeFile(dest, content)
-    log.warn("Corrupted file isolated", { original: filepath, isolated: dest })
-  }
-
-  export async function remove(key: string[]) {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      await fs.unlink(target).catch(() => {})
-    })
-  }
-
-  export async function read<T>(key: string[]) {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.read(target)
-      const file = Bun.file(target)
-      const text = await file.text()
-      try {
-        return JSON.parse(text) as T
-      } catch (parseError) {
-        log.error("JSON parse error, attempting recovery", { path: target, error: parseError })
-
-        // Isolate corrupted file
-        await isolateCorrupted(target, text)
-
-        // Attempt auto-recovery from backup
-        const restored = await restore(key)
-        if (restored) {
-          log.info("Auto-recovered from backup", { key })
-          const recoveredText = await Bun.file(target).text()
-          return JSON.parse(recoveredText) as T
-        }
-
-        // Recovery failed
-        throw new CorruptedError({
-          path: target,
-          message: "Failed to parse JSON and no valid backup available",
-          originalError: parseError instanceof Error ? parseError.message : String(parseError),
-          recovered: false,
-        })
-      }
-    })
-  }
-
-  export async function update<T>(key: string[], fn: (draft: T) => void) {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.write(target)
-      const file = Bun.file(target)
-      const text = await file.text()
-      let content: T
-      try {
-        content = JSON.parse(text)
-      } catch (parseError) {
-        // Attempt auto-recovery
-        await isolateCorrupted(target, text)
-        const restored = await restore(key)
-        if (restored) {
-          log.info("Auto-recovered from backup during update", { key })
-          const recoveredText = await Bun.file(target).text()
-          content = JSON.parse(recoveredText)
-        } else {
-          throw new CorruptedError({
-            path: target,
-            message: "Failed to parse JSON during update and no valid backup",
-            originalError: parseError instanceof Error ? parseError.message : String(parseError),
-            recovered: false,
-          })
-        }
-      }
-
-      // Backup before update
-      await backup(key)
-
-      fn(content)
-      await Filesystem.atomicWrite(target, JSON.stringify(content, null, 2))
-      return content as T
-    })
-  }
-
-  export async function write<T>(key: string[], content: T) {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    return withErrorHandling(async () => {
-      using _ = await Lock.write(target)
-
-      // Backup existing file before overwrite
-      if (await Bun.file(target).exists()) {
-        await backup(key)
-      }
-
-      await Filesystem.atomicWrite(target, JSON.stringify(content, null, 2))
-    })
-  }
-
-  async function withErrorHandling<T>(body: () => Promise<T>) {
-    return body().catch((e) => {
-      if (!(e instanceof Error)) throw e
-      const errnoException = e as NodeJS.ErrnoException
-      if (errnoException.code === "ENOENT") {
-        throw new NotFoundError({ message: `Resource not found: ${errnoException.path}` })
-      }
-      throw e
-    })
-  }
-
-  const glob = new Bun.Glob("**/*")
-  export async function list(prefix: string[]) {
-    const dir = await state().then((x) => x.dir)
-    try {
-      const result = await Array.fromAsync(
-        glob.scan({
-          cwd: path.join(dir, ...prefix),
-          onlyFiles: true,
-        }),
-      ).then((results) => results.map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]))
-      result.sort()
-      return result
-    } catch {
-      return []
+  async function getStore(): Promise<NativeKVStoreHandle> {
+    await state()
+    if (!kvStore) {
+      throw new StorageUnavailableError({ message: "KV store not initialized" })
     }
+    return kvStore
   }
 
-  export async function backup(key: string[]): Promise<string | undefined> {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    const file = Bun.file(target)
+  // ============================================================================
+  // Public API
+  // ============================================================================
 
-    if (!(await file.exists())) return undefined
-
-    const backupDir = path.join(Global.Path.data, "storage", "_backup", ...key.slice(0, -1))
-    const timestamp = Date.now()
-    const backupPath = path.join(backupDir, `${key.at(-1)}.${timestamp}.json`)
-
-    await fs.mkdir(backupDir, { recursive: true })
-    await fs.copyFile(target, backupPath)
-
-    await cleanupBackups(backupDir, key.at(-1)!)
-
-    log.info("Backup created", { original: target, backup: backupPath })
-    return backupPath
+  /**
+   * Remove a value by key
+   */
+  export async function remove(key: string[]): Promise<void> {
+    const store = await getStore()
+    await store.delete(key)
   }
 
-  async function cleanupBackups(backupDir: string, basename: string) {
-    const pattern = new Bun.Glob(`${basename}.*.json`)
-    const files: { path: string; time: number }[] = []
+  /**
+   * Read a value by key
+   */
+  export async function read<T>(key: string[]): Promise<T> {
+    const store = await getStore()
+    const value = await store.get(key)
 
-    for await (const file of pattern.scan({ cwd: backupDir, absolute: true })) {
-      const match = file.match(/\.(\d+)\.json$/)
-      if (match) {
-        files.push({ path: file, time: parseInt(match[1]) })
-      }
+    if (value === null) {
+      throw new NotFoundError({ message: `Resource not found: ${key.join("/")}` })
     }
-
-    files.sort((a, b) => b.time - a.time)
-
-    const cutoff = Date.now() - BACKUP_RETENTION_DAYS * 24 * 60 * 60 * 1000
-
-    for (let i = 0; i < files.length; i++) {
-      if (i >= BACKUP_MAX_COUNT || files[i].time < cutoff) {
-        await fs.unlink(files[i].path).catch(() => {})
-      }
-    }
-  }
-
-  export async function restore(key: string[]): Promise<boolean> {
-    const dir = await state().then((x) => x.dir)
-    const target = path.join(dir, ...key) + ".json"
-    const backupDir = path.join(Global.Path.data, "storage", "_backup", ...key.slice(0, -1))
-    const basename = key.at(-1)!
-
-    const pattern = new Bun.Glob(`${basename}.*.json`)
-    let latest: { path: string; time: number } | undefined
 
     try {
-      for await (const file of pattern.scan({ cwd: backupDir, absolute: true })) {
-        const match = file.match(/\.(\d+)\.json$/)
-        if (match) {
-          const time = parseInt(match[1])
-          if (!latest || time > latest.time) {
-            latest = { path: file, time }
-          }
-        }
-      }
-    } catch {
-      log.warn("No backup directory found", { key })
-      return false
+      return JSON.parse(value) as T
+    } catch (e) {
+      throw new CorruptedError({
+        path: key.join("/"),
+        message: "Failed to parse JSON from KV store",
+        originalError: e instanceof Error ? e.message : String(e),
+        recovered: false,
+      })
     }
-
-    if (!latest) {
-      log.warn("No backup found", { key })
-      return false
-    }
-
-    // Validate backup file is valid JSON
-    try {
-      const content = await Bun.file(latest.path).text()
-      JSON.parse(content)
-    } catch {
-      log.error("Backup file is also corrupted", { backup: latest.path })
-      return false
-    }
-
-    await fs.mkdir(path.dirname(target), { recursive: true })
-    await fs.copyFile(latest.path, target)
-    log.info("Restored from backup", { backup: latest.path, target })
-    return true
   }
+
+  /**
+   * Update a value by key using a mutation function
+   */
+  export async function update<T>(key: string[], fn: (draft: T) => void): Promise<T> {
+    const store = await getStore()
+    const value = await store.get(key)
+
+    if (value === null) {
+      throw new NotFoundError({ message: `Resource not found: ${key.join("/")}` })
+    }
+
+    const content = JSON.parse(value) as T
+    fn(content)
+    await store.set(key, JSON.stringify(content))
+    return content
+  }
+
+  /**
+   * Write a value to a key
+   */
+  export async function write<T>(key: string[], content: T): Promise<void> {
+    const store = await getStore()
+    await store.set(key, JSON.stringify(content))
+  }
+
+  /**
+   * List all keys with a prefix
+   */
+  export async function list(prefix: string[]): Promise<string[][]> {
+    const store = await getStore()
+    const keys = await store.list(prefix)
+    // Convert from "a/b/c" format to ["a", "b", "c"] format
+    return keys.map((k) => k.split("/"))
+  }
+
+  /**
+   * Check if a key exists
+   */
+  export async function exists(key: string[]): Promise<boolean> {
+    const store = await getStore()
+    return store.exists(key)
+  }
+
+  /**
+   * Count entries with a prefix
+   */
+  export async function count(prefix: string[]): Promise<number> {
+    const store = await getStore()
+    return store.count(prefix)
+  }
+
+  /**
+   * Delete all entries with a prefix
+   */
+  export async function deletePrefix(prefix: string[]): Promise<number> {
+    const store = await getStore()
+    return store.deletePrefix(prefix)
+  }
+
+  // ============================================================================
+  // Health & Stats
+  // ============================================================================
 
   export interface HealthReport {
     total: number
@@ -395,48 +214,89 @@ export namespace Storage {
     orphaned: string[]
   }
 
+  /**
+   * Health check for the storage
+   */
   export async function healthCheck(prefix: string[]): Promise<HealthReport> {
-    const dir = await state().then((x) => x.dir)
-    const report: HealthReport = {
-      total: 0,
-      healthy: 0,
+    const store = await getStore()
+    const isHealthy = await store.healthCheck()
+    const stats = await store.stats()
+
+    return {
+      total: stats.totalEntries,
+      healthy: isHealthy ? stats.totalEntries : 0,
       corrupted: [],
       orphaned: [],
     }
-
-    for (const key of await list(prefix)) {
-      report.total++
-      const target = path.join(dir, ...key) + ".json"
-      try {
-        const content = await Bun.file(target).text()
-        JSON.parse(content)
-        report.healthy++
-      } catch (e) {
-        report.corrupted.push({
-          key,
-          error: e instanceof Error ? e.message : String(e),
-        })
-      }
-    }
-
-    return report
   }
 
+  /**
+   * Check if native SQLite storage is being used (always true now)
+   */
+  export function isUsingNative(): boolean {
+    return kvStore !== null
+  }
+
+  /**
+   * Get storage statistics
+   */
+  export async function getStats(): Promise<{
+    mode: "native"
+    entries: number
+    sizeBytes: number
+    path: string
+  }> {
+    const store = await getStore()
+    const stats = await store.stats()
+
+    return {
+      mode: "native",
+      entries: stats.totalEntries,
+      sizeBytes: stats.totalSizeBytes,
+      path: store.path(),
+    }
+  }
+
+  /**
+   * Compact the storage (VACUUM for SQLite)
+   */
+  export async function compact(): Promise<void> {
+    const store = await getStore()
+    await store.compact()
+    log.info("Storage compacted")
+  }
+
+  // ============================================================================
+  // Deprecated Functions (kept for backward compatibility)
+  // ============================================================================
+
+  /**
+   * @deprecated Backup is not needed for SQLite - it has ACID guarantees
+   */
+  export async function backup(_key: string[]): Promise<string | undefined> {
+    log.debug("backup() is deprecated - SQLite provides ACID guarantees")
+    return undefined
+  }
+
+  /**
+   * @deprecated Restore is not needed for SQLite - it has ACID guarantees
+   */
+  export async function restore(_key: string[]): Promise<boolean> {
+    log.debug("restore() is deprecated - SQLite provides ACID guarantees")
+    return false
+  }
+
+  /**
+   * @deprecated Use healthCheck() instead
+   */
   export async function listCorrupted(): Promise<string[]> {
-    const corrupted = path.join(Global.Path.data, "storage", "_corrupted")
-    try {
-      const files = await fs.readdir(corrupted)
-      return files.map((f) => path.join(corrupted, f))
-    } catch {
-      return []
-    }
+    return []
   }
 
+  /**
+   * @deprecated Use healthCheck() instead
+   */
   export async function clearCorrupted(): Promise<number> {
-    const files = await listCorrupted()
-    for (const file of files) {
-      await fs.unlink(file).catch(() => {})
-    }
-    return files.length
+    return 0
   }
 }

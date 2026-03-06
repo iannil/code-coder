@@ -14,6 +14,10 @@ zero-tools = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+futures-util = { workspace = true }
+
+# HTTP client for LLM APIs
+reqwest = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -27,3 +31,4 @@ uuid = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio-test = { workspace = true }

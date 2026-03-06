@@ -46,10 +46,12 @@ const KLINE_ENDPOINT: &str = "/stock/kline";
 const QUOTE_ENDPOINT: &str = "/stock/quote";
 
 /// Default rate limit: 5 requests per second = 300 per minute
+/// Can be overridden via data_sources config: `rate_limit_rpm`
 const DEFAULT_RATE_LIMIT_RPM: u32 = 300;
 
-/// Retry delay after rate limit error (seconds)
-const RATE_LIMIT_RETRY_SECS: u64 = 2;
+/// Default retry delay after rate limit error (seconds)
+/// Can be overridden via data_sources config: `retry_delay_secs`
+const DEFAULT_RETRY_DELAY_SECS: u64 = 2;
 
 // ============================================================================
 // Symbol Mapping
@@ -297,7 +299,7 @@ impl ITickAdapter {
                 .and_then(|s| s.parse::<u64>().ok());
 
             return Err(ProviderError::RateLimited {
-                retry_after_secs: retry_after.or(Some(RATE_LIMIT_RETRY_SECS)),
+                retry_after_secs: retry_after.or(Some(DEFAULT_RETRY_DELAY_SECS)),
             });
         }
 
@@ -322,7 +324,7 @@ impl ITickAdapter {
             }
             if msg.contains("limit") || msg.contains("频率") || msg.contains("rate") {
                 return Err(ProviderError::RateLimited {
-                    retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
+                    retry_after_secs: Some(DEFAULT_RETRY_DELAY_SECS),
                 });
             }
 

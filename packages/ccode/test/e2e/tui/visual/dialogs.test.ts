@@ -11,6 +11,7 @@
 import { describe, test, expect } from "bun:test"
 import { createE2ETest } from "../../../helpers/e2e-helper"
 import { assertVisual, updateVisualBaseline } from "../../../helpers/visual-helper"
+import { TestPaths } from "../../../helpers/paths"
 
 // E2E tests require proper environment and are skipped by default
 // Run with: SKIP_E2E=false bun test test/e2e/tui
@@ -24,7 +25,7 @@ describe.skipIf(skipE2E)("Visual: Dialogs", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-visual-model-dialog"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -67,7 +68,7 @@ describe.skipIf(skipE2E)("Visual: Dialogs", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-visual-theme-dialog"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -113,7 +114,7 @@ describe.skipIf(skipE2E)("Visual: Dialogs", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-visual-mcp-dialog"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -159,7 +160,7 @@ describe.skipIf(skipE2E)("Visual: Dialogs", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-visual-command-palette"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -202,7 +203,7 @@ describe.skipIf(skipE2E)("Visual: Dialogs", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-visual-palette-filter"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",

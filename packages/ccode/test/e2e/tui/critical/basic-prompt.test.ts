@@ -5,6 +5,7 @@
 
 import { describe, test, expect } from "bun:test"
 import { createE2ETest } from "../../../helpers/e2e-helper"
+import { TestPaths } from "../../../helpers/paths"
 
 // E2E tests require proper environment and are skipped by default
 // Run with: SKIP_E2E=false bun test test/e2e/tui
@@ -15,7 +16,7 @@ describe.skipIf(skipE2E)("Basic Prompt Flow E2E", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-prompt-project"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -46,7 +47,7 @@ describe.skipIf(skipE2E)("Basic Prompt Flow E2E", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-command-project"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -73,7 +74,7 @@ describe.skipIf(skipE2E)("Basic Prompt Flow E2E", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-slash-project"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",
@@ -99,7 +100,7 @@ describe.skipIf(skipE2E)("Basic Prompt Flow E2E", () => {
     const e2e = await createE2ETest({
       cmd: process.execPath,
       args: ["run", "./src/index.ts", "dev", "/tmp/test-empty-project"],
-      cwd: "/Users/iannil/Code/zproducts/code-coder/packages/ccode",
+      cwd: TestPaths.cwd,
       env: {
         ANTHROPIC_API_KEY: "sk-test-key-for-testing",
         NODE_ENV: "test",

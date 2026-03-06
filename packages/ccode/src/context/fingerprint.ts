@@ -1,11 +1,75 @@
+/**
+ * Project Fingerprinting
+ *
+ * Thin wrapper around @codecoder-ai/core native Rust implementation.
+ * Detects project type, frameworks, build tools, test frameworks,
+ * and other characteristics for contextual understanding.
+ *
+ * @package context
+ */
+
 import { Log } from "@/util/log"
-import { Filesystem } from "@/util/filesystem"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import z from "zod"
-import path from "path"
 
 const log = Log.create({ service: "context.fingerprint" })
+
+// ============================================================================
+// Native Bindings (lazy loaded)
+// ============================================================================
+
+interface NativeFingerprintInfo {
+  projectId: string
+  frameworks: Array<{ name: string; version?: string; frameworkType: string }>
+  buildTools: Array<{ name: string; config?: string; version?: string }>
+  testFrameworks: Array<{ name: string; config?: string; runner?: string }>
+  package: { name?: string; version?: string; manager: string }
+  configs: Array<{ path: string; name: string }>
+  language: string
+  hasTypeScript: boolean
+  languageVersion?: string
+  directories: {
+    src?: string
+    components?: string
+    pages?: string
+    routes?: string
+    tests: string[]
+    lib?: string
+    dist?: string
+    build?: string
+    public?: string
+  }
+  hash: string
+}
+
+interface NativeBindings {
+  generateFingerprint: (path: string) => NativeFingerprintInfo
+  fingerprintSimilarity: (a: NativeFingerprintInfo, b: NativeFingerprintInfo) => number
+  describeFingerprint: (fp: NativeFingerprintInfo) => string
+}
+
+let nativeBindings: NativeBindings | null = null
+let nativeBindingsLoaded = false
+
+async function loadNativeBindings(): Promise<NativeBindings> {
+  if (nativeBindingsLoaded && nativeBindings) return nativeBindings
+
+  try {
+    const bindings = (await import("@codecoder-ai/core")) as unknown as Record<string, unknown>
+    if (typeof bindings.generateFingerprint === "function") {
+      nativeBindings = bindings as unknown as NativeBindings
+      log.debug("Using native fingerprint implementation")
+      nativeBindingsLoaded = true
+      return nativeBindings
+    }
+  } catch {
+    // Native bindings not available
+  }
+
+  nativeBindingsLoaded = true
+  throw new Error("Native bindings required: @codecoder-ai/core fingerprint functions not available")
+}
 
 export namespace Fingerprint {
   export const FrameworkInfo = z.object({
@@ -71,535 +135,182 @@ export namespace Fingerprint {
   })
   export type Info = z.infer<typeof Info>
 
-  const FRAMEWORK_PATTERNS = {
-    React: {
-      dependencies: ["react", "react-dom"],
-      type: "frontend" as const,
-      configFiles: ["vite.config.ts", "vite.config.js", "next.config.js", "next.config.mjs"],
-    },
-    Vue: {
-      dependencies: ["vue"],
-      type: "frontend" as const,
-      configFiles: ["vite.config.ts", "vue.config.js", "nuxt.config.ts"],
-    },
-    Svelte: {
-      dependencies: ["svelte"],
-      type: "frontend" as const,
-      configFiles: ["vite.config.ts", "svelte.config.js"],
-    },
-    Angular: {
-      dependencies: ["@angular/core"],
-      type: "frontend" as const,
-      configFiles: ["angular.json"],
-    },
-    "Next.js": {
-      dependencies: ["next"],
-      type: "fullstack" as const,
-      configFiles: ["next.config.js", "next.config.mjs", "next.config.ts"],
-    },
-    Nuxt: {
-      dependencies: ["nuxt"],
-      type: "fullstack" as const,
-      configFiles: ["nuxt.config.ts"],
-    },
-    Remix: {
-      dependencies: ["@remix-run/react"],
-      type: "fullstack" as const,
-      configFiles: ["remix.config.js"],
-    },
-    SvelteKit: {
-      dependencies: ["@sveltejs/kit"],
-      type: "fullstack" as const,
-      configFiles: ["svelte.config.js"],
-    },
-    Astro: {
-      dependencies: ["astro"],
-      type: "frontend" as const,
-      configFiles: ["astro.config.js", "astro.config.mjs", "astro.config.ts"],
-    },
-    NestJS: {
-      dependencies: ["@nestjs/core"],
-      type: "backend" as const,
-      configFiles: ["nest-cli.json"],
-    },
-    Express: {
-      dependencies: ["express"],
-      type: "backend" as const,
-      configFiles: [],
-    },
-    Fastify: {
-      dependencies: ["fastify"],
-      type: "backend" as const,
-      configFiles: [],
-    },
-    Koa: {
-      dependencies: ["koa"],
-      type: "backend" as const,
-      configFiles: [],
-    },
-    Hono: {
-      dependencies: ["hono"],
-      type: "backend" as const,
-      configFiles: [],
-    },
-    Django: {
-      dependencies: ["django"],
-      type: "backend" as const,
-      configFiles: ["settings.py", "manage.py"],
-      language: "python",
-    },
-    Flask: {
-      dependencies: ["flask"],
-      type: "backend" as const,
-      configFiles: [],
-      language: "python",
-    },
-    FastAPI: {
-      dependencies: ["fastapi"],
-      type: "backend" as const,
-      configFiles: [],
-      language: "python",
-    },
-    Laravel: {
-      dependencies: ["laravel/framework"],
-      type: "backend" as const,
-      configFiles: ["artisan"],
-      language: "php",
-    },
-    Rails: {
-      dependencies: ["rails"],
-      type: "backend" as const,
-      configFiles: ["config/application.rb"],
-      language: "ruby",
-    },
-    Electron: {
-      dependencies: ["electron"],
-      type: "desktop" as const,
-      configFiles: ["electron-builder.yml"],
-    },
-    Tauri: {
-      dependencies: ["@tauri-apps/api"],
-      type: "desktop" as const,
-      configFiles: ["tauri.conf.json", "tauri.config.json"],
-    },
-    "React Native": {
-      dependencies: ["react-native"],
-      type: "mobile" as const,
-      configFiles: ["app.json", "react-native.config.js"],
-    },
-    Expo: {
-      dependencies: ["expo"],
-      type: "mobile" as const,
-      configFiles: ["app.config.js", "app.json"],
-    },
-  }
-
-  const BUILD_TOOL_PATTERNS = {
-    Vite: {
-      configFiles: ["vite.config.ts", "vite.config.js", "vite.config.mjs"],
-      packageKey: "vite",
-    },
-    Webpack: {
-      configFiles: ["webpack.config.js", "webpack.config.ts"],
-      packageKey: "webpack",
-    },
-    Rollup: {
-      configFiles: ["rollup.config.js", "rollup.config.ts"],
-      packageKey: "rollup",
-    },
-    esbuild: {
-      configFiles: ["esbuild.config.js", "esbuild.js", "esbuild.ts", "esbuild.mjs"],
-      packageKey: "esbuild",
-    },
-    Turbopack: {
-      configFiles: [],
-      packageKey: "turbo",
-    },
-    Turborepo: {
-      configFiles: ["turbo.json"],
-      packageKey: "turbo",
-    },
-    Nx: {
-      configFiles: ["nx.json"],
-      packageKey: "nx",
-    },
-    Rush: {
-      configFiles: ["rush.json"],
-      packageKey: "@microsoft/rush",
-    },
-    Babel: {
-      configFiles: [".babelrc", ".babelrc.js", "babel.config.js", "babel.config.json"],
-      packageKey: "@babel/core",
-    },
-    SWC: {
-      configFiles: [".swcrc"],
-      packageKey: "@swc/core",
-    },
-    PostCSS: {
-      configFiles: ["postcss.config.js", "postcss.config.cjs", "postcss.config.mjs"],
-      packageKey: "postcss",
-    },
-    TailwindCSS: {
-      configFiles: ["tailwind.config.js", "tailwind.config.ts", "tailwind.config.cjs"],
-      packageKey: "tailwindcss",
-    },
-  }
-
-  const TEST_FRAMEWORK_PATTERNS = {
-    Jest: {
-      configFiles: ["jest.config.js", "jest.config.ts", "jest.config.json", ".jestrc"],
-      packageKey: "jest",
-      scripts: ["test", "test:unit"],
-    },
-    Vitest: {
-      configFiles: ["vitest.config.ts", "vitest.config.js"],
-      packageKey: "vitest",
-      scripts: ["test"],
-    },
-    Mocha: {
-      configFiles: [".mocharc.js", ".mocharc.json", "mocha.opts"],
-      packageKey: "mocha",
-      scripts: ["test"],
-    },
-    Jasmine: {
-      configFiles: ["jasmine.json"],
-      packageKey: "jasmine",
-      scripts: ["test"],
-    },
-    Karma: {
-      configFiles: ["karma.conf.js"],
-      packageKey: "karma",
-      scripts: ["test"],
-    },
-    Cypress: {
-      configFiles: ["cypress.config.ts", "cypress.config.js"],
-      packageKey: "cypress",
-      scripts: ["cy:open", "cypress:open"],
-    },
-    Playwright: {
-      configFiles: ["playwright.config.ts", "playwright.config.js"],
-      packageKey: "@playwright/test",
-      scripts: ["test:e2e", "playwright:test"],
-    },
-    Puppeteer: {
-      configFiles: [],
-      packageKey: "puppeteer",
-      scripts: [],
-    },
-    "Testing Library": {
-      configFiles: [],
-      packageKey: "@testing-library",
-      scripts: [],
-    },
-    Supertest: {
-      configFiles: [],
-      packageKey: "supertest",
-      scripts: [],
-    },
-    Pytest: {
-      configFiles: ["pytest.ini", "pyproject.toml"],
-      packageKey: "pytest",
-      language: "python",
-    },
-    Unittest: {
-      configFiles: [],
-      packageKey: "unittest",
-      language: "python",
-    },
-  }
-
-  const LANGUAGE_PATTERNS = {
-    typescript: ["tsconfig.json", "*.ts", "*.tsx"],
-    javascript: ["*.js", "*.jsx", "*.mjs"],
-    python: ["*.py", "requirements.txt", "pyproject.toml", "Pipfile"],
-    go: ["*.go", "go.mod"],
-    rust: ["*.rs", "Cargo.toml"],
-    java: ["*.java", "pom.xml", "build.gradle", "gradle"],
-    csharp: ["*.cs", "*.csproj", "*.sln"],
-  }
-
-  const TEST_DIRECTORY_PATTERNS = ["test", "tests", "__tests__", "__test__", "spec", "specs", "e2e", "integration"]
-
-  async function detectPackageManager(worktree: string): Promise<PackageInfo["manager"]> {
-    const lockFiles = {
-      "pnpm-lock.yaml": "pnpm" as const,
-      "yarn.lock": "yarn" as const,
-      "package-lock.json": "npm" as const,
-      "bun.lock": "bun" as const,
-      "bun.lockb": "bun" as const,
+  /**
+   * Convert native fingerprint result to Info type
+   */
+  function convertNativeToInfo(native: NativeFingerprintInfo, projectID: string, now: number): Info {
+    const languageMap: Record<string, Info["language"]> = {
+      TypeScript: "typescript",
+      JavaScript: "javascript",
+      Python: "python",
+      Go: "go",
+      Rust: "rust",
+      Java: "java",
+      CSharp: "csharp",
+      Other: "other",
     }
 
-    for (const [file, manager] of Object.entries(lockFiles)) {
-      if (await Filesystem.exists(path.join(worktree, file))) return manager
+    const managerMap: Record<string, PackageInfo["manager"]> = {
+      Npm: "npm",
+      Bun: "bun",
+      Yarn: "yarn",
+      Pnpm: "pnpm",
+      Unknown: "unknown",
     }
 
-    return "unknown"
-  }
-
-  async function readPackageJson(worktree: string): Promise<Record<string, any> | undefined> {
-    for (const name of ["package.json", "package.jsonc"]) {
-      try {
-        const content = await Bun.file(path.join(worktree, name)).text()
-        return JSON.parse(content)
-      } catch {
-        // File doesn't exist or is not valid JSON - try next
-      }
-    }
-    return undefined
-  }
-
-  async function detectLanguage(
-    worktree: string,
-  ): Promise<{ language: Info["language"]; hasTypeScript: boolean; version?: string }> {
-    const tsconfigPath = path.join(worktree, "tsconfig.json")
-    const hasTypeScript = await Filesystem.exists(tsconfigPath)
-
-    if (hasTypeScript) {
-      let version = "unknown"
-      try {
-        const pkg = await readPackageJson(worktree)
-        if (pkg?.devDependencies?.typescript) version = pkg.devDependencies.typescript
-        else if (pkg?.dependencies?.typescript) version = pkg.dependencies.typescript
-      } catch {
-        // Version detection failed - use default "unknown"
-      }
-      return { language: "typescript", hasTypeScript: true, version }
+    const typeMap: Record<string, FrameworkInfo["type"]> = {
+      Frontend: "frontend",
+      Backend: "backend",
+      Fullstack: "fullstack",
+      Mobile: "mobile",
+      Desktop: "desktop",
+      Cli: "cli",
+      Library: "library",
     }
 
-    for (const [lang, patterns] of Object.entries(LANGUAGE_PATTERNS)) {
-      for (const pattern of patterns) {
-        if (pattern.startsWith("*")) {
-          const matches = await Array.fromAsync(
-            new Bun.Glob(pattern).scan({
-              cwd: worktree,
-              absolute: false,
-            }),
-          )
-          if (matches.length > 5) return { language: lang as any, hasTypeScript: false }
-        } else {
-          const filePath = path.join(worktree, pattern)
-          if (await Filesystem.exists(filePath)) return { language: lang as any, hasTypeScript: false }
-        }
-      }
-    }
-
-    return { language: "javascript", hasTypeScript: false }
-  }
-
-  async function detectDirectories(worktree: string): Promise<Info["directories"]> {
-    const directories: Info["directories"] = {
-      tests: [],
-    }
-
-    const commonDirs = ["src", "components", "pages", "routes", "lib", "dist", "build", "public", "app", "styles"]
-
-    for (const dir of commonDirs) {
-      const dirPath = path.join(worktree, dir)
-      if (await Filesystem.isDir(dirPath)) {
-        ;(directories as Record<string, string | string[]>)[dir] = dir
-      }
-    }
-
-    for (const testDir of TEST_DIRECTORY_PATTERNS) {
-      const dirPath = path.join(worktree, testDir)
-      if (await Filesystem.isDir(dirPath)) {
-        directories.tests.push(testDir)
-      }
-    }
-
-    return directories
-  }
-
-  async function detectConfigFiles(worktree: string): Promise<ConfigFile[]> {
-    const configs: ConfigFile[] = []
-    const configPatterns = ["*.config.js", "*.config.ts", "*.config.mjs", "*.config.cjs", ".*rc*", ".*.json"]
-
-    for (const pattern of configPatterns) {
-      try {
-        const matches = await Array.fromAsync(
-          new Bun.Glob(pattern).scan({
-            cwd: worktree,
-            absolute: false,
-          }),
-        )
-
-        for (const match of matches) {
-          const fullPath = path.join(worktree, match)
-          const stat = await Bun.file(fullPath).exists()
-          if (stat) {
-            configs.push({
-              path: fullPath,
-              name: match,
-            })
-          }
-        }
-      } catch {
-        // Glob pattern may fail on some filesystems - skip and continue
-      }
-    }
-
-    return configs
-  }
-
-  async function detectFrameworks(
-    worktree: string,
-    dependencies: Record<string, string> = {},
-  ): Promise<FrameworkInfo[]> {
-    const frameworks: FrameworkInfo[] = []
-    const allDeps = new Set([...Object.keys(dependencies), ...Object.keys(dependencies)])
-
-    for (const [name, pattern] of Object.entries(FRAMEWORK_PATTERNS)) {
-      const language = (pattern as any).language
-      if (language && language !== "javascript") {
-        continue
-      }
-
-      for (const dep of pattern.dependencies) {
-        if (allDeps.has(dep)) {
-          frameworks.push({
-            name,
-            version: dependencies[dep],
-            type: pattern.type,
-          })
-          break
-        }
-      }
-    }
-
-    return frameworks
-  }
-
-  async function detectBuildTools(
-    worktree: string,
-    dependencies: Record<string, string> = {},
-  ): Promise<BuildToolInfo[]> {
-    const tools: BuildToolInfo[] = []
-    const allDeps = new Set([...Object.keys(dependencies), ...Object.keys(dependencies)])
-
-    for (const [name, pattern] of Object.entries(BUILD_TOOL_PATTERNS)) {
-      let found = false
-      let configPath: string | undefined
-
-      for (const configFile of pattern.configFiles) {
-        const fullPath = path.join(worktree, configFile)
-        if (await Filesystem.exists(fullPath)) {
-          configPath = fullPath
-          found = true
-          break
-        }
-      }
-
-      if (!found && allDeps.has(pattern.packageKey)) {
-        found = true
-      }
-
-      if (found) {
-        tools.push({
-          name,
-          config: configPath,
-          version: dependencies[pattern.packageKey],
-        })
-      }
-    }
-
-    return tools
-  }
-
-  async function detectTestFrameworks(
-    worktree: string,
-    dependencies: Record<string, string> = {},
-    scripts: Record<string, string> = {},
-  ): Promise<TestFrameworkInfo[]> {
-    const frameworks: TestFrameworkInfo[] = []
-    const allDeps = new Set([...Object.keys(dependencies), ...Object.keys(dependencies)])
-
-    for (const [name, pattern] of Object.entries(TEST_FRAMEWORK_PATTERNS)) {
-      const language = (pattern as any).language
-      if (language && language !== "javascript") {
-        continue
-      }
-
-      let found = allDeps.has(pattern.packageKey)
-      let configPath: string | undefined
-      let runner: string | undefined
-
-      for (const configFile of pattern.configFiles) {
-        const fullPath = path.join(worktree, configFile)
-        if (await Filesystem.exists(fullPath)) {
-          configPath = fullPath
-          found = true
-          break
-        }
-      }
-
-      const patternScripts = (pattern as any).scripts ?? []
-      for (const script of patternScripts) {
-        if (scripts[script]) {
-          runner = scripts[script]
-          found = true
-          break
-        }
-      }
-
-      if (found) {
-        frameworks.push({
-          name,
-          config: configPath,
-          runner,
-        })
-      }
-    }
-
-    return frameworks
-  }
-
-  export async function generate(worktree: string): Promise<Info> {
-    const projectID = Instance.project.id
-    const now = Date.now()
-
-    const pkg = await readPackageJson(worktree)
-    const dependencies = {
-      ...(pkg?.dependencies ?? {}),
-      ...(pkg?.devDependencies ?? {}),
-      ...(pkg?.peerDependencies ?? {}),
-    }
-
-    const packageManager = await detectPackageManager(worktree)
-    const { language, hasTypeScript, version: languageVersion } = await detectLanguage(worktree)
-    const directories = await detectDirectories(worktree)
-    const configs = await detectConfigFiles(worktree)
-
-    const frameworks = await detectFrameworks(worktree, dependencies)
-    const buildTools = await detectBuildTools(worktree, dependencies)
-    const testFrameworks = await detectTestFrameworks(worktree, dependencies, pkg?.scripts ?? {})
-
-    const result: Info = {
+    return {
       projectID,
-      frameworks,
-      buildTools,
-      testFrameworks,
+      frameworks: native.frameworks.map((f) => ({
+        name: f.name,
+        version: f.version,
+        type: typeMap[f.frameworkType] ?? "library",
+      })),
+      buildTools: native.buildTools.map((t) => ({
+        name: t.name,
+        config: t.config,
+        version: t.version,
+      })),
+      testFrameworks: native.testFrameworks.map((t) => ({
+        name: t.name,
+        config: t.config,
+        runner: t.runner,
+      })),
       package: {
-        name: pkg?.name,
-        version: pkg?.version,
-        manager: packageManager,
+        name: native.package.name,
+        version: native.package.version,
+        manager: managerMap[native.package.manager] ?? "unknown",
       },
-      configs,
-      language,
-      hasTypeScript,
-      languageVersion,
-      directories,
+      configs: native.configs.map((c) => ({
+        path: c.path,
+        name: c.name,
+      })),
+      language: languageMap[native.language] ?? "other",
+      hasTypeScript: native.hasTypeScript,
+      languageVersion: native.languageVersion,
+      directories: {
+        src: native.directories.src,
+        components: native.directories.components,
+        pages: native.directories.pages,
+        routes: native.directories.routes,
+        tests: native.directories.tests,
+        lib: native.directories.lib,
+        dist: native.directories.dist,
+        build: native.directories.build,
+        public: native.directories.public,
+      },
       time: {
         created: now,
         updated: now,
       },
     }
+  }
 
-    log.info("generated fingerprint", {
+  /**
+   * Convert Info type to native format for similarity comparison
+   */
+  function convertInfoToNative(info: Info): NativeFingerprintInfo {
+    const languageMap: Record<Info["language"], string> = {
+      typescript: "TypeScript",
+      javascript: "JavaScript",
+      python: "Python",
+      go: "Go",
+      rust: "Rust",
+      java: "Java",
+      csharp: "CSharp",
+      other: "Other",
+    }
+
+    const managerMap: Record<PackageInfo["manager"], string> = {
+      npm: "Npm",
+      bun: "Bun",
+      yarn: "Yarn",
+      pnpm: "Pnpm",
+      unknown: "Unknown",
+    }
+
+    const typeMap: Record<FrameworkInfo["type"], string> = {
+      frontend: "Frontend",
+      backend: "Backend",
+      fullstack: "Fullstack",
+      mobile: "Mobile",
+      desktop: "Desktop",
+      cli: "Cli",
+      library: "Library",
+    }
+
+    return {
+      projectId: info.projectID,
+      frameworks: info.frameworks.map((f) => ({
+        name: f.name,
+        version: f.version,
+        frameworkType: typeMap[f.type],
+      })),
+      buildTools: info.buildTools.map((t) => ({
+        name: t.name,
+        config: t.config,
+        version: t.version,
+      })),
+      testFrameworks: info.testFrameworks.map((t) => ({
+        name: t.name,
+        config: t.config,
+        runner: t.runner,
+      })),
+      package: {
+        name: info.package.name,
+        version: info.package.version,
+        manager: managerMap[info.package.manager],
+      },
+      configs: info.configs.map((c) => ({
+        path: c.path,
+        name: c.name,
+      })),
+      language: languageMap[info.language],
+      hasTypeScript: info.hasTypeScript,
+      languageVersion: info.languageVersion,
+      directories: {
+        src: info.directories.src,
+        components: info.directories.components,
+        pages: info.directories.pages,
+        routes: info.directories.routes,
+        tests: info.directories.tests,
+        lib: info.directories.lib,
+        dist: info.directories.dist,
+        build: info.directories.build,
+        public: info.directories.public,
+      },
+      hash: info.projectID,
+    }
+  }
+
+  /**
+   * Generate fingerprint for a project directory.
+   * Uses native Rust implementation for fast, accurate detection.
+   * @throws Error if native bindings unavailable
+   */
+  export async function generate(worktree: string): Promise<Info> {
+    const projectID = Instance.project.id
+    const now = Date.now()
+
+    const native = await loadNativeBindings()
+    const nativeResult = native.generateFingerprint(worktree)
+    const result = convertNativeToInfo(nativeResult, projectID, now)
+
+    log.info("generated fingerprint (native)", {
       projectID,
-      language,
-      frameworks: frameworks.map((f) => f.name),
-      buildTools: buildTools.map((t) => t.name),
-      testFrameworks: testFrameworks.map((t) => t.name),
+      language: result.language,
+      frameworks: result.frameworks.map((f) => f.name),
+      buildTools: result.buildTools.map((t) => t.name),
+      testFrameworks: result.testFrameworks.map((t) => t.name),
     })
 
     return result
@@ -653,5 +364,24 @@ export namespace Fingerprint {
     }
 
     return parts.join(" • ") || "Unknown project type"
+  }
+
+  /**
+   * Check if native fingerprint implementation is being used
+   */
+  export function isUsingNative(): boolean {
+    return nativeBindings !== null
+  }
+
+  /**
+   * Compute similarity between two fingerprints.
+   * Uses native Rust implementation for accurate comparison.
+   * @throws Error if native bindings unavailable
+   */
+  export async function similarity(a: Info, b: Info): Promise<number> {
+    const native = await loadNativeBindings()
+    const nativeA = convertInfoToNative(a)
+    const nativeB = convertInfoToNative(b)
+    return native.fingerprintSimilarity(nativeA, nativeB)
   }
 }

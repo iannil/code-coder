@@ -126,7 +126,7 @@ const showCommand: CommandModule<object, TraceShowOptions> = {
     const { queryTrace } = await import("../../trace/query")
     const { formatAsTree, formatAsText } = await import("../../trace/visualizer")
 
-    const entries = await queryTrace(args.traceId, getLogDir())
+    const entries = await queryTrace(args.traceId)
 
     if (entries.length === 0) {
       console.log(`No entries found for trace ID: ${args.traceId}`)
@@ -204,7 +204,12 @@ const profileCommand: CommandModule<object, TraceProfileOptions> = {
     const { profileTraces } = await import("../../trace/profiler")
 
     const fromDate = parseRelativeTime(args.from || "10 minutes ago")
-    const profile = await profileTraces(getLogDir(), fromDate, args.top || 10)
+    const profile = await profileTraces(fromDate, args.top || 10)
+
+    if (!profile) {
+      console.log("Native trace store not available. Please ensure native bindings are installed.")
+      return
+    }
 
     console.log("\n=== Performance Profile ===\n")
     console.log(`Time range: ${fromDate.toISOString()} - now`)
@@ -242,7 +247,12 @@ const errorsCommand: CommandModule<object, TraceErrorsOptions> = {
     const { aggregateErrors } = await import("../../trace/query")
 
     const fromDate = parseRelativeTime(args.from || "1 hour ago")
-    const errors = await aggregateErrors(getLogDir(), fromDate, args.groupBy || "service")
+    const errors = await aggregateErrors(fromDate, args.groupBy || "service")
+
+    if (!errors) {
+      console.log("Native trace store not available. Please ensure native bindings are installed.")
+      return
+    }
 
     console.log("\n=== Error Summary ===\n")
     console.log(`Time range: ${fromDate.toISOString()} - now`)
@@ -278,7 +288,7 @@ const treeCommand: CommandModule<object, TraceTreeOptions> = {
     const { queryTrace } = await import("../../trace/query")
     const { formatAsTree } = await import("../../trace/visualizer")
 
-    const entries = await queryTrace(args.traceId, getLogDir())
+    const entries = await queryTrace(args.traceId)
 
     if (entries.length === 0) {
       console.log(`No entries found for trace ID: ${args.traceId}`)

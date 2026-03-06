@@ -64,10 +64,12 @@ const INCOME_STATEMENT_ENDPOINT: &str = "/cn/company/fs/income";
 const CASH_FLOW_ENDPOINT: &str = "/cn/company/fs/cash_flow";
 
 /// Default rate limit: 100 requests per minute (conservative)
+/// Can be overridden via data_sources config: `rate_limit_rpm`
 const DEFAULT_RATE_LIMIT_RPM: u32 = 100;
 
-/// Retry delay after rate limit error (seconds)
-const RATE_LIMIT_RETRY_SECS: u64 = 10;
+/// Default retry delay after rate limit error (seconds)
+/// Can be overridden via data_sources config: `retry_delay_secs`
+const DEFAULT_RETRY_DELAY_SECS: u64 = 10;
 
 /// Maximum stocks per batch request
 const MAX_BATCH_SIZE: usize = 100;
@@ -331,7 +333,7 @@ impl LixinAdapter {
                 .and_then(|s| s.parse::<u64>().ok());
 
             return Err(ProviderError::RateLimited {
-                retry_after_secs: retry_after.or(Some(RATE_LIMIT_RETRY_SECS)),
+                retry_after_secs: retry_after.or(Some(DEFAULT_RETRY_DELAY_SECS)),
             });
         }
 
@@ -369,7 +371,7 @@ impl LixinAdapter {
             }
             if error_name.contains("Rate") || msg.contains("频率") || msg.contains("限制") {
                 return Err(ProviderError::RateLimited {
-                    retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
+                    retry_after_secs: Some(DEFAULT_RETRY_DELAY_SECS),
                 });
             }
 
@@ -386,7 +388,7 @@ impl LixinAdapter {
             }
             if msg.contains("频率") || msg.contains("限制") {
                 return Err(ProviderError::RateLimited {
-                    retry_after_secs: Some(RATE_LIMIT_RETRY_SECS),
+                    retry_after_secs: Some(DEFAULT_RETRY_DELAY_SECS),
                 });
             }
 

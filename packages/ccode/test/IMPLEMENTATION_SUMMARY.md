@@ -5,7 +5,7 @@
 ### Phase 1: Test Infrastructure ✅
 
 1. **E2E Helper** (`test/helpers/e2e-helper.ts`)
-   - `createE2ETest()` - Wrapper around bun-pty for terminal I/O simulation
+   - `createE2ETest()` - Wrapper around native PTY bindings for terminal I/O simulation
    - `waitForOutput()` - Pattern matching with timeout
    - `waitForOutputAbsent()` - Negative pattern matching
    - Helper functions for mock data creation

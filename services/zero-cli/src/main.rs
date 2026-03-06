@@ -23,6 +23,7 @@ mod doctor;
 mod health;
 mod heartbeat;
 mod integrations;
+mod ipc;
 mod mcp;
 mod memory;
 mod migration;
@@ -193,6 +194,14 @@ enum Commands {
         /// Run in stdio mode (for subprocess communication)
         #[arg(long)]
         stdio: bool,
+    },
+
+    /// Start IPC server for TypeScript TUI communication
+    #[command(name = "serve-ipc")]
+    ServeIpc {
+        /// Custom socket path (default: ~/.codecoder/ipc.sock)
+        #[arg(long)]
+        socket: Option<std::path::PathBuf>,
     },
 
     /// Manage automated trading (PO3+SMT strategy)
@@ -573,6 +582,12 @@ async fn main() -> Result<()> {
 
         Commands::Trading { trading_command } => {
             trading::handle_command(trading_command, &config).await
+        }
+
+        Commands::ServeIpc { socket } => {
+            let socket_path = socket.unwrap_or_else(ipc::default_socket_path);
+            info!("🔌 Starting IPC server on {}", socket_path.display());
+            ipc::serve(config, socket_path).await
         }
     }
 }
