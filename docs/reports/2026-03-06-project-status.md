@@ -47,6 +47,10 @@
 - ✅ Bug 验证 Phase 17 完成
 - ✅ 文档整理与项目梳理
 - ✅ 55+ 进度文档归档
+- ✅ **NAPI Wave 2 验证完成** - MCP/LSP/Compaction 基础设施层就绪
+  - 165 测试通过 (159 pass, 6 skip)
+  - packages/core 新增 ~1,135 行 TypeScript 封装
+  - services/zero-core 新增 ~2,800 行 Rust NAPI 绑定
 
 ---
 
