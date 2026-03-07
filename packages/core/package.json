@@ -24,7 +24,9 @@
     "build:debug": "napi build --platform --js dist/binding.js --dts dist/binding.d.ts",
     "prepublishOnly": "napi prepublish -t npm",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "sync-types": "bun ../../scripts/sync-napi-types.ts",
+    "sync-types:dry-run": "bun ../../scripts/sync-napi-types.ts --dry-run --verbose"
   },
   "devDependencies": {
     "@napi-rs/cli": "3.0.0-alpha.70",

@@ -11,6 +11,7 @@
 import {
   chunkText as coreChunkText,
   estimateTokens as coreEstimateTokens,
+  type NapiChunk,
 } from "@codecoder-ai/core"
 
 // ============================================================================
@@ -70,22 +71,22 @@ const DEFAULT_CONFIG: ChunkerConfig = {
 // Conversion Utilities
 // ============================================================================
 
-function convertChunkString(chunkContent: string, source: string, index: number): Chunk {
+function convertChunkString(chunk: NapiChunk, source: string, index: number): Chunk {
   // Determine chunk type from content
-  const type = detectChunkType(chunkContent)
+  const type = detectChunkType(chunk.content)
 
   return {
     id: generateChunkId(source, index),
-    content: chunkContent,
+    content: chunk.content,
     metadata: {
       source,
-      headings: [], // Not available from simple string chunks
+      headings: chunk.heading ? [chunk.heading] : [], // Use heading from NapiChunk if available
       type,
       startLine: 1, // Not tracked in simple chunking
       endLine: 1,
-      language: type === "code" ? extractCodeLanguage(chunkContent) : undefined,
+      language: type === "code" ? extractCodeLanguage(chunk.content) : undefined,
     },
-    tokenCount: estimateTokens(chunkContent),
+    tokenCount: estimateTokens(chunk.content),
   }
 }
 

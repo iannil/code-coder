@@ -3756,3 +3756,432 @@ export declare const enum WatchEventKind {
 
 /** Convenience function to watch a single path with a callback */
 export declare export declare function watchPath(path: string, callback: (path: string, event: string) => void, config?: FileWatcherConfig | undefined | null): FileWatcherHandle
+
+// ============================================================================
+// Ignore Engine (Phase 12 - NAPI Bindings)
+// ============================================================================
+
+/** Configuration for the ignore engine */
+export interface NapiIgnoreConfig {
+  /** Use default folder patterns (default: true) */
+  useDefaultFolders?: boolean
+  /** Use default file patterns (default: true) */
+  useDefaultFiles?: boolean
+  /** Additional patterns to add */
+  additionalPatterns?: Array<string>
+  /** Patterns to whitelist (never ignore) */
+  whitelistPatterns?: Array<string>
+  /** Whether to respect .gitignore files (default: true) */
+  respectGitignore?: boolean
+  /** Whether to respect .ccignore files (default: true) */
+  respectCcignore?: boolean
+}
+
+/** Result of checking if a path should be ignored */
+export interface NapiIgnoreCheckResult {
+  /** Whether the path should be ignored */
+  ignored: boolean
+  /** Which pattern caused the ignore (if any) */
+  matchedPattern?: string
+  /** Whether the match was from a negation rule */
+  negated: boolean
+}
+
+/** Handle to a compiled ignore engine for efficient reuse */
+export declare class IgnoreEngineHandle {
+  /** Create a new ignore engine with default configuration */
+  constructor()
+  /** Create a new ignore engine with custom configuration */
+  static withConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
+  /** Load gitignore rules from a specific file */
+  loadGitignore(path: string): void
+  /** Add a single pattern to the engine */
+  addPattern(pattern: string): void
+  /** Check if a path should be ignored */
+  isIgnored(path: string): boolean
+  /** Check multiple paths at once */
+  isIgnoredBatch(paths: Array<string>): Array<boolean>
+  /** Check if a path should be ignored with detailed result */
+  check(path: string): NapiIgnoreCheckResult
+  /** Get all files in a directory that are not ignored */
+  listFiles(root: string): Array<string>
+}
+
+/** Quick check if a path matches default ignore patterns */
+export declare function shouldIgnorePath(path: string): boolean
+
+/** Get the default ignore patterns */
+export declare function getIgnoreDefaultPatterns(): Array<string>
+
+/** Get the default ignored folder names */
+export declare function getIgnoreDefaultFolders(): Array<string>
+
+/** Create an ignore engine with default configuration */
+export declare function createIgnoreEngine(): IgnoreEngineHandle
+
+/** Create an ignore engine with custom configuration */
+export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
+
+/** Filter a list of paths, returning only those that are not ignored */
+export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
+
+/** Filter a list of paths using custom patterns */
+export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
+
+// ============================================================================
+// Context Loader (Phase 12 - NAPI Bindings)
+// ============================================================================
+
+/** File entry for NAPI */
+export interface NapiFileEntry {
+  path: string
+  relativePath: string
+  name: string
+  extension?: string
+  directory: boolean
+  size: number
+  lastModified: number
+}
+
+/** Directory structure for NAPI */
+export interface NapiDirectoryStructure {
+  path: string
+  name: string
+  files: Array<string>
+  subdirectories: Array<NapiDirectoryStructure>
+}
+
+/** File index for NAPI */
+export interface NapiFileIndex {
+  byPath: Record<string, NapiFileEntry>
+  byExtension: Record<string, Array<string>>
+  byName: Record<string, Array<string>>
+  routes: Array<string>
+  components: Array<string>
+  tests: Array<string>
+  configs: Array<string>
+}
+
+/** Dependency graph for NAPI */
+export interface NapiDependencyGraph {
+  imports: Record<string, Array<string>>
+  importedBy: Record<string, Array<string>>
+}
+
+/** Scan options for NAPI */
+export interface NapiScanOptions {
+  maxDepth?: number
+  includeHidden?: boolean
+  ignorePatterns?: Array<string>
+}
+
+/** Scan result for NAPI */
+export interface NapiScanResult {
+  entries: Array<NapiFileEntry>
+  structure: NapiDirectoryStructure
+}
+
+/** Context loader handle for NAPI */
+export declare class ContextLoaderHandle {
+  /** Create a new context loader for the given directory */
+  constructor(root: string, options?: NapiScanOptions)
+  /** Scan the directory and return file entries and structure */
+  scan(): NapiScanResult
+  /** Set fingerprint for categorization */
+  setFingerprint(fingerprint: NapiFingerprintInfo): void
+  /** Categorize files based on fingerprint */
+  categorize(entries: Array<NapiFileEntry>): NapiFileIndex
+  /** Extract import dependencies from source files */
+  extractDependencies(entries: Array<NapiFileEntry>, language: NapiProjectLanguage): NapiDependencyGraph
+  /** Find files related to a given file */
+  findRelatedFiles(filePath: string, index: NapiFileIndex, dependencies: NapiDependencyGraph): Array<string>
+}
+
+/** Create a context loader (convenience function) */
+export declare function createContextLoader(root: string, options?: NapiScanOptions): ContextLoaderHandle
+
+/** Scan a directory and return all file entries (convenience function) */
+export declare function scanDirectory(root: string, options?: NapiScanOptions): NapiScanResult
+
+/** Extract dependencies from a directory (convenience function) */
+export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions): NapiDependencyGraph
+
+// ============================================================================
+// Embedding Index (Phase 12 - NAPI Bindings)
+// ============================================================================
+
+/** Search result from embedding index */
+export interface NapiEmbeddingSearchResult {
+  /** Embedding identifier */
+  id: string
+  /** Similarity score (0.0-1.0) */
+  score: number
+}
+
+/** Item for batch add operations */
+export interface NapiEmbeddingItem {
+  /** Embedding identifier */
+  id: string
+  /** Embedding vector */
+  vector: Array<number>
+}
+
+/** Index statistics */
+export interface NapiEmbeddingIndexStats {
+  /** Total number of embeddings in the index */
+  count: number
+  /** Embedding dimension */
+  dimension: number
+  /** Approximate memory usage in bytes */
+  memoryBytes: number
+}
+
+/** Handle to an in-memory embedding index for fast KNN search */
+export declare class EmbeddingIndexHandle {
+  /** Create a new embedding index with the specified dimension */
+  constructor(dimension: number)
+  /** Deserialize an index from bytes */
+  static fromBytes(bytes: Buffer): EmbeddingIndexHandle
+  /** Add a single embedding to the index */
+  add(id: string, vector: Array<number>): void
+  /** Add multiple embeddings in a batch operation */
+  addBatch(items: Array<NapiEmbeddingItem>): void
+  /** Search for the K nearest neighbors to a query vector */
+  search(query: Array<number>, k: number, threshold: number): Array<NapiEmbeddingSearchResult>
+  /** Compute similarity between a query and a specific embedding */
+  similarity(query: Array<number>, id: string): number | null
+  /** Batch similarity: compute similarities between a query and multiple embeddings */
+  batchSimilarity(query: Array<number>, ids: Array<string>): Array<NapiEmbeddingSearchResult>
+  /** Remove an embedding from the index */
+  remove(id: string): boolean
+  /** Check if an embedding exists in the index */
+  has(id: string): boolean
+  /** Get all embedding IDs in the index */
+  ids(): Array<string>
+  /** Get index statistics */
+  stats(): NapiEmbeddingIndexStats
+  /** Clear all embeddings from the index */
+  clear(): void
+  /** Serialize the index to bytes for persistence */
+  toBytes(): Buffer
+}
+
+/** Create a new embedding index with the specified dimension */
+export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
+
+// ============================================================================
+// Memory System (Phase 12 - NAPI Bindings)
+// ============================================================================
+
+/** History statistics for NAPI */
+export interface NapiHistoryStats {
+  totalEdits: number
+  totalSessions: number
+  totalDecisions: number
+  totalAdrs: number
+  totalAdditions: number
+  totalDeletions: number
+}
+
+/** Vector statistics for NAPI */
+export interface NapiVectorStats {
+  totalEmbeddings: number
+  dimension: number
+  memoryBytes: number
+}
+
+/** Tokenizer statistics for NAPI */
+export interface NapiTokenizerStats {
+  cacheEntries: number
+  cacheHits: number
+  cacheMisses: number
+  hitRate: number
+}
+
+/** Unified memory statistics for NAPI */
+export interface NapiMemoryStats {
+  history: NapiHistoryStats
+  vectors: NapiVectorStats
+  tokenizer: NapiTokenizerStats
+  totalMemoryBytes: number
+  lastInvalidation?: number
+  lastCleanup?: number
+}
+
+/** History snapshot for NAPI */
+export interface NapiHistorySnapshot {
+  editRecordsCount: number
+  sessionsCount: number
+  decisionsCount: number
+  adrsCount: number
+  data: string
+}
+
+/** Vector snapshot for NAPI */
+export interface NapiVectorSnapshotData {
+  embeddingsCount: number
+  dimension: number
+  data: string
+}
+
+/** Complete memory snapshot for NAPI */
+export interface NapiMemorySnapshot {
+  version: number
+  timestamp: number
+  projectId: string
+  history?: NapiHistorySnapshot
+  vectors?: NapiVectorSnapshotData
+  metadata: string
+}
+
+/** Import options for NAPI */
+export interface NapiImportOptions {
+  merge: boolean
+  overwriteConflicts: boolean
+  subsystems?: string
+}
+
+/** Import result for NAPI */
+export interface NapiImportResult {
+  imported: number
+  skipped: number
+  conflicts: number
+  errors: string
+}
+
+/** Cleanup result for NAPI */
+export interface NapiCleanupResult {
+  removed: number
+  bySubsystem: string
+  bytesFreed: number
+}
+
+/** A stored embedding for NAPI */
+export interface NapiStoredEmbedding {
+  id: string
+  text: string
+  vector: Array<number>
+  createdAt: number
+  metadata: string
+}
+
+/** KNN search result for NAPI */
+export interface NapiKnnResult {
+  id: string
+  score: number
+}
+
+/** Tool definition for NAPI */
+export interface NapiToolDefinition {
+  name: string
+  description: string
+  parametersSchema: string
+  native: boolean
+  embedding?: string
+  tags: string
+}
+
+/** Tool match result for NAPI */
+export interface NapiToolMatch {
+  name: string
+  score: number
+  description: string
+}
+
+/** Decision type for NAPI */
+export declare const enum NapiDecisionType {
+  Architecture = 'Architecture',
+  Implementation = 'Implementation',
+  Refactor = 'Refactor',
+  Bugfix = 'Bugfix',
+  Feature = 'Feature',
+  Other = 'Other'
+}
+
+/** File edit type for NAPI */
+export declare const enum NapiFileEditType {
+  Create = 'Create',
+  Update = 'Update',
+  Delete = 'Delete',
+  Move = 'Move'
+}
+
+/** Handle to a unified memory system */
+export declare class MemorySystemHandle {
+  /** Create a new memory system for a project */
+  constructor(dataDir: string, projectId: string)
+  /** Get unified statistics for all memory subsystems */
+  stats(): NapiMemoryStats
+  /** Invalidate all caches */
+  invalidate(): void
+  /** Export memory snapshot */
+  export(): NapiMemorySnapshot
+  /** Import memory snapshot */
+  importSnapshot(snapshot: NapiMemorySnapshot, options: NapiImportOptions): NapiImportResult
+  /** Cleanup expired data */
+  cleanup(maxAgeDays: number): NapiCleanupResult
+  /** Get the project ID */
+  projectId(): string
+  /** Get the data directory path */
+  dataDir(): string
+  /** Store an embedding */
+  storeEmbedding(id: string, text: string, vector: Array<number>, metadata?: string): void
+  /** Search for similar embeddings */
+  searchSimilar(query: Array<number>, limit: number, threshold: number): Array<NapiKnnResult>
+  /** Get an embedding by ID */
+  getEmbedding(id: string): NapiStoredEmbedding | null
+  /** Remove an embedding by ID */
+  removeEmbedding(id: string): NapiStoredEmbedding | null
+  /** Clear all embeddings */
+  clearEmbeddings(): void
+  /** Record a decision */
+  recordDecision(decisionType: NapiDecisionType, title: string, description: string, rationale?: string, alternatives?: string): string
+  /** Record a file edit */
+  recordEdit(sessionId: string | undefined, filePath: string, editType: NapiFileEditType, additions: number, deletions: number, diff?: string): string
+  /** Register a tool */
+  registerTool(tool: NapiToolDefinition): void
+  /** Unregister a tool */
+  unregisterTool(name: string): NapiToolDefinition | null
+  /** Get a tool by name */
+  getTool(name: string): NapiToolDefinition | null
+  /** List all registered tools */
+  listTools(): Array<NapiToolDefinition>
+  /** Search tools by query (keyword search) */
+  searchTools(query: string, limit: number): Array<NapiToolMatch>
+  /** Search tools using semantic similarity */
+  searchToolsSemantic(queryEmbedding: Array<number>, limit: number, threshold: number): Array<NapiToolMatch>
+  /** Get tool count */
+  toolCount(): number
+}
+
+/** Create a new memory system */
+export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
+
+// ============================================================================
+// Hash Embedding (Phase 12 - NAPI Bindings)
+// ============================================================================
+
+/** Result of generating a hash-based embedding */
+export interface NapiHashEmbeddingResult {
+  vector: Array<number>
+  dimension: number
+  model: string
+}
+
+/** Generate a hash-based embedding for the given text */
+export declare function generateHashEmbedding(text: string, dimension?: number): Array<number>
+
+/** Generate a hash-based embedding with full result info */
+export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
+
+/** Generate hash-based embeddings for multiple texts (batch operation) */
+export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number): Array<Array<number>>
+
+/** Generate a combined hash embedding from multiple texts */
+export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number): Array<number>
+
+/** Generate a hash embedding with position encoding */
+export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number): Array<number>
+
+/** Calculate cosine similarity between two embeddings */
+export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number

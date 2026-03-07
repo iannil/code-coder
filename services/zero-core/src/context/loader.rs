@@ -5,7 +5,6 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::SystemTime;
 
 use anyhow::Result;
@@ -233,6 +232,11 @@ impl ContextLoader {
 
     /// Check if a directory entry should be included
     fn should_include(&self, entry: &walkdir::DirEntry) -> bool {
+        // Always include the root directory itself
+        if entry.path() == self.root {
+            return true;
+        }
+
         let name = entry.file_name().to_string_lossy();
 
         // Check if it's an ignored directory
@@ -364,8 +368,8 @@ impl ContextLoader {
         let by_extension: HashMap<String, Vec<String>> = entries.par_iter()
             .filter(|e| !e.directory && e.extension.is_some())
             .fold(
-                || HashMap::new(),
-                |mut acc, e| {
+                || HashMap::<String, Vec<String>>::new(),
+                |mut acc: HashMap<String, Vec<String>>, e| {
                     if let Some(ext) = &e.extension {
                         acc.entry(ext.clone()).or_default().push(e.relative_path.clone());
                     }
@@ -385,8 +389,8 @@ impl ContextLoader {
         let by_name: HashMap<String, Vec<String>> = entries.par_iter()
             .filter(|e| !e.directory)
             .fold(
-                || HashMap::new(),
-                |mut acc, e| {
+                || HashMap::<String, Vec<String>>::new(),
+                |mut acc: HashMap<String, Vec<String>>, e| {
                     acc.entry(e.name.clone()).or_default().push(e.relative_path.clone());
                     acc
                 },
@@ -750,7 +754,7 @@ mod tests {
         let loader = ContextLoader::new(dir.path());
         let (entries, structure) = loader.scan().unwrap();
 
-        assert!(entries.len() >= 2);
+        assert!(entries.len() >= 2, "Expected at least 2 entries, got {}", entries.len());
         assert!(entries.iter().any(|e| e.name == "test.ts"));
         assert!(!structure.subdirectories.is_empty() || !structure.files.is_empty());
     }

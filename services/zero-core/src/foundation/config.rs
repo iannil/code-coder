@@ -522,7 +522,7 @@ pub struct ConfigLoader {
     paths: Vec<PathBuf>,
 
     /// Environment variable prefix for overrides
-    env_prefix: String,
+    _env_prefix: String,
 
     /// Home directory
     home_dir: PathBuf,
@@ -536,7 +536,7 @@ impl ConfigLoader {
 
         Self {
             paths: vec![config_dir],
-            env_prefix: "CCODE_".to_string(),
+            _env_prefix: "CCODE_".to_string(),
             home_dir,
         }
     }
@@ -545,7 +545,7 @@ impl ConfigLoader {
     pub fn with_paths(paths: Vec<PathBuf>) -> Self {
         Self {
             paths,
-            env_prefix: "CCODE_".to_string(),
+            _env_prefix: "CCODE_".to_string(),
             home_dir: dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")),
         }
     }

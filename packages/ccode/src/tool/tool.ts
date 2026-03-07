@@ -7,6 +7,16 @@ import { Hook } from "../hook"
 import { NamedError } from "@codecoder-ai/util/error"
 import { AutonomousModeHook } from "../autonomous"
 
+/** Extract optional hook-relevant fields from tool args safely */
+function extractHookFields(args: Record<string, unknown>): {
+  filePath?: string
+  command?: string
+} {
+  const filePath = typeof args.filePath === "string" ? args.filePath : typeof args.file_path === "string" ? args.file_path : undefined
+  const command = typeof args.command === "string" ? args.command : undefined
+  return { filePath, command }
+}
+
 export namespace Tool {
   interface Metadata {
     [key: string]: any
@@ -80,12 +90,13 @@ export namespace Tool {
           }
 
           // Run PreToolUse hooks
+          const hookFields = extractHookFields(args as Record<string, unknown>)
           const preHookCtx: Hook.Context = {
             tool: id,
             input: args as Record<string, unknown>,
             sessionID: ctx.sessionID,
-            filePath: (args as any).filePath ?? (args as any).file_path,
-            command: (args as any).command,
+            filePath: hookFields.filePath,
+            command: hookFields.command,
           }
           const preResult = await Hook.run("PreToolUse", preHookCtx)
           if (preResult.blocked) {
@@ -137,8 +148,8 @@ export namespace Tool {
             input: args as Record<string, unknown>,
             output: result.output,
             sessionID: ctx.sessionID,
-            filePath: (args as any).filePath ?? (args as any).file_path,
-            command: (args as any).command,
+            filePath: hookFields.filePath,
+            command: hookFields.command,
             fileContent: result.metadata?.filediff?.after,
             diff: result.metadata?.diff,
           }

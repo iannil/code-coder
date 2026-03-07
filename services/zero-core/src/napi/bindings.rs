@@ -1026,6 +1026,50 @@ impl CompactorHandle {
         let _ = strategy; // Acknowledge strategy but current Rust API doesn't support changing after creation
         Ok(())
     }
+
+    /// Check if token usage overflows the model's context limit
+    ///
+    /// Returns true if compaction is needed based on model limits.
+    #[napi]
+    pub fn is_overflow(&self, tokens: NapiTokenUsage, limit: NapiModelLimit) -> bool {
+        RustCompactor::is_overflow(&tokens.into(), &limit.into())
+    }
+
+    /// Compute a prune plan for tool outputs
+    ///
+    /// Goes backwards through tool parts, protecting recent ones up to `protect` tokens,
+    /// then marks older ones for pruning. The actual pruning is done by TypeScript.
+    #[napi]
+    pub fn compute_prune_plan(
+        &self,
+        tool_parts: Vec<NapiToolPartInfo>,
+        config: NapiPruneConfig,
+    ) -> NapiPrunePlan {
+        let rust_parts: Vec<RustToolPartInfo> = tool_parts.into_iter().map(Into::into).collect();
+        let plan = RustCompactor::compute_prune_plan(&rust_parts, &config.into(), false);
+        plan.into()
+    }
+
+    /// Compute a prune plan with message-level turn tracking
+    ///
+    /// This version tracks user message "turns" to skip the most recent 2 turns,
+    /// matching the original TypeScript behavior.
+    #[napi]
+    pub fn compute_prune_plan_with_turns(
+        &self,
+        messages: Vec<NapiMessageInfo>,
+        config: NapiPruneConfig,
+    ) -> NapiPrunePlan {
+        let rust_messages: Vec<RustMessageInfo> = messages.into_iter().map(Into::into).collect();
+        let plan = RustCompactor::compute_prune_plan_with_turns(&rust_messages, &config.into());
+        plan.into()
+    }
+
+    /// Estimate tokens for multiple strings in a batch (more efficient)
+    #[napi]
+    pub fn estimate_batch_tokens(&self, texts: Vec<String>) -> u32 {
+        texts.iter().map(|t| RustCompactor::estimate_tokens(t)).sum::<usize>() as u32
+    }
 }
 
 /// Combined result containing both metrics and compacted messages
@@ -1037,10 +1081,233 @@ pub struct NapiCompactResult {
     pub messages: Vec<NapiMessage>,
 }
 
+// ============================================================================
+// Prune types for context window management
+// ============================================================================
+
+use crate::session::{
+    ModelLimit as RustModelLimit,
+    PartReference as RustPartReference,
+    PruneConfig as RustPruneConfig,
+    PrunePlan as RustPrunePlan,
+    TokenUsage as RustTokenUsage,
+    ToolPartInfo as RustToolPartInfo,
+    MessageInfo as RustMessageInfo,
+};
+
+/// Configuration for pruning tool outputs
+#[napi(object)]
+pub struct NapiPruneConfig {
+    /// Minimum tokens to prune before executing (default: 20_000)
+    pub minimum: u32,
+    /// Protected token threshold - keep this many recent tokens (default: 40_000)
+    pub protect: u32,
+    /// Tools to never prune (e.g., "skill")
+    pub protected_tools: Vec<String>,
+}
+
+impl From<NapiPruneConfig> for RustPruneConfig {
+    fn from(config: NapiPruneConfig) -> Self {
+        Self {
+            minimum: config.minimum as usize,
+            protect: config.protect as usize,
+            protected_tools: config.protected_tools,
+        }
+    }
+}
+
+/// Reference to a message part that should be pruned
+#[napi(object)]
+pub struct NapiPartReference {
+    /// Message ID
+    pub message_id: String,
+    /// Part ID
+    pub part_id: String,
+    /// Tool name
+    pub tool: String,
+    /// Estimated tokens in this part
+    pub tokens: u32,
+}
+
+impl From<RustPartReference> for NapiPartReference {
+    fn from(r: RustPartReference) -> Self {
+        Self {
+            message_id: r.message_id,
+            part_id: r.part_id,
+            tool: r.tool,
+            tokens: r.tokens as u32,
+        }
+    }
+}
+
+/// Result of prune planning (which parts to mark as compacted)
+#[napi(object)]
+pub struct NapiPrunePlan {
+    /// Parts to mark as compacted
+    pub parts_to_prune: Vec<NapiPartReference>,
+    /// Total tokens that will be pruned
+    pub total_tokens_to_prune: u32,
+    /// Whether the prune should be executed (pruned >= minimum)
+    pub should_execute: bool,
+}
+
+impl From<RustPrunePlan> for NapiPrunePlan {
+    fn from(plan: RustPrunePlan) -> Self {
+        Self {
+            parts_to_prune: plan.parts_to_prune.into_iter().map(Into::into).collect(),
+            total_tokens_to_prune: plan.total_tokens_to_prune as u32,
+            should_execute: plan.should_execute,
+        }
+    }
+}
+
+/// Model token limits
+#[napi(object)]
+pub struct NapiModelLimit {
+    /// Context window size (total tokens)
+    pub context: u32,
+    /// Maximum output tokens
+    pub output: u32,
+    /// Maximum input tokens (optional, derived from context - output)
+    pub input: Option<u32>,
+}
+
+impl From<NapiModelLimit> for RustModelLimit {
+    fn from(limit: NapiModelLimit) -> Self {
+        Self {
+            context: limit.context as usize,
+            output: limit.output as usize,
+            input: limit.input.map(|i| i as usize),
+        }
+    }
+}
+
+/// Current token usage from an assistant response
+#[napi(object)]
+pub struct NapiTokenUsage {
+    /// Input tokens
+    pub input: u32,
+    /// Output tokens
+    pub output: u32,
+    /// Cache read tokens
+    pub cache_read: u32,
+    /// Cache write tokens
+    pub cache_write: u32,
+}
+
+impl From<NapiTokenUsage> for RustTokenUsage {
+    fn from(usage: NapiTokenUsage) -> Self {
+        Self {
+            input: usage.input as usize,
+            output: usage.output as usize,
+            cache_read: usage.cache_read as usize,
+            cache_write: usage.cache_write as usize,
+        }
+    }
+}
+
+/// Tool part info for prune computation
+#[napi(object)]
+pub struct NapiToolPartInfo {
+    /// Message ID
+    pub message_id: String,
+    /// Part ID
+    pub part_id: String,
+    /// Tool name
+    pub tool: String,
+    /// Tool status (completed, error, etc.)
+    pub status: String,
+    /// Whether already compacted
+    pub compacted: bool,
+    /// Output text (for token estimation)
+    pub output: String,
+}
+
+impl From<NapiToolPartInfo> for RustToolPartInfo {
+    fn from(info: NapiToolPartInfo) -> Self {
+        Self {
+            message_id: info.message_id,
+            part_id: info.part_id,
+            tool: info.tool,
+            status: info.status,
+            compacted: info.compacted,
+            output: info.output,
+        }
+    }
+}
+
+/// Message info for prune computation with turn tracking
+#[napi(object)]
+pub struct NapiMessageInfo {
+    /// Message ID
+    pub message_id: String,
+    /// Message role (user, assistant)
+    pub role: String,
+    /// Whether this is a summary message
+    pub is_summary: bool,
+    /// Tool parts in this message
+    pub tool_parts: Vec<NapiToolPartInfo>,
+}
+
+impl From<NapiMessageInfo> for RustMessageInfo {
+    fn from(info: NapiMessageInfo) -> Self {
+        Self {
+            message_id: info.message_id,
+            role: info.role,
+            is_summary: info.is_summary,
+            tool_parts: info.tool_parts.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
 /// Estimate token count for text (fast, approximate)
 #[napi]
 pub fn estimate_tokens(text: String) -> u32 {
     RustCompactor::estimate_tokens(&text) as u32
+}
+
+/// Check if token usage overflows the model's context limit (standalone function)
+///
+/// Returns true if compaction is needed based on model limits.
+#[napi]
+pub fn is_overflow(tokens: NapiTokenUsage, limit: NapiModelLimit) -> bool {
+    RustCompactor::is_overflow(&tokens.into(), &limit.into())
+}
+
+/// Compute a prune plan for tool outputs (standalone function)
+///
+/// Goes backwards through tool parts, protecting recent ones up to `protect` tokens,
+/// then marks older ones for pruning.
+#[napi]
+pub fn compute_prune_plan(
+    tool_parts: Vec<NapiToolPartInfo>,
+    config: NapiPruneConfig,
+) -> NapiPrunePlan {
+    let rust_parts: Vec<RustToolPartInfo> = tool_parts.into_iter().map(Into::into).collect();
+    let plan = RustCompactor::compute_prune_plan(&rust_parts, &config.into(), false);
+    plan.into()
+}
+
+/// Compute a prune plan with message-level turn tracking (standalone function)
+#[napi]
+pub fn compute_prune_plan_with_turns(
+    messages: Vec<NapiMessageInfo>,
+    config: NapiPruneConfig,
+) -> NapiPrunePlan {
+    let rust_messages: Vec<RustMessageInfo> = messages.into_iter().map(Into::into).collect();
+    let plan = RustCompactor::compute_prune_plan_with_turns(&rust_messages, &config.into());
+    plan.into()
+}
+
+/// Create default prune config
+#[napi]
+pub fn create_default_prune_config() -> NapiPruneConfig {
+    let default = RustPruneConfig::default();
+    NapiPruneConfig {
+        minimum: default.minimum as u32,
+        protect: default.protect as u32,
+        protected_tools: default.protected_tools,
+    }
 }
 
 // ============================================================================

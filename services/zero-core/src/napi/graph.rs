@@ -16,9 +16,12 @@ use crate::graph::{
     algorithms::GraphAlgorithms,
     call::{CallGraph as RustCallGraph, CallNode as RustCallNode, CallableKind, RecursionType},
     causal::{
-        ActionNode as RustActionNode, CausalChain as RustCausalChain, CausalGraph as RustCausalGraph,
-        CausalQuery as RustCausalQuery, CausalStats as RustCausalStats, DecisionNode as RustDecisionNode,
+        ActionNode as RustActionNode, AgentInsights as RustAgentInsights,
+        CausalChain as RustCausalChain, CausalGraph as RustCausalGraph,
+        CausalPattern as RustCausalPattern, CausalQuery as RustCausalQuery,
+        CausalStats as RustCausalStats, DecisionNode as RustDecisionNode,
         OutcomeNode as RustOutcomeNode, OutcomeStatus as RustOutcomeStatus,
+        SimilarDecision as RustSimilarDecision, TrendAnalysis as RustTrendAnalysis,
     },
     engine::{EdgeData, EdgeRelationship, GraphEngine as RustGraphEngine, NodeData},
     semantic::{
@@ -411,6 +414,104 @@ impl From<RustCausalStats> for NapiCausalStats {
     }
 }
 
+/// Causal pattern for recurring decision-outcome combinations
+#[napi(object)]
+pub struct NapiCausalPattern {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub agent_id: String,
+    pub action_type: String,
+    pub occurrences: u32,
+    pub success_rate: f64,
+    pub avg_confidence: f64,
+    pub examples: Vec<String>,
+}
+
+impl From<RustCausalPattern> for NapiCausalPattern {
+    fn from(pattern: RustCausalPattern) -> Self {
+        Self {
+            id: pattern.id,
+            name: pattern.name,
+            description: pattern.description,
+            agent_id: pattern.agent_id,
+            action_type: pattern.action_type,
+            occurrences: pattern.occurrences as u32,
+            success_rate: pattern.success_rate,
+            avg_confidence: pattern.avg_confidence,
+            examples: pattern.examples,
+        }
+    }
+}
+
+/// Result of finding similar decisions
+#[napi(object)]
+pub struct NapiSimilarDecision {
+    pub decision_id: String,
+    pub prompt: String,
+    pub similarity: f64,
+}
+
+impl From<RustSimilarDecision> for NapiSimilarDecision {
+    fn from(similar: RustSimilarDecision) -> Self {
+        Self {
+            decision_id: similar.decision_id,
+            prompt: similar.prompt,
+            similarity: similar.similarity,
+        }
+    }
+}
+
+/// Trend analysis result
+#[napi(object)]
+pub struct NapiTrendAnalysis {
+    pub total_decisions: u32,
+    pub success_rate_before: f64,
+    pub success_rate_after: f64,
+    pub confidence_before: f64,
+    pub confidence_after: f64,
+    pub action_type_shifts: String, // JSON string of HashMap<String, (usize, usize)>
+}
+
+impl From<RustTrendAnalysis> for NapiTrendAnalysis {
+    fn from(trend: RustTrendAnalysis) -> Self {
+        Self {
+            total_decisions: trend.total_decisions as u32,
+            success_rate_before: trend.success_rate_trend[0],
+            success_rate_after: trend.success_rate_trend[1],
+            confidence_before: trend.confidence_trend[0],
+            confidence_after: trend.confidence_trend[1],
+            action_type_shifts: serde_json::to_string(&trend.action_type_shifts).unwrap_or_default(),
+        }
+    }
+}
+
+/// Agent insights result
+#[napi(object)]
+pub struct NapiAgentInsights {
+    pub total_decisions: u32,
+    pub success_rate: f64,
+    pub avg_confidence: f64,
+    pub strongest_action_type: Option<String>,
+    pub weakest_action_type: Option<String>,
+    pub recent_trend: String,
+    pub suggestions: Vec<String>,
+}
+
+impl From<RustAgentInsights> for NapiAgentInsights {
+    fn from(insights: RustAgentInsights) -> Self {
+        Self {
+            total_decisions: insights.total_decisions as u32,
+            success_rate: insights.success_rate,
+            avg_confidence: insights.avg_confidence,
+            strongest_action_type: insights.strongest_action_type,
+            weakest_action_type: insights.weakest_action_type,
+            recent_trend: insights.recent_trend,
+            suggestions: insights.suggestions,
+        }
+    }
+}
+
 // ============================================================================
 // CausalGraph NAPI Handle
 // ============================================================================
@@ -540,6 +641,52 @@ impl CausalGraphHandle {
     pub fn has_cycles(&self) -> Result<bool> {
         let graph = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
         Ok(graph.has_cycles())
+    }
+
+    /// Find recurring decision-outcome patterns
+    #[napi]
+    pub fn find_patterns(
+        &self,
+        agent_id: Option<String>,
+        min_occurrences: u32,
+        limit: u32,
+    ) -> Result<Vec<NapiCausalPattern>> {
+        let graph = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(graph
+            .find_patterns(agent_id.as_deref(), min_occurrences as usize, limit as usize)
+            .into_iter()
+            .map(|p| p.into())
+            .collect())
+    }
+
+    /// Find decisions similar to the given prompt
+    #[napi]
+    pub fn find_similar_decisions(
+        &self,
+        prompt: String,
+        agent_id: String,
+        limit: u32,
+    ) -> Result<Vec<NapiSimilarDecision>> {
+        let graph = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(graph
+            .find_similar_decisions(&prompt, &agent_id, limit as usize)
+            .into_iter()
+            .map(|s| s.into())
+            .collect())
+    }
+
+    /// Analyze decision trends over time
+    #[napi]
+    pub fn analyze_trends(&self, agent_id: Option<String>, period_days: u32) -> Result<NapiTrendAnalysis> {
+        let graph = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(graph.analyze_trends(agent_id.as_deref(), period_days as u64).into())
+    }
+
+    /// Get aggregated insights for an agent
+    #[napi]
+    pub fn get_agent_insights(&self, agent_id: String) -> Result<NapiAgentInsights> {
+        let graph = self.inner.lock().map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(graph.get_agent_insights(&agent_id).into())
     }
 
     /// Serialize to JSON

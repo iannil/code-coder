@@ -2,7 +2,8 @@ import z from "zod"
 import fuzzysort from "fuzzysort"
 import { Config } from "../config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
-import { NoSuchModelError, type Provider as SDK } from "ai"
+import { NoSuchModelError, type Provider as SDK, type LanguageModel } from "ai"
+import type { LanguageModelV2, LanguageModelV3 } from "@ai-sdk/provider"
 import { Log } from "@/util/log"
 import { BunProc } from "../bun"
 import { ModelsDev } from "./models"
@@ -22,7 +23,7 @@ import { createVertex } from "@ai-sdk/google-vertex"
 import { createVertexAnthropic } from "@ai-sdk/google-vertex/anthropic"
 import { createOpenAI } from "@ai-sdk/openai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
-import { createOpenRouter, type LanguageModelV2 } from "@openrouter/ai-sdk-provider"
+import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { createOpenaiCompatible as createGitHubCopilotOpenAICompatible } from "./sdk/openai-compatible/src"
 import { createXai } from "@ai-sdk/xai"
 import { createMistral } from "@ai-sdk/mistral"
@@ -684,7 +685,7 @@ export namespace Provider {
     }
 
     const providers: { [providerID: string]: Info } = {}
-    const languages = new Map<string, LanguageModelV2>()
+    const languages = new Map<string, LanguageModelV2 | LanguageModelV3>()
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
@@ -791,8 +792,8 @@ export namespace Provider {
     function mergeProvider(providerID: string, provider: Partial<Info>, options?: { warnIfMissing?: boolean }) {
       const existing = providers[providerID]
       if (existing) {
-        // @ts-expect-error
-        providers[providerID] = mergeDeep(existing, provider)
+        // mergeDeep return type is complex; Info is structurally compatible
+        providers[providerID] = mergeDeep(existing, provider) as Info
         return true
       }
       const match = database[providerID]
@@ -802,8 +803,8 @@ export namespace Provider {
         }
         return false
       }
-      // @ts-expect-error
-      providers[providerID] = mergeDeep(match, provider)
+      // mergeDeep return type is complex; Info is structurally compatible
+      providers[providerID] = mergeDeep(match, provider) as Info
       return true
     }
 
@@ -1218,7 +1219,7 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
+  export async function getLanguage(model: Model): Promise<LanguageModelV2 | LanguageModelV3> {
     const call = apiCall("Provider.getLanguage", { providerID: model.providerID, modelID: model.id })
     const s = await state()
     const key = `${model.providerID}/${model.id}`

@@ -112,6 +112,49 @@ pub struct AgentStat {
     pub success_rate: f64,
 }
 
+/// Causal pattern for recurring decision-outcome combinations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CausalPattern {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub agent_id: String,
+    pub action_type: String,
+    pub occurrences: usize,
+    pub success_rate: f64,
+    pub avg_confidence: f64,
+    pub examples: Vec<String>,
+}
+
+/// Result of finding similar decisions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimilarDecision {
+    pub decision_id: String,
+    pub prompt: String,
+    pub similarity: f64,
+}
+
+/// Trend analysis result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrendAnalysis {
+    pub total_decisions: usize,
+    pub success_rate_trend: [f64; 2],
+    pub confidence_trend: [f64; 2],
+    pub action_type_shifts: std::collections::HashMap<String, (usize, usize)>,
+}
+
+/// Agent insights result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentInsights {
+    pub total_decisions: usize,
+    pub success_rate: f64,
+    pub avg_confidence: f64,
+    pub strongest_action_type: Option<String>,
+    pub weakest_action_type: Option<String>,
+    pub recent_trend: String,
+    pub suggestions: Vec<String>,
+}
+
 /// Node type constants
 const NODE_TYPE_DECISION: &str = "decision";
 const NODE_TYPE_ACTION: &str = "action";
@@ -576,6 +619,362 @@ impl CausalGraph {
             avg_confidence,
             top_agents,
             action_type_distribution,
+        }
+    }
+
+    // ============================================================================
+    // Pattern Analysis
+    // ============================================================================
+
+    /// Find recurring decision-outcome patterns
+    pub fn find_patterns(&self, agent_id: Option<&str>, min_occurrences: usize, limit: usize) -> Vec<CausalPattern> {
+        let decisions = match agent_id {
+            Some(id) => self.get_decisions_by_agent(id),
+            None => self.get_decisions(),
+        };
+
+        // Group by agent + action type combination
+        let mut pattern_map: std::collections::HashMap<String, (String, String, usize, usize, f64, Vec<String>)> =
+            std::collections::HashMap::new();
+
+        for decision in &decisions {
+            // Get actions for this decision
+            let action_ids = self.engine.get_successors(&decision.id);
+            for action_id in &action_ids {
+                if let Some(action) = self.get_action(action_id) {
+                    let key = format!("{}:{}", decision.agent_id, action.action_type);
+                    let entry = pattern_map.entry(key).or_insert_with(|| {
+                        (
+                            decision.agent_id.clone(),
+                            action.action_type.clone(),
+                            0,
+                            0,
+                            0.0,
+                            Vec::new(),
+                        )
+                    });
+
+                    entry.2 += 1; // occurrences
+                    entry.4 += decision.confidence; // confidence sum
+                    if entry.5.len() < 5 {
+                        entry.5.push(decision.id.clone());
+                    }
+
+                    // Check outcomes for this action
+                    let outcome_ids = self.engine.get_successors(action_id);
+                    for outcome_id in &outcome_ids {
+                        if let Some(outcome) = self.get_outcome(outcome_id) {
+                            if outcome.status == OutcomeStatus::Success {
+                                entry.3 += 1; // success count
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Convert to patterns and filter
+        let mut patterns: Vec<CausalPattern> = pattern_map
+            .into_iter()
+            .filter(|(_, data)| data.2 >= min_occurrences)
+            .enumerate()
+            .map(|(i, (_, data))| {
+                let success_rate = if data.2 > 0 { data.3 as f64 / data.2 as f64 } else { 0.0 };
+                let avg_confidence = if data.2 > 0 { data.4 / data.2 as f64 } else { 0.0 };
+
+                CausalPattern {
+                    id: format!("pattern_{}", i),
+                    name: format!("{} {} pattern", data.0, data.1),
+                    description: format!("Agent {} performing {} actions", data.0, data.1),
+                    agent_id: data.0,
+                    action_type: data.1,
+                    occurrences: data.2,
+                    success_rate,
+                    avg_confidence,
+                    examples: data.5,
+                }
+            })
+            .collect();
+
+        // Sort by occurrences and limit
+        patterns.sort_by(|a, b| b.occurrences.cmp(&a.occurrences));
+        patterns.truncate(limit);
+        patterns
+    }
+
+    /// Find decisions similar to the given prompt
+    pub fn find_similar_decisions(&self, prompt: &str, agent_id: &str, limit: usize) -> Vec<SimilarDecision> {
+        let decisions = self.get_decisions_by_agent(agent_id);
+        let prompt_keywords = Self::extract_keywords(prompt);
+
+        let mut results: Vec<SimilarDecision> = decisions
+            .into_iter()
+            .map(|d| {
+                let decision_keywords = Self::extract_keywords(&d.prompt);
+                let similarity = Self::jaccard_similarity(&prompt_keywords, &decision_keywords);
+                SimilarDecision {
+                    decision_id: d.id,
+                    prompt: d.prompt,
+                    similarity,
+                }
+            })
+            .filter(|r| r.similarity > 0.2)
+            .collect();
+
+        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(limit);
+        results
+    }
+
+    /// Extract keywords from text (filter stop words)
+    fn extract_keywords(text: &str) -> std::collections::HashSet<String> {
+        const STOP_WORDS: &[&str] = &[
+            "the", "a", "an", "is", "are", "was", "were", "be", "been",
+            "being", "have", "has", "had", "do", "does", "did", "will",
+            "would", "could", "should", "may", "might", "must", "shall",
+            "can", "to", "of", "in", "for", "on", "with", "at", "by",
+            "from", "or", "and", "not", "this", "that", "these", "those",
+            "it", "its", "i", "me", "my", "we", "our", "you", "your",
+        ];
+
+        let stop_set: std::collections::HashSet<&str> = STOP_WORDS.iter().copied().collect();
+
+        text.to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .filter(|w| w.len() > 2 && !stop_set.contains(*w))
+            .map(String::from)
+            .collect()
+    }
+
+    /// Calculate Jaccard similarity between two keyword sets
+    fn jaccard_similarity(
+        set1: &std::collections::HashSet<String>,
+        set2: &std::collections::HashSet<String>,
+    ) -> f64 {
+        if set1.is_empty() && set2.is_empty() {
+            return 0.0;
+        }
+
+        let intersection = set1.intersection(set2).count();
+        let union = set1.union(set2).count();
+
+        intersection as f64 / union as f64
+    }
+
+    /// Analyze decision trends over time
+    pub fn analyze_trends(&self, agent_id: Option<&str>, period_days: u64) -> TrendAnalysis {
+        let decisions = match agent_id {
+            Some(id) => self.get_decisions_by_agent(id),
+            None => self.get_decisions(),
+        };
+
+        if decisions.is_empty() {
+            return TrendAnalysis {
+                total_decisions: 0,
+                success_rate_trend: [0.0, 0.0],
+                confidence_trend: [0.0, 0.0],
+                action_type_shifts: std::collections::HashMap::new(),
+            };
+        }
+
+        let now = chrono::Utc::now();
+        let period_ms = period_days as i64 * 24 * 60 * 60 * 1000;
+        let period_start = now - chrono::Duration::milliseconds(period_ms);
+        let double_period_start = now - chrono::Duration::milliseconds(2 * period_ms);
+
+        // Split decisions into before and after periods
+        let mut before_decisions = Vec::new();
+        let mut after_decisions = Vec::new();
+
+        for decision in &decisions {
+            if let Ok(timestamp) = chrono::DateTime::parse_from_rfc3339(&decision.timestamp) {
+                let ts = timestamp.with_timezone(&chrono::Utc);
+                if ts >= period_start {
+                    after_decisions.push(decision);
+                } else if ts >= double_period_start {
+                    before_decisions.push(decision);
+                }
+            }
+        }
+
+        // Calculate success rates and confidence for each period
+        let (before_success, before_confidence) = self.calculate_period_stats(&before_decisions);
+        let (after_success, after_confidence) = self.calculate_period_stats(&after_decisions);
+
+        // Calculate action type shifts
+        let before_types = self.count_action_types(&before_decisions);
+        let after_types = self.count_action_types(&after_decisions);
+
+        let mut action_type_shifts = std::collections::HashMap::new();
+        let all_types: std::collections::HashSet<_> = before_types.keys().chain(after_types.keys()).collect();
+        for type_name in all_types {
+            let before = *before_types.get(type_name).unwrap_or(&0);
+            let after = *after_types.get(type_name).unwrap_or(&0);
+            action_type_shifts.insert(type_name.clone(), (before, after));
+        }
+
+        TrendAnalysis {
+            total_decisions: decisions.len(),
+            success_rate_trend: [before_success, after_success],
+            confidence_trend: [before_confidence, after_confidence],
+            action_type_shifts,
+        }
+    }
+
+    fn calculate_period_stats(&self, decisions: &[&DecisionNode]) -> (f64, f64) {
+        if decisions.is_empty() {
+            return (0.0, 0.0);
+        }
+
+        let mut total_outcomes = 0;
+        let mut success_outcomes = 0;
+        let mut confidence_sum = 0.0;
+
+        for decision in decisions {
+            confidence_sum += decision.confidence;
+
+            let action_ids = self.engine.get_successors(&decision.id);
+            for action_id in &action_ids {
+                let outcome_ids = self.engine.get_successors(action_id);
+                for outcome_id in &outcome_ids {
+                    if let Some(outcome) = self.get_outcome(outcome_id) {
+                        total_outcomes += 1;
+                        if outcome.status == OutcomeStatus::Success {
+                            success_outcomes += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let success_rate = if total_outcomes > 0 {
+            success_outcomes as f64 / total_outcomes as f64
+        } else {
+            0.0
+        };
+
+        let avg_confidence = confidence_sum / decisions.len() as f64;
+
+        (success_rate, avg_confidence)
+    }
+
+    fn count_action_types(&self, decisions: &[&DecisionNode]) -> std::collections::HashMap<String, usize> {
+        let mut counts = std::collections::HashMap::new();
+
+        for decision in decisions {
+            let action_ids = self.engine.get_successors(&decision.id);
+            for action_id in &action_ids {
+                if let Some(action) = self.get_action(action_id) {
+                    *counts.entry(action.action_type).or_insert(0) += 1;
+                }
+            }
+        }
+
+        counts
+    }
+
+    /// Get aggregated insights for an agent
+    pub fn get_agent_insights(&self, agent_id: &str) -> AgentInsights {
+        let decisions = self.get_decisions_by_agent(agent_id);
+
+        if decisions.is_empty() {
+            return AgentInsights {
+                total_decisions: 0,
+                success_rate: 0.0,
+                avg_confidence: 0.0,
+                strongest_action_type: None,
+                weakest_action_type: None,
+                recent_trend: "stable".to_string(),
+                suggestions: vec!["No historical data available for this agent".to_string()],
+            };
+        }
+
+        // Calculate basic stats
+        let total_decisions = decisions.len();
+        let mut total_outcomes = 0;
+        let mut success_outcomes = 0;
+        let mut confidence_sum = 0.0;
+
+        for decision in &decisions {
+            confidence_sum += decision.confidence;
+
+            let action_ids = self.engine.get_successors(&decision.id);
+            for action_id in &action_ids {
+                let outcome_ids = self.engine.get_successors(&action_id);
+                for outcome_id in &outcome_ids {
+                    if let Some(outcome) = self.get_outcome(&outcome_id) {
+                        total_outcomes += 1;
+                        if outcome.status == OutcomeStatus::Success {
+                            success_outcomes += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let success_rate = if total_outcomes > 0 {
+            success_outcomes as f64 / total_outcomes as f64
+        } else {
+            0.0
+        };
+        let avg_confidence = confidence_sum / total_decisions as f64;
+
+        // Find patterns
+        let patterns = self.find_patterns(Some(agent_id), 2, 100);
+
+        let strongest = patterns
+            .iter()
+            .filter(|p| p.success_rate >= 0.7)
+            .max_by(|a, b| a.success_rate.partial_cmp(&b.success_rate).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|p| p.action_type.clone());
+
+        let weakest = patterns
+            .iter()
+            .filter(|p| p.success_rate <= 0.3)
+            .min_by(|a, b| a.success_rate.partial_cmp(&b.success_rate).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|p| p.action_type.clone());
+
+        // Analyze trends
+        let trends = self.analyze_trends(Some(agent_id), 7);
+        let [before_success, after_success] = trends.success_rate_trend;
+        let recent_trend = if after_success > before_success + 0.1 {
+            "improving"
+        } else if after_success < before_success - 0.1 {
+            "declining"
+        } else {
+            "stable"
+        }
+        .to_string();
+
+        // Generate suggestions
+        let mut suggestions = Vec::new();
+        if let Some(ref weak) = weakest {
+            suggestions.push(format!(
+                "Consider reviewing {} approach - low success rate",
+                weak
+            ));
+        }
+        if let Some(ref strong) = strongest {
+            suggestions.push(format!(
+                "{} is working well - consider using more",
+                strong
+            ));
+        }
+        if recent_trend == "declining" {
+            suggestions.push("Performance declining - review recent failures for patterns".to_string());
+        }
+
+        AgentInsights {
+            total_decisions,
+            success_rate,
+            avg_confidence,
+            strongest_action_type: strongest,
+            weakest_action_type: weakest,
+            recent_trend,
+            suggestions,
         }
     }
 

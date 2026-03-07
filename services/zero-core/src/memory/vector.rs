@@ -401,6 +401,104 @@ pub fn vec_scale(v: &[f32], scalar: f32) -> Vec<f32> {
     v.iter().map(|x| x * scalar).collect()
 }
 
+/// Batch cosine similarity: compute similarities between a query and multiple vectors.
+/// Uses SIMD acceleration when available for significant speedup on large batches.
+///
+/// # Arguments
+/// * `query` - The query vector to compare against
+/// * `vectors` - Slice of vectors to compare with the query
+///
+/// # Returns
+/// Vector of similarity scores (0.0-1.0), one per input vector
+pub fn batch_cosine_similarity(query: &[f32], vectors: &[Vec<f32>]) -> Vec<f32> {
+    vectors
+        .iter()
+        .map(|v| cosine_similarity(query, v))
+        .collect()
+}
+
+/// Search result from KNN search
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KnnResult {
+    /// Result identifier
+    pub id: String,
+    /// Similarity score (0.0-1.0)
+    pub score: f32,
+}
+
+/// K-Nearest Neighbors search: find the K most similar vectors to a query.
+///
+/// # Arguments
+/// * `query` - The query vector to search for
+/// * `vectors` - Map of id -> vector to search through
+/// * `k` - Maximum number of results to return
+/// * `threshold` - Minimum similarity threshold (0.0-1.0)
+///
+/// # Returns
+/// Vector of (id, score) pairs sorted by descending similarity
+pub fn knn_search(
+    query: &[f32],
+    vectors: &std::collections::HashMap<String, Vec<f32>>,
+    k: usize,
+    threshold: f32,
+) -> Vec<KnnResult> {
+    let mut results: Vec<KnnResult> = vectors
+        .iter()
+        .filter_map(|(id, v)| {
+            let sim = cosine_similarity(query, v);
+            if sim >= threshold {
+                Some(KnnResult {
+                    id: id.clone(),
+                    score: sim,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Sort by similarity (descending)
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(k);
+    results
+}
+
+/// Batch KNN search with pre-sorted vectors (for when vectors are stored with IDs)
+/// More efficient than knn_search when vectors are stored as a Vec with indices
+pub fn knn_search_indexed(
+    query: &[f32],
+    vectors: &[(String, Vec<f32>)],
+    k: usize,
+    threshold: f32,
+) -> Vec<KnnResult> {
+    let mut results: Vec<KnnResult> = vectors
+        .iter()
+        .filter_map(|(id, v)| {
+            let sim = cosine_similarity(query, v);
+            if sim >= threshold {
+                Some(KnnResult {
+                    id: id.clone(),
+                    score: sim,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(k);
+    results
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,5 +654,72 @@ mod tests {
         let v = vec![1.0, 2.0, 3.0];
         let s = vec_scale(&v, 2.0);
         assert_eq!(s, vec![2.0, 4.0, 6.0]);
+    }
+
+    #[test]
+    fn batch_cosine_similarity_basic() {
+        let query = vec![1.0, 0.0, 0.0];
+        let vectors = vec![
+            vec![1.0, 0.0, 0.0], // identical
+            vec![0.0, 1.0, 0.0], // orthogonal
+            vec![0.7, 0.7, 0.0], // similar
+        ];
+        let scores = batch_cosine_similarity(&query, &vectors);
+        assert_eq!(scores.len(), 3);
+        assert!((scores[0] - 1.0).abs() < 0.001);
+        assert!(scores[1].abs() < 0.001);
+        assert!(scores[2] > 0.5);
+    }
+
+    #[test]
+    fn batch_cosine_similarity_empty() {
+        let query = vec![1.0, 0.0, 0.0];
+        let vectors: Vec<Vec<f32>> = vec![];
+        let scores = batch_cosine_similarity(&query, &vectors);
+        assert!(scores.is_empty());
+    }
+
+    #[test]
+    fn knn_search_basic() {
+        use std::collections::HashMap;
+
+        let query = vec![1.0, 0.0, 0.0];
+        let mut vectors = HashMap::new();
+        vectors.insert("a".to_string(), vec![1.0, 0.0, 0.0]); // sim = 1.0
+        vectors.insert("b".to_string(), vec![0.0, 1.0, 0.0]); // sim = 0.0
+        vectors.insert("c".to_string(), vec![0.7, 0.7, 0.0]); // sim ~= 0.707
+
+        let results = knn_search(&query, &vectors, 2, 0.5);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].id, "a");
+        assert!((results[0].score - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn knn_search_threshold() {
+        use std::collections::HashMap;
+
+        let query = vec![1.0, 0.0, 0.0];
+        let mut vectors = HashMap::new();
+        vectors.insert("a".to_string(), vec![1.0, 0.0, 0.0]);
+        vectors.insert("b".to_string(), vec![0.0, 1.0, 0.0]);
+
+        let results = knn_search(&query, &vectors, 10, 0.9);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, "a");
+    }
+
+    #[test]
+    fn knn_search_indexed_basic() {
+        let query = vec![1.0, 0.0, 0.0];
+        let vectors = vec![
+            ("a".to_string(), vec![1.0, 0.0, 0.0]),
+            ("b".to_string(), vec![0.0, 1.0, 0.0]),
+            ("c".to_string(), vec![0.7, 0.7, 0.0]),
+        ];
+
+        let results = knn_search_indexed(&query, &vectors, 3, 0.0);
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].id, "a");
     }
 }

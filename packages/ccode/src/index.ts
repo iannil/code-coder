@@ -94,9 +94,9 @@ const cli = yargs(hideBin(process.argv))
   .command(MemoryCommand)
   .command(GetStartedCommand)
   .command(AutonomousCommand)
-  .command(ServeCommand as any)
-  .command(WebCommand as any)
-  .command(TraceCommand as any)
+  .command(ServeCommand)
+  .command(WebCommand)
+  .command(TraceCommand)
   .command(ChapterCommand)
   .fail((msg, err) => {
     if (

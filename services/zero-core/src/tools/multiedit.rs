@@ -194,7 +194,7 @@ impl MultiEditResult {
 /// Multi-file editor
 pub struct MultiEditor {
     /// Single file editor
-    editor: Editor,
+    _editor: Editor,
     /// Default options
     default_options: MultiEditOptions,
 }
@@ -209,7 +209,7 @@ impl MultiEditor {
     /// Create a new MultiEditor
     pub fn new() -> Self {
         Self {
-            editor: Editor::new(),
+            _editor: Editor::new(),
             default_options: MultiEditOptions::default(),
         }
     }
@@ -217,7 +217,7 @@ impl MultiEditor {
     /// Create with custom default options
     pub fn with_defaults(options: MultiEditOptions) -> Self {
         Self {
-            editor: Editor::new(),
+            _editor: Editor::new(),
             default_options: options,
         }
     }

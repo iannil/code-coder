@@ -281,11 +281,11 @@ export namespace CausalRecorder {
           ? chain.decision.prompt.slice(0, 60) + "..."
           : chain.decision.prompt
 
-        const actionTypes = [...new Set(chain.actions.map((a) => a.action_type))].join(", ")
+        const actionTypes = [...new Set(chain.actions.map((a) => a.actionType))].join(", ")
 
         return [
           `### ${statusEmoji} ${promptPreview}`,
-          `- **Agent**: ${chain.decision.agent_id}`,
+          `- **Agent**: ${chain.decision.agentId}`,
           `- **置信度**: ${(chain.decision.confidence * 100).toFixed(0)}%`,
           `- **操作数**: ${chain.actions.length} (${actionTypes || "无"})`,
           `- **结果**: ${successCount} 成功 / ${failureCount} 失败`,

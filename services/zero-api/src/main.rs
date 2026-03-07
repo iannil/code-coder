@@ -25,7 +25,14 @@ mod state;
 use state::AppState;
 
 /// Default port for the API server
-pub const DEFAULT_PORT: u16 = 4402;
+/// Port 4435 is part of the Rust microservices range (4430-4439)
+/// - 4430: zero-gateway
+/// - 4431: zero-channels
+/// - 4432: zero-workflow
+/// - 4433: zero-browser
+/// - 4434: zero-trading
+/// - 4435: zero-api
+pub const DEFAULT_PORT: u16 = 4435;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

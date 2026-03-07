@@ -25,6 +25,7 @@ thiserror = { workspace = true }
 # Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
@@ -46,6 +47,7 @@ walkdir = "2.5"
 globset = "0.4"
 num_cpus = "1.16"
 dirs = "5.0"
+hex = "0.4"
 
 # Config parsing (JSONC/JSON5)
 json5 = "0.4"
@@ -111,9 +113,14 @@ portable-pty = { workspace = true, optional = true }
 # Lazy initialization
 once_cell = { workspace = true }
 
-# Tree-sitter for shell parsing
+# Tree-sitter for code parsing and indexing
 tree-sitter = { workspace = true }
 tree-sitter-bash = { workspace = true }
+tree-sitter-typescript = { workspace = true }
+tree-sitter-javascript = { workspace = true }
+tree-sitter-python = { workspace = true }
+tree-sitter-rust = { workspace = true }
+tree-sitter-go = { workspace = true }
 
 # System keyring integration (optional)
 keyring = { workspace = true, optional = true }

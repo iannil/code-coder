@@ -165,6 +165,24 @@ export const chunkText = nativeBindings?.chunkText
 export const chunkTextWithConfig = nativeBindings?.chunkTextWithConfig
 export const estimateTokens = nativeBindings?.estimateTokens
 
+// Phase 10: File Ignore Engine (native ignore pattern matching)
+export const IgnoreEngineHandle = nativeBindings?.IgnoreEngineHandle
+export const shouldIgnorePath = nativeBindings?.shouldIgnorePath
+export const createIgnoreEngine = nativeBindings?.createIgnoreEngine
+export const createIgnoreEngineWithConfig = nativeBindings?.createIgnoreEngineWithConfig
+export const getIgnoreDefaultPatterns = nativeBindings?.getIgnoreDefaultPatterns
+export const getIgnoreDefaultFolders = nativeBindings?.getIgnoreDefaultFolders
+export const filterIgnoredPaths = nativeBindings?.filterIgnoredPaths
+export const filterPathsWithPatterns = nativeBindings?.filterPathsWithPatterns
+
+// Phase 12: Hash Embedding (SIMD-accelerated hash-based embeddings)
+export const generateHashEmbedding = nativeBindings?.generateHashEmbedding
+export const generateHashEmbeddingWithInfo = nativeBindings?.generateHashEmbeddingWithInfo
+export const generateHashEmbeddingsBatch = nativeBindings?.generateHashEmbeddingsBatch
+export const generateCombinedHashEmbedding = nativeBindings?.generateCombinedHashEmbedding
+export const generatePositionalHashEmbedding = nativeBindings?.generatePositionalHashEmbedding
+export const hashEmbeddingSimilarity = nativeBindings?.hashEmbeddingSimilarity
+
 // Storage
 export const KvStoreHandle = nativeBindings?.KvStoreHandle
 export const openKvStore = nativeBindings?.openKvStore
@@ -206,6 +224,12 @@ export const CompactorHandle = nativeBindings?.CompactorHandle
 export const createCompactor = nativeBindings?.createCompactor
 export const createCompactorWithLimits = nativeBindings?.createCompactorWithLimits
 // Note: estimateTokens is exported from fallback.js and compaction.js provides estimateTokenCount
+
+// Phase 5: Prune (context window management via tool output compaction)
+export const isOverflow = nativeBindings?.isOverflow
+export const computePrunePlan = nativeBindings?.computePrunePlan
+export const computePrunePlanWithTurns = nativeBindings?.computePrunePlanWithTurns
+export const createDefaultPruneConfig = nativeBindings?.createDefaultPruneConfig
 
 // Enums
 export const AutonomousState = nativeBindings?.AutonomousState
@@ -279,6 +303,34 @@ export const createToolRegistry = nativeBindings?.createToolRegistry
 export const getBuiltinToolSpecs = nativeBindings?.getBuiltinToolSpecs
 export const getNativeToolNames = nativeBindings?.getNativeToolNames
 
+// Context Loader (high-performance project scanning)
+export const ContextLoaderHandle = nativeBindings?.ContextLoaderHandle
+export const createContextLoader = nativeBindings?.createContextLoader
+export const scanDirectory = nativeBindings?.scanDirectory
+export const extractDirectoryDependencies = nativeBindings?.extractDirectoryDependencies
+
+// Embedding Index (SIMD-accelerated KNN search)
+export const EmbeddingIndexHandle = nativeBindings?.EmbeddingIndexHandle
+export const createEmbeddingIndex = nativeBindings?.createEmbeddingIndex
+
+// Memory System (unified memory management)
+export const MemorySystemHandle = nativeBindings?.MemorySystemHandle
+export const createMemorySystem = nativeBindings?.createMemorySystem
+
+// Observability (emit API for tracing, metrics, cost tracking)
+export const ObservabilityStoreHandle = nativeBindings?.ObservabilityStoreHandle
+export const openObservabilityStore = nativeBindings?.openObservabilityStore
+export const createMemoryObservabilityStore = nativeBindings?.createMemoryObservabilityStore
+
+// Phase 11: Skill Parser (native YAML frontmatter parsing)
+export const parseSkillContent = nativeBindings?.parseSkillContent
+export const parseSkillFromFile = nativeBindings?.parseSkillFromFile
+export const parseSkillMetadataOnly = nativeBindings?.parseSkillMetadataOnly
+export const validateSkillContent = nativeBindings?.validateSkillContent
+export const parseSkillsBatch = nativeBindings?.parseSkillsBatch
+export const extractSkillFrontmatter = nativeBindings?.extractSkillFrontmatter
+export const stripSkillFrontmatter = nativeBindings?.stripSkillFrontmatter
+
 // Re-export types from binding.d.ts
 export type {
   NapiGitStatus,
@@ -316,6 +368,14 @@ export type {
   NapiCompactionStrategy,
   NapiCompactionResult,
   CompactorHandle as CompactorHandleType,
+  // Prune types (Phase 5)
+  NapiPruneConfig,
+  NapiPartReference,
+  NapiPrunePlan,
+  NapiModelLimit,
+  NapiTokenUsage,
+  NapiToolPartInfo,
+  NapiMessageInfo,
   // File Watcher types
   WatchEvent,
   WatchEventKind,
@@ -329,6 +389,8 @@ export type {
   NapiToolSpec,
   NapiToolExecuteResult,
   NapiValidationResult,
+  NapiToolCall,
+  NapiBatchResult,
   ToolRegistryHandle as ToolRegistryHandleType,
   // Graph types
   NapiNodeData,
@@ -340,6 +402,10 @@ export type {
   NapiCausalChain,
   NapiCausalQuery,
   NapiCausalStats,
+  NapiCausalPattern,
+  NapiSimilarDecision,
+  NapiTrendAnalysis,
+  NapiAgentInsights,
   NapiCallNode,
   NapiRecursionInfo,
   NapiSemanticNode,
@@ -348,4 +414,56 @@ export type {
   CausalGraphHandle as CausalGraphHandleType,
   CallGraphHandle as CallGraphHandleType,
   SemanticGraphHandle as SemanticGraphHandleType,
+  // Context Loader types
+  NapiFileEntry,
+  NapiDirectoryStructure,
+  NapiFileIndex,
+  NapiDependencyGraph,
+  NapiScanOptions,
+  NapiScanResult,
+  ContextLoaderHandle as ContextLoaderHandleType,
+  // Embedding Index types
+  NapiEmbeddingSearchResult,
+  NapiEmbeddingItem,
+  NapiEmbeddingIndexStats,
+  EmbeddingIndexHandle as EmbeddingIndexHandleType,
+  // Memory System types
+  NapiHistoryStats,
+  NapiVectorStats,
+  NapiTokenizerStats,
+  NapiMemoryStats,
+  NapiHistorySnapshot,
+  NapiVectorSnapshotData,
+  NapiMemorySnapshot,
+  NapiImportOptions,
+  NapiImportResult,
+  NapiCleanupResult,
+  MemorySystemHandle as MemorySystemHandleType,
+  // Skill Parser types
+  NapiSkillMetadata,
+  NapiParsedSkill,
+  NapiSkillParseError,
+  NapiParsedSkillResult,
+  // File Ignore Engine types (Phase 10)
+  NapiIgnoreConfig,
+  NapiIgnoreCheckResult,
+  IgnoreEngineHandle as IgnoreEngineHandleType,
+  // Hash Embedding types (Phase 12)
+  NapiHashEmbeddingResult,
+  // Context and Fingerprint types (Phase 16)
+  NapiProjectLanguage,
+  NapiProjectLanguage as ProjectLanguage,  // Alias for backward compatibility
+  NapiFrameworkType,
+  NapiPackageManager,
+  NapiFrameworkInfo,
+  NapiBuildToolInfo,
+  NapiTestFrameworkInfo,
+  NapiPackageInfo,
+  NapiConfigFile,
+  NapiDirectoryInfo,
+  NapiFingerprintInfo,
+  NapiFingerprintInput,
+  // Chunking types
+  NapiChunk,
+  NapiChunkerConfig,
 } from './binding.d.ts'

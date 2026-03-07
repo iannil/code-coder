@@ -81,7 +81,7 @@ export namespace ProviderTransform {
     }
 
     // Native function signature: transformMessages(provider: string, messages: any[]): any[]
-    const result = transformMessagesNative(model.providerID, msgs as any[])
+    const result = transformMessagesNative(model.providerID, msgs)
     return result as ModelMessage[]
   }
 

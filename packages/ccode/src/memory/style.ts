@@ -180,8 +180,8 @@ export namespace Style {
       }
     }
 
-    for (const patternType of Object.keys(STYLE_PATTERNS.naming)) {
-      const regex = (STYLE_PATTERNS.naming as any)[patternType]
+    for (const patternType of Object.keys(STYLE_PATTERNS.naming) as (keyof typeof STYLE_PATTERNS.naming)[]) {
+      const regex = STYLE_PATTERNS.naming[patternType]
       const matches = code.match(new RegExp(regex, "g"))
       if (matches) {
         const names = matches

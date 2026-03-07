@@ -13,6 +13,7 @@
 #                      • zero-workflow (4432): Webhook/Cron/Git
 #                      • zero-browser (4433): 浏览器自动化/API学习
 #                      • zero-trading (4434): PO3+SMT自动化交易
+#                      • zero-api (4435): HTTP/WebSocket API (zero-core)
 #   - whisper:       Whisper STT Server (Docker)
 #
 # 用法:
@@ -59,7 +60,7 @@ CORE_SERVICES="api web zero-daemon whisper"
 # 所有服务 (基础设施 + 核心服务)
 ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
 # Rust 微服务 (由 daemon spawn，日志文件独立)
-RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow zero-browser zero-trading"
+RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow zero-browser zero-trading zero-api"
 
 # 噪音过滤模式 (用于 tail 命令)
 # 这些模式匹配连接池、HTTP/2 帧等底层库日志，通常不含业务上下文
@@ -72,8 +73,12 @@ get_service_port() {
         web) echo "4401" ;;
         zero-daemon) echo "4402" ;;
         whisper) echo "4403" ;;
+        zero-gateway) echo "4430" ;;
+        zero-channels) echo "4431" ;;
+        zero-workflow) echo "4432" ;;
         zero-browser) echo "4433" ;;
         zero-trading) echo "4434" ;;
+        zero-api) echo "4435" ;;
         redis) echo "${REDIS_PORT}" ;;
         *) echo "" ;;
     esac
@@ -91,6 +96,7 @@ get_service_name() {
         zero-workflow) echo "Zero Workflow" ;;
         zero-browser) echo "Zero Browser" ;;
         zero-trading) echo "Zero Trading" ;;
+        zero-api) echo "Zero API" ;;
         *) echo "" ;;
     esac
 }
@@ -238,9 +244,40 @@ build_rust_services() {
         cargo build --release
         log_success "Rust 服务构建完成"
         export RUST_BUILT=true
+
+        # 同步 NAPI 类型定义到 packages/core
+        sync_napi_types
     else
         log_error "Cargo 未安装，无法构建 Rust 服务"
         return 1
+    fi
+}
+
+# 同步 NAPI 类型定义
+sync_napi_types() {
+    local source="${RUST_SERVICES_DIR}/zero-core/index.d.ts"
+    local script="${PROJECT_ROOT}/scripts/sync-napi-types.ts"
+
+    if [ -f "${source}" ]; then
+        log_info "同步 NAPI 类型定义..."
+
+        if command -v bun &> /dev/null && [ -f "${script}" ]; then
+            # 使用智能合并脚本
+            cd "${PROJECT_ROOT}"
+            bun "${script}"
+        else
+            # 回退到简单复制 + 修复保留关键字
+            local target="${PROJECT_ROOT}/packages/core/src/binding.d.ts"
+            cp "${source}" "${target}"
+            sed -i '' \
+                -e 's/extends:/extendsFrom:/g' \
+                -e 's/extends?:/extendsFrom?:/g' \
+                -e 's/interface:/interfaceName:/g' \
+                "${target}"
+            log_success "NAPI 类型定义已同步 (简单模式)"
+        fi
+    else
+        log_warn "NAPI 类型定义源文件不存在: ${source}"
     fi
 }
 
@@ -700,7 +737,9 @@ show_status() {
     echo "║   • zero-gateway:  端口 4430 (认证/路由/配额)                          ║"
     echo "║   • zero-channels: 端口 4431 (Telegram/Discord/Slack)                 ║"
     echo "║   • zero-workflow: 端口 4432 (Webhook/Cron/Git)                       ║"
-    echo "║   • zero-trading:  端口 4434 (PO3+SMT 自动化交易)                    ║"
+    echo "║   • zero-browser:  端口 4433 (浏览器自动化)                            ║"
+    echo "║   • zero-trading:  端口 4434 (PO3+SMT 自动化交易)                      ║"
+    echo "║   • zero-api:      端口 4435 (HTTP/WebSocket API)                     ║"
     echo "╚════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
@@ -731,7 +770,7 @@ show_status() {
         fi
     done
     # 检查 daemon 管理的微服务端口
-    for port in 4430 4431 4432; do
+    for port in 4430 4431 4432 4433 4434 4435; do
         if check_port "${port}"; then
             echo -e "  ${port} (daemon 管理): ${GREEN}已占用${NC}"
         else
@@ -743,7 +782,7 @@ show_status() {
     # 显示 Rust 构建状态
     echo "Rust 服务构建状态:"
     if [ -d "${RUST_TARGET_DIR}" ]; then
-        for bin in zero-cli zero-gateway zero-channels zero-workflow; do
+        for bin in zero-cli zero-gateway zero-channels zero-workflow zero-api; do
             if [ -f "${RUST_TARGET_DIR}/${bin}" ]; then
                 local size
                 size=$(du -h "${RUST_TARGET_DIR}/${bin}" | cut -f1)
@@ -858,6 +897,7 @@ get_service_color() {
         zero-workflow) echo "\033[0;94m" ;; # 亮蓝色
         zero-browser) echo "\033[0;95m" ;;  # 亮紫色
         zero-trading) echo "\033[0;96m" ;;  # 亮青色
+        zero-api) echo "\033[0;92m" ;;      # 亮绿色
         *) echo "\033[0m" ;;                # 默认
     esac
 }
@@ -1366,7 +1406,7 @@ check_health() {
         api) url="http://127.0.0.1:${port}/health" ;;
         web) url="http://127.0.0.1:${port}/" ;;
         zero-daemon|zero-gateway) url="http://127.0.0.1:${port}/health" ;;
-        zero-channels|zero-workflow) url="http://127.0.0.1:${port}/health" ;;
+        zero-channels|zero-workflow|zero-api) url="http://127.0.0.1:${port}/health" ;;
         whisper) url="http://127.0.0.1:${port}/health" ;;
     esac
 
@@ -1433,6 +1473,7 @@ METRICS_ENDPOINTS=(
     "ccode-api:4400"
     "zero-gateway:4430"
     "zero-channels:4431"
+    "zero-api:4435"
 )
 
 # 获取单个服务的指标
@@ -1809,7 +1850,7 @@ show_dashboard() {
 
         # 检查每个服务
         local services_line=""
-        for service in api zero-gateway zero-channels whisper redis; do
+        for service in api zero-gateway zero-channels zero-api whisper redis; do
             local status_icon
             local port
 
@@ -1817,6 +1858,7 @@ show_dashboard() {
                 api) port=4400 ;;
                 zero-gateway) port=4430 ;;
                 zero-channels) port=4431 ;;
+                zero-api) port=4435 ;;
                 whisper) port=4403 ;;
                 redis) port="${REDIS_PORT}" ;;
             esac
@@ -1975,6 +2017,9 @@ show_help() {
     echo "  zero-gateway       网关服务 (端口 4430) - 认证/路由/配额"
     echo "  zero-channels      频道服务 (端口 4431) - Telegram/Discord/Slack"
     echo "  zero-workflow      工作流服务 (端口 4432) - Webhook/Cron/Git"
+    echo "  zero-browser       浏览器服务 (端口 4433) - 浏览器自动化/API学习"
+    echo "  zero-trading       交易服务 (端口 4434) - PO3+SMT自动化交易"
+    echo "  zero-api           API 服务 (端口 4435) - HTTP/WebSocket API"
     echo ""
     echo "服务组:"
     echo "  all                所有服务 (基础设施 + 核心服务)"
@@ -2020,6 +2065,7 @@ show_help() {
     echo "    • zero-workflow (4432): Webhook、Cron、Git 工作流"
     echo "    • zero-browser  (4433): 浏览器自动化、API 学习与重放"
     echo "    • zero-trading  (4434): PO3+SMT 自动化交易"
+    echo "    • zero-api      (4435): HTTP/WebSocket API (暴露 zero-core)"
     echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
     echo "  所有服务日志和 PID 文件统一存储在: ~/.codecoder/"

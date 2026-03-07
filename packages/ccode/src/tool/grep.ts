@@ -14,6 +14,21 @@ import {
 
 const MAX_LINE_LENGTH = 2000
 
+/** Native grep match entry */
+interface GrepMatch {
+  path: string
+  lineNumber: number
+  lineContent: string
+}
+
+/** Native grep result - can be array directly or wrapped object */
+type GrepResult = GrepMatch[] | { matches: GrepMatch[]; truncated?: boolean }
+
+/** Type guard: check if result is wrapped object */
+function isWrappedResult(result: GrepResult): result is { matches: GrepMatch[]; truncated?: boolean } {
+  return !Array.isArray(result) && typeof result === "object" && "matches" in result
+}
+
 export const GrepTool = Tool.define("grep", {
   description: DESCRIPTION,
   parameters: z.object({
@@ -53,8 +68,13 @@ export const GrepTool = Tool.define("grep", {
     searchPath = path.isAbsolute(searchPath) ? searchPath : path.resolve(Instance.directory, searchPath)
     await assertExternalDirectory(ctx, searchPath, { kind: "directory" })
 
-    // Native API: grep(pattern, path, options?) - cast through unknown to bypass union type mismatch
-    const grepFn = nativeGrep as unknown as (pattern: string, path: string, options?: any) => Promise<any[]>
+    // Native API: grep(pattern, path, options?)
+    // Cast through unknown: nativeGrep has overloaded signatures, we use the async variant
+    const grepFn = nativeGrep as unknown as (
+      pattern: string,
+      path: string,
+      options?: Record<string, unknown>,
+    ) => Promise<GrepResult>
     const result = await grepFn(params.pattern, searchPath, {
       glob: params.include,
       outputMode: "content",
@@ -62,8 +82,8 @@ export const GrepTool = Tool.define("grep", {
       limit: 100,
     })
 
-    // Handle result as array or object with matches
-    const rawMatches = Array.isArray(result) ? result : (result as any).matches ?? []
+    // Handle result as array or wrapped object
+    const rawMatches = isWrappedResult(result) ? result.matches : result
     if (rawMatches.length === 0) {
       return {
         title: params.pattern,
@@ -95,7 +115,7 @@ export const GrepTool = Tool.define("grep", {
 
     matches.sort((a, b) => b.modTime - a.modTime)
 
-    const truncated = !Array.isArray(result) && (result as any).truncated === true
+    const truncated = isWrappedResult(result) && result.truncated === true
     const outputLines = [`Found ${matches.length} matches`]
 
     let currentFile = ""

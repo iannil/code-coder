@@ -9,7 +9,7 @@ import { SessionRevert } from "./revert"
 import { Session } from "."
 import { Agent } from "../agent/agent"
 import { Provider } from "../provider/provider"
-import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions } from "ai"
+import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import { SessionCompaction } from "./compaction"
 import { Instance } from "../project/instance"
 import { Bus } from "../bus"
@@ -749,11 +749,10 @@ export namespace SessionPrompt {
       { modelID: input.model.api.id, providerID: input.model.providerID },
       input.agent,
     )) {
-      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters))
+      const schema = ProviderTransform.schema(input.model, z.toJSONSchema(item.parameters)) as JSONSchema7
       tools[item.id] = tool({
-        id: item.id as any,
         description: item.description,
-        inputSchema: jsonSchema(schema as any),
+        inputSchema: jsonSchema(schema),
         async execute(args, options) {
           const ctx = context(args, options)
           const result = await item.execute(args, ctx)

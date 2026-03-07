@@ -9,7 +9,7 @@
  */
 
 import z from "zod"
-import Handlebars from "handlebars"
+import Handlebars, { type HelperOptions } from "handlebars"
 import { Global } from "@/global"
 import path from "path"
 
@@ -619,14 +619,12 @@ export class TemplateEngine {
    * Register Handlebars helpers.
    */
   private registerHelpers(): void {
-    // Conditional helpers
-    Handlebars.registerHelper("ifEquals", function (arg1, arg2, options) {
-      // @ts-expect-error - Handlebars context
+    // Conditional helpers - use explicit function signature for proper `this` typing
+    Handlebars.registerHelper("ifEquals", function (this: unknown, arg1: unknown, arg2: unknown, options: HelperOptions) {
       return arg1 === arg2 ? options.fn(this) : options.inverse(this)
     })
 
-    Handlebars.registerHelper("ifNotEquals", function (arg1, arg2, options) {
-      // @ts-expect-error - Handlebars context
+    Handlebars.registerHelper("ifNotEquals", function (this: unknown, arg1: unknown, arg2: unknown, options: HelperOptions) {
       return arg1 !== arg2 ? options.fn(this) : options.inverse(this)
     })
 

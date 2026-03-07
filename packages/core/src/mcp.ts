@@ -80,12 +80,12 @@ interface NativeStatus {
 interface NativeTool {
   name: string
   description: string
-  input_schema: unknown
+  inputSchema: unknown
 }
 
 interface NativeToolResult {
   content: unknown[]
-  is_error: boolean
+  isError: boolean
 }
 
 // Try to load the native MCP client manager factory
@@ -148,7 +148,7 @@ function fromNativeTool(tool: NativeTool): McpTool {
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema: tool.input_schema,
+    inputSchema: tool.inputSchema,
   }
 }
 
@@ -168,7 +168,7 @@ function fromNativeToolResult(result: NativeToolResult): McpToolResult {
       }
       return contentItem
     }),
-    isError: result.is_error,
+    isError: result.isError,
   }
 }
 

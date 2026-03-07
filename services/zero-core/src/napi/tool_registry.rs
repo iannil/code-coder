@@ -6,15 +6,19 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use futures_util::future::join_all;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use walkdir;
 
 use crate::tools::{
+    apply_patch::PatchApplicator,
     edit::Editor,
     glob::{Glob, GlobOptions},
     grep::{Grep, GrepOptions},
+    multiedit::MultiEditor,
     read::Reader,
 };
 
@@ -48,6 +52,30 @@ pub struct NapiToolExecuteResult {
     pub error: Option<String>,
     /// Execution duration in milliseconds
     pub duration_ms: u32,
+}
+
+/// Tool call specification for batch execution
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct NapiToolCall {
+    /// Tool name
+    pub tool: String,
+    /// Tool arguments as JSON string
+    pub args_json: String,
+    /// Call ID for tracking
+    pub call_id: String,
+}
+
+/// Batch execution result
+#[napi(object)]
+#[derive(Debug, Clone)]
+pub struct NapiBatchResult {
+    /// Results in same order as input calls
+    pub results: Vec<NapiToolExecuteResult>,
+    /// Total execution duration in milliseconds
+    pub total_duration_ms: u32,
+    /// Number of calls that were native (vs fallback)
+    pub native_count: u32,
 }
 
 /// Result of argument validation
@@ -368,6 +396,8 @@ pub struct ToolRegistryHandle {
     glob: Arc<Glob>,
     reader: Arc<Reader>,
     editor: Arc<Mutex<Editor>>,
+    multi_editor: Arc<Mutex<MultiEditor>>,
+    patch_applicator: Arc<Mutex<PatchApplicator>>,
 }
 
 #[napi]
@@ -387,6 +417,8 @@ impl ToolRegistryHandle {
             glob: Arc::new(Glob::new()),
             reader: Arc::new(Reader::new()),
             editor: Arc::new(Mutex::new(Editor::new())),
+            multi_editor: Arc::new(Mutex::new(MultiEditor::new())),
+            patch_applicator: Arc::new(Mutex::new(PatchApplicator::new())),
         }
     }
 
@@ -512,6 +544,10 @@ impl ToolRegistryHandle {
             "glob" => self.execute_glob(args).await,
             "read" => self.execute_read(args),
             "edit" => self.execute_edit(args),
+            "write" => self.execute_write(args),
+            "ls" => self.execute_ls(args),
+            "apply_patch" => self.execute_apply_patch(args),
+            "multiedit" => self.execute_multiedit(args),
             _ => Err(Error::from_reason(format!("Tool not implemented: {}", name))),
         };
 
@@ -533,7 +569,581 @@ impl ToolRegistryHandle {
         }
     }
 
-    // Internal execution methods
+    /// Execute multiple tools in parallel (native batch execution)
+    ///
+    /// Native tools (grep, glob, read, edit, write, ls, apply_patch, multiedit)
+    /// are executed in parallel using futures::future::join_all. Non-native tools
+    /// return an error with 'not_native' flag.
+    #[napi]
+    pub async fn execute_batch(&self, calls: Vec<NapiToolCall>) -> Result<NapiBatchResult> {
+        let start = std::time::Instant::now();
+
+        // List of native tool names
+        const NATIVE_TOOLS: &[&str] = &[
+            "grep",
+            "glob",
+            "read",
+            "edit",
+            "write",
+            "ls",
+            "apply_patch",
+            "multiedit",
+        ];
+
+        // Clone Arc references for parallel execution
+        let grep = self.grep.clone();
+        let glob_tool = self.glob.clone();
+        let reader = self.reader.clone();
+        let editor = self.editor.clone();
+        let multi_editor = self.multi_editor.clone();
+        let patch_applicator = self.patch_applicator.clone();
+
+        // Execute all calls in parallel
+        let futures: Vec<_> = calls
+            .into_iter()
+            .map(|call| {
+                let name = call.tool.clone();
+                let args_json = call.args_json.clone();
+                let is_native = NATIVE_TOOLS.contains(&name.as_str());
+
+                // Clone Arcs for this future
+                let grep = grep.clone();
+                let glob_tool = glob_tool.clone();
+                let reader = reader.clone();
+                let editor = editor.clone();
+                let multi_editor = multi_editor.clone();
+                let patch_applicator = patch_applicator.clone();
+
+                async move {
+                    if !is_native {
+                        return NapiToolExecuteResult {
+                            success: false,
+                            output: String::new(),
+                            error: Some(format!("Tool '{}' is not_native", name)),
+                            duration_ms: 0,
+                        };
+                    }
+
+                    let call_start = std::time::Instant::now();
+
+                    // Parse arguments
+                    let args: serde_json::Value = match serde_json::from_str(&args_json) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return NapiToolExecuteResult {
+                                success: false,
+                                output: String::new(),
+                                error: Some(format!("Invalid JSON: {}", e)),
+                                duration_ms: call_start.elapsed().as_millis() as u32,
+                            };
+                        }
+                    };
+
+                    // Dispatch to the appropriate implementation
+                    let result: std::result::Result<String, Error> = match name.as_str() {
+                        "grep" => Self::execute_grep_batch(&grep, args).await,
+                        "glob" => Self::execute_glob_batch(&glob_tool, args).await,
+                        "read" => Self::execute_read_batch(&reader, args),
+                        "edit" => Self::execute_edit_batch(&editor, args),
+                        "write" => Self::execute_write_batch(args),
+                        "ls" => Self::execute_ls_batch(args),
+                        "apply_patch" => Self::execute_apply_patch_batch(&patch_applicator, args),
+                        "multiedit" => Self::execute_multiedit_batch(&multi_editor, args),
+                        _ => Err(Error::from_reason(format!(
+                            "Tool not implemented: {}",
+                            name
+                        ))),
+                    };
+
+                    let duration_ms = call_start.elapsed().as_millis() as u32;
+
+                    match result {
+                        Ok(output) => NapiToolExecuteResult {
+                            success: true,
+                            output,
+                            error: None,
+                            duration_ms,
+                        },
+                        Err(e) => NapiToolExecuteResult {
+                            success: false,
+                            output: String::new(),
+                            error: Some(e.to_string()),
+                            duration_ms,
+                        },
+                    }
+                }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+
+        // Count native calls (those that didn't return "not_native" error)
+        let native_count = results
+            .iter()
+            .filter(|r| {
+                r.success
+                    || !r
+                        .error
+                        .as_ref()
+                        .map(|e| e.contains("not_native"))
+                        .unwrap_or(false)
+            })
+            .count() as u32;
+
+        Ok(NapiBatchResult {
+            results,
+            total_duration_ms: start.elapsed().as_millis() as u32,
+            native_count,
+        })
+    }
+
+    // Static execution methods for batch processing (take Arc references)
+
+    async fn execute_grep_batch(grep: &Arc<Grep>, args: serde_json::Value) -> Result<String> {
+        let pattern = args
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'pattern' parameter"))?
+            .to_string();
+
+        let path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let glob = args.get("glob").and_then(|v| v.as_str()).map(String::from);
+        let file_type = args.get("type").and_then(|v| v.as_str()).map(String::from);
+        let case_insensitive = args.get("-i").and_then(|v| v.as_bool()).unwrap_or(false);
+        let output_mode = args
+            .get("output_mode")
+            .and_then(|v| v.as_str())
+            .unwrap_or("files_with_matches")
+            .to_string();
+
+        let context = args.get("-C").or(args.get("context")).and_then(|v| v.as_u64());
+        let context_before = args
+            .get("-B")
+            .and_then(|v| v.as_u64())
+            .or(context)
+            .unwrap_or(0) as usize;
+        let context_after = args
+            .get("-A")
+            .and_then(|v| v.as_u64())
+            .or(context)
+            .unwrap_or(0) as usize;
+
+        let limit = args
+            .get("head_limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+        let offset = args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        let multiline = args.get("multiline").and_then(|v| v.as_bool()).unwrap_or(false);
+        let line_numbers = args.get("-n").and_then(|v| v.as_bool()).unwrap_or(true);
+
+        let options = GrepOptions {
+            pattern,
+            path,
+            glob,
+            file_type,
+            case_insensitive,
+            output_mode: output_mode.clone(),
+            context_before,
+            context_after,
+            limit,
+            offset,
+            multiline,
+            line_numbers,
+        };
+
+        let result = grep
+            .search(&options)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        // Format output based on mode
+        let output = match output_mode.as_str() {
+            "content" => {
+                let mut lines = Vec::new();
+                for m in &result.matches {
+                    if line_numbers {
+                        lines.push(format!("{}:{}: {}", m.path, m.line_number, m.line_content));
+                    } else {
+                        lines.push(format!("{}: {}", m.path, m.line_content));
+                    }
+                }
+                if result.truncated {
+                    lines.push(format!(
+                        "\n... (truncated, {} total matches)",
+                        result.total_matches
+                    ));
+                }
+                lines.join("\n")
+            }
+            "files_with_matches" => {
+                let mut output = result.files.join("\n");
+                if result.truncated {
+                    output.push_str(&format!(
+                        "\n... (truncated, {} total files)",
+                        result.total_matches
+                    ));
+                }
+                output
+            }
+            "count" => result
+                .counts
+                .iter()
+                .map(|(path, count)| format!("{}:{}", path, count))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            _ => "Invalid output mode".to_string(),
+        };
+
+        Ok(output)
+    }
+
+    async fn execute_glob_batch(glob_tool: &Arc<Glob>, args: serde_json::Value) -> Result<String> {
+        let pattern = args
+            .get("pattern")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'pattern' parameter"))?
+            .to_string();
+
+        let path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let limit = args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
+        let include_hidden = args
+            .get("include_hidden")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let options = GlobOptions {
+            pattern,
+            path,
+            limit,
+            include_hidden,
+            ..Default::default()
+        };
+
+        let results = glob_tool
+            .find(&options)
+            .await
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let files: Vec<&str> = results.files.iter().map(|f| f.path.as_str()).collect();
+
+        Ok(files.join("\n"))
+    }
+
+    fn execute_read_batch(reader: &Arc<Reader>, args: serde_json::Value) -> Result<String> {
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'file_path' parameter"))?;
+
+        let offset = args
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(1);
+
+        let limit = args.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
+
+        let options = crate::tools::read::ReadOptions {
+            offset,
+            limit,
+            ..Default::default()
+        };
+
+        let path = std::path::Path::new(file_path);
+        let result = reader
+            .read(path, Some(&options))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        Ok(result.content)
+    }
+
+    fn execute_edit_batch(
+        editor: &Arc<Mutex<Editor>>,
+        args: serde_json::Value,
+    ) -> Result<String> {
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'file_path' parameter"))?;
+
+        let old_string = args
+            .get("old_string")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'old_string' parameter"))?;
+
+        let new_string = args
+            .get("new_string")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'new_string' parameter"))?;
+
+        let replace_all = args
+            .get("replace_all")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let editor_guard = editor
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let path = std::path::Path::new(file_path);
+        let operation = crate::tools::edit::EditOperation {
+            old_string: old_string.to_string(),
+            new_string: new_string.to_string(),
+            replace_all,
+        };
+
+        let result = editor_guard
+            .edit(path, &operation)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        if result.success {
+            Ok(format!(
+                "Replaced {} occurrence(s)\n\n{}",
+                result.replacements, result.diff
+            ))
+        } else {
+            Err(Error::from_reason(
+                result.error.unwrap_or_else(|| "Unknown error".to_string()),
+            ))
+        }
+    }
+
+    fn execute_write_batch(args: serde_json::Value) -> Result<String> {
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'file_path' parameter"))?;
+
+        let content = args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'content' parameter"))?;
+
+        let create_backup = args
+            .get("create_backup")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let path = std::path::Path::new(file_path);
+
+        // Create parent directories if needed
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::from_reason(format!("Failed to create directories: {}", e)))?;
+        }
+
+        // Create backup if requested and file exists
+        if create_backup && path.exists() {
+            let backup_path = format!("{}.bak", file_path);
+            std::fs::copy(path, &backup_path)
+                .map_err(|e| Error::from_reason(format!("Failed to create backup: {}", e)))?;
+        }
+
+        // Write the file
+        std::fs::write(path, content)
+            .map_err(|e| Error::from_reason(format!("Failed to write file: {}", e)))?;
+
+        Ok(format!("Wrote {} bytes to {}", content.len(), file_path))
+    }
+
+    fn execute_ls_batch(args: serde_json::Value) -> Result<String> {
+        let dir_path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'path' parameter"))?;
+
+        let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
+        let recursive = args
+            .get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_depth = args
+            .get("depth")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
+        let path = std::path::Path::new(dir_path);
+        if !path.exists() {
+            return Err(Error::from_reason(format!("Path does not exist: {}", dir_path)));
+        }
+
+        let mut entries = Vec::new();
+
+        if recursive {
+            // Use walkdir for recursive listing
+            let walker = walkdir::WalkDir::new(path)
+                .max_depth(max_depth.unwrap_or(10))
+                .follow_links(false);
+
+            for entry in walker.into_iter().filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy();
+                if !show_all && name.starts_with('.') {
+                    continue;
+                }
+                if entry.path() == path {
+                    continue;
+                }
+
+                let relative = entry
+                    .path()
+                    .strip_prefix(path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| entry.file_name().to_string_lossy().to_string());
+
+                if entry.file_type().is_dir() {
+                    entries.push(format!("{}/ (dir)", relative));
+                } else {
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    entries.push(format!("{} ({} bytes)", relative, size));
+                }
+            }
+        } else {
+            // Simple directory listing
+            let read_dir = std::fs::read_dir(path)
+                .map_err(|e| Error::from_reason(format!("Failed to read directory: {}", e)))?;
+
+            for entry in read_dir.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !show_all && name.starts_with('.') {
+                    continue;
+                }
+
+                let file_type = entry.file_type().ok();
+                let metadata = entry.metadata().ok();
+
+                if file_type.map(|ft| ft.is_dir()).unwrap_or(false) {
+                    entries.push(format!("{}/ (dir)", name));
+                } else {
+                    let size = metadata.map(|m| m.len()).unwrap_or(0);
+                    entries.push(format!("{} ({} bytes)", name, size));
+                }
+            }
+
+            // Sort entries
+            entries.sort();
+        }
+
+        Ok(entries.join("\n"))
+    }
+
+    fn execute_apply_patch_batch(
+        patch_applicator: &Arc<Mutex<PatchApplicator>>,
+        args: serde_json::Value,
+    ) -> Result<String> {
+        let patch_content = args
+            .get("patch")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'patch' parameter"))?;
+
+        let working_dir = args
+            .get("working_dir")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let dry_run = args
+            .get("dry_run")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let fuzz = args
+            .get("fuzz")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(2);
+
+        let applicator = patch_applicator
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let options = crate::tools::apply_patch::ApplyPatchOptions {
+            dry_run,
+            fuzz,
+            working_dir,
+            ..Default::default()
+        };
+
+        let result = applicator
+            .apply(patch_content, Some(&options))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        if result.success {
+            let mode = if dry_run { "(dry run) " } else { "" };
+            Ok(format!(
+                "{}Applied patch: {} file(s) modified\n\n{}",
+                mode, result.files_changed, result.combined_diff
+            ))
+        } else {
+            Err(Error::from_reason(
+                result
+                    .error
+                    .unwrap_or_else(|| "Patch application failed".to_string()),
+            ))
+        }
+    }
+
+    fn execute_multiedit_batch(
+        multi_editor: &Arc<Mutex<MultiEditor>>,
+        args: serde_json::Value,
+    ) -> Result<String> {
+        let edits = args
+            .get("edits")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| Error::from_reason("Missing 'edits' parameter"))?;
+
+        let editor = multi_editor
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let operations: Vec<crate::tools::multiedit::FileEdit> = edits
+            .iter()
+            .filter_map(|edit| {
+                let file_path = edit.get("file_path")?.as_str()?.to_string();
+                let old_string = edit.get("old_string")?.as_str()?.to_string();
+                let new_string = edit.get("new_string")?.as_str()?.to_string();
+                Some(crate::tools::multiedit::FileEdit {
+                    file_path,
+                    old_string,
+                    new_string,
+                    replace_all: false,
+                })
+            })
+            .collect();
+
+        if operations.is_empty() {
+            return Err(Error::from_reason("No valid edits provided"));
+        }
+
+        let result = editor
+            .edit_multiple(&operations, None)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        if result.success {
+            Ok(format!(
+                "Applied {} edit(s) across {} file(s)\n\n{}",
+                result.total_replacements, result.files_edited, result.combined_diff
+            ))
+        } else {
+            Err(Error::from_reason(
+                result
+                    .error
+                    .unwrap_or_else(|| "Multiedit failed".to_string()),
+            ))
+        }
+    }
+
+    // Internal execution methods (instance methods for single execute())
 
     async fn execute_grep(&self, args: serde_json::Value) -> Result<String> {
         let pattern = args
@@ -756,6 +1366,225 @@ impl ToolRegistryHandle {
             ))
         }
     }
+
+    fn execute_write(&self, args: serde_json::Value) -> Result<String> {
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'file_path' parameter"))?;
+
+        let content = args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'content' parameter"))?;
+
+        let create_backup = args
+            .get("create_backup")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let path = std::path::Path::new(file_path);
+
+        // Create parent directories if needed
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| Error::from_reason(format!("Failed to create directories: {}", e)))?;
+        }
+
+        // Create backup if requested and file exists
+        if create_backup && path.exists() {
+            let backup_path = format!("{}.bak", file_path);
+            std::fs::copy(path, &backup_path)
+                .map_err(|e| Error::from_reason(format!("Failed to create backup: {}", e)))?;
+        }
+
+        // Write the file
+        std::fs::write(path, content)
+            .map_err(|e| Error::from_reason(format!("Failed to write file: {}", e)))?;
+
+        Ok(format!("Wrote {} bytes to {}", content.len(), file_path))
+    }
+
+    fn execute_ls(&self, args: serde_json::Value) -> Result<String> {
+        let dir_path = args
+            .get("path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'path' parameter"))?;
+
+        let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
+        let recursive = args
+            .get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let max_depth = args
+            .get("depth")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize);
+
+        let path = std::path::Path::new(dir_path);
+        if !path.exists() {
+            return Err(Error::from_reason(format!("Path does not exist: {}", dir_path)));
+        }
+
+        let mut entries = Vec::new();
+
+        if recursive {
+            // Use walkdir for recursive listing
+            let walker = walkdir::WalkDir::new(path)
+                .max_depth(max_depth.unwrap_or(10))
+                .follow_links(false);
+
+            for entry in walker.into_iter().filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy();
+                if !show_all && name.starts_with('.') {
+                    continue;
+                }
+                if entry.path() == path {
+                    continue;
+                }
+
+                let relative = entry
+                    .path()
+                    .strip_prefix(path)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| entry.file_name().to_string_lossy().to_string());
+
+                if entry.file_type().is_dir() {
+                    entries.push(format!("{}/ (dir)", relative));
+                } else {
+                    let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    entries.push(format!("{} ({} bytes)", relative, size));
+                }
+            }
+        } else {
+            // Simple directory listing
+            let read_dir = std::fs::read_dir(path)
+                .map_err(|e| Error::from_reason(format!("Failed to read directory: {}", e)))?;
+
+            for entry in read_dir.filter_map(|e| e.ok()) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !show_all && name.starts_with('.') {
+                    continue;
+                }
+
+                let file_type = entry.file_type().ok();
+                let metadata = entry.metadata().ok();
+
+                if file_type.map(|ft| ft.is_dir()).unwrap_or(false) {
+                    entries.push(format!("{}/ (dir)", name));
+                } else {
+                    let size = metadata.map(|m| m.len()).unwrap_or(0);
+                    entries.push(format!("{} ({} bytes)", name, size));
+                }
+            }
+
+            // Sort entries
+            entries.sort();
+        }
+
+        Ok(entries.join("\n"))
+    }
+
+    fn execute_apply_patch(&self, args: serde_json::Value) -> Result<String> {
+        let patch_content = args
+            .get("patch")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| Error::from_reason("Missing 'patch' parameter"))?;
+
+        let working_dir = args
+            .get("working_dir")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+
+        let dry_run = args
+            .get("dry_run")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let fuzz = args
+            .get("fuzz")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(2);
+
+        let applicator = self
+            .patch_applicator
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let options = crate::tools::apply_patch::ApplyPatchOptions {
+            dry_run,
+            fuzz,
+            working_dir,
+            ..Default::default()
+        };
+
+        let result = applicator
+            .apply(patch_content, Some(&options))
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        if result.success {
+            let mode = if dry_run { "(dry run) " } else { "" };
+            Ok(format!(
+                "{}Applied patch: {} file(s) modified\n\n{}",
+                mode,
+                result.files_changed,
+                result.combined_diff
+            ))
+        } else {
+            Err(Error::from_reason(
+                result.error.unwrap_or_else(|| "Patch application failed".to_string()),
+            ))
+        }
+    }
+
+    fn execute_multiedit(&self, args: serde_json::Value) -> Result<String> {
+        let edits = args
+            .get("edits")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| Error::from_reason("Missing 'edits' parameter"))?;
+
+        let multi_editor = self
+            .multi_editor
+            .lock()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        let operations: Vec<crate::tools::multiedit::FileEdit> = edits
+            .iter()
+            .filter_map(|edit| {
+                let file_path = edit.get("file_path")?.as_str()?.to_string();
+                let old_string = edit.get("old_string")?.as_str()?.to_string();
+                let new_string = edit.get("new_string")?.as_str()?.to_string();
+                Some(crate::tools::multiedit::FileEdit {
+                    file_path,
+                    old_string,
+                    new_string,
+                    replace_all: false,
+                })
+            })
+            .collect();
+
+        if operations.is_empty() {
+            return Err(Error::from_reason("No valid edits provided"));
+        }
+
+        let result = multi_editor
+            .edit_multiple(&operations, None)
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+
+        if result.success {
+            Ok(format!(
+                "Applied {} edit(s) across {} file(s)\n\n{}",
+                result.total_replacements,
+                result.files_edited,
+                result.combined_diff
+            ))
+        } else {
+            Err(Error::from_reason(
+                result.error.unwrap_or_else(|| "Multiedit failed".to_string()),
+            ))
+        }
+    }
 }
 
 // ============================================================================
@@ -791,6 +1620,10 @@ pub fn get_native_tool_names() -> Vec<String> {
         "glob".to_string(),
         "read".to_string(),
         "edit".to_string(),
+        "write".to_string(),
+        "ls".to_string(),
+        "apply_patch".to_string(),
+        "multiedit".to_string(),
     ]
 }
 

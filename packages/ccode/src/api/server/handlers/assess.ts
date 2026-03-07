@@ -117,8 +117,8 @@ function summarizeGraph(graph: SemanticGraph.Graph): string {
   // Group nodes by type
   const nodesByType: Record<string, SemanticGraph.Node[]> = {}
   for (const node of graph.nodes) {
-    if (!nodesByType[node.node_type]) nodesByType[node.node_type] = []
-    nodesByType[node.node_type].push(node)
+    if (!nodesByType[node.nodeType]) nodesByType[node.nodeType] = []
+    nodesByType[node.nodeType].push(node)
   }
 
   // Summarize each type

@@ -6,13 +6,19 @@ import { Instance } from "../project/instance"
 import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
 import z from "zod"
-import { SessionPrompt } from "./prompt"
-import { Token } from "@/util/token"
 import { Log } from "@/util/log"
 import { SessionProcessor } from "./processor"
 import { fn } from "@/util/fn"
 import { Agent } from "@/agent/agent"
 import { Config } from "@/config/config"
+import {
+  isOverflow as nativeIsOverflow,
+  computePrunePlanWithTurns as nativeComputePrunePlanWithTurns,
+  createDefaultPruneConfig,
+  type NapiMessageInfo,
+  type NapiToolPartInfo,
+  type NapiPruneConfig,
+} from "@codecoder-ai/core"
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -26,15 +32,32 @@ export namespace SessionCompaction {
     ),
   }
 
+  /**
+   * Check if token usage overflows the model's context limit.
+   *
+   * Uses native Rust implementation for consistent calculation.
+   */
   export async function isOverflow(input: { tokens: MessageV2.Assistant["tokens"]; model: Provider.Model }) {
     const config = await Config.get()
     if (config.compaction?.auto === false) return false
-    const context = input.model.limit.context
-    if (context === 0) return false
-    const count = input.tokens.input + input.tokens.cache.read + input.tokens.output
-    const output = Math.min(input.model.limit.output, SessionPrompt.OUTPUT_TOKEN_MAX) || SessionPrompt.OUTPUT_TOKEN_MAX
-    const usable = input.model.limit.input || context - output
-    return count > usable
+
+    if (!nativeIsOverflow) {
+      throw new Error("Native isOverflow binding is unavailable")
+    }
+
+    return nativeIsOverflow(
+      {
+        input: input.tokens.input,
+        output: input.tokens.output,
+        cacheRead: input.tokens.cache.read,
+        cacheWrite: input.tokens.cache.write,
+      },
+      {
+        context: input.model.limit.context,
+        output: input.model.limit.output,
+        input: input.model.limit.input || undefined,
+      },
+    )
   }
 
   export const PRUNE_MINIMUM = 20_000
@@ -42,49 +65,70 @@ export namespace SessionCompaction {
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
 
-  // goes backwards through parts until there are 40_000 tokens worth of tool
-  // calls. then erases output of previous tool calls. idea is to throw away old
-  // tool calls that are no longer relevant.
+  /**
+   * Convert messages to native format for prune computation.
+   */
+  function toNativeMessageInfo(msgs: MessageV2.WithParts[]): NapiMessageInfo[] {
+    return msgs.map((msg) => ({
+      messageId: msg.info.id,
+      role: msg.info.role,
+      isSummary: msg.info.role === "assistant" && "summary" in msg.info && msg.info.summary === true,
+      toolParts: msg.parts
+        .filter((p): p is MessageV2.ToolPart => p.type === "tool")
+        .map((part): NapiToolPartInfo => ({
+          messageId: part.messageID,
+          partId: part.id,
+          tool: part.tool,
+          status: part.state.status,
+          compacted: part.state.status === "completed" && "time" in part.state && !!part.state.time.compacted,
+          output: part.state.status === "completed" ? part.state.output : "",
+        })),
+    }))
+  }
+
+  /**
+   * Prune old tool outputs to reduce context usage.
+   *
+   * Goes backwards through parts until there are PRUNE_PROTECT tokens worth of tool
+   * calls, then erases output of previous tool calls. Uses native Rust computation
+   * for efficiency.
+   */
   export async function prune(input: { sessionID: string }) {
     const config = await Config.get()
     if (config.compaction?.prune === false) return
     log.info("pruning")
+
+    if (!nativeComputePrunePlanWithTurns) {
+      throw new Error("Native computePrunePlanWithTurns binding is unavailable")
+    }
+
     const msgs = await Session.messages({ sessionID: input.sessionID })
-    let total = 0
-    let pruned = 0
-    const toPrune = []
-    let turns = 0
 
-    loop: for (let msgIndex = msgs.length - 1; msgIndex >= 0; msgIndex--) {
-      const msg = msgs[msgIndex]
-      if (msg.info.role === "user") turns++
-      if (turns < 2) continue
-      if (msg.info.role === "assistant" && msg.info.summary) break loop
-      for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
-        const part = msg.parts[partIndex]
-        if (part.type === "tool")
-          if (part.state.status === "completed") {
-            if (PRUNE_PROTECTED_TOOLS.includes(part.tool)) continue
+    const nativeMsgs = toNativeMessageInfo(msgs)
+    const pruneConfig: NapiPruneConfig = createDefaultPruneConfig?.() ?? {
+      minimum: PRUNE_MINIMUM,
+      protect: PRUNE_PROTECT,
+      protectedTools: PRUNE_PROTECTED_TOOLS,
+    }
 
-            if (part.state.time.compacted) break loop
-            const estimate = Token.estimate(part.state.output)
-            total += estimate
-            if (total > PRUNE_PROTECT) {
-              pruned += estimate
-              toPrune.push(part)
+    const plan = nativeComputePrunePlanWithTurns(nativeMsgs, pruneConfig)
+
+    log.info("found", { pruned: plan.totalTokensToPrune, shouldExecute: plan.shouldExecute })
+
+    if (plan.shouldExecute) {
+      // Apply the prune plan - mark parts as compacted
+      for (const partRef of plan.partsToPrune) {
+        // Find the original part and update it
+        for (const msg of msgs) {
+          for (const part of msg.parts) {
+            if (part.type === "tool" && part.id === partRef.partId && part.state.status === "completed") {
+              part.state.time.compacted = Date.now()
+              await Session.updatePart(part)
             }
           }
-      }
-    }
-    log.info("found", { pruned, total })
-    if (pruned > PRUNE_MINIMUM) {
-      for (const part of toPrune) {
-        if (part.state.status === "completed") {
-          part.state.time.compacted = Date.now()
-          await Session.updatePart(part)
         }
       }
-      log.info("pruned", { count: toPrune.length })
+      log.info("pruned", { count: plan.partsToPrune.length })
     }
   }
 

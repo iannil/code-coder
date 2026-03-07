@@ -12,7 +12,11 @@ pub mod prompt;
 pub mod store;
 
 // Re-export main types
-pub use compaction::{CompactionResult, CompactionStrategy, Compactor};
+pub use compaction::{
+    CompactionResult, CompactionStrategy, Compactor,
+    // Prune types
+    MessageInfo, ModelLimit, PartReference, PruneConfig, PrunePlan, TokenUsage, ToolPartInfo,
+};
 pub use message::{Message, MessageRole, MessageStore};
 pub use prompt::{PromptContext, PromptTemplate, TemplateEngine};
-pub use store::{SessionStore, SessionData};
+pub use store::{SessionData, SessionStore};

@@ -181,7 +181,7 @@ export namespace SemanticGraph {
 
     // Add functions
     for (const func of codeIndex.functions) {
-      graph.addFunction(func.name, func.file, func.signature ?? undefined, func.exported)
+      graph.addFunction(func.name, func.file, func.signature ?? undefined, func.exported ?? false)
     }
 
     // Add classes
@@ -352,6 +352,10 @@ import type {
   NapiCausalChain,
   NapiCausalQuery,
   NapiCausalStats,
+  NapiCausalPattern,
+  NapiSimilarDecision,
+  NapiTrendAnalysis,
+  NapiAgentInsights,
 } from "@codecoder-ai/core"
 
 export namespace CausalGraph {
@@ -366,6 +370,10 @@ export namespace CausalGraph {
   export type CausalChain = NapiCausalChain
   export type CausalQuery = NapiCausalQuery
   export type CausalStats = NapiCausalStats
+  export type CausalPattern = NapiCausalPattern
+  export type SimilarDecision = NapiSimilarDecision
+  export type TrendAnalysis = NapiTrendAnalysis
+  export type AgentInsights = NapiAgentInsights
 
   /**
    * Create a new causal graph handle
@@ -540,7 +548,7 @@ export namespace CausalGraph {
    */
   export async function getCausalChainsForSession(sessionId: string): Promise<NapiCausalChain[]> {
     const graph = await get()
-    return graph.query({ session_id: sessionId })
+    return graph.query({ sessionId })
   }
 
   /**
@@ -557,15 +565,15 @@ export namespace CausalGraph {
     limit?: number
   }): Promise<NapiCausalChain[]> {
     const graph = await get()
-    // Convert camelCase to snake_case for NAPI
+    // NAPI uses camelCase for query properties
     return graph.query({
-      agent_id: options.agentId,
-      session_id: options.sessionId,
-      action_type: options.actionType,
+      agentId: options.agentId,
+      sessionId: options.sessionId,
+      actionType: options.actionType,
       status: options.status,
-      min_confidence: options.minConfidence,
-      date_from: options.dateFrom,
-      date_to: options.dateTo,
+      minConfidence: options.minConfidence,
+      dateFrom: options.dateFrom,
+      dateTo: options.dateTo,
       limit: options.limit,
     })
   }
@@ -584,6 +592,57 @@ export namespace CausalGraph {
   export async function getStats(): Promise<NapiCausalStats> {
     const graph = await get()
     return graph.getStats()
+  }
+
+  // ============================================================================
+  // Native Analysis Methods (Rust implementation)
+  // ============================================================================
+
+  /**
+   * Find recurring decision-outcome patterns (native Rust implementation)
+   */
+  export async function findPatterns(options?: {
+    agentId?: string
+    minOccurrences?: number
+    limit?: number
+  }): Promise<NapiCausalPattern[]> {
+    const graph = await get()
+    return graph.findPatterns(
+      options?.agentId ?? undefined,
+      options?.minOccurrences ?? 2,
+      options?.limit ?? 20
+    )
+  }
+
+  /**
+   * Find decisions similar to the given prompt (native Rust implementation)
+   */
+  export async function findSimilarDecisions(
+    prompt: string,
+    agentId: string,
+    limit?: number
+  ): Promise<NapiSimilarDecision[]> {
+    const graph = await get()
+    return graph.findSimilarDecisions(prompt, agentId, limit ?? 10)
+  }
+
+  /**
+   * Analyze decision trends over time (native Rust implementation)
+   */
+  export async function analyzeTrends(options?: {
+    agentId?: string
+    periodDays?: number
+  }): Promise<NapiTrendAnalysis> {
+    const graph = await get()
+    return graph.analyzeTrends(options?.agentId ?? undefined, options?.periodDays ?? 7)
+  }
+
+  /**
+   * Get aggregated insights for an agent (native Rust implementation)
+   */
+  export async function getAgentInsights(agentId: string): Promise<NapiAgentInsights> {
+    const graph = await get()
+    return graph.getAgentInsights(agentId)
   }
 
   /**
@@ -613,13 +672,13 @@ export namespace CausalGraph {
       for (const action of chain.actions) {
         if (!nodeIds.has(action.id)) {
           nodeIds.add(action.id)
-          const label = `${action.action_type}: ${action.description.slice(0, 20)}`.replace(/"/g, "'")
+          const label = `${action.actionType}: ${action.description.slice(0, 20)}`.replace(/"/g, "'")
           lines.push(`  ${action.id}["${label}"]`)
         }
         lines.push(`  ${chain.decision.id} --> ${action.id}`)
 
         // Add outcome nodes and edges
-        for (const outcome of chain.outcomes.filter((o) => o.action_id === action.id)) {
+        for (const outcome of chain.outcomes.filter((o) => o.actionId === action.id)) {
           if (!nodeIds.has(outcome.id)) {
             nodeIds.add(outcome.id)
             const emoji = outcome.status === "success" ? "✅" : outcome.status === "failure" ? "❌" : "⚠️"

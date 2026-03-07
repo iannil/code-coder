@@ -8,6 +8,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -169,6 +170,377 @@ pub fn contains_pattern(pattern: String, value: String) -> Result<bool> {
     Ok(regex.is_match(&value))
 }
 
+// ============================================================================
+// Phase 14: Extended Hook Configuration Handle
+// ============================================================================
+
+/// Action type enum (matching TypeScript)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionType {
+    Scan,
+    CheckEnv,
+    CheckStyle,
+    NotifyOnly,
+    ScanContent,
+    RunCommand,
+    AnalyzeChanges,
+    ScanFiles,
+}
+
+/// Hook action definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookAction {
+    #[serde(rename = "type")]
+    pub action_type: ActionType,
+    #[serde(default)]
+    pub patterns: Vec<String>,
+    pub message: Option<String>,
+    #[serde(default)]
+    pub block: bool,
+    pub command: Option<String>,
+    #[serde(default)]
+    pub r#async: bool,
+    pub variable: Option<String>,
+    pub command_pattern: Option<String>,
+    pub file_pattern: Option<String>,
+    #[serde(default)]
+    pub on_output: HashMap<String, String>,
+    pub on_vulnerabilities: Option<String>,
+}
+
+/// Hook definition with compiled patterns
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HookDefinition {
+    pub pattern: Option<String>,
+    pub description: Option<String>,
+    pub command_pattern: Option<String>,
+    pub file_pattern: Option<String>,
+    pub actions: Vec<HookAction>,
+}
+
+/// Lifecycle type
+#[napi(string_enum)]
+pub enum NapiHookLifecycle {
+    PreToolUse,
+    PostToolUse,
+    PreResponse,
+    Stop,
+}
+
+/// Hook evaluation context
+#[napi(object)]
+pub struct NapiHookContext {
+    pub tool: Option<String>,
+    pub command: Option<String>,
+    pub file_path: Option<String>,
+    pub file_content: Option<String>,
+    pub input_json: Option<String>,
+    pub output: Option<String>,
+}
+
+/// Hook match result
+#[napi(object)]
+pub struct HookMatchResult {
+    /// Name of the matching hook
+    pub hook_name: String,
+    /// Indices of matching actions (for efficient action selection)
+    pub matching_action_indices: Vec<u32>,
+    /// Whether any action has block=true
+    pub has_blocking_action: bool,
+}
+
+/// Hook evaluation result
+#[napi(object)]
+pub struct HookEvalResult {
+    /// Hooks that matched the context
+    pub matching_hooks: Vec<HookMatchResult>,
+    /// Total number of hooks evaluated
+    pub total_hooks_evaluated: u32,
+    /// Evaluation duration in microseconds
+    pub eval_duration_us: u32,
+}
+
+/// Compiled hook configuration for efficient evaluation
+struct CompiledHook {
+    name: String,
+    definition: HookDefinition,
+    pattern: Option<Regex>,
+    command_pattern: Option<Regex>,
+    file_pattern: Option<Regex>,
+    action_patterns: Vec<CompiledAction>,
+}
+
+struct CompiledAction {
+    action: HookAction,
+    patterns: Option<PatternSetHandle>,
+    command_pattern: Option<Regex>,
+    file_pattern: Option<Regex>,
+}
+
+/// Handle to compiled hook configuration
+#[napi]
+pub struct HookConfigHandle {
+    hooks_by_lifecycle: HashMap<String, Vec<CompiledHook>>,
+}
+
+#[napi]
+impl HookConfigHandle {
+    /// Create a new hook config handle from JSON configuration
+    #[napi(constructor)]
+    pub fn new(config_json: String) -> Result<Self> {
+        let config: HooksConfig = serde_json::from_str(&config_json)
+            .map_err(|e| Error::from_reason(format!("Failed to parse hook config: {}", e)))?;
+
+        let mut hooks_by_lifecycle: HashMap<String, Vec<CompiledHook>> = HashMap::new();
+
+        for (lifecycle, hooks_map) in [
+            ("PreToolUse", &config.hooks.pre_tool_use),
+            ("PostToolUse", &config.hooks.post_tool_use),
+            ("PreResponse", &config.hooks.pre_response),
+            ("Stop", &config.hooks.stop),
+        ] {
+            if let Some(hooks) = hooks_map {
+                let compiled: Result<Vec<CompiledHook>> = hooks
+                    .iter()
+                    .map(|(name, def)| compile_hook(name.clone(), def.clone()))
+                    .collect();
+                hooks_by_lifecycle.insert(lifecycle.to_string(), compiled?);
+            }
+        }
+
+        Ok(Self { hooks_by_lifecycle })
+    }
+
+    /// Evaluate hooks for a given lifecycle and context
+    #[napi]
+    pub fn evaluate(&self, lifecycle: NapiHookLifecycle, ctx: NapiHookContext) -> HookEvalResult {
+        let start = std::time::Instant::now();
+        let lifecycle_str = match lifecycle {
+            NapiHookLifecycle::PreToolUse => "PreToolUse",
+            NapiHookLifecycle::PostToolUse => "PostToolUse",
+            NapiHookLifecycle::PreResponse => "PreResponse",
+            NapiHookLifecycle::Stop => "Stop",
+        };
+
+        let hooks = match self.hooks_by_lifecycle.get(lifecycle_str) {
+            Some(h) => h,
+            None => return HookEvalResult {
+                matching_hooks: vec![],
+                total_hooks_evaluated: 0,
+                eval_duration_us: start.elapsed().as_micros() as u32,
+            },
+        };
+
+        let mut matching_hooks = Vec::new();
+        let mut total_evaluated = 0u32;
+
+        for hook in hooks {
+            total_evaluated += 1;
+
+            // Check hook-level patterns
+            if let Some(ref pattern) = hook.pattern {
+                if let Some(ref tool) = ctx.tool {
+                    if !pattern.is_match(tool) {
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(ref pattern) = hook.command_pattern {
+                if let Some(ref cmd) = ctx.command {
+                    if !pattern.is_match(cmd) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
+
+            if let Some(ref pattern) = hook.file_pattern {
+                if let Some(ref path) = ctx.file_path {
+                    if !pattern.is_match(path) {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            }
+
+            // Check action-level patterns
+            let mut matching_indices = Vec::new();
+            let mut has_blocking = false;
+
+            for (idx, compiled_action) in hook.action_patterns.iter().enumerate() {
+                let action_matches = evaluate_action_patterns(compiled_action, &ctx);
+                if action_matches {
+                    matching_indices.push(idx as u32);
+                    if compiled_action.action.block {
+                        has_blocking = true;
+                    }
+                }
+            }
+
+            if !matching_indices.is_empty() {
+                matching_hooks.push(HookMatchResult {
+                    hook_name: hook.name.clone(),
+                    matching_action_indices: matching_indices,
+                    has_blocking_action: has_blocking,
+                });
+            }
+        }
+
+        HookEvalResult {
+            matching_hooks,
+            total_hooks_evaluated: total_evaluated,
+            eval_duration_us: start.elapsed().as_micros() as u32,
+        }
+    }
+
+    /// Get the number of hooks for a lifecycle
+    #[napi]
+    pub fn hook_count(&self, lifecycle: NapiHookLifecycle) -> u32 {
+        let lifecycle_str = match lifecycle {
+            NapiHookLifecycle::PreToolUse => "PreToolUse",
+            NapiHookLifecycle::PostToolUse => "PostToolUse",
+            NapiHookLifecycle::PreResponse => "PreResponse",
+            NapiHookLifecycle::Stop => "Stop",
+        };
+        self.hooks_by_lifecycle.get(lifecycle_str).map(|h| h.len() as u32).unwrap_or(0)
+    }
+
+    /// Scan content for patterns using a specific action's patterns
+    #[napi]
+    pub fn scan_action_patterns(&self, lifecycle: NapiHookLifecycle, hook_name: String, action_index: u32, content: String) -> PatternMatchResult {
+        let lifecycle_str = match lifecycle {
+            NapiHookLifecycle::PreToolUse => "PreToolUse",
+            NapiHookLifecycle::PostToolUse => "PostToolUse",
+            NapiHookLifecycle::PreResponse => "PreResponse",
+            NapiHookLifecycle::Stop => "Stop",
+        };
+
+        let hooks = match self.hooks_by_lifecycle.get(lifecycle_str) {
+            Some(h) => h,
+            None => return PatternMatchResult { found: false, matches: vec![], matches_by_pattern: HashMap::new() },
+        };
+
+        for hook in hooks {
+            if hook.name == hook_name {
+                if let Some(action) = hook.action_patterns.get(action_index as usize) {
+                    if let Some(ref patterns) = action.patterns {
+                        return patterns.scan(content);
+                    }
+                }
+            }
+        }
+
+        PatternMatchResult { found: false, matches: vec![], matches_by_pattern: HashMap::new() }
+    }
+}
+
+// Hook config JSON structure
+#[derive(Debug, Deserialize)]
+struct HooksConfig {
+    hooks: HooksMap,
+    #[serde(default)]
+    settings: Option<HookSettings>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HooksMap {
+    #[serde(rename = "PreToolUse")]
+    pre_tool_use: Option<HashMap<String, HookDefinition>>,
+    #[serde(rename = "PostToolUse")]
+    post_tool_use: Option<HashMap<String, HookDefinition>>,
+    #[serde(rename = "PreResponse")]
+    pre_response: Option<HashMap<String, HookDefinition>>,
+    #[serde(rename = "Stop")]
+    stop: Option<HashMap<String, HookDefinition>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HookSettings {
+    #[serde(default = "default_true")]
+    enabled: bool,
+    blocking_mode: Option<String>,
+    log_level: Option<String>,
+}
+
+fn default_true() -> bool { true }
+
+fn compile_hook(name: String, def: HookDefinition) -> Result<CompiledHook> {
+    let pattern = def.pattern.as_ref()
+        .map(|p| {
+            let anchored = format!("^{}$", p);
+            Regex::new(&anchored).map_err(|e| Error::from_reason(format!("Invalid hook pattern '{}': {}", p, e)))
+        })
+        .transpose()?;
+
+    let command_pattern = def.command_pattern.as_ref()
+        .map(|p| Regex::new(p).map_err(|e| Error::from_reason(format!("Invalid command pattern '{}': {}", p, e))))
+        .transpose()?;
+
+    let file_pattern = def.file_pattern.as_ref()
+        .map(|p| Regex::new(p).map_err(|e| Error::from_reason(format!("Invalid file pattern '{}': {}", p, e))))
+        .transpose()?;
+
+    let action_patterns: Result<Vec<CompiledAction>> = def.actions.iter()
+        .map(|action| compile_action(action.clone()))
+        .collect();
+
+    Ok(CompiledHook {
+        name,
+        definition: def,
+        pattern,
+        command_pattern,
+        file_pattern,
+        action_patterns: action_patterns?,
+    })
+}
+
+fn compile_action(action: HookAction) -> Result<CompiledAction> {
+    let patterns = if !action.patterns.is_empty() {
+        Some(create_pattern_set(action.patterns.clone())?)
+    } else {
+        None
+    };
+
+    let command_pattern = action.command_pattern.as_ref()
+        .map(|p| Regex::new(p).map_err(|e| Error::from_reason(format!("Invalid action command pattern '{}': {}", p, e))))
+        .transpose()?;
+
+    let file_pattern = action.file_pattern.as_ref()
+        .map(|p| Regex::new(p).map_err(|e| Error::from_reason(format!("Invalid action file pattern '{}': {}", p, e))))
+        .transpose()?;
+
+    Ok(CompiledAction {
+        action,
+        patterns,
+        command_pattern,
+        file_pattern,
+    })
+}
+
+fn evaluate_action_patterns(action: &CompiledAction, ctx: &NapiHookContext) -> bool {
+    // Check action-level command pattern
+    if let Some(ref pattern) = action.command_pattern {
+        match &ctx.command {
+            Some(cmd) => if !pattern.is_match(cmd) { return false; },
+            None => return false,
+        }
+    }
+
+    // Check action-level file pattern
+    if let Some(ref pattern) = action.file_pattern {
+        match &ctx.file_path {
+            Some(path) => if !pattern.is_match(path) { return false; },
+            None => return false,
+        }
+    }
+
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +601,43 @@ mod tests {
         let r3 = set.scan("foo only".to_string());
         assert!(r3.found);
         assert_eq!(r3.matches.len(), 1);
+    }
+
+    #[test]
+    fn test_hook_config_handle() {
+        let config = r#"{
+            "hooks": {
+                "PreToolUse": {
+                    "sensitive-scan": {
+                        "pattern": "Bash",
+                        "actions": [
+                            {
+                                "type": "scan",
+                                "patterns": ["API_KEY", "SECRET"],
+                                "block": true,
+                                "message": "Sensitive pattern detected"
+                            }
+                        ]
+                    }
+                }
+            }
+        }"#;
+
+        let handle = HookConfigHandle::new(config.to_string()).unwrap();
+        assert_eq!(handle.hook_count(NapiHookLifecycle::PreToolUse), 1);
+        assert_eq!(handle.hook_count(NapiHookLifecycle::PostToolUse), 0);
+
+        let ctx = NapiHookContext {
+            tool: Some("Bash".to_string()),
+            command: Some("echo API_KEY=secret".to_string()),
+            file_path: None,
+            file_content: None,
+            input_json: None,
+            output: None,
+        };
+
+        let result = handle.evaluate(NapiHookLifecycle::PreToolUse, ctx);
+        assert_eq!(result.matching_hooks.len(), 1);
+        assert!(result.matching_hooks[0].has_blocking_action);
     }
 }

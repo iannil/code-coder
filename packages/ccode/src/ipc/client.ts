@@ -7,6 +7,7 @@
 
 import { spawn, type ChildProcess } from "child_process"
 import { EventEmitter } from "events"
+import { VERSION } from "@/version"
 import { IpcProtocol, isSocketReady, waitForSocket } from "./protocol"
 import type {
   InitializeParams,
@@ -257,7 +258,7 @@ export class IpcClient extends EventEmitter {
       cwd: options.cwd ?? process.cwd(),
       clientInfo: {
         name: "ccode-tui",
-        version: "1.0.0", // TODO: Get from package.json
+        version: VERSION,
       },
     }
 

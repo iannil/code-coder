@@ -13,6 +13,7 @@ import {
   tool,
   jsonSchema,
 } from "ai"
+import type { LanguageModelV3 } from "@ai-sdk/provider"
 import { clone, mergeDeep, pipe } from "remeda"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
@@ -259,7 +260,9 @@ export namespace LLM {
         ...input.messages,
       ],
       model: wrapLanguageModel({
-        model: language as any, // SDK v6: LanguageModelV2 → LanguageModelV3 compatibility
+        // Cast needed: wrapLanguageModel requires V3, but some providers (Google, OpenRouter, etc.) return V2
+        // Both versions are runtime-compatible; this is a SDK type migration issue
+        model: language as LanguageModelV3,
         middleware: [
           {
             specificationVersion: "v3" as const,

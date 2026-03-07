@@ -286,7 +286,11 @@ export namespace SessionProcessor {
                       // Emit skill_use event for Skill tool calls
                       if (toolName.toLowerCase() === "skill" && value.output.metadata?.name) {
                         const skillName = value.output.metadata.name as string
-                        const skillArgs = toolArgs && typeof toolArgs === "object" ? (toolArgs as any).args : undefined
+                        const rawSkillArgs =
+                          toolArgs && typeof toolArgs === "object" && "args" in toolArgs
+                            ? (toolArgs as { args: unknown }).args
+                            : undefined
+                        const skillArgs = typeof rawSkillArgs === "string" ? rawSkillArgs : undefined
                         const duration = match.state.time?.start ? Date.now() - match.state.time.start : undefined
                         TaskEmitter.skillUse(input.taskID, skillName, skillArgs, duration)
                       }
@@ -307,7 +311,7 @@ export namespace SessionProcessor {
                       state: {
                         status: "error",
                         input: value.input ?? match.state.input,
-                        error: (value.error as any).toString(),
+                        error: value.error instanceof Error ? value.error.message : String(value.error),
                         time: {
                           start: match.state.time.start,
                           end: Date.now(),

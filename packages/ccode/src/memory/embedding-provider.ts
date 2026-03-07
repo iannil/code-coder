@@ -13,6 +13,12 @@ import { Log } from "@/util/log"
 import { Provider } from "@/provider/provider"
 import { Config } from "@/config/config"
 import { Env } from "@/env"
+import {
+  cosineSimilarity as nativeCosineSimilarity,
+  normalizeVector,
+  generateHashEmbedding as nativeHashEmbedding,
+  generateHashEmbeddingsBatch as nativeHashEmbeddingsBatch,
+} from "@codecoder-ai/core"
 
 const log = Log.create({ service: "memory.embedding-provider" })
 
@@ -107,6 +113,17 @@ export class EmbeddingProvider {
       return this.embedBatchWithOpenAI(texts)
     }
 
+    // For hash provider, use native batch embedding (SIMD-accelerated)
+    if (this.config.provider === "hash" && typeof nativeHashEmbeddingsBatch === "function") {
+      const dimension = this.config.dimension || 1536
+      const vectors = nativeHashEmbeddingsBatch(texts, dimension)
+      return vectors.map((vector: number[]) => ({
+        vector,
+        dimension,
+        model: "hash",
+      }))
+    }
+
     // For other providers, process sequentially
     const results: EmbeddingResult[] = []
     for (const text of texts) {
@@ -116,22 +133,14 @@ export class EmbeddingProvider {
   }
 
   /**
-   * Calculate cosine similarity between two vectors
+   * Calculate cosine similarity between two vectors.
+   * Uses SIMD-accelerated native Rust implementation.
    */
   cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0
-
-    let dotProduct = 0
-    let normA = 0
-    let normB = 0
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i]
-      normA += a[i] * a[i]
-      normB += b[i] * b[i]
+    if (!nativeCosineSimilarity) {
+      throw new Error("Native bindings required: @codecoder-ai/core cosineSimilarity not available")
     }
-
-    return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB) || 1)
+    return nativeCosineSimilarity(a, b)
   }
 
   /**
@@ -283,47 +292,22 @@ export class EmbeddingProvider {
 
   private embedWithHash(text: string): EmbeddingResult {
     const dimension = this.config.dimension || 1536
-    const vector = new Float32Array(dimension)
 
-    // Deterministic hash for reproducibility
-    let hash = 0
-    for (let i = 0; i < text.length; i++) {
-      const char = text.charCodeAt(i)
-      hash = (hash << 5) - hash + char
-      hash = hash & hash
-    }
-
-    const seed = Math.abs(hash)
-
-    // Generate pseudo-random vector from hash
-    for (let i = 0; i < dimension; i++) {
-      const x = Math.sin(seed + i) * 10000
-      vector[i] = x - Math.floor(x)
-    }
-
-    // Add word-level features
-    const words = text.toLowerCase().split(/\s+/)
-    for (const word of words) {
-      let wordHash = 0
-      for (let i = 0; i < word.length; i++) {
-        wordHash = (wordHash << 5) - wordHash + word.charCodeAt(i)
-        wordHash = wordHash & wordHash
+    // Use native SIMD-accelerated hash embedding (Phase 12)
+    if (typeof nativeHashEmbedding === "function") {
+      const vector = nativeHashEmbedding(text, dimension)
+      return {
+        vector,
+        dimension,
+        model: "hash",
       }
-      const idx = Math.abs(wordHash) % dimension
-      vector[idx] += 0.1
     }
 
-    // Normalize
-    const norm = Math.sqrt(vector.reduce((sum, val) => sum + val * val, 0))
-    for (let i = 0; i < dimension; i++) {
-      vector[i] /= norm || 1
-    }
-
-    return {
-      vector: Array.from(vector),
-      dimension,
-      model: "hash",
-    }
+    // Fallback (should not reach here with proper native bindings)
+    throw new Error(
+      "@codecoder-ai/core native bindings required: Hash embedding not available. " +
+      "Run: cd services/zero-core && cargo build --features napi-bindings"
+    )
   }
 
   private getCacheKey(text: string): string {

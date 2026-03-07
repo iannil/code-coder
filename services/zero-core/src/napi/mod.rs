@@ -19,6 +19,9 @@ mod config;
 mod context;
 
 #[cfg(feature = "napi-bindings")]
+mod embedding;
+
+#[cfg(feature = "napi-bindings")]
 mod git;
 
 #[cfg(feature = "napi-bindings")]
@@ -29,6 +32,12 @@ mod history;
 
 #[cfg(feature = "napi-bindings")]
 mod hook;
+
+#[cfg(feature = "napi-bindings")]
+mod ignore;
+
+#[cfg(feature = "napi-bindings")]
+mod index;
 
 #[cfg(feature = "napi-bindings")]
 mod java;
@@ -43,6 +52,9 @@ mod markdown;
 mod memory;
 
 #[cfg(feature = "napi-bindings")]
+mod observability;
+
+#[cfg(feature = "napi-bindings")]
 mod protocol;
 
 #[cfg(feature = "napi-bindings")]
@@ -52,10 +64,16 @@ mod provider;
 mod pty;
 
 #[cfg(feature = "napi-bindings")]
+mod schema;
+
+#[cfg(feature = "napi-bindings")]
 mod security;
 
 #[cfg(feature = "napi-bindings")]
 mod shell_parser;
+
+#[cfg(feature = "napi-bindings")]
+mod skill;
 
 #[cfg(feature = "napi-bindings")]
 mod storage;
@@ -91,6 +109,9 @@ pub use config::*;
 pub use context::*;
 
 #[cfg(feature = "napi-bindings")]
+pub use embedding::*;
+
+#[cfg(feature = "napi-bindings")]
 pub use git::*;
 
 #[cfg(feature = "napi-bindings")]
@@ -101,6 +122,12 @@ pub use history::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use hook::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use ignore::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use index::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use java::*;
@@ -115,6 +142,9 @@ pub use markdown::*;
 pub use memory::*;
 
 #[cfg(feature = "napi-bindings")]
+pub use observability::*;
+
+#[cfg(feature = "napi-bindings")]
 pub use protocol::*;
 
 #[cfg(feature = "napi-bindings")]
@@ -124,10 +154,16 @@ pub use provider::*;
 pub use pty::*;
 
 #[cfg(feature = "napi-bindings")]
+pub use schema::*;
+
+#[cfg(feature = "napi-bindings")]
 pub use security::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use shell_parser::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use skill::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use storage::*;

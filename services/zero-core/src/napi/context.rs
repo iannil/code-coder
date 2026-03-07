@@ -1008,3 +1008,307 @@ fn convert_napi_cache_to_rust(napi: NapiProjectCache) -> RustProjectCache {
     cache.test_files = napi.test_files;
     cache
 }
+
+// ============================================================================
+// Context Loader Types (NAPI)
+// ============================================================================
+
+use crate::context::loader::{
+    ContextLoader, DependencyGraph as RustDependencyGraph,
+    DirectoryStructure as RustDirectoryStructure, FileEntry as RustFileEntry,
+    FileIndex as RustFileIndex, ScanOptions as RustScanOptions,
+};
+
+/// File entry for NAPI
+#[napi(object)]
+pub struct NapiFileEntry {
+    pub path: String,
+    #[napi(js_name = "relativePath")]
+    pub relative_path: String,
+    pub name: String,
+    pub extension: Option<String>,
+    pub directory: bool,
+    pub size: i64,
+    #[napi(js_name = "lastModified")]
+    pub last_modified: i64,
+}
+
+impl From<RustFileEntry> for NapiFileEntry {
+    fn from(e: RustFileEntry) -> Self {
+        Self {
+            path: e.path,
+            relative_path: e.relative_path,
+            name: e.name,
+            extension: e.extension,
+            directory: e.directory,
+            size: e.size as i64,
+            last_modified: e.last_modified as i64,
+        }
+    }
+}
+
+/// Directory structure for NAPI
+#[napi(object)]
+pub struct NapiDirectoryStructure {
+    pub path: String,
+    pub name: String,
+    pub files: Vec<String>,
+    pub subdirectories: Vec<NapiDirectoryStructure>,
+}
+
+impl From<RustDirectoryStructure> for NapiDirectoryStructure {
+    fn from(s: RustDirectoryStructure) -> Self {
+        Self {
+            path: s.path,
+            name: s.name,
+            files: s.files,
+            subdirectories: s.subdirectories.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+/// File index for NAPI
+#[napi(object)]
+pub struct NapiFileIndex {
+    #[napi(js_name = "byPath")]
+    pub by_path: HashMap<String, NapiFileEntry>,
+    #[napi(js_name = "byExtension")]
+    pub by_extension: HashMap<String, Vec<String>>,
+    #[napi(js_name = "byName")]
+    pub by_name: HashMap<String, Vec<String>>,
+    pub routes: Vec<String>,
+    pub components: Vec<String>,
+    pub tests: Vec<String>,
+    pub configs: Vec<String>,
+}
+
+impl From<RustFileIndex> for NapiFileIndex {
+    fn from(i: RustFileIndex) -> Self {
+        Self {
+            by_path: i.by_path.into_iter().map(|(k, v)| (k, v.into())).collect(),
+            by_extension: i.by_extension,
+            by_name: i.by_name,
+            routes: i.routes,
+            components: i.components,
+            tests: i.tests,
+            configs: i.configs,
+        }
+    }
+}
+
+/// Dependency graph for NAPI
+#[napi(object)]
+pub struct NapiDependencyGraph {
+    pub imports: HashMap<String, Vec<String>>,
+    #[napi(js_name = "importedBy")]
+    pub imported_by: HashMap<String, Vec<String>>,
+}
+
+impl From<RustDependencyGraph> for NapiDependencyGraph {
+    fn from(g: RustDependencyGraph) -> Self {
+        Self {
+            imports: g.imports,
+            imported_by: g.imported_by,
+        }
+    }
+}
+
+/// Scan options for NAPI
+#[napi(object)]
+pub struct NapiScanOptions {
+    #[napi(js_name = "maxDepth")]
+    pub max_depth: Option<u32>,
+    #[napi(js_name = "includeHidden")]
+    pub include_hidden: Option<bool>,
+    #[napi(js_name = "ignorePatterns")]
+    pub ignore_patterns: Option<Vec<String>>,
+}
+
+impl From<NapiScanOptions> for RustScanOptions {
+    fn from(o: NapiScanOptions) -> Self {
+        Self {
+            max_depth: o.max_depth.unwrap_or(10),
+            include_hidden: o.include_hidden.unwrap_or(false),
+            ignore_patterns: o.ignore_patterns.unwrap_or_default(),
+        }
+    }
+}
+
+/// Scan result for NAPI
+#[napi(object)]
+pub struct NapiScanResult {
+    pub entries: Vec<NapiFileEntry>,
+    pub structure: NapiDirectoryStructure,
+}
+
+/// Context loader handle for NAPI
+#[napi]
+pub struct ContextLoaderHandle {
+    inner: ContextLoader,
+    fingerprint: Option<RustFingerprintInfo>,
+}
+
+#[napi]
+impl ContextLoaderHandle {
+    /// Create a new context loader for the given directory
+    #[napi(constructor)]
+    pub fn new(root: String, options: Option<NapiScanOptions>) -> Self {
+        let opts = options.map(Into::into).unwrap_or_default();
+        Self {
+            inner: ContextLoader::with_options(&root, opts),
+            fingerprint: None,
+        }
+    }
+
+    /// Scan the directory and return file entries and structure
+    #[napi]
+    pub fn scan(&self) -> Result<NapiScanResult> {
+        let (entries, structure) = self.inner.scan()
+            .map_err(|e| Error::from_reason(e.to_string()))?;
+        Ok(NapiScanResult {
+            entries: entries.into_iter().map(Into::into).collect(),
+            structure: structure.into(),
+        })
+    }
+
+    /// Set fingerprint for categorization
+    #[napi]
+    pub fn set_fingerprint(&mut self, fingerprint: NapiFingerprintInfo) {
+        self.fingerprint = Some(convert_to_rust_fingerprint(fingerprint));
+    }
+
+    /// Categorize files based on fingerprint
+    #[napi]
+    pub fn categorize(&self, entries: Vec<NapiFileEntry>) -> Result<NapiFileIndex> {
+        let fingerprint = self.fingerprint.as_ref()
+            .ok_or_else(|| Error::from_reason("Fingerprint not set. Call setFingerprint first."))?;
+
+        let rust_entries: Vec<RustFileEntry> = entries.into_iter()
+            .map(|e| RustFileEntry {
+                path: e.path,
+                relative_path: e.relative_path,
+                name: e.name,
+                extension: e.extension,
+                directory: e.directory,
+                size: e.size as u64,
+                last_modified: e.last_modified as u64,
+            })
+            .collect();
+
+        let index = self.inner.categorize_files(&rust_entries, fingerprint);
+        Ok(index.into())
+    }
+
+    /// Extract import dependencies from source files
+    #[napi]
+    pub fn extract_dependencies(&self, entries: Vec<NapiFileEntry>, language: NapiProjectLanguage) -> NapiDependencyGraph {
+        let rust_entries: Vec<RustFileEntry> = entries.into_iter()
+            .map(|e| RustFileEntry {
+                path: e.path,
+                relative_path: e.relative_path,
+                name: e.name,
+                extension: e.extension,
+                directory: e.directory,
+                size: e.size as u64,
+                last_modified: e.last_modified as u64,
+            })
+            .collect();
+
+        let lang = match language {
+            NapiProjectLanguage::TypeScript => RustProjectLanguage::TypeScript,
+            NapiProjectLanguage::JavaScript => RustProjectLanguage::JavaScript,
+            NapiProjectLanguage::Python => RustProjectLanguage::Python,
+            NapiProjectLanguage::Go => RustProjectLanguage::Go,
+            NapiProjectLanguage::Rust => RustProjectLanguage::Rust,
+            NapiProjectLanguage::Java => RustProjectLanguage::Java,
+            NapiProjectLanguage::CSharp => RustProjectLanguage::CSharp,
+            NapiProjectLanguage::Other => RustProjectLanguage::Other,
+        };
+
+        let graph = self.inner.extract_imports(&rust_entries, lang);
+        graph.into()
+    }
+
+    /// Find files related to a given file
+    #[napi]
+    pub fn find_related_files(
+        &self,
+        file_path: String,
+        index: NapiFileIndex,
+        dependencies: NapiDependencyGraph,
+    ) -> Vec<String> {
+        let rust_index = RustFileIndex {
+            by_path: index.by_path.into_iter()
+                .map(|(k, v)| (k, RustFileEntry {
+                    path: v.path,
+                    relative_path: v.relative_path,
+                    name: v.name,
+                    extension: v.extension,
+                    directory: v.directory,
+                    size: v.size as u64,
+                    last_modified: v.last_modified as u64,
+                }))
+                .collect(),
+            by_extension: index.by_extension,
+            by_name: index.by_name,
+            routes: index.routes,
+            components: index.components,
+            tests: index.tests,
+            configs: index.configs,
+        };
+
+        let rust_deps = RustDependencyGraph {
+            imports: dependencies.imports,
+            imported_by: dependencies.imported_by,
+        };
+
+        self.inner.find_related_files(&file_path, &rust_index, &rust_deps)
+    }
+}
+
+/// Create a context loader (convenience function)
+#[napi]
+pub fn create_context_loader(root: String, options: Option<NapiScanOptions>) -> ContextLoaderHandle {
+    ContextLoaderHandle::new(root, options)
+}
+
+/// Scan a directory and return all file entries (convenience function)
+#[napi]
+pub fn scan_directory(root: String, options: Option<NapiScanOptions>) -> Result<NapiScanResult> {
+    let opts = options.map(Into::into).unwrap_or_default();
+    let loader = ContextLoader::with_options(&root, opts);
+    let (entries, structure) = loader.scan()
+        .map_err(|e| Error::from_reason(e.to_string()))?;
+    Ok(NapiScanResult {
+        entries: entries.into_iter().map(Into::into).collect(),
+        structure: structure.into(),
+    })
+}
+
+/// Extract dependencies from a directory (convenience function)
+#[napi]
+pub fn extract_directory_dependencies(
+    root: String,
+    language: NapiProjectLanguage,
+    options: Option<NapiScanOptions>,
+) -> Result<NapiDependencyGraph> {
+    let opts = options.map(Into::into).unwrap_or_default();
+    let loader = ContextLoader::with_options(&root, opts);
+
+    let (entries, _) = loader.scan()
+        .map_err(|e| Error::from_reason(e.to_string()))?;
+
+    let lang = match language {
+        NapiProjectLanguage::TypeScript => RustProjectLanguage::TypeScript,
+        NapiProjectLanguage::JavaScript => RustProjectLanguage::JavaScript,
+        NapiProjectLanguage::Python => RustProjectLanguage::Python,
+        NapiProjectLanguage::Go => RustProjectLanguage::Go,
+        NapiProjectLanguage::Rust => RustProjectLanguage::Rust,
+        NapiProjectLanguage::Java => RustProjectLanguage::Java,
+        NapiProjectLanguage::CSharp => RustProjectLanguage::CSharp,
+        NapiProjectLanguage::Other => RustProjectLanguage::Other,
+    };
+
+    let graph = loader.extract_imports(&entries, lang);
+    Ok(graph.into())
+}

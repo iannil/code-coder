@@ -44,18 +44,59 @@ import { SemanticGraph, CallGraph } from "./knowledge/graph"
 import { Patterns } from "./knowledge/patterns"
 
 import { Log } from "@/util/log"
+import { Instance } from "@/project/instance"
+import { Global } from "@/global"
+import path from "path"
 import { EditHistory as _EditHistory } from "./history/edits"
 import { Vector as _Vector } from "./vector"
+import {
+  createMemorySystem,
+  isNative,
+  type MemorySystemHandleType,
+  type NapiMemoryStats,
+} from "@codecoder-ai/core"
 
 const EditHistory = _EditHistory
 const Vector = _Vector
 
 const log = Log.create({ service: "memory" })
 
+// ============================================================================
+// Native Memory System Handle (singleton)
+// ============================================================================
+
+let memorySystemHandle: MemorySystemHandleType | null = null
+
+/**
+ * Get or create the native memory system handle
+ * Returns null if native bindings are not available
+ */
+function getMemorySystem(): MemorySystemHandleType | null {
+  if (memorySystemHandle) return memorySystemHandle
+  if (!isNative || !createMemorySystem) return null
+
+  try {
+    // Use Global.Path.data/memory for memory system storage
+    const dataDir = path.join(Global.Path.data, "memory")
+    memorySystemHandle = createMemorySystem(dataDir, Instance.project.id)
+    return memorySystemHandle
+  } catch (error) {
+    log.warn("Failed to create native memory system", { error })
+    return null
+  }
+}
+
+// ============================================================================
+// Memory Module API
+// ============================================================================
+
 export async function initialize(options?: { watch?: boolean; sync?: boolean }): Promise<void> {
   log.info("initializing memory module")
 
   try {
+    // Initialize native memory system first (if available)
+    getMemorySystem()
+
     await Preferences.get()
     await Style.get()
     await Knowledge.get()
@@ -79,6 +120,13 @@ export async function initialize(options?: { watch?: boolean; sync?: boolean }):
 export async function invalidate(): Promise<void> {
   log.info("invalidating memory cache")
 
+  // Use native invalidation for history (single NAPI call)
+  const nativeSystem = getMemorySystem()
+  if (nativeSystem) {
+    nativeSystem.invalidate()
+  }
+
+  // Invalidate TypeScript-managed modules
   await Preferences.invalidate()
   await Style.invalidate()
   await Knowledge.invalidate()
@@ -98,16 +146,72 @@ export async function exportMemory(): Promise<{
   timestamp: number
   data: any
 }> {
+  const nativeSystem = getMemorySystem()
+
+  // Use native export for history data
+  const nativeSnapshot = nativeSystem?.export()
+
+  // Use Sync module for other data
   const { Sync } = await import("./storage/sync")
-  return Sync.exportMemory()
+  const syncExport = await Sync.exportMemory()
+
+  // Merge native and sync exports
+  return {
+    ...syncExport,
+    data: {
+      ...syncExport.data,
+      _native: nativeSnapshot ? {
+        version: nativeSnapshot.version,
+        history: nativeSnapshot.history,
+        metadata: nativeSnapshot.metadata,
+      } : undefined,
+    },
+  }
 }
 
 export async function importMemory(
   data: any,
   options?: { merge?: boolean; overwrite?: boolean },
 ): Promise<{ imported: number; skipped: number; conflicts: number }> {
+  const nativeSystem = getMemorySystem()
+
+  // Import native data if present
+  let nativeResult = { imported: 0, skipped: 0, conflicts: 0 }
+  if (nativeSystem && data?._native) {
+    const result = nativeSystem.importSnapshot(
+      {
+        version: data._native.version || 1,
+        timestamp: Date.now(),
+        projectId: Instance.project.id,
+        history: data._native.history,
+        metadata: data._native.metadata || "{}",
+      },
+      {
+        merge: options?.merge || false,
+        overwriteConflicts: options?.overwrite || false,
+      }
+    )
+    nativeResult = { imported: result.imported, skipped: result.skipped, conflicts: result.conflicts }
+  }
+
+  // Import sync data
   const { Sync } = await import("./storage/sync")
-  return Sync.importMemory(data, options)
+  const syncResult = await Sync.importMemory(data, options)
+
+  return {
+    imported: syncResult.imported + nativeResult.imported,
+    skipped: syncResult.skipped + nativeResult.skipped,
+    conflicts: syncResult.conflicts + nativeResult.conflicts,
+  }
+}
+
+/**
+ * Get native memory stats (sync operation)
+ * Returns null if native bindings are not available
+ */
+export function getNativeStats(): NapiMemoryStats | null {
+  const nativeSystem = getMemorySystem()
+  return nativeSystem?.stats() ?? null
 }
 
 export async function getMemoryStats(): Promise<{
@@ -118,9 +222,14 @@ export async function getMemoryStats(): Promise<{
   codeIndex: any
   callGraph: any
   toolRegistry: any
+  native?: NapiMemoryStats
 }> {
   const { History: MemHistory } = await import("./history/index")
   const { DynamicToolRegistry } = await import("./tools/index")
+
+  // Get native stats (sync, fast)
+  const nativeStats = getNativeStats()
+
   const [prefs, knowledge, history, vectorStats, codeIndex, callGraphStats, toolStats] = await Promise.all([
     Preferences.get(),
     Knowledge.get(),
@@ -162,6 +271,7 @@ export async function getMemoryStats(): Promise<{
       byLanguage: toolStats.byLanguage,
       byTag: toolStats.byTag,
     },
+    native: nativeStats ?? undefined,
   }
 }
 
@@ -171,6 +281,13 @@ export async function cleanup(options?: { maxAge?: number; maxEntries?: number }
   const maxAge = options?.maxAge || 30 * 24 * 60 * 60 * 1000 // 30 days
   const cutoff = Date.now() - maxAge
   const maxAgeDays = Math.floor(maxAge / (24 * 60 * 60 * 1000))
+
+  // Use native cleanup for history (single NAPI call)
+  const nativeSystem = getMemorySystem()
+  if (nativeSystem) {
+    const result = nativeSystem.cleanup(maxAgeDays)
+    cleaned += result.removed
+  }
 
   cleaned += await Vector.cleanup(cutoff)
   cleaned += await EditHistory.cleanup(cutoff)

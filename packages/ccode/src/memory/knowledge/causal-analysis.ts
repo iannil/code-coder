@@ -6,99 +6,46 @@
  * and provide recommendations.
  *
  * Part of Phase 16: 因果链图数据库 (Causal Graph)
+ *
+ * NOTE: Core analysis algorithms are now implemented in Rust for performance.
+ * This file provides thin wrappers and TypeScript-specific business logic.
  */
 
 import { Log } from "@/util/log"
 import { CausalGraph } from "./graph"
 import type { CausalPattern, CausalSuggestion, ActionType, OutcomeStatus } from "./causal-types"
-import type { NapiCausalChain } from "@codecoder-ai/core"
+import type { NapiCausalChain, NapiCausalPattern, NapiSimilarDecision, NapiTrendAnalysis, NapiAgentInsights } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "memory.knowledge.causal-analysis" })
 
 export namespace CausalAnalysis {
   // ============================================================================
-  // Pattern Recognition
+  // Pattern Recognition (Native Rust)
   // ============================================================================
 
   /**
    * Identify recurring decision-outcome patterns
+   * Delegates to native Rust implementation for O(N) performance
    */
   export async function findPatterns(options?: {
     agentId?: string
     minOccurrences?: number
     limit?: number
   }): Promise<CausalPattern[]> {
-    const minOccurrences = options?.minOccurrences ?? 2
-    const limit = options?.limit ?? 20
+    const nativePatterns = await CausalGraph.findPatterns(options)
 
-    const chains = await CausalGraph.query({
-      agentId: options?.agentId,
-      limit: 1000, // Get all for pattern analysis
-    })
-
-    // Group by agent + action type combination
-    const patternMap = new Map<
-      string,
-      {
-        agentId: string
-        actionType: ActionType
-        occurrences: number
-        successes: number
-        confidenceSum: number
-        decisionIds: string[]
-      }
-    >()
-
-    for (const chain of chains) {
-      for (const action of chain.actions) {
-        const key = `${chain.decision.agent_id}:${action.action_type}`
-        const existing = patternMap.get(key) || {
-          agentId: chain.decision.agent_id,
-          actionType: action.action_type as ActionType,
-          occurrences: 0,
-          successes: 0,
-          confidenceSum: 0,
-          decisionIds: [],
-        }
-
-        existing.occurrences++
-        existing.confidenceSum += chain.decision.confidence
-        existing.decisionIds.push(chain.decision.id)
-
-        // Check if this action led to success
-        const actionOutcomes = chain.outcomes.filter((o) => o.action_id === action.id)
-        const hasSuccess = actionOutcomes.some((o) => o.status === "success")
-        if (hasSuccess) existing.successes++
-
-        patternMap.set(key, existing)
-      }
-    }
-
-    // Convert to patterns and filter by minimum occurrences
-    const patterns: CausalPattern[] = []
-    let patternIndex = 0
-
-    for (const [key, data] of patternMap) {
-      if (data.occurrences < minOccurrences) continue
-
-      const successRate = data.occurrences > 0 ? data.successes / data.occurrences : 0
-      const avgConfidence = data.occurrences > 0 ? data.confidenceSum / data.occurrences : 0
-
-      patterns.push({
-        id: `pattern_${patternIndex++}`,
-        name: `${data.agentId} ${data.actionType} pattern`,
-        description: `Agent ${data.agentId} performing ${data.actionType} actions`,
-        agentId: data.agentId,
-        actionType: data.actionType,
-        occurrences: data.occurrences,
-        successRate,
-        avgConfidence,
-        examples: data.decisionIds.slice(0, 5),
-      })
-    }
-
-    // Sort by occurrences and limit
-    return patterns.sort((a, b) => b.occurrences - a.occurrences).slice(0, limit)
+    // Convert NapiCausalPattern to CausalPattern for API compatibility
+    return nativePatterns.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      agentId: p.agentId,
+      actionType: p.actionType as ActionType,
+      occurrences: p.occurrences,
+      successRate: p.successRate,
+      avgConfidence: p.avgConfidence,
+      examples: p.examples,
+    }))
   }
 
   /**
@@ -153,11 +100,11 @@ export namespace CausalAnalysis {
   }): Promise<CausalSuggestion[]> {
     const suggestions: CausalSuggestion[] = []
 
-    // Find similar past decisions
-    const similarDecisions = await findSimilarDecisions(input.prompt, input.agentId)
+    // Find similar past decisions using native Rust implementation
+    const similarDecisions = await CausalGraph.findSimilarDecisions(input.prompt, input.agentId, 3)
 
-    for (const similar of similarDecisions.slice(0, 3)) {
-      const chain = await CausalGraph.getCausalChain(similar.decision.id)
+    for (const similar of similarDecisions) {
+      const chain = await CausalGraph.getCausalChain(similar.decisionId)
       if (!chain) continue
 
       const successOutcomes = chain.outcomes.filter((o) => o.status === "success")
@@ -169,8 +116,8 @@ export namespace CausalAnalysis {
           id: `sug_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           type: "similar_decision",
           confidence: similar.similarity * (successOutcomes.length / (chain.outcomes.length || 1)),
-          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." succeeded with ${chain.actions[0]?.action_type || "unknown"} approach`,
-          basedOn: [similar.decision.id],
+          reasoning: `Similar decision "${similar.prompt.slice(0, 50)}..." succeeded with ${chain.actions[0]?.actionType || "unknown"} approach`,
+          basedOn: [similar.decisionId],
           suggestedAction: chain.actions[0]?.description,
         })
       } else if (failureOutcomes.length > 0) {
@@ -179,8 +126,8 @@ export namespace CausalAnalysis {
           id: `sug_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
           type: "avoid_pattern",
           confidence: similar.similarity * (failureOutcomes.length / (chain.outcomes.length || 1)),
-          reasoning: `Similar decision "${similar.decision.prompt.slice(0, 50)}..." failed with ${chain.actions[0]?.action_type || "unknown"} approach`,
-          basedOn: [similar.decision.id],
+          reasoning: `Similar decision "${similar.prompt.slice(0, 50)}..." failed with ${chain.actions[0]?.actionType || "unknown"} approach`,
+          basedOn: [similar.decisionId],
         })
       }
     }
@@ -203,70 +150,13 @@ export namespace CausalAnalysis {
     return suggestions.sort((a, b) => b.confidence - a.confidence)
   }
 
-  /**
-   * Find decisions similar to the given prompt
-   */
-  async function findSimilarDecisions(
-    prompt: string,
-    agentId: string,
-  ): Promise<Array<{ decision: NapiCausalChain["decision"]; similarity: number }>> {
-    const chains = await CausalGraph.query({ agentId, limit: 100 })
-    const results: Array<{ decision: NapiCausalChain["decision"]; similarity: number }> = []
-
-    const promptWords = extractKeywords(prompt)
-
-    for (const chain of chains) {
-      const decisionWords = extractKeywords(chain.decision.prompt)
-      const similarity = calculateSimilarity(promptWords, decisionWords)
-
-      if (similarity > 0.2) {
-        results.push({ decision: chain.decision, similarity })
-      }
-    }
-
-    return results.sort((a, b) => b.similarity - a.similarity)
-  }
-
-  /**
-   * Extract keywords from text for similarity comparison
-   */
-  function extractKeywords(text: string): Set<string> {
-    const stopWords = new Set([
-      "the", "a", "an", "is", "are", "was", "were", "be", "been",
-      "being", "have", "has", "had", "do", "does", "did", "will",
-      "would", "could", "should", "may", "might", "must", "shall",
-      "can", "to", "of", "in", "for", "on", "with", "at", "by",
-      "from", "or", "and", "not", "this", "that", "these", "those",
-      "it", "its", "i", "me", "my", "we", "our", "you", "your",
-    ])
-
-    const words = text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !stopWords.has(w))
-
-    return new Set(words)
-  }
-
-  /**
-   * Calculate Jaccard similarity between two keyword sets
-   */
-  function calculateSimilarity(set1: Set<string>, set2: Set<string>): number {
-    if (set1.size === 0 && set2.size === 0) return 0
-
-    const intersection = new Set([...set1].filter((x) => set2.has(x)))
-    const union = new Set([...set1, ...set2])
-
-    return intersection.size / union.size
-  }
-
   // ============================================================================
-  // Trend Analysis
+  // Trend Analysis (Native Rust)
   // ============================================================================
 
   /**
    * Analyze decision trends over time
+   * Delegates to native Rust implementation for statistical analysis
    */
   export async function analyzeTrends(options?: {
     agentId?: string
@@ -277,83 +167,25 @@ export namespace CausalAnalysis {
     confidenceTrend: number[]
     actionTypeShifts: Record<string, { before: number; after: number }>
   }> {
-    const periodDays = options?.periodDays ?? 7
-    const now = new Date()
-    const periodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000)
+    const nativeTrends = await CausalGraph.analyzeTrends(options)
 
-    const chains = await CausalGraph.query({
-      agentId: options?.agentId,
-      dateFrom: new Date(now.getTime() - 2 * periodDays * 24 * 60 * 60 * 1000).toISOString(),
-      limit: 1000,
-    })
-
-    // Split into before and after periods
-    const beforePeriod: NapiCausalChain[] = []
-    const afterPeriod: NapiCausalChain[] = []
-
-    for (const chain of chains) {
-      const decisionDate = new Date(chain.decision.timestamp)
-      if (decisionDate >= periodStart) {
-        afterPeriod.push(chain)
-      } else {
-        beforePeriod.push(chain)
+    // Parse action type shifts from JSON string
+    let actionTypeShifts: Record<string, { before: number; after: number }> = {}
+    try {
+      const shifts = JSON.parse(nativeTrends.actionTypeShifts) as Record<string, [number, number]>
+      for (const [type, [before, after]] of Object.entries(shifts)) {
+        actionTypeShifts[type] = { before, after }
       }
-    }
-
-    // Calculate success rate trend
-    const beforeSuccessRate = calculatePeriodSuccessRate(beforePeriod)
-    const afterSuccessRate = calculatePeriodSuccessRate(afterPeriod)
-
-    // Calculate confidence trend
-    const beforeConfidence = calculatePeriodConfidence(beforePeriod)
-    const afterConfidence = calculatePeriodConfidence(afterPeriod)
-
-    // Calculate action type shifts
-    const beforeActionTypes = countActionTypes(beforePeriod)
-    const afterActionTypes = countActionTypes(afterPeriod)
-    const allTypes = new Set([...Object.keys(beforeActionTypes), ...Object.keys(afterActionTypes)])
-
-    const actionTypeShifts: Record<string, { before: number; after: number }> = {}
-    for (const type of allTypes) {
-      actionTypeShifts[type] = {
-        before: beforeActionTypes[type] || 0,
-        after: afterActionTypes[type] || 0,
-      }
+    } catch {
+      // If parsing fails, return empty shifts
     }
 
     return {
-      totalDecisions: chains.length,
-      successRateTrend: [beforeSuccessRate, afterSuccessRate],
-      confidenceTrend: [beforeConfidence, afterConfidence],
+      totalDecisions: nativeTrends.totalDecisions,
+      successRateTrend: [nativeTrends.successRateBefore, nativeTrends.successRateAfter],
+      confidenceTrend: [nativeTrends.confidenceBefore, nativeTrends.confidenceAfter],
       actionTypeShifts,
     }
-  }
-
-  function calculatePeriodSuccessRate(chains: NapiCausalChain[]): number {
-    let totalOutcomes = 0
-    let successOutcomes = 0
-
-    for (const chain of chains) {
-      totalOutcomes += chain.outcomes.length
-      successOutcomes += chain.outcomes.filter((o) => o.status === "success").length
-    }
-
-    return totalOutcomes > 0 ? successOutcomes / totalOutcomes : 0
-  }
-
-  function calculatePeriodConfidence(chains: NapiCausalChain[]): number {
-    if (chains.length === 0) return 0
-    return chains.reduce((sum, c) => sum + c.decision.confidence, 0) / chains.length
-  }
-
-  function countActionTypes(chains: NapiCausalChain[]): Record<string, number> {
-    const counts: Record<string, number> = {}
-    for (const chain of chains) {
-      for (const action of chain.actions) {
-        counts[action.action_type] = (counts[action.action_type] || 0) + 1
-      }
-    }
-    return counts
   }
 
   // ============================================================================
@@ -373,16 +205,16 @@ export namespace CausalAnalysis {
     const outcome = await CausalGraph.getOutcome(outcomeId)
     if (!outcome) return null
 
-    const action = await CausalGraph.getAction(outcome.action_id)
+    const action = await CausalGraph.getAction(outcome.actionId)
     if (!action) return null
 
-    const decision = await CausalGraph.getDecision(action.decision_id)
+    const decision = await CausalGraph.getDecision(action.decisionId)
     if (!decision) return null
 
     // Find similar decisions
     const similarChains = await CausalGraph.query({
-      agentId: decision.agent_id,
-      actionType: action.action_type as ActionType,
+      agentId: decision.agentId,
+      actionType: action.actionType as ActionType,
       limit: 10,
     })
 
@@ -392,16 +224,16 @@ export namespace CausalAnalysis {
 
     let lesson: string
     if (outcome.status === "success") {
-      lesson = `${action.action_type} action succeeded: ${outcome.description}`
+      lesson = `${action.actionType} action succeeded: ${outcome.description}`
     } else if (outcome.status === "failure") {
-      lesson = `${action.action_type} action failed: ${outcome.description}. Consider alternative approaches.`
+      lesson = `${action.actionType} action failed: ${outcome.description}. Consider alternative approaches.`
     } else {
-      lesson = `${action.action_type} action partially succeeded: ${outcome.description}. May need refinement.`
+      lesson = `${action.actionType} action partially succeeded: ${outcome.description}. May need refinement.`
     }
 
     return {
       lesson,
-      actionType: action.action_type as ActionType,
+      actionType: action.actionType as ActionType,
       status: outcome.status as OutcomeStatus,
       confidence: decision.confidence,
       relatedDecisions,
@@ -410,6 +242,7 @@ export namespace CausalAnalysis {
 
   /**
    * Get aggregated insights for an agent
+   * Delegates to native Rust implementation for comprehensive analysis
    */
   export async function getAgentInsights(agentId: string): Promise<{
     totalDecisions: number
@@ -420,76 +253,16 @@ export namespace CausalAnalysis {
     recentTrend: "improving" | "declining" | "stable"
     suggestions: string[]
   }> {
-    // Get chains for this agent to compute stats
-    const chains = await CausalGraph.query({ agentId, limit: 1000 })
-
-    if (chains.length === 0) {
-      return {
-        totalDecisions: 0,
-        successRate: 0,
-        avgConfidence: 0,
-        strongestActionType: null,
-        weakestActionType: null,
-        recentTrend: "stable",
-        suggestions: ["No historical data available for this agent"],
-      }
-    }
-
-    // Calculate agent-specific stats
-    const totalDecisions = chains.length
-    let totalSuccesses = 0
-    let totalOutcomes = 0
-    let confidenceSum = 0
-
-    for (const chain of chains) {
-      confidenceSum += chain.decision.confidence
-      for (const outcome of chain.outcomes) {
-        totalOutcomes++
-        if (outcome.status === "success") totalSuccesses++
-      }
-    }
-
-    const successRate = totalOutcomes > 0 ? totalSuccesses / totalOutcomes : 0
-    const avgConfidence = confidenceSum / totalDecisions
-
-    const patterns = await findPatterns({ agentId, minOccurrences: 2 })
-
-    const strongestPattern = patterns
-      .filter((p) => p.successRate >= 0.7)
-      .sort((a, b) => b.successRate - a.successRate)[0]
-
-    const weakestPattern = patterns
-      .filter((p) => p.successRate <= 0.3)
-      .sort((a, b) => a.successRate - b.successRate)[0]
-
-    const trends = await analyzeTrends({ agentId, periodDays: 7 })
-    const [beforeSuccess, afterSuccess] = trends.successRateTrend
-    const recentTrend =
-      afterSuccess > beforeSuccess + 0.1
-        ? "improving"
-        : afterSuccess < beforeSuccess - 0.1
-          ? "declining"
-          : "stable"
-
-    const suggestions: string[] = []
-    if (weakestPattern) {
-      suggestions.push(`Consider reviewing ${weakestPattern.actionType} approach - only ${Math.round(weakestPattern.successRate * 100)}% success rate`)
-    }
-    if (strongestPattern) {
-      suggestions.push(`${strongestPattern.actionType} is working well (${Math.round(strongestPattern.successRate * 100)}% success) - consider using more`)
-    }
-    if (recentTrend === "declining") {
-      suggestions.push("Performance declining - review recent failures for patterns")
-    }
+    const nativeInsights = await CausalGraph.getAgentInsights(agentId)
 
     return {
-      totalDecisions,
-      successRate,
-      avgConfidence,
-      strongestActionType: strongestPattern?.actionType ?? null,
-      weakestActionType: weakestPattern?.actionType ?? null,
-      recentTrend,
-      suggestions,
+      totalDecisions: nativeInsights.totalDecisions,
+      successRate: nativeInsights.successRate,
+      avgConfidence: nativeInsights.avgConfidence,
+      strongestActionType: nativeInsights.strongestActionType ?? null,
+      weakestActionType: nativeInsights.weakestActionType ?? null,
+      recentTrend: nativeInsights.recentTrend as "improving" | "declining" | "stable",
+      suggestions: nativeInsights.suggestions,
     }
   }
 }

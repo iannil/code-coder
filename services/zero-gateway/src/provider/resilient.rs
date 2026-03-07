@@ -356,7 +356,12 @@ mod tests {
                 true
             }
             async fn chat(&self, _: ChatRequest) -> Result<ChatResponse, ProviderError> {
-                unimplemented!()
+                Err(ProviderError {
+                    provider: self.name.to_string(),
+                    model: String::new(),
+                    message: "Mock provider - chat not implemented".to_string(),
+                    status_code: None,
+                })
             }
         }
 

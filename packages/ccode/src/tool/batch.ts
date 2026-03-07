@@ -1,11 +1,27 @@
 import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION from "./batch.txt"
+import type { MessageV2 } from "../session/message-v2"
+import type { ToolRegistryHandleType } from "@codecoder-ai/core"
 
 const DISALLOWED = new Set(["batch"])
 const FILTERED_FROM_SUGGESTIONS = new Set(["invalid", "patch", ...DISALLOWED])
 
+// Native tools that can be batched in Rust
+const NATIVE_TOOLS = new Set(["grep", "glob", "read", "edit", "write", "ls", "apply_patch", "multiedit"])
+
 export const BatchTool = Tool.define("batch", async () => {
+  // Try to get native tool registry
+  let nativeRegistry: ToolRegistryHandleType | null = null
+  try {
+    const { isNative, createToolRegistry } = await import("@codecoder-ai/core")
+    if (isNative && createToolRegistry) {
+      nativeRegistry = createToolRegistry()
+    }
+  } catch {
+    // Native bindings not available
+  }
+
   return {
     description: DESCRIPTION,
     parameters: z.object({
@@ -40,9 +56,165 @@ export const BatchTool = Tool.define("batch", async () => {
       const availableTools = await ToolRegistry.tools({ modelID: "", providerID: "" })
       const toolMap = new Map(availableTools.map((t) => [t.id, t]))
 
-      const executeCall = async (call: (typeof toolCalls)[0]) => {
-        const callStartTime = Date.now()
+      // Separate native and non-native calls
+      const nativeCalls: { call: (typeof toolCalls)[0]; index: number; partID: string }[] = []
+      const jsCalls: { call: (typeof toolCalls)[0]; index: number; partID: string }[] = []
+
+      for (let i = 0; i < toolCalls.length; i++) {
+        const call = toolCalls[i]
         const partID = Identifier.ascending("part")
+
+        if (nativeRegistry && NATIVE_TOOLS.has(call.tool)) {
+          nativeCalls.push({ call, index: i, partID })
+        } else {
+          jsCalls.push({ call, index: i, partID })
+        }
+      }
+
+      type CallResult = {
+        success: true
+        tool: string
+        result: { output: string; title?: string; metadata?: unknown; attachments?: MessageV2.FilePart[] }
+        partID: string
+        index: number
+      } | {
+        success: false
+        tool: string
+        error: Error
+        partID: string
+        index: number
+      }
+
+      const allResults: CallResult[] = []
+
+      // Execute native calls in a single batch NAPI call
+      if (nativeRegistry && nativeCalls.length > 0) {
+        const callStartTime = Date.now()
+
+        // Update session parts to "running" for native calls
+        await Promise.all(
+          nativeCalls.map(({ call, partID }) =>
+            Session.updatePart({
+              id: partID,
+              messageID: ctx.messageID,
+              sessionID: ctx.sessionID,
+              type: "tool",
+              tool: call.tool,
+              callID: partID,
+              state: {
+                status: "running",
+                input: call.parameters,
+                time: { start: callStartTime },
+              },
+            }),
+          ),
+        )
+
+        // Prepare batch calls
+        const batchCalls = nativeCalls.map(({ call, partID }) => ({
+          tool: call.tool,
+          argsJson: JSON.stringify(call.parameters),
+          callId: partID,
+        }))
+
+        try {
+          // Execute all native tools in parallel via single NAPI call
+          const batchResult = await nativeRegistry.executeBatch(batchCalls)
+
+          // Process results
+          for (let i = 0; i < nativeCalls.length; i++) {
+            const { call, index, partID } = nativeCalls[i]
+            const result = batchResult.results[i]
+
+            const endTime = Date.now()
+
+            if (result.success) {
+              await Session.updatePart({
+                id: partID,
+                messageID: ctx.messageID,
+                sessionID: ctx.sessionID,
+                type: "tool",
+                tool: call.tool,
+                callID: partID,
+                state: {
+                  status: "completed",
+                  input: call.parameters,
+                  output: result.output,
+                  title: `${call.tool} (native batch)`,
+                  metadata: { native: true, durationMs: result.durationMs },
+                  time: { start: callStartTime, end: endTime },
+                },
+              })
+
+              allResults.push({
+                success: true,
+                tool: call.tool,
+                result: {
+                  output: result.output,
+                  title: `${call.tool} (native batch)`,
+                  metadata: { native: true, durationMs: result.durationMs },
+                },
+                partID,
+                index,
+              })
+            } else {
+              await Session.updatePart({
+                id: partID,
+                messageID: ctx.messageID,
+                sessionID: ctx.sessionID,
+                type: "tool",
+                tool: call.tool,
+                callID: partID,
+                state: {
+                  status: "error",
+                  input: call.parameters,
+                  error: result.error ?? "Unknown error",
+                  time: { start: callStartTime, end: endTime },
+                },
+              })
+
+              allResults.push({
+                success: false,
+                tool: call.tool,
+                error: new Error(result.error ?? "Unknown error"),
+                partID,
+                index,
+              })
+            }
+          }
+        } catch (error) {
+          // Batch execution failed entirely, mark all as error
+          const endTime = Date.now()
+          for (const { call, index, partID } of nativeCalls) {
+            await Session.updatePart({
+              id: partID,
+              messageID: ctx.messageID,
+              sessionID: ctx.sessionID,
+              type: "tool",
+              tool: call.tool,
+              callID: partID,
+              state: {
+                status: "error",
+                input: call.parameters,
+                error: error instanceof Error ? error.message : String(error),
+                time: { start: callStartTime, end: endTime },
+              },
+            })
+
+            allResults.push({
+              success: false,
+              tool: call.tool,
+              error: error instanceof Error ? error : new Error(String(error)),
+              partID,
+              index,
+            })
+          }
+        }
+      }
+
+      // Execute non-native calls in parallel (as before)
+      const executeCall = async ({ call, index, partID }: (typeof jsCalls)[0]): Promise<CallResult> => {
+        const callStartTime = Date.now()
 
         try {
           if (DISALLOWED.has(call.tool)) {
@@ -70,9 +242,7 @@ export const BatchTool = Tool.define("batch", async () => {
             state: {
               status: "running",
               input: call.parameters,
-              time: {
-                start: callStartTime,
-              },
+              time: { start: callStartTime },
             },
           })
 
@@ -92,14 +262,11 @@ export const BatchTool = Tool.define("batch", async () => {
               title: result.title,
               metadata: result.metadata,
               attachments: result.attachments,
-              time: {
-                start: callStartTime,
-                end: Date.now(),
-              },
+              time: { start: callStartTime, end: Date.now() },
             },
           })
 
-          return { success: true as const, tool: call.tool, result }
+          return { success: true, tool: call.tool, result, partID, index }
         } catch (error) {
           await Session.updatePart({
             id: partID,
@@ -112,18 +279,16 @@ export const BatchTool = Tool.define("batch", async () => {
               status: "error",
               input: call.parameters,
               error: error instanceof Error ? error.message : String(error),
-              time: {
-                start: callStartTime,
-                end: Date.now(),
-              },
+              time: { start: callStartTime, end: Date.now() },
             },
           })
 
-          return { success: false as const, tool: call.tool, error }
+          return { success: false, tool: call.tool, error: error instanceof Error ? error : new Error(String(error)), partID, index }
         }
       }
 
-      const results = await Promise.all(toolCalls.map((call) => executeCall(call)))
+      const jsResults = await Promise.all(jsCalls.map(executeCall))
+      allResults.push(...jsResults)
 
       // Add discarded calls as errors
       const now = Date.now()
@@ -143,31 +308,40 @@ export const BatchTool = Tool.define("batch", async () => {
             time: { start: now, end: now },
           },
         })
-        results.push({
-          success: false as const,
+        allResults.push({
+          success: false,
           tool: call.tool,
           error: new Error("Maximum of 25 tools allowed in batch"),
+          partID,
+          index: allResults.length,
         })
       }
 
-      const successfulCalls = results.filter((r) => r.success).length
-      const failedCalls = results.length - successfulCalls
+      // Sort results by original index to maintain order
+      allResults.sort((a, b) => a.index - b.index)
+
+      const successfulCalls = allResults.filter((r) => r.success).length
+      const failedCalls = allResults.length - successfulCalls
+      const nativeCount = nativeCalls.length
 
       const outputMessage =
         failedCalls > 0
-          ? `Executed ${successfulCalls}/${results.length} tools successfully. ${failedCalls} failed.`
-          : `All ${successfulCalls} tools executed successfully.\n\nKeep using the batch tool for optimal performance in your next response!`
+          ? `Executed ${successfulCalls}/${allResults.length} tools successfully (${nativeCount} native batch). ${failedCalls} failed.`
+          : `All ${successfulCalls} tools executed successfully (${nativeCount} native batch).\n\nKeep using the batch tool for optimal performance in your next response!`
 
       return {
-        title: `Batch execution (${successfulCalls}/${results.length} successful)`,
+        title: `Batch execution (${successfulCalls}/${allResults.length} successful, ${nativeCount} native)`,
         output: outputMessage,
-        attachments: results.filter((result) => result.success).flatMap((r) => r.result.attachments ?? []),
+        attachments: allResults
+          .filter((result): result is Extract<typeof result, { success: true }> => result.success)
+          .flatMap((r) => r.result.attachments ?? []),
         metadata: {
-          totalCalls: results.length,
+          totalCalls: allResults.length,
           successful: successfulCalls,
           failed: failedCalls,
+          nativeCount,
           tools: params.tool_calls.map((c) => c.tool),
-          details: results.map((r) => ({ tool: r.tool, success: r.success })),
+          details: allResults.map((r) => ({ tool: r.tool, success: r.success })),
         },
       }
     },

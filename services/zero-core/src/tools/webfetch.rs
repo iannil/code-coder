@@ -214,7 +214,7 @@ pub struct WebFetcher {
     /// HTTP client
     client: reqwest::Client,
     /// Default options
-    default_options: WebFetchOptions,
+    _default_options: WebFetchOptions,
 }
 
 impl Default for WebFetcher {
@@ -233,7 +233,7 @@ impl WebFetcher {
 
         Self {
             client,
-            default_options: WebFetchOptions::default(),
+            _default_options: WebFetchOptions::default(),
         }
     }
 
@@ -251,7 +251,7 @@ impl WebFetcher {
 
         Self {
             client,
-            default_options: options,
+            _default_options: options,
         }
     }
 

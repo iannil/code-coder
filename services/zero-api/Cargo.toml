@@ -43,6 +43,9 @@ uuid = { workspace = true }
 # Time
 chrono = { workspace = true }
 
+# Lazy initialization
+once_cell = { workspace = true }
+
 # WebSocket
 tokio-tungstenite = "0.24"
 futures-util = { workspace = true }

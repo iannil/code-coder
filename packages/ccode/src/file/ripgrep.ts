@@ -7,6 +7,29 @@ import { grep as nativeGrep, glob as nativeGlob } from "@codecoder-ai/core"
 
 import { Log } from "@/util/log"
 
+/** Native glob result - can be array directly or wrapped object */
+type GlobResult = string[] | { files: string[] }
+
+/** Check if glob result is wrapped object */
+function isWrappedGlobResult(result: GlobResult): result is { files: string[] } {
+  return !Array.isArray(result) && typeof result === "object" && "files" in result
+}
+
+/** Native grep match entry */
+interface NativeGrepMatch {
+  path: string
+  lineNumber: number
+  lineContent: string
+}
+
+/** Native grep result - can be array directly or wrapped object */
+type NativeGrepResult = NativeGrepMatch[] | { matches: NativeGrepMatch[]; truncated?: boolean }
+
+/** Check if grep result is wrapped object */
+function isWrappedGrepResult(result: NativeGrepResult): result is { matches: NativeGrepMatch[] } {
+  return !Array.isArray(result) && typeof result === "object" && "matches" in result
+}
+
 export namespace Ripgrep {
   const log = Log.create({ service: "ripgrep" })
 
@@ -52,8 +75,9 @@ export namespace Ripgrep {
     }
 
     const pattern = input.glob?.length ? input.glob.join(",") : "**/*"
-    // Native API: glob(pattern, options?) - cast through unknown to bypass union type mismatch
-    const globFn = nativeGlob as unknown as (pattern: string, options?: any) => Promise<string[]>
+    // Native API: glob(pattern, options?)
+    // Cast through unknown: nativeGlob has overloaded signatures, we use the async variant
+    const globFn = nativeGlob as unknown as (pattern: string, options?: Record<string, unknown>) => Promise<GlobResult>
     const result = await globFn(pattern, {
       path: input.cwd,
       includeHidden: input.hidden !== false,
@@ -63,8 +87,8 @@ export namespace Ripgrep {
       followSymlinks: input.follow !== false,
     })
 
-    // Result is string[] directly
-    const files = Array.isArray(result) ? result : (result as any).files ?? []
+    // Result is string[] directly or wrapped object
+    const files = isWrappedGlobResult(result) ? result.files : result
     for (const filePath of files) {
       // Return relative path
       const relativePath = path.relative(input.cwd, filePath)
@@ -192,8 +216,13 @@ export namespace Ripgrep {
       throw new Error("Native bindings required: @codecoder-ai/core grep not available")
     }
 
-    // Native API: grep(pattern, path, options?) - cast through unknown to bypass union type mismatch
-    const grepFn = nativeGrep as unknown as (pattern: string, path: string, options?: any) => Promise<any[]>
+    // Native API: grep(pattern, path, options?)
+    // Cast through unknown: nativeGrep has overloaded signatures, we use the async variant
+    const grepFn = nativeGrep as unknown as (
+      pattern: string,
+      path: string,
+      options?: Record<string, unknown>,
+    ) => Promise<NativeGrepResult>
     const result = await grepFn(input.pattern, input.cwd, {
       glob: input.glob?.join(","),
       limit: input.limit,
@@ -201,9 +230,9 @@ export namespace Ripgrep {
       lineNumbers: true,
     })
 
-    // Result is any[] - each item has path, lineNumber, lineContent
-    const matches = Array.isArray(result) ? result : (result as any).matches ?? []
-    return matches.map((m: any) => ({
+    // Handle result as array or wrapped object
+    const matches = isWrappedGrepResult(result) ? result.matches : result
+    return matches.map((m) => ({
       path: { text: m.path },
       lines: { text: m.lineContent },
       line_number: m.lineNumber,

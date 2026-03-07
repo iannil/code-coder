@@ -10,6 +10,7 @@
 
 pub mod config;
 pub mod file;
+pub mod ignore;
 pub mod schema;
 pub mod watcher;
 
@@ -20,6 +21,10 @@ pub mod watcher;
 // Re-export main types
 pub use config::{Config, ConfigLoader};
 pub use file::{FileInfo, FileType};
+pub use ignore::{
+    get_default_folders, get_default_patterns, should_ignore,
+    IgnoreCheckResult, IgnoreConfig, IgnoreEngine, IgnoreStats,
+};
 pub use schema::{SchemaValidator, ValidationIssue};
 pub use watcher::{
     FileWatcher, FileWatcherConfig, MultiWatcher, WatchEvent, WatchEventKind,

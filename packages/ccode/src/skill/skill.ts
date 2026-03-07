@@ -3,13 +3,13 @@ import path from "path"
 import { Config } from "../config/config"
 import { Instance } from "../project/instance"
 import { NamedError } from "@codecoder-ai/util/error"
-import { ConfigMarkdown } from "../config/markdown"
 import { Log } from "@/util/log"
 import { Global } from "@/global"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/flag/flag"
 import { Bus } from "@/bus"
 import { Session } from "@/session"
+import { parseSkillFromFile } from "@codecoder-ai/core"
 
 export namespace Skill {
   const log = Log.create({ service: "skill" })
@@ -42,36 +42,47 @@ export namespace Skill {
   const CLAUDE_SKILL_GLOB = new Bun.Glob("skills/**/SKILL.md")
   const BUILTIN_SKILL_GLOB = new Bun.Glob("*/SKILL.md")
 
+  /**
+   * Parse skill metadata using native Rust parser.
+   */
+  const parseSkill = async (filePath: string): Promise<{ name: string; description: string } | undefined> => {
+    if (!parseSkillFromFile) {
+      throw new Error("Native parseSkillFromFile binding is unavailable")
+    }
+
+    try {
+      const parsed = parseSkillFromFile(filePath)
+      return {
+        name: parsed.metadata.name,
+        description: parsed.metadata.description,
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : `Failed to parse skill ${filePath}`
+      Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+      log.error("failed to load skill", { skill: filePath, err })
+      return undefined
+    }
+  }
+
   export const state = Instance.state(async () => {
     const skills: Record<string, Info> = {}
 
     const addSkill = async (match: string) => {
-      const md = await ConfigMarkdown.parse(match).catch((err) => {
-        const message = ConfigMarkdown.FrontmatterError.isInstance(err)
-          ? err.data.message
-          : `Failed to parse skill ${match}`
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
-        log.error("failed to load skill", { skill: match, err })
-        return undefined
-      })
-
-      if (!md) return
-
-      const parsed = Info.pick({ name: true, description: true }).safeParse(md.data)
-      if (!parsed.success) return
+      const parsed = await parseSkill(match)
+      if (!parsed) return
 
       // Warn on duplicate skill names
-      if (skills[parsed.data.name]) {
+      if (skills[parsed.name]) {
         log.warn("duplicate skill name", {
-          name: parsed.data.name,
-          existing: skills[parsed.data.name].location,
+          name: parsed.name,
+          existing: skills[parsed.name].location,
           duplicate: match,
         })
       }
 
-      skills[parsed.data.name] = {
-        name: parsed.data.name,
-        description: parsed.data.description,
+      skills[parsed.name] = {
+        name: parsed.name,
+        description: parsed.description,
         location: match,
       }
     }

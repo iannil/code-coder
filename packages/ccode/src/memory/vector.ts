@@ -1,7 +1,13 @@
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
-import { cosineSimilarity as nativeCosineSimilarity, normalizeVector } from "@codecoder-ai/core"
+import {
+  cosineSimilarity as nativeCosineSimilarity,
+  normalizeVector,
+  EmbeddingIndexHandle,
+  createEmbeddingIndex,
+  type EmbeddingIndexHandleType,
+} from "@codecoder-ai/core"
 import z from "zod"
 
 const log = Log.create({ service: "memory.vector" })
@@ -37,6 +43,55 @@ export namespace Vector {
   const DEFAULT_DIMENSION = 1536
 
   let embeddingCache: Map<string, number[]> | undefined
+
+  // Native embedding index for SIMD-accelerated search
+  let nativeIndex: EmbeddingIndexHandleType | undefined
+  let indexInitialized = false
+
+  /**
+   * Initialize the native embedding index for SIMD-accelerated search.
+   * This is optional - if not called, search will use the slower Storage-based approach.
+   */
+  export async function initializeNativeIndex(): Promise<void> {
+    if (indexInitialized || !createEmbeddingIndex) {
+      return
+    }
+
+    try {
+      const stats = await getStats()
+      nativeIndex = createEmbeddingIndex(stats.dimension || DEFAULT_DIMENSION)
+
+      // Load existing embeddings into the native index
+      const projectID = Instance.project.id
+      const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
+
+      for (const key of keys) {
+        const embedding = await Storage.read<Embedding>(key)
+        nativeIndex.add(embedding.id, embedding.vector)
+      }
+
+      indexInitialized = true
+      log.info("Native embedding index initialized", { count: keys.length })
+    } catch (error) {
+      log.warn("Failed to initialize native index, using fallback", {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * Check if native index is available and initialized.
+   */
+  export function isNativeIndexAvailable(): boolean {
+    return indexInitialized && nativeIndex !== undefined
+  }
+
+  /**
+   * Get native index stats if available.
+   */
+  export function getNativeIndexStats(): { count: number; dimension: number; memoryBytes: number } | undefined {
+    return nativeIndex?.stats()
+  }
 
   export async function getStats(): Promise<IndexStats> {
     const projectID = Instance.project.id
@@ -76,6 +131,11 @@ export namespace Vector {
 
     await Storage.write(["memory", "vector", "embeddings", projectID, embedding.id], embedding)
 
+    // Add to native index if initialized
+    if (nativeIndex) {
+      nativeIndex.add(embedding.id, embeddingVector)
+    }
+
     const stats = await getStats()
     await updateStats({
       totalEmbeddings: stats.totalEmbeddings + 1,
@@ -114,12 +174,41 @@ export namespace Vector {
       threshold?: number
       fileType?: string
       type?: Embedding["metadata"]["type"]
+      useNativeIndex?: boolean // Set to false to force Storage-based search
     },
   ): Promise<SearchResult[]> {
     const projectID = Instance.project.id
     const queryVector = await generateEmbedding(query)
+    const limit = options?.limit || 10
+    const threshold = options?.threshold || 0
+
+    // Use native index if available and not explicitly disabled
+    const useNative = (options?.useNativeIndex !== false) && nativeIndex && !options?.fileType && !options?.type
 
     try {
+      if (useNative && nativeIndex) {
+        // Fast path: use SIMD-accelerated native search
+        const nativeResults = nativeIndex.search(queryVector, limit * 2, threshold) // fetch extra for filtering
+
+        // Load embeddings from Storage to apply metadata filters and return full data
+        const results: SearchResult[] = []
+        for (const { id, score } of nativeResults) {
+          if (results.length >= limit) break
+
+          const embedding = await Storage.read<Embedding>(["memory", "vector", "embeddings", projectID, id])
+          if (!embedding) continue
+
+          // Apply metadata filters if needed
+          if (options?.fileType && embedding.metadata.file !== options.fileType) continue
+          if (options?.type && embedding.metadata.type !== options.type) continue
+
+          results.push({ embedding, score })
+        }
+
+        return results
+      }
+
+      // Fallback path: iterate through Storage
       const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
       const results: SearchResult[] = []
 
@@ -256,6 +345,11 @@ export namespace Vector {
     try {
       await Storage.remove(["memory", "vector", "embeddings", projectID, id])
 
+      // Remove from native index if initialized
+      if (nativeIndex) {
+        nativeIndex.remove(id)
+      }
+
       const stats = await getStats()
       await updateStats({
         totalEmbeddings: Math.max(0, stats.totalEmbeddings - 1),
@@ -299,6 +393,11 @@ export namespace Vector {
       const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
       for (const key of keys) {
         await Storage.remove(key)
+      }
+
+      // Clear native index if initialized
+      if (nativeIndex) {
+        nativeIndex.clear()
       }
 
       await updateStats({ totalEmbeddings: 0 })
@@ -364,5 +463,11 @@ export namespace Vector {
     const projectID = Instance.project.id
     await Storage.remove(["memory", "vector", "stats", projectID])
     await clear()
+
+    // Reset native index
+    if (nativeIndex) {
+      nativeIndex.clear()
+    }
+    indexInitialized = false
   }
 }

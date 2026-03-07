@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use notify::{
     Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher,
-    event::{CreateKind, ModifyKind, RemoveKind, RenameMode},
+    event::{ModifyKind, RenameMode},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
@@ -348,6 +348,7 @@ impl Default for MultiWatcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use notify::event::{CreateKind, RemoveKind};
     use tempfile::TempDir;
     use std::fs;
 

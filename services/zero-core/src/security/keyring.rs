@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 /// Service name for keyring entries
-const SERVICE_NAME: &str = "codecoder";
+const _SERVICE_NAME: &str = "codecoder";
 
 /// Keyring backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

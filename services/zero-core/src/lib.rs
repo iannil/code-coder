@@ -40,13 +40,16 @@ pub mod context;
 pub mod foundation;
 pub mod git;
 pub mod graph;
+pub mod index;
 pub mod java;
 pub mod markdown;
 pub mod memory;
+pub mod observability;
 pub mod protocol;
 pub mod provider;
 pub mod security;
 pub mod session;
+pub mod skill;
 pub mod storage;
 pub mod tools;
 pub mod trace;
@@ -103,6 +106,10 @@ pub use security::{
 pub use foundation::{
     config::{Config, ConfigLoader},
     file::{FileInfo, FileType},
+    ignore::{
+        get_default_folders, get_default_patterns, should_ignore,
+        IgnoreCheckResult, IgnoreConfig, IgnoreEngine, IgnoreStats,
+    },
     watcher::{FileWatcher, FileWatcherConfig, MultiWatcher, WatchEvent, WatchEventKind},
 };
 
@@ -118,6 +125,7 @@ pub use context::{
 pub use memory::{
     chunk_markdown, Chunk, ChunkerConfig,
     cosine_similarity, hybrid_merge, vec_to_bytes, bytes_to_vec, ScoredResult,
+    KnnResult, knn_search, knn_search_indexed, batch_cosine_similarity,
     create_embedding_provider, EmbeddingProvider, EmbeddingConfig, NoopEmbedding, OpenAiEmbedding,
     // History types (FileEdit renamed to HistoryFileEdit to avoid conflict with multiedit::FileEdit)
     EditRecord, EditSession, FileEdit as HistoryFileEdit, FileEditType, EditStats, AgentStats,
@@ -126,6 +134,10 @@ pub use memory::{
     // Tokenizer types
     estimate_tokens, estimate_tokens_batch, fits_token_budget, truncate_to_tokens,
     BatchCountResult, TokenCounter, TokenCounterConfig, TokenizerModel,
+    // Phase 13: Unified memory system types
+    MemorySystem, MemoryStats, MemorySnapshot, HistoryStats, VectorStats, TokenizerStats,
+    HistorySnapshot, VectorSnapshot, ImportOptions, ImportResult, CleanupResult,
+    StoredEmbedding, VectorStore, ToolDefinition, ToolMatch,
 };
 
 pub use audit::{
@@ -178,6 +190,16 @@ pub use trace::{
     ErrorGroup, ErrorSample, ErrorSummary, GroupBy,
 };
 
+pub use observability::{
+    // Events
+    AgentLifecycleEvent, AgentLifecycleType, Event, EventType, LlmCallEvent,
+    SpanEvent, SpanKind, ToolExecutionEvent, ToolStatus,
+    // Metrics
+    AgentMetrics, MetricsAggregator, MetricsSummary, ModelMetrics, ToolMetrics,
+    // Store
+    ObservabilityStore, ObservabilityStoreConfig,
+};
+
 pub use web::{
     WebCategory, WebConfidence, WebDetection, WebFingerprint, WebFingerprintEngine,
     WebFingerprintInput, WebPatternType, WEB_FINGERPRINT_ENGINE,
@@ -189,10 +211,20 @@ pub use markdown::{
     CodeBlock, Heading, Image, Link, MarkdownNode,
 };
 
+pub use skill::{
+    parse_skill, parse_skill_file, parse_skill_metadata, validate_skill,
+    ParsedSkill, SkillMetadata, SkillParseError,
+};
+
 pub use git::{
     CloneOptions, CommitInfo, CommitResult, DiffFile, DiffResult,
     FileStatus, FileStatusType, GitError, GitOpsHandle, GitResult,
     GitStatus, InitOptions, OperationResult,
+};
+
+pub use index::{
+    CodeIndexer, CodeSymbol, FileIndex, IndexOptions, IndexStats, Language, LanguageParser,
+    ProjectIndex, SymbolKind,
 };
 
 pub use provider::{

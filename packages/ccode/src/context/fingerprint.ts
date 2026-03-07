@@ -12,6 +12,18 @@ import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/storage/storage"
 import z from "zod"
+import type {
+  NapiFingerprintInfo,
+  NapiFrameworkInfo,
+  NapiBuildToolInfo,
+  NapiTestFrameworkInfo,
+  NapiPackageInfo,
+  NapiConfigFile,
+  NapiDirectoryInfo,
+  NapiFrameworkType,
+  NapiPackageManager,
+  NapiProjectLanguage,
+} from "@codecoder-ai/core"
 
 const log = Log.create({ service: "context.fingerprint" })
 
@@ -19,34 +31,10 @@ const log = Log.create({ service: "context.fingerprint" })
 // Native Bindings (lazy loaded)
 // ============================================================================
 
-interface NativeFingerprintInfo {
-  projectId: string
-  frameworks: Array<{ name: string; version?: string; frameworkType: string }>
-  buildTools: Array<{ name: string; config?: string; version?: string }>
-  testFrameworks: Array<{ name: string; config?: string; runner?: string }>
-  package: { name?: string; version?: string; manager: string }
-  configs: Array<{ path: string; name: string }>
-  language: string
-  hasTypeScript: boolean
-  languageVersion?: string
-  directories: {
-    src?: string
-    components?: string
-    pages?: string
-    routes?: string
-    tests: string[]
-    lib?: string
-    dist?: string
-    build?: string
-    public?: string
-  }
-  hash: string
-}
-
 interface NativeBindings {
-  generateFingerprint: (path: string) => NativeFingerprintInfo
-  fingerprintSimilarity: (a: NativeFingerprintInfo, b: NativeFingerprintInfo) => number
-  describeFingerprint: (fp: NativeFingerprintInfo) => string
+  generateFingerprint: (path: string) => NapiFingerprintInfo
+  fingerprintSimilarity: (a: NapiFingerprintInfo, b: NapiFingerprintInfo) => number
+  describeFingerprint: (fp: NapiFingerprintInfo) => string
 }
 
 let nativeBindings: NativeBindings | null = null
@@ -56,9 +44,9 @@ async function loadNativeBindings(): Promise<NativeBindings> {
   if (nativeBindingsLoaded && nativeBindings) return nativeBindings
 
   try {
-    const bindings = (await import("@codecoder-ai/core")) as unknown as Record<string, unknown>
+    const bindings = await import("@codecoder-ai/core")
     if (typeof bindings.generateFingerprint === "function") {
-      nativeBindings = bindings as unknown as NativeBindings
+      nativeBindings = bindings as NativeBindings
       log.debug("Using native fingerprint implementation")
       nativeBindingsLoaded = true
       return nativeBindings
@@ -138,7 +126,7 @@ export namespace Fingerprint {
   /**
    * Convert native fingerprint result to Info type
    */
-  function convertNativeToInfo(native: NativeFingerprintInfo, projectID: string, now: number): Info {
+  function convertNativeToInfo(native: NapiFingerprintInfo, projectID: string, now: number): Info {
     const languageMap: Record<string, Info["language"]> = {
       TypeScript: "typescript",
       JavaScript: "javascript",
@@ -195,7 +183,7 @@ export namespace Fingerprint {
         name: c.name,
       })),
       language: languageMap[native.language] ?? "other",
-      hasTypeScript: native.hasTypeScript,
+      hasTypeScript: native.hasTypescript,
       languageVersion: native.languageVersion,
       directories: {
         src: native.directories.src,
@@ -218,34 +206,34 @@ export namespace Fingerprint {
   /**
    * Convert Info type to native format for similarity comparison
    */
-  function convertInfoToNative(info: Info): NativeFingerprintInfo {
-    const languageMap: Record<Info["language"], string> = {
-      typescript: "TypeScript",
-      javascript: "JavaScript",
-      python: "Python",
-      go: "Go",
-      rust: "Rust",
-      java: "Java",
-      csharp: "CSharp",
-      other: "Other",
+  function convertInfoToNative(info: Info): NapiFingerprintInfo {
+    const languageMap: Record<Info["language"], NapiProjectLanguage> = {
+      typescript: "TypeScript" as NapiProjectLanguage,
+      javascript: "JavaScript" as NapiProjectLanguage,
+      python: "Python" as NapiProjectLanguage,
+      go: "Go" as NapiProjectLanguage,
+      rust: "Rust" as NapiProjectLanguage,
+      java: "Java" as NapiProjectLanguage,
+      csharp: "CSharp" as NapiProjectLanguage,
+      other: "Other" as NapiProjectLanguage,
     }
 
-    const managerMap: Record<PackageInfo["manager"], string> = {
-      npm: "Npm",
-      bun: "Bun",
-      yarn: "Yarn",
-      pnpm: "Pnpm",
-      unknown: "Unknown",
+    const managerMap: Record<PackageInfo["manager"], NapiPackageManager> = {
+      npm: "Npm" as NapiPackageManager,
+      bun: "Bun" as NapiPackageManager,
+      yarn: "Yarn" as NapiPackageManager,
+      pnpm: "Pnpm" as NapiPackageManager,
+      unknown: "Unknown" as NapiPackageManager,
     }
 
-    const typeMap: Record<FrameworkInfo["type"], string> = {
-      frontend: "Frontend",
-      backend: "Backend",
-      fullstack: "Fullstack",
-      mobile: "Mobile",
-      desktop: "Desktop",
-      cli: "Cli",
-      library: "Library",
+    const typeMap: Record<FrameworkInfo["type"], NapiFrameworkType> = {
+      frontend: "Frontend" as NapiFrameworkType,
+      backend: "Backend" as NapiFrameworkType,
+      fullstack: "Fullstack" as NapiFrameworkType,
+      mobile: "Mobile" as NapiFrameworkType,
+      desktop: "Desktop" as NapiFrameworkType,
+      cli: "Cli" as NapiFrameworkType,
+      library: "Library" as NapiFrameworkType,
     }
 
     return {
@@ -275,7 +263,7 @@ export namespace Fingerprint {
         name: c.name,
       })),
       language: languageMap[info.language],
-      hasTypeScript: info.hasTypeScript,
+      hasTypescript: info.hasTypeScript,
       languageVersion: info.languageVersion,
       directories: {
         src: info.directories.src,

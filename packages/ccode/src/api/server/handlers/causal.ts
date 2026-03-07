@@ -417,11 +417,11 @@ export async function getCausalGraphData(_req: HttpRequest, _params: RouteParams
     success: true,
     data: {
       nodes: {
-        decisions: stats.total_decisions,
-        actions: stats.total_actions,
-        outcomes: stats.total_outcomes,
+        decisions: stats.totalDecisions,
+        actions: stats.totalActions,
+        outcomes: stats.totalOutcomes,
       },
-      edges: stats.total_edges,
+      edges: stats.totalEdges,
     },
   })
 }
@@ -460,13 +460,13 @@ export async function causalHealth(_req: HttpRequest, _params: RouteParams): Pro
       data: {
         status: "healthy",
         counts: {
-          decisions: stats.total_decisions,
-          actions: stats.total_actions,
-          outcomes: stats.total_outcomes,
-          edges: stats.total_edges,
+          decisions: stats.totalDecisions,
+          actions: stats.totalActions,
+          outcomes: stats.totalOutcomes,
+          edges: stats.totalEdges,
         },
-        successRate: stats.success_rate,
-        avgConfidence: stats.avg_confidence,
+        successRate: stats.successRate,
+        avgConfidence: stats.avgConfidence,
       },
     })
   } catch (error) {
