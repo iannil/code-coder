@@ -24,7 +24,7 @@ mock.module("codecoder-anthropic-auth", () => ({ default: mockPlugin }))
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { Provider } from "../../src/provider/provider"
-import { Env } from "../../src/env"
+import { Env } from "../../src/util/env"
 
 test("provider loaded from env variable", async () => {
   await using tmp = await tmpdir({

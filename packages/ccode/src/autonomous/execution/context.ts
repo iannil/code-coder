@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { getProjectIDForStorage } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import { AutonomousState } from "../state/states"
 import z from "zod"
 

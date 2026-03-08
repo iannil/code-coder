@@ -3,7 +3,7 @@ import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
 import { AutonomousState } from "../state/states"
 import { createOrchestrator, type SessionContext } from "../orchestration/orchestrator"
-import { AutonomousConfig } from "../config/config"
+import { AutonomousConfig } from "@/autonomous/config/config"
 
 const log = Log.create({ service: "autonomous.agent" })
 

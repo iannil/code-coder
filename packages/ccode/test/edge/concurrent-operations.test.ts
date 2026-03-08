@@ -13,7 +13,7 @@ import { Session } from "../../src/session"
 import { Config } from "../../src/config/config"
 import { Lock } from "../../src/util/lock"
 import { ReadTool } from "../../src/tool/read"
-import { Env } from "../../src/env"
+import { Env } from "../../src/util/env"
 
 function tick() {
   return new Promise<void>((r) => queueMicrotask(r))

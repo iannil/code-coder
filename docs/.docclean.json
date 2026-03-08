@@ -1,0 +1,39 @@
+{
+  "$schema": "./schemas/docclean.schema.json",
+  "version": "1.0",
+  "description": "Document cleanup policy for CodeCoder project",
+  "retentionPolicies": {
+    "progress": {
+      "description": "In-progress work documents",
+      "retainDays": 30,
+      "action": "move",
+      "destination": "archive/progress/"
+    },
+    "completed": {
+      "description": "Completed work reports",
+      "retainDays": 90,
+      "action": "compress",
+      "destination": "archive/reports/",
+      "compression": {
+        "format": "tar.gz",
+        "groupBy": "month"
+      }
+    }
+  },
+  "directories": {
+    "docs/progress": "progress",
+    "docs/reports/completed": "completed"
+  },
+  "exclude": [
+    "docs/architecture/**",
+    "docs/guides/**",
+    "docs/standards/**",
+    "docs/templates/**",
+    "docs/zhurongshuo/**"
+  ],
+  "autoClean": {
+    "enabled": false,
+    "schedule": "weekly",
+    "notifyBefore": true
+  }
+}

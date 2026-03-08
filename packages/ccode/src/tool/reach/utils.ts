@@ -1,6 +1,6 @@
 import { spawn } from "child_process"
 import { Log } from "@/util/log"
-import { Shell } from "@/shell/shell"
+import { Shell } from "@/session/shell/shell"
 import { ReachConfigManager } from "./config"
 
 /**

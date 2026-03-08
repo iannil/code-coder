@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test"
-import { createAuditLog, type AuditLog, type AuditEntryInput } from "@/audit/audit-log"
+import { createAuditLog, type AuditLog, type AuditEntryInput } from "@/security/audit/audit-log"
 import fs from "fs/promises"
 import os from "os"
 import path from "path"

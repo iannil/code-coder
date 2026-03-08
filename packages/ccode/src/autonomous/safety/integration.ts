@@ -5,7 +5,7 @@ import { SafetyGuard, type SafetyCheckResult, type ResourceUsage } from "./const
 import { SafetyGuardrails, type LoopPattern } from "./guardrails"
 import { RollbackManager, type RollbackTrigger, type RollbackOptions } from "./rollback"
 import { AutonomousState } from "../state/states"
-import { assessToolRisk as assessToolRiskCore, type RiskLevel } from "@/permission/auto-approve"
+import { assessToolRisk as assessToolRiskCore, type RiskLevel } from "@/security/permission/auto-approve"
 
 const log = Log.create({ service: "autonomous.safety.integration" })
 

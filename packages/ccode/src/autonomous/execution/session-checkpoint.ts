@@ -8,7 +8,7 @@
  */
 
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { AutonomousState } from "../state/states"
 import { CheckpointManager, type Checkpoint } from "./checkpoint"
 import { Bus } from "@/bus"

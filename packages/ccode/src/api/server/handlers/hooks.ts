@@ -9,7 +9,7 @@
 import type { RouteHandler } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { Hook } from "@/hook/hook"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { Config } from "@/config/config"
 import path from "path"
 

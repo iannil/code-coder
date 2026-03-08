@@ -14,7 +14,7 @@ import { Session } from "../../src/session"
 import { Config } from "../../src/config/config"
 import { Provider } from "../../src/provider/provider"
 import { ReadTool } from "../../src/tool/read"
-import { Env } from "../../src/env"
+import { Env } from "../../src/util/env"
 
 const ctx = {
   sessionID: "test",

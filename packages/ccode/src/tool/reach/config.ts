@@ -1,5 +1,5 @@
 import { ReachConfig } from "./types"
-import { Global } from "../../global"
+import { Global } from "@/util/global"
 import { Log } from "@/util/log"
 import path from "path"
 import fs from "fs/promises"

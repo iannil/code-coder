@@ -22,7 +22,7 @@ import { EmbeddingProvider, getEmbeddingProvider, type EmbeddingResult } from ".
 import { MarkdownChunker, getChunker, type Chunk } from "./chunker"
 import { loadMarkdownMemoryContext } from "@/memory-markdown"
 import { getKnowledgeSedimentation } from "@/autonomous/execution/knowledge-sedimentation"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import { Instance } from "@/project/instance"
 
 const log = Log.create({ service: "memory.context-hub" })

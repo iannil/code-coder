@@ -1,9 +1,9 @@
 import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
-import { Identifier } from "@/id/id"
+import { Identifier } from "@/util/id/id"
 import { Session } from "."
 import { Agent } from "@/agent/agent"
-import { Snapshot } from "@/snapshot"
+import { Snapshot } from "@/session/snapshot"
 import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
 import { SessionRetry } from "./retry"
@@ -12,8 +12,8 @@ import type { Provider } from "@/provider/provider"
 import { LLM } from "./llm"
 import { Config } from "@/config/config"
 import { SessionCompaction } from "./compaction"
-import { PermissionNext } from "@/permission/next"
-import { Question } from "@/question"
+import { PermissionNext } from "@/security/permission/next"
+import { Question } from "@/agent/question"
 import {
   branch,
   point,

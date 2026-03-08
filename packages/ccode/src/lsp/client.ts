@@ -10,7 +10,7 @@ import z from "zod"
 import type { LSPServer } from "./server"
 import { NamedError } from "@codecoder-ai/core/util/error"
 import { withTimeout } from "@/util/timeout"
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import { Filesystem } from "@/util/filesystem"
 
 const DIAGNOSTICS_DEBOUNCE_MS = 150

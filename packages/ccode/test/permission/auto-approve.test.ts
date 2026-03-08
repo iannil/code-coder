@@ -17,8 +17,8 @@ import {
   type RiskLevel,
   type AutoApproveConfig,
   type ExecutionContext,
-} from "@/permission/auto-approve"
-import type { Permission } from "@/permission"
+} from "@/security/permission/auto-approve"
+import type { Permission } from "@/security/permission"
 
 describe("auto-approve", () => {
   beforeEach(() => {

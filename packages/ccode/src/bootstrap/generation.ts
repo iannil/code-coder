@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { Instance } from "@/project/instance"
 import { Skill } from "@/skill/skill"
 import { Agent } from "@/agent/agent"

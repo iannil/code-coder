@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach, mock, spyOn } from "bun:test"
 import { CausalGraph } from "@/memory/knowledge/causal-graph"
 import { CausalAnalysis } from "@/memory/knowledge/causal-analysis"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import type {
   CausalGraphData,
   DecisionNode,

@@ -1,6 +1,6 @@
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import { Log } from "@/util/log"
-import { Flag } from "../flag/flag"
+import { Flag } from "@/util/flag/flag"
 
 export namespace FileTime {
   const log = Log.create({ service: "file.time" })

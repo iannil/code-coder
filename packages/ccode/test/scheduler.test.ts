@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Scheduler } from "../src/scheduler"
+import { Scheduler } from "../src/infrastructure/scheduler"
 import { Instance } from "../src/project/instance"
 import { tmpdir } from "./fixture/fixture"
 

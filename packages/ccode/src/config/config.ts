@@ -6,11 +6,11 @@ import z from "zod"
 import { Filesystem } from "@/util/filesystem"
 import { ModelsDev } from "../provider/models"
 import { mergeDeep, pipe, unique } from "remeda"
-import { Global } from "../global"
+import { Global } from "@/util/global"
 import fs from "fs/promises"
 import { lazy } from "@/util/lazy"
 import { NamedError } from "@codecoder-ai/core/util/error"
-import { Flag } from "../flag/flag"
+import { Flag } from "@/util/flag/flag"
 import {
   type ParseError as JsoncParseError,
   applyEdits,
@@ -18,13 +18,13 @@ import {
   parse as parseJsonc,
   printParseErrorCode,
 } from "jsonc-parser"
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import { LSPServer } from "../lsp/server"
-import { BunProc } from "@/bun"
+import { BunProc } from "@/infrastructure/bun"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { Bus } from "@/bus"
-import { AutoApproveConfigSchema } from "@/permission/auto-approve"
+import { AutoApproveConfigSchema } from "@/security/permission/auto-approve"
 import { parseJsoncNative, loadFileNative, hasNativeBindings } from "./native"
 
 export namespace Config {

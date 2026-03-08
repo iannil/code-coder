@@ -3,7 +3,7 @@
  */
 
 import type { Session } from "../../session"
-import type { Permission } from "../../permission"
+import type { Permission } from "@/security/permission"
 
 // ============================================================================
 // Server Configuration

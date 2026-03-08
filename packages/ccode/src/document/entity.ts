@@ -1,6 +1,6 @@
-import { Storage } from "../storage/storage"
-import { Identifier } from "../id/id"
-import { Instance } from "../project/instance"
+import { Storage } from "@/infrastructure/storage/storage"
+import { Identifier } from "@/util/id/id"
+import { Instance } from "@/project/instance"
 import { DocumentSchema } from "./schema"
 
 const state = Instance.state(async () => ({}))
@@ -480,7 +480,7 @@ export namespace Entity {
     const chapterModule = await import("./index")
     // The Chapter namespace is exposed via Document but we need to access it differently
     // For now, use a direct storage read
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     try {
       return await Storage.read<DocumentSchema.Chapter>(["document_chapter", documentID, chapterID])
     } catch {

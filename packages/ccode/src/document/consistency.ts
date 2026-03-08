@@ -232,7 +232,7 @@ export namespace Consistency {
       }
 
       // Store report
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       await Storage.write(["document_consistency", documentID, `report_${report.timestamp}`], report)
 
       return report
@@ -245,7 +245,7 @@ export namespace Consistency {
    * Get recent consistency reports
    */
   export async function listReports(documentID: string): Promise<DocumentSchema.ConsistencyReport[]> {
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     const keys = await Storage.list(["document_consistency", documentID])
     const reports: DocumentSchema.ConsistencyReport[] = []
 

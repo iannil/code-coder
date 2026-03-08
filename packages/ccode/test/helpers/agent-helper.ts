@@ -11,7 +11,7 @@
 
 import { vi, type Mock } from "bun:test"
 import type { Agent } from "../../src/agent/agent"
-import { PermissionNext } from "../../src/permission/next"
+import { PermissionNext } from "../../src/security/permission/next"
 
 // ===== Agent Factory Mocks =====
 

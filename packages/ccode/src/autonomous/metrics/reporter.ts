@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { getProjectIDForStorage, Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
 import type { SessionMetrics } from "./metrics"

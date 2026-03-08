@@ -7,7 +7,7 @@ import { describe, test, expect } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
-import { Env } from "../../src/env"
+import { Env } from "../../src/util/env"
 import { MCP } from "../../src/mcp/index"
 import { Config } from "../../src/config/config"
 

@@ -5,8 +5,8 @@ import { Tool } from "./tool"
 import { LSP } from "../lsp"
 import { FileTime } from "../file/time"
 import DESCRIPTION from "./read.txt"
-import { Instance } from "../project/instance"
-import { Identifier } from "../id/id"
+import { Instance } from "@/project/instance"
+import { Identifier } from "@/util/id/id"
 import { assertExternalDirectory } from "./external-directory"
 import {
   point,

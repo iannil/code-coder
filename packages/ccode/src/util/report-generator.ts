@@ -5,7 +5,7 @@
  * from website reverse engineering analysis.
  */
 
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import path from "path"
 import { mkdir } from "node:fs/promises"
 

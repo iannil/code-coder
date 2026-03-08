@@ -5,13 +5,13 @@ import z from "zod"
 import { Session } from "."
 
 import { MessageV2 } from "./message-v2"
-import { Identifier } from "@/id/id"
-import { Snapshot } from "@/snapshot"
+import { Identifier } from "@/util/id/id"
+import { Snapshot } from "@/session/snapshot"
 
 import { Log } from "@/util/log"
 import path from "path"
 import { Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import { Bus } from "@/bus"
 
 import { LLM } from "./llm"

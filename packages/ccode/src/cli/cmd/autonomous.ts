@@ -4,7 +4,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Log } from "@/util/log"
 import { bootstrap } from "../bootstrap"
-import { Identifier } from "@/id/id"
+import { Identifier } from "@/util/id/id"
 import {
   createOrchestrator,
   type OrchestratorConfig,

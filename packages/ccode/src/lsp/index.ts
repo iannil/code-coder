@@ -6,10 +6,10 @@ import path from "path"
 import { pathToFileURL } from "url"
 import { LSPServer } from "./server"
 import z from "zod"
-import { Config } from "../config/config"
+import { Config } from "@/config/config"
 import { spawn } from "child_process"
-import { Instance } from "../project/instance"
-import { Flag } from "@/flag/flag"
+import { Instance } from "@/project/instance"
+import { Flag } from "@/util/flag/flag"
 
 export namespace LSP {
   const log = Log.create({ service: "lsp" })

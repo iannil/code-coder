@@ -1,9 +1,9 @@
-import { Global } from "../global"
+import { Global } from "@/util/global"
 import { Log } from "@/util/log"
 import path from "path"
 import z from "zod"
 import { USER_AGENT } from "../version"
-import { Flag } from "../flag/flag"
+import { Flag } from "@/util/flag/flag"
 import { lazy } from "@/util/lazy"
 
 export namespace ModelsDev {

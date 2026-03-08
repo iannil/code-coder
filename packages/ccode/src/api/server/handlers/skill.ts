@@ -13,7 +13,7 @@
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { Skill } from "../../../skill/skill"
-import { Global } from "../../../global"
+import { Global } from "@/util/global"
 import { ConfigMarkdown } from "../../../config/markdown"
 import path from "path"
 import fs from "fs/promises"

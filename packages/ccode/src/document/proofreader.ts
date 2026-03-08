@@ -250,7 +250,7 @@ export namespace Proofreader {
       }
 
       // Store report
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       await Storage.write(["document_proofreader", documentID, report.id], report)
 
       return report
@@ -263,7 +263,7 @@ export namespace Proofreader {
    * Get recent proofreader reports
    */
   export async function listReports(documentID: string): Promise<DocumentSchema.ProofreaderReport[]> {
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     const keys = await Storage.list(["document_proofreader", documentID])
     const reports: DocumentSchema.ProofreaderReport[] = []
 
@@ -283,7 +283,7 @@ export namespace Proofreader {
    * Get a specific report
    */
   export async function getReport(documentID: string, reportID: string): Promise<DocumentSchema.ProofreaderReport | undefined> {
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     try {
       return await Storage.read<DocumentSchema.ProofreaderReport>(["document_proofreader", documentID, reportID])
     } catch {
@@ -776,7 +776,7 @@ export namespace Proofreader {
    * Delete a report
    */
   export async function deleteReport(documentID: string, reportID: string): Promise<void> {
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     await Storage.remove(["document_proofreader", documentID, reportID])
   }
 
@@ -784,7 +784,7 @@ export namespace Proofreader {
    * Clear all reports for a document
    */
   export async function clearReports(documentID: string): Promise<void> {
-    const { Storage } = await import("../storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
     const keys = await Storage.list(["document_proofreader", documentID])
     for (const key of keys) {
       await Storage.remove(key)

@@ -11,7 +11,7 @@
  */
 
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { Agent } from "@/agent/agent"
 import { Provider } from "@/provider/provider"
 import { SystemPrompt } from "@/session/system"

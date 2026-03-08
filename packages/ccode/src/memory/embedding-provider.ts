@@ -12,7 +12,7 @@
 import { Log } from "@/util/log"
 import { Provider } from "@/provider/provider"
 import { Config } from "@/config/config"
-import { Env } from "@/env"
+import { Env } from "@/util/env"
 import {
   cosineSimilarity as nativeCosineSimilarity,
   normalizeVector,

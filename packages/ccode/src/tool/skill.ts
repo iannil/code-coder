@@ -3,7 +3,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Skill } from "../skill"
 import { ConfigMarkdown } from "../config/markdown"
-import { PermissionNext } from "../permission/next"
+import { PermissionNext } from "@/security/permission/next"
 
 export const SkillTool = Tool.define("skill", async (ctx) => {
   const skills = await Skill.all()

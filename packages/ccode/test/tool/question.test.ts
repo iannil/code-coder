@@ -2,7 +2,7 @@ import { describe, expect, test, spyOn, beforeEach, afterEach } from "bun:test"
 import { z } from "zod"
 import path from "path"
 import { QuestionTool } from "../../src/tool/question"
-import * as QuestionModule from "../../src/question"
+import * as QuestionModule from "../../src/agent/question"
 import { Instance } from "../../src/project/instance"
 
 const ctx = {

@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { grep as nativeGrep } from "@codecoder-ai/core"
 
 import DESCRIPTION from "./grep.txt"
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import path from "path"
 import { assertExternalDirectory } from "./external-directory"
 import {

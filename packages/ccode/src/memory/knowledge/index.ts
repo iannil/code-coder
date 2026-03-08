@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import z from "zod"
 
 // Export native bindings for graph operations

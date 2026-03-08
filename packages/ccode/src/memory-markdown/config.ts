@@ -159,7 +159,7 @@ export async function preloadConfig(): Promise<void> {
   try {
     // Use relative import to avoid module resolution issues
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const { Config } = await import("../config/config")
+    const { Config } = await import("@/config/config")
     const loadedConfig = await Config.get() as Record<string, unknown>
 
     // Check for memory.storage section

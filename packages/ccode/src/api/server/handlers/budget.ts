@@ -7,7 +7,7 @@
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import path from "path"
 import fs from "fs/promises"
 

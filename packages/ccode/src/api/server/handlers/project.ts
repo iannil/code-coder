@@ -6,7 +6,7 @@
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { Project } from "@/project/project"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import z from "zod"
 
 // ============================================================================

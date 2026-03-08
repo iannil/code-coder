@@ -3,20 +3,20 @@
 
 import type { MessageV2 } from "@/session/message-v2"
 import type { Session } from "@/session"
-import type { Permission } from "@/permission"
+import type { Permission } from "@/security/permission"
 import type { Provider } from "@/provider/provider"
 import type { Agent } from "@/agent/agent"
 import type { MCP } from "@/mcp"
 import type { LSP } from "@/lsp"
-import type { Format } from "@/format"
+import type { Format } from "@/util/format"
 import type { Todo } from "@/session/todo"
 import type { SessionStatus } from "@/session/status"
-import type { Question } from "@/question"
-import type { Command } from "@/command"
+import type { Question } from "@/agent/question"
+import type { Command } from "@/agent/command"
 
 // Re-export core types from internal modules
 export type { Session } from "@/session"
-export type { Permission } from "@/permission"
+export type { Permission } from "@/security/permission"
 
 // Message types
 export type Message = MessageV2.Info
@@ -38,13 +38,13 @@ export type SystemMessage = { role: "system" } & MessageV2.Info
 
 // Re-export namespaces for their types
 export type { Agent } from "@/agent/agent"
-export type { Command } from "@/command"
+export type { Command } from "@/agent/command"
 export type { MCP } from "@/mcp"
 export type { LSP } from "@/lsp"
-export type { Format } from "@/format"
+export type { Format } from "@/util/format"
 export type { Todo } from "@/session/todo"
 export type { SessionStatus } from "@/session/status"
-export type { Question } from "@/question"
+export type { Question } from "@/agent/question"
 export type { Provider } from "@/provider/provider"
 
 // Type aliases for commonly used namespace types (for SDK compatibility)

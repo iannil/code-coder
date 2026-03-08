@@ -8,7 +8,7 @@
 
 import z from "zod"
 import { Tool } from "./tool"
-import { CredentialVault, type CredentialEntry } from "@/credential/vault"
+import { CredentialVault, type CredentialEntry } from "@/security/credential/vault"
 
 const Parameters = z.object({
   service: z

@@ -9,8 +9,8 @@ import { tmpdir } from "../fixture/fixture"
 import { Instance } from "../../src/project/instance"
 import { Session } from "../../src/session"
 import { Provider } from "../../src/provider/provider"
-import { Env } from "../../src/env"
-import { Storage } from "../../src/storage/storage"
+import { Env } from "../../src/util/env"
+import { Storage } from "../../src/infrastructure/storage/storage"
 
 describe("Cross-User Lifecycle - ULC-ALL", () => {
   describe("ULC-ALL-SESS-001: Multi-user session isolation", () => {

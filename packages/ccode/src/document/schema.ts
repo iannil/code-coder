@@ -1,4 +1,4 @@
-import { Identifier } from "../id/id"
+import { Identifier } from "@/util/id/id"
 import z from "zod"
 
 // Helper to avoid Zod v4.1.8 + Bun escapeRegex issue with .default([])

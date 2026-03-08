@@ -22,7 +22,7 @@ import {
   type ApprovalRequest,
   getApprovalTypeName,
   getRiskLevelIcon,
-} from "@/hitl/client"
+} from "@/agent/hitl/client"
 import { approvalT, errorT } from "@/config/messages"
 
 interface Props {

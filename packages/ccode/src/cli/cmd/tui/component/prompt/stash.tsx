@@ -1,5 +1,5 @@
 import path from "path"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { onMount } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { clone } from "remeda"

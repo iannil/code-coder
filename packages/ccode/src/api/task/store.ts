@@ -4,7 +4,7 @@
  */
 
 import { Instance } from "@/project/instance"
-import { Identifier } from "@/id/id"
+import { Identifier } from "@/util/id/id"
 import { Log } from "@/util/log"
 import type { Task, TaskStatus, TaskContext } from "./types"
 

@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import z from "zod"
 
 const log = Log.create({ service: "memory.knowledge.patterns" })

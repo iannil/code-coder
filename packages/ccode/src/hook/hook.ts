@@ -1,9 +1,9 @@
 import z from "zod"
 import path from "path"
 import { Log } from "@/util/log"
-import { Config } from "../config/config"
-import { Instance } from "../project/instance"
-import { Global } from "../global"
+import { Config } from "@/config/config"
+import { Instance } from "@/project/instance"
+import { Global } from "@/util/global"
 import { BusEvent } from "../bus/bus-event"
 import { CausalRecorder } from "../agent/hooks/causal-recorder"
 

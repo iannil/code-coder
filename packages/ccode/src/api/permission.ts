@@ -1,5 +1,5 @@
-import { Permission } from "@/permission"
-import { PermissionNext } from "@/permission/next"
+import { Permission } from "@/security/permission"
+import { PermissionNext } from "@/security/permission/next"
 import { fn } from "@/util/fn"
 import z from "zod"
 

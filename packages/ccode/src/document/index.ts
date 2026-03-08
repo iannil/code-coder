@@ -1,6 +1,6 @@
-import { Storage } from "../storage/storage"
-import { Identifier } from "../id/id"
-import { Instance } from "../project/instance"
+import { Storage } from "@/infrastructure/storage/storage"
+import { Identifier } from "@/util/id/id"
+import { Instance } from "@/project/instance"
 import { DocumentSchema } from "./schema"
 import { EOL } from "os"
 

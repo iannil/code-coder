@@ -4,7 +4,7 @@ import { Session } from "../../session"
 import { bootstrap } from "../bootstrap"
 import { UI } from "../ui"
 import { Locale } from "@/util/locale"
-import { Flag } from "../../flag/flag"
+import { Flag } from "@/util/flag/flag"
 import { EOL } from "os"
 import path from "path"
 

@@ -1,5 +1,5 @@
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import { Filesystem } from "@/util/filesystem"
 import { Lock } from "@/util/lock"
 import path from "path"

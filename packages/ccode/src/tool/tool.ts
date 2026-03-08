@@ -1,7 +1,7 @@
 import z from "zod"
 import type { MessageV2 } from "../session/message-v2"
 import type { Agent } from "../agent/agent"
-import type { PermissionNext } from "../permission/next"
+import type { PermissionNext } from "@/security/permission/next"
 import { Truncate } from "./truncation"
 import { Hook } from "../hook"
 import { NamedError } from "@codecoder-ai/core/util/error"

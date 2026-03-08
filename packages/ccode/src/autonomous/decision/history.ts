@@ -1,6 +1,6 @@
 import { Log } from "@/util/log"
 import { getProjectIDForStorage, Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import type { DecisionRecord as CriteriaDecisionRecord, DecisionType } from "./criteria"
 import { Decision as MemoryDecision } from "@/memory/history/decisions"
 import z from "zod"

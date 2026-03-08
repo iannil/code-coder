@@ -11,7 +11,7 @@ import { Config } from "../../config/config"
 import { Instance } from "../../project/instance"
 import { VERSION } from "../../version"
 import path from "path"
-import { Global } from "../../global"
+import { Global } from "@/util/global"
 import { modify, applyEdits } from "jsonc-parser"
 import { Bus } from "../../bus"
 

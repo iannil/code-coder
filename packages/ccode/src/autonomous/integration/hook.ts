@@ -11,7 +11,7 @@ import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
 import { DecisionEngine, type DecisionContext, type DecisionResult, type AutonomyLevel } from "../decision/engine"
-import { AutonomousConfig } from "../config/config"
+import { AutonomousConfig } from "@/autonomous/config/config"
 import { buildCriteria, type AutonomousDecisionCriteria, type RiskLevel, type DecisionType } from "../decision/criteria"
 
 const log = Log.create({ service: "autonomous.integration.hook" })

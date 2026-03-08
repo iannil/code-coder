@@ -5,8 +5,8 @@
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
-import { CredentialVault, type CredentialEntry } from "@/credential/vault"
-import { SessionManager, type StorageState } from "@/credential/session"
+import { CredentialVault, type CredentialEntry } from "@/security/credential/vault"
+import { SessionManager, type StorageState } from "@/security/credential/session"
 
 // ============================================================================
 // Helper Functions

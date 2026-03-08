@@ -276,7 +276,7 @@ export namespace Watcher {
 
   async function getState(): Promise<WatchState> {
     const projectID = Instance.project.id
-    const { Storage } = await import("@/storage/storage")
+    const { Storage } = await import("@/infrastructure/storage/storage")
 
     try {
       return await Storage.read<WatchState>(["context", "watcher", projectID])

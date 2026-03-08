@@ -4,13 +4,13 @@ import { Tool } from "./tool"
 import path from "path"
 import DESCRIPTION from "./bash.txt"
 import { Log } from "@/util/log"
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 
 import { $ } from "bun"
-import { Flag } from "@/flag/flag.ts"
-import { Shell } from "@/shell/shell"
+import { Flag } from "@/util/flag/flag"
+import { Shell } from "@/session/shell/shell"
 
-import { BashArity } from "@/permission/arity"
+import { BashArity } from "@/security/permission/arity"
 import { Truncate } from "./truncation"
 import {
   point,

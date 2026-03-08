@@ -1,11 +1,11 @@
-import { Identifier } from "../../id/id"
+import { Identifier } from "@/util/id/id"
 import { KnowledgeSchema } from "./schema"
 
 /**
  * Dynamically import Storage to avoid circular dependencies.
  */
 async function getStorage() {
-  return (await import("../../storage/storage")).Storage
+  return (await import("@/infrastructure/storage/storage")).Storage
 }
 
 // Local storage interface to avoid circular dependency

@@ -45,7 +45,7 @@ import { Patterns } from "./knowledge/patterns"
 
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import path from "path"
 import { EditHistory as _EditHistory } from "./history/edits"
 import { Vector as _Vector } from "./vector"

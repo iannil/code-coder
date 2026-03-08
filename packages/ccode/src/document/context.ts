@@ -594,7 +594,7 @@ export namespace Context {
       result.relevantKnowledgeNodes = limitKnowledgeNodesByTokens(knowledgeNodes, budget.knowledgeFrameworkTokens)
 
       // Get thematic framework
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       const frameworkKeys = await Storage.list(["document_framework", options.documentID])
       if (frameworkKeys.length > 0) {
         const framework = await Storage.read<Knowledge.KnowledgeSchema.ThematicFramework>(frameworkKeys[0])
@@ -609,7 +609,7 @@ export namespace Context {
 
     // 7. Argument Chains (for non-fiction)
     try {
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       const argumentKeys = await Storage.list(["document_argument", options.documentID])
       const limitedChains: Knowledge.KnowledgeSchema.ArgumentChain[] = []
       let usedTokens = 0
@@ -630,7 +630,7 @@ export namespace Context {
 
     // 8. Story Arcs (for fiction)
     try {
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       const arcKeys = await Storage.list(["document_story", options.documentID, "arc"])
       const limitedArcs: Knowledge.KnowledgeSchema.StoryArc[] = []
       let usedTokens = 0
@@ -651,7 +651,7 @@ export namespace Context {
 
     // 9. World Framework (for fiction)
     try {
-      const { Storage } = await import("../storage/storage")
+      const { Storage } = await import("@/infrastructure/storage/storage")
       const worldKeys = await Storage.list(["document_world", options.documentID])
       if (worldKeys.length > 0) {
         const world = await Storage.read<Knowledge.KnowledgeSchema.WorldFramework>(worldKeys[0])

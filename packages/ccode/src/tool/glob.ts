@@ -3,7 +3,7 @@ import path from "path"
 import { Tool } from "./tool"
 import DESCRIPTION from "./glob.txt"
 import { Ripgrep } from "../file/ripgrep"
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import { assertExternalDirectory } from "./external-directory"
 import {
   runWithChildSpanAsync,

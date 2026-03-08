@@ -1,5 +1,5 @@
-import { Identifier } from "../../id/id"
-import { Storage } from "../../storage/storage"
+import { Identifier } from "@/util/id/id"
+import { Storage } from "@/infrastructure/storage/storage"
 import { KnowledgeSchema } from "./schema"
 
 export namespace StoryElements {
@@ -546,9 +546,9 @@ export namespace StoryElements {
    * Import Storage dynamically to avoid circular dependencies.
    */
   async function getStorage(): Promise<
-    typeof import("../../storage/storage").Storage
+    typeof import("@/infrastructure/storage/storage").Storage
   > {
-    return (await import("../../storage/storage")).Storage
+    return (await import("@/infrastructure/storage/storage")).Storage
   }
 
   // Local storage interface to avoid circular dependency

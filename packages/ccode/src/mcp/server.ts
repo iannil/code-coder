@@ -52,8 +52,8 @@ import { VERSION } from "../version"
 import { Log } from "@/util/log"
 import { ulid } from "ulid"
 import { Hono } from "hono"
-import { Instance } from "../project/instance"
-import { Config } from "../config/config"
+import { Instance } from "@/project/instance"
+import { Config } from "@/config/config"
 import path from "path"
 
 export namespace McpServer {

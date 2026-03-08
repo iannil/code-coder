@@ -11,7 +11,7 @@
  */
 
 import { Log } from "@/util/log"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 import path from "path"
 import { nanoid } from "nanoid"
 

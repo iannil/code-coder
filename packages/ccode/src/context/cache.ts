@@ -9,7 +9,7 @@
 
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Storage } from "@/storage/storage"
+import { Storage } from "@/infrastructure/storage/storage"
 import { Fingerprint } from "./fingerprint"
 import path from "path"
 import z from "zod"

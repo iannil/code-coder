@@ -14,7 +14,7 @@
 
 import path from "path"
 import fs from "fs/promises"
-import { Global } from "@/global"
+import { Global } from "@/util/global"
 
 // ============================================================================
 // Types

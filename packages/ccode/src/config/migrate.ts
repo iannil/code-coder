@@ -14,7 +14,7 @@
  *   bun dev config migrate --dry-run # Preview changes
  */
 
-import { Global } from "../global"
+import { Global } from "@/util/global"
 import path from "path"
 import { mergeDeep } from "remeda"
 import { Log } from "@/util/log"

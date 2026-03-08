@@ -18,7 +18,7 @@ import {
   parseRiskLevel,
   type RiskLevel,
   type AutoApproveConfig,
-} from "../../../permission"
+} from "@/security/permission"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "api.autonomous" })

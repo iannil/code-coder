@@ -1,10 +1,10 @@
 import { Ripgrep } from "../file/ripgrep"
-import { Global } from "../global"
+import { Global } from "@/util/global"
 import { Filesystem } from "@/util/filesystem"
-import { Config } from "../config/config"
+import { Config } from "@/config/config"
 import { Log } from "@/util/log"
 
-import { Instance } from "../project/instance"
+import { Instance } from "@/project/instance"
 import path from "path"
 import os from "os"
 
@@ -16,7 +16,7 @@ import PROMPT_ANTHROPIC_SPOOF from "./prompt/anthropic_spoof.txt"
 
 import PROMPT_CODEX from "./prompt/codex_header.txt"
 import type { Provider } from "@/provider/provider"
-import { Flag } from "@/flag/flag"
+import { Flag } from "@/util/flag/flag"
 import { loadMarkdownMemoryContext } from "@/memory-markdown"
 
 const log = Log.create({ service: "system-prompt" })

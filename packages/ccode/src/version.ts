@@ -1,4 +1,4 @@
-import { Flag } from "@/flag/flag"
+import { Flag } from "@/util/flag/flag"
 
 declare global {
   const CCODE_VERSION: string
