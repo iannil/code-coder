@@ -247,6 +247,57 @@ impl SessionStore {
             .map(|c| c.execute_batch("SELECT 1").is_ok())
             .unwrap_or(false)
     }
+
+    /// List all distinct session keys with their message counts.
+    /// Returns tuples of (session_key, message_count, last_message_timestamp).
+    pub fn list_sessions(&self) -> Result<Vec<(String, usize, i64)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT session_key, COUNT(*) as msg_count, MAX(created_at) as last_active
+             FROM sessions
+             GROUP BY session_key
+             ORDER BY last_active DESC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? as usize,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(row?);
+        }
+        Ok(sessions)
+    }
+
+    /// Get the earliest message timestamp for a session (creation time).
+    pub fn get_session_created_at(&self, session_key: &str) -> Result<Option<i64>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        // MIN() returns NULL when no rows match, so we use Option<i64>
+        let result = conn.query_row(
+            "SELECT MIN(created_at) FROM sessions WHERE session_key = ?1",
+            params![session_key],
+            |row| row.get::<_, Option<i64>>(0),
+        );
+
+        match result {
+            Ok(ts) => Ok(ts),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -459,5 +510,72 @@ mod tests {
             assert_eq!(messages.len(), 1);
             assert_eq!(messages[0].content, "Persistent");
         }
+    }
+
+    #[test]
+    fn test_list_sessions_empty() {
+        let (_tmp, store) = temp_store();
+        let sessions = store.list_sessions().unwrap();
+        assert!(sessions.is_empty());
+    }
+
+    #[test]
+    fn test_list_sessions() {
+        let (_tmp, store) = temp_store();
+
+        // Add messages to different sessions
+        store.add_message("telegram:user1", MessageRole::User, "Hello").unwrap();
+        store.add_message("telegram:user2", MessageRole::User, "World").unwrap();
+        store.add_message("telegram:user1", MessageRole::Assistant, "Hi there").unwrap();
+
+        let sessions = store.list_sessions().unwrap();
+
+        assert_eq!(sessions.len(), 2);
+
+        // Find user1 session (should have 2 messages)
+        let user1 = sessions.iter().find(|(k, _, _)| k == "telegram:user1").unwrap();
+        assert_eq!(user1.1, 2);
+
+        // Find user2 session (should have 1 message)
+        let user2 = sessions.iter().find(|(k, _, _)| k == "telegram:user2").unwrap();
+        assert_eq!(user2.1, 1);
+    }
+
+    #[test]
+    fn test_list_sessions_ordered_by_last_active() {
+        let (_tmp, store) = temp_store();
+
+        store.add_message("telegram:old", MessageRole::User, "Old").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store.add_message("telegram:new", MessageRole::User, "New").unwrap();
+
+        let sessions = store.list_sessions().unwrap();
+
+        // Should be ordered by last_active DESC (newest first)
+        assert_eq!(sessions[0].0, "telegram:new");
+        assert_eq!(sessions[1].0, "telegram:old");
+    }
+
+    #[test]
+    fn test_get_session_created_at() {
+        let (_tmp, store) = temp_store();
+        let key = "telegram:user123";
+
+        // Non-existent session returns None
+        let created = store.get_session_created_at("nonexistent").unwrap();
+        assert!(created.is_none());
+
+        // Add messages
+        store.add_message(key, MessageRole::User, "First").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        store.add_message(key, MessageRole::User, "Second").unwrap();
+
+        // Should return the timestamp of the first message
+        let created = store.get_session_created_at(key).unwrap();
+        assert!(created.is_some());
+
+        // Get the first message timestamp for comparison
+        let messages = store.get_messages(key).unwrap();
+        assert_eq!(created.unwrap(), messages[0].timestamp);
     }
 }

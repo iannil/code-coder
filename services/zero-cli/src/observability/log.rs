@@ -40,6 +40,27 @@ impl Observer for LogObserver {
             ObserverEvent::Error { component, message } => {
                 info!(component = %component, error = %message, "error");
             }
+            ObserverEvent::ServiceRestart { service_id } => {
+                info!(service = %service_id, "heartbeat.service_restart");
+            }
+            ObserverEvent::Alert { service_id, channels } => {
+                info!(service = %service_id, channels = ?channels, "heartbeat.alert");
+            }
+            ObserverEvent::Escalation { service_id, escalate_to } => {
+                info!(service = %service_id, escalate_to = ?escalate_to, "heartbeat.escalation");
+            }
+            ObserverEvent::HealthChange {
+                service_id,
+                previous_status,
+                current_status,
+            } => {
+                info!(
+                    service = %service_id,
+                    previous = %previous_status,
+                    current = %current_status,
+                    "heartbeat.health_change"
+                );
+            }
         }
     }
 
@@ -104,6 +125,22 @@ mod tests {
         obs.record_event(&ObserverEvent::Error {
             component: "provider".into(),
             message: "timeout".into(),
+        });
+        obs.record_event(&ObserverEvent::ServiceRestart {
+            service_id: "api".into(),
+        });
+        obs.record_event(&ObserverEvent::Alert {
+            service_id: "db".into(),
+            channels: vec!["telegram".into()],
+        });
+        obs.record_event(&ObserverEvent::Escalation {
+            service_id: "core".into(),
+            escalate_to: vec!["admin".into()],
+        });
+        obs.record_event(&ObserverEvent::HealthChange {
+            service_id: "worker".into(),
+            previous_status: "healthy".into(),
+            current_status: "unhealthy".into(),
         });
     }
 

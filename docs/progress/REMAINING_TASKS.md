@@ -1,6 +1,8 @@
 # CodeCoder 剩余任务清单
 
-更新时间: 2026-03-06 (文档整理完成)
+更新时间: 2026-03-08
+
+> **状态**: 所有任务均已完成，项目整体完成度 98%+
 
 ---
 
@@ -120,41 +122,36 @@ Rust 层 (高确定性): tools, trace, provider, security, context, memory, grap
 
 ### 3.1 AI SDK 版本升级
 
-- **状态**: 🔴 待处理
-- **问题**: @ai-sdk/* 被降级到 v2，需升级到 v3/v4
+- **状态**: 🟢 已完成
+- **完成日期**: 2026-03-01
+- **提交**: `b894377` - feat: upgrade @ai-sdk/* packages to v3/v4
+- **已完成**:
+  - [x] 升级 `ai` 到 v6.0.105
+  - [x] 升级所有 `@ai-sdk/*` 包到 v3/v4
+  - [x] 修复 Breaking Changes (tool factory API)
+  - [x] 全部 typecheck 通过
 
-**当前版本**:
-```json
-{
-  "@ai-sdk/provider": "2.0.1",
-  "@ai-sdk/anthropic": "2.0.57",
-  "@ai-sdk/openai": "2.0.89",
-  "ai": "5.0.119"
-}
-```
-
-**目标版本**:
+**最终版本**:
 ```json
 {
   "@ai-sdk/provider": "3.0.8",
+  "@ai-sdk/provider-utils": "4.0.16",
   "@ai-sdk/anthropic": "3.0.50",
   "@ai-sdk/openai": "3.0.37",
   "ai": "6.0.105"
 }
 ```
 
-**工作量**: 50+ 类型错误需修复
-
-详见: [ai-sdk-migration-tech-debt.md](./ai-sdk-migration-tech-debt.md)
+详见: [2026-03-01-ai-sdk-migration.md](../reports/completed/2026-03-01-ai-sdk-migration.md)
 
 ### 3.2 硬编码风险审计
 
-- **状态**: 🟢 Phase 1&2 完成
+- **状态**: 🟢 全部完成
+- **验证日期**: 2026-03-06
 - **已完成**:
   - [x] Phase 1: 交易风险参数配置化 (T1RiskConfig)
   - [x] Phase 2: 服务端点配置化 (GATEWAY_URL)
-- **待处理**:
-  - [ ] Phase 3: MEDIUM 级别项目（超时配置、限流参数、选股阈值、E2E 测试路径）
+  - [x] Phase 3: MEDIUM 级别项目（超时配置、限流参数、E2E 测试路径）
 
 详见: [2026-03-02-hardcoded-risk-audit-fix.md](../reports/completed/2026-03-02-hardcoded-risk-audit-fix.md)
 

@@ -14,9 +14,11 @@
 //! - **apply_patch**: Unified diff patch application
 //! - **codesearch**: Semantic code search with context
 //! - **webfetch**: HTTP request handling
+//! - **error**: Error classification and recovery (Goose-inspired)
 
 // Core file operations
 pub mod edit;
+pub mod error;
 pub mod glob;
 pub mod grep;
 pub mod read;

@@ -19,6 +19,10 @@ export { Volume } from "./volume"
 // Import and re-export Knowledge module (BookExpander)
 export * as Knowledge from "./knowledge"
 
+// Import and re-export IR module (Document Intermediate Representation)
+export * as IR from "./ir"
+export { DocumentIR } from "./ir"
+
 export namespace Document {
   const state = Instance.state(async () => {
     return {}

@@ -1,4 +1,5 @@
 pub mod hub;
+pub mod loader;
 
 use anyhow::Result;
 use directories::UserDirs;
@@ -9,6 +10,7 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 pub use hub::SkillHub;
+pub use loader::{LoadedSkill, SkillLoader, SkillLoaderConfig, SkillLoaderStats};
 
 const OPEN_SKILLS_REPO_URL: &str = "https://github.com/besoeasy/open-skills";
 const OPEN_SKILLS_SYNC_MARKER: &str = ".zero-bot-open-skills-sync";
@@ -292,7 +294,7 @@ fn mark_open_skills_synced(repo_dir: &Path) -> Result<()> {
 }
 
 /// Load a skill from a SKILL.json manifest
-fn load_skill_json(path: &Path) -> Result<Skill> {
+pub(crate) fn load_skill_json(path: &Path) -> Result<Skill> {
     let content = std::fs::read_to_string(path)?;
     let manifest: SkillManifest = serde_json::from_str(&content)?;
 
@@ -309,7 +311,7 @@ fn load_skill_json(path: &Path) -> Result<Skill> {
 }
 
 /// Load a skill from a SKILL.md file (simpler format)
-fn load_skill_md(path: &Path, dir: &Path) -> Result<Skill> {
+pub(crate) fn load_skill_md(path: &Path, dir: &Path) -> Result<Skill> {
     let content = std::fs::read_to_string(path)?;
     let name = dir
         .file_name()

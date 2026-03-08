@@ -1,6 +1,6 @@
 # CodeCoder 系统架构
 
-> 生成时间: 2026-02-25
+> 生成时间: 2026-03-08
 
 ## 1. 项目概述
 
@@ -40,7 +40,7 @@ CodeCoder 是一个融合工程能力与决策智慧的个人工作台，采用 
 ║  │                                                                                  │ ║
 ║  │   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    │ ║
 ║  │   │  API Server  │   │ Agent Engine │   │  MCP Server  │   │ Memory System│    │ ║
-║  │   │    :4400     │◄─►│  (23 Agents) │◄─►│    :4420     │◄─►│ (Markdown +  │    │ ║
+║  │   │    :4400     │◄─►│  (31 Agents) │◄─►│    :4420     │◄─►│ (Markdown +  │    │ ║
 ║  │   │              │   │              │   │              │   │   SQLite)    │    │ ║
 ║  │   └──────────────┘   └──────┬───────┘   └──────────────┘   └──────────────┘    │ ║
 ║  │                             │                                                   │ ║
@@ -55,25 +55,21 @@ CodeCoder 是一个融合工程能力与决策智慧的个人工作台，采用 
 ║  └─────────────────────────────────────────────────────────────────────────────────┘ ║
 ║                                                                                       ║
 ║  ┌─────────────────────────────────────────────────────────────────────────────────┐ ║
-║  │                              Rust 微服务层                                       │ ║
+║  │                              Rust 服务层 (5 Crates)                             │ ║
 ║  │                                                                                  │ ║
 ║  │              ┌──────────────────────────────────────────────────┐               │ ║
-║  │              │              Zero Daemon :4402                   │               │ ║
-║  │              │              (进程编排器)                         │               │ ║
+║  │              │             Zero CLI Daemon :4402                │               │ ║
+║  │              │          (统一入口 + 进程编排)                    │               │ ║
 ║  │              └───────────────────────┬──────────────────────────┘               │ ║
 ║  │                                      │                                          │ ║
-║  │   ┌──────────────────┬───────────────┼───────────────┬──────────────────┐      │ ║
-║  │   │                  │               │               │                  │      │ ║
-║  │   ▼                  ▼               ▼               ▼                  ▼      │ ║
-║  │ ┌────────┐      ┌────────┐      ┌────────┐      ┌────────┐      ┌────────┐    │ ║
-║  │ │Gateway │      │Channels│      │Workflow│      │ Trading│      │Browser │    │ ║
-║  │ │ :4430  │      │ :4431  │      │ :4432  │      │ :4434  │      │ :4433  │    │ ║
-║  │ └────────┘      └────────┘      └────────┘      └────────┘      └────────┘    │ ║
-║  │                                                                                  │ ║
-║  │              ┌──────────────────────────────────────────────────┐               │ ║
-║  │              │              Zero Common (共享库)                │               │ ║
-║  │              │  config | logging | security | bus | audit       │               │ ║
-║  │              └──────────────────────────────────────────────────┘               │ ║
+║  │   ┌──────────────────┬───────────────┴───────────────┬──────────────────┐      │ ║
+║  │   │                  │                               │                  │      │ ║
+║  │   ▼                  ▼                               ▼                  ▼      │ ║
+║  │ ┌────────┐      ┌────────────────────────────┐  ┌────────┐      ┌────────┐    │ ║
+║  │ │ zero-  │      │         zero-hub           │  │ zero-  │      │ zero-  │    │ ║
+║  │ │ core   │      │  (gateway+channels+workflow)│  │trading │      │ common │    │ ║
+║  │ │(工具库)│      │                            │  │(交易)  │      │(共享)  │    │ ║
+║  │ └────────┘      └────────────────────────────┘  └────────┘      └────────┘    │ ║
 ║  │                                                                                  │ ║
 ║  └─────────────────────────────────────────────────────────────────────────────────┘ ║
 ║                                                                                       ║
@@ -106,18 +102,14 @@ CodeCoder 是一个融合工程能力与决策智慧的个人工作台，采用 
 核心服务 (4400-4409):
   ├── 4400: CodeCoder API Server (Bun/TypeScript)
   ├── 4401: Web Frontend (Vite/React)
-  ├── 4402: Zero CLI Daemon (Rust, 进程编排器)
+  ├── 4402: Zero CLI Daemon (Rust, 统一服务入口)
   └── 4403: Faster Whisper Server (Docker)
 
 协议服务 (4420-4429):
   └── 4420: MCP Server (HTTP)
 
-Rust 微服务 (4430-4439):
-  ├── 4430: Zero Gateway (认证/路由/配额/MCP/Webhook)
-  ├── 4431: Zero Channels (Telegram/Discord/Slack)
-  ├── 4432: Zero Workflow (Webhook/Cron/Git)
-  ├── 4433: Zero Browser (浏览器自动化)
-  └── 4434: Zero Trading (交易系统，开发中)
+注: 原设计的独立端口 (4430-4434) 已整合到 zero-hub，
+    通过 zero-cli daemon 统一管理，共用 :4402 端口的不同路由。
 ```
 
 ---
@@ -151,18 +143,16 @@ codecoder/
 │   ├── util/                          # 共享工具
 │   └── web/                           # Web 前端 (React)
 │
-├── services/                          # Rust 微服务
+├── services/                          # Rust 服务 (5 crates)
 │   │
-│   ├── zero-cli/                      # CLI + Daemon
-│   ├── zero-gateway/                  # 网关 :4430
-│   ├── zero-channels/                 # 渠道 :4431
-│   ├── zero-workflow/                 # 工作流 :4432
-│   ├── zero-browser/                  # 浏览器 :4433
-│   ├── zero-trading/                  # 交易 :4434 (开发中)
-│   ├── zero-common/                   # 共享库
-│   ├── zero-agent/                    # Agent 执行
-│   ├── zero-memory/                   # 持久化
-│   ├── zero-tools/                    # 工具
+│   ├── zero-cli/                      # CLI + Daemon (入口点)
+│   ├── zero-core/                     # 核心工具库 (NAPI 绑定)
+│   ├── zero-hub/                      # 统一服务中枢
+│   │   ├── src/gateway/               #   认证/路由/配额
+│   │   ├── src/channels/              #   IM 渠道适配
+│   │   └── src/workflow/              #   调度/Webhook/Git
+│   ├── zero-trading/                  # 交易系统
+│   ├── zero-common/                   # 共享基础库
 │   └── Cargo.toml                     # Workspace 配置
 │
 ├── memory/                            # 项目记忆
@@ -182,7 +172,7 @@ codecoder/
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════════════╗
-║                              Agent 系统架构 (23个Agent)                               ║
+║                              Agent 系统架构 (31个Agent)                               ║
 ╠══════════════════════════════════════════════════════════════════════════════════════╣
 ║                                                                                       ║
 ║  ┌─────────────────────────── Agent 注册中心 ─────────────────────────────┐          ║
@@ -225,17 +215,18 @@ codecoder/
 ╚══════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-### 4.1 Agent 分类 (23 个)
+### 4.1 Agent 分类 (31 个)
 
 | 分类 | Agent | 用途 |
 |------|-------|------|
-| **主模式** | build, plan | 主要开发和规划 |
-| **逆向工程** | code-reverse, jar-code-reverse | 代码逆向分析 |
-| **工程质量** | code-reviewer, security-reviewer, tdd-guide, architect, explore | 代码质量保障 |
-| **内容创作** | writer, proofreader | 长文写作与校对 |
-| **祝融说系列** | observer, decision, macro, trader, picker, miniproduct, ai-engineer | 决策与领域咨询 |
-| **系统辅助** | autonomous, general, synton-assistant | 自主执行与辅助 |
-| **隐藏系统** | compaction, title, summary | 内部功能 |
+| **主模式 (4)** | build, plan, writer, autonomous | 主要开发/创作模式 |
+| **逆向工程 (2)** | code-reverse, jar-code-reverse | 代码逆向分析 |
+| **工程质量 (6)** | general, explore, code-reviewer, security-reviewer, tdd-guide, architect | 代码质量保障 |
+| **内容创作 (5)** | expander, expander-fiction, expander-nonfiction, proofreader, verifier | 长文写作与校对 |
+| **祝融说系列 (8)** | observer, decision, macro, trader, picker, miniproduct, ai-engineer, value-analyst | 决策与领域咨询 |
+| **产品运营 (2)** | prd-generator, feasibility-assess | 需求与可行性 |
+| **辅助 (1)** | synton-assistant | 句元助手 |
+| **系统隐藏 (3)** | compaction, title, summary | 内部使用 |
 
 ### 4.2 Agent 注册机制
 
@@ -258,65 +249,74 @@ export class AgentRegistry {
 
 ---
 
-## 5. Rust 微服务架构
+## 5. Rust 服务架构
+
+> **注意**: 原设计为独立微服务架构，已整合为 5 个 crate 以降低复杂度。
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════════════════╗
-║                              Rust 微服务架构                                          ║
+║                              Rust 服务架构 (5 Crates)                                 ║
 ╠══════════════════════════════════════════════════════════════════════════════════════╣
 ║                                                                                       ║
-║                        ┌───────────────────────────────┐                             ║
-║                        │      Zero Daemon :4402        │                             ║
-║                        │      (进程编排器)              │                             ║
-║                        │  ┌─────────┬─────────┬─────┐  │                             ║
-║                        │  │ Spawn   │ Health  │ Log │  │                             ║
-║                        │  │ 子进程  │  检查   │ 聚合│  │                             ║
-║                        │  └─────────┴─────────┴─────┘  │                             ║
-║                        └───────────────┬───────────────┘                             ║
-║                                        │                                              ║
-║          ┌─────────────────┬───────────┼───────────┬─────────────────┐               ║
-║          │                 │           │           │                 │               ║
-║          ▼                 ▼           ▼           ▼                 ▼               ║
-║  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐            ║
-║  │Zero Gateway   │ │Zero Channels  │ │Zero Workflow  │ │Zero Trading   │            ║
-║  │    :4430      │ │    :4431      │ │    :4432      │ │    :4434      │            ║
-║  ├───────────────┤ ├───────────────┤ ├───────────────┤ ├───────────────┤            ║
-║  │ ┌───────────┐ │ │ ┌───────────┐ │ │ ┌───────────┐ │ │ ┌───────────┐ │            ║
-║  │ │ 认证模块  │ │ │ │ Telegram  │ │ │ │ Webhook   │ │ │ │ PO3策略   │ │            ║
-║  │ │ ├─Pairing │ │ │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │            ║
-║  │ │ └─JWT     │ │ │ │ Discord   │ │ │ │ Cron      │ │ │ │ SMT背离   │ │            ║
-║  │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │            ║
-║  │ │ 路由分发  │ │ │ │ Slack     │ │ │ │ Git集成   │ │ │ │ T+1适配   │ │            ║
-║  │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │            ║
-║  │ │ 配额管理  │ │ │ │ 飞书      │ │ │ │ RSS订阅   │ │ │ │ HITL确认  │ │            ║
-║  │ ├───────────┤ │ │ ├───────────┤ │ │ ├───────────┤ │ │ └───────────┘ │            ║
-║  │ │ RBAC权限  │ │ │ │ Email     │ │ │ │ Web爬虫   │ │ │               │            ║
-║  │ ├───────────┤ │ │ ├───────────┤ │ │ └───────────┘ │ │               │            ║
-║  │ │ 审计日志  │ │ │ │ iMessage  │ │ │               │ │               │            ║
-║  │ └───────────┘ │ │ └───────────┘ │ │               │ │               │            ║
-║  └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘            ║
-║                                                                                       ║
-║                        ┌───────────────────────────────┐                             ║
-║                        │      Zero Common (共享库)      │                             ║
-║                        ├───────────────────────────────┤                             ║
-║                        │ config   │ logging  │ error   │                             ║
-║                        │ security │ bus      │ audit   │                             ║
-║                        │ validation                    │                             ║
-║                        └───────────────────────────────┘                             ║
+║  ┌─────────────────────────────────────────────────────────────────────────────────┐ ║
+║  │                              zero-cli                                            │ ║
+║  │                         (CLI + Daemon :4402)                                     │ ║
+║  │  ┌─────────────────┬─────────────────┬─────────────────┬─────────────────┐      │ ║
+║  │  │    CLI 命令     │   进程编排      │   健康检查      │    日志聚合     │      │ ║
+║  │  └─────────────────┴─────────────────┴─────────────────┴─────────────────┘      │ ║
+║  └──────────────────────────────────┬──────────────────────────────────────────────┘ ║
+║                                     │ 依赖                                            ║
+║           ┌─────────────────────────┼─────────────────────────┐                      ║
+║           │                         │                         │                      ║
+║           ▼                         ▼                         ▼                      ║
+║  ┌─────────────────────┐   ┌─────────────────────┐   ┌─────────────────────┐        ║
+║  │     zero-core       │   │     zero-hub        │   │   zero-trading      │        ║
+║  │   (核心工具库)       │   │  (统一服务中枢)     │   │   (交易系统)         │        ║
+║  │                     │   │                     │   │                     │        ║
+║  │ ├─ tools/          │   │ ├─ gateway/         │   │ ├─ PO3策略          │        ║
+║  │ │  grep, glob, edit │   │ │  auth, rbac, quota│   │ ├─ SMT背离          │        ║
+║  │ ├─ session/        │   │ ├─ channels/        │   │ ├─ T+1适配          │        ║
+║  │ │  store, compaction│   │ │  telegram, discord│   │ └─ HITL确认         │        ║
+║  │ ├─ security/       │   │ │  slack, feishu    │   │                     │        ║
+║  │ │  vault, risk     │   │ │  email, imessage  │   │                     │        ║
+║  │ ├─ graph/          │   │ └─ workflow/        │   │                     │        ║
+║  │ │  call, causal    │   │    scheduler, hands │   │                     │        ║
+║  │ ├─ protocol/       │   │    webhook, git     │   │                     │        ║
+║  │ │  mcp, lsp        │   │                     │   │                     │        ║
+║  │ └─ napi/           │   │                     │   │                     │        ║
+║  │    (Node.js绑定)    │   │                     │   │                     │        ║
+║  └─────────┬───────────┘   └──────────┬──────────┘   └─────────────────────┘        ║
+║            │                          │                                              ║
+║            └──────────────────────────┼──────────────────────────────────────────┐   ║
+║                                       │                                          │   ║
+║                                       ▼                                          ▼   ║
+║                        ┌─────────────────────────────────────────────────────────┐   ║
+║                        │                    zero-common                          │   ║
+║                        │                    (共享基础库)                          │   ║
+║                        ├─────────────────────────────────────────────────────────┤   ║
+║                        │ config   │ logging  │ error   │ event-bus │ hitl-client │   ║
+║                        └─────────────────────────────────────────────────────────┘   ║
 ║                                                                                       ║
 ╚══════════════════════════════════════════════════════════════════════════════════════╝
 ```
 
-### 5.1 服务职责
+### 5.1 Crate 职责
 
-| 服务 | 端口 | 职责 |
-|------|------|------|
-| **Zero Daemon** | 4402 | 进程编排器，管理所有子服务 |
-| **Zero Gateway** | 4430 | 认证、路由、配额、RBAC、审计 |
-| **Zero Channels** | 4431 | IM 渠道适配 (Telegram/Discord/Slack/飞书) |
-| **Zero Workflow** | 4432 | Webhook、Cron、Git 集成、RSS |
-| **Zero Trading** | 4434 | PO3+SMT 交易策略 (开发中) |
-| **Zero Browser** | 4433 | 浏览器自动化、API 重放 |
+| Crate | 类型 | 代码量 | 职责 |
+|-------|------|--------|------|
+| **zero-cli** | 可执行 | ~29k | CLI + Daemon，进程编排，入口点 |
+| **zero-core** | 库 | ~73k | 核心工具 (grep/glob/edit)、NAPI 绑定、协议 (MCP/LSP)、安全 |
+| **zero-hub** | 库 | ~56k | 统一服务中枢：gateway + channels + workflow |
+| **zero-trading** | 库 | ~44k | PO3+SMT 交易策略系统 |
+| **zero-common** | 库 | ~21k | 共享配置、日志、错误处理、事件总线 |
+
+### 5.2 zero-hub 内部模块
+
+| 模块 | 说明 | 关键文件 |
+|------|------|---------|
+| `gateway/` | 认证、路由、配额、RBAC、审计 | auth.rs, rbac.rs, quota.rs |
+| `channels/` | IM 渠道适配 (10+ 平台) | telegram/, discord/, slack/, feishu/ |
+| `workflow/` | 调度、Webhook、Git、Hands | scheduler.rs, hands/, github/, gitlab/ |
 
 ---
 
@@ -448,9 +448,9 @@ pipeline: "sequential"  // 或 "parallel" 或 "conditional"
 | 文件 | 说明 |
 |------|------|
 | `packages/ccode/src/autonomous/hands/bridge.ts` | TypeScript 桥接层 |
-| `services/zero-workflow/src/hands/executor.rs` | Rust 执行引擎 |
-| `services/zero-workflow/src/hands/auto_approve.rs` | 自动审批逻辑 |
-| `services/zero-workflow/src/hands/scheduler.rs` | Cron 调度器 |
+| `services/zero-hub/src/workflow/hands/executor.rs` | Rust 执行引擎 |
+| `services/zero-hub/src/workflow/hands/auto_approve.rs` | 自动审批逻辑 |
+| `services/zero-hub/src/workflow/hands/scheduler.rs` | Cron 调度器 |
 
 ### 7.4 与 OpenFang 对比
 
@@ -518,15 +518,18 @@ pipeline: "sequential"  // 或 "parallel" 或 "conditional"
 ### 9.2 Rust Crate 依赖
 
 ```
-zero-cli
+zero-cli (可执行)
   ├── zero-common
-  ├── zero-agent
-  ├── zero-tools
-  ├── zero-memory
-  ├── zero-channels
-  └── zero-gateway
+  ├── zero-core
+  └── zero-hub
 
-zero-gateway / zero-channels / zero-workflow / zero-trading
+zero-core (核心库)
+  └── zero-common
+
+zero-hub (服务中枢)
+  └── zero-common
+
+zero-trading (交易系统)
   └── zero-common
 ```
 

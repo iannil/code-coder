@@ -9,15 +9,20 @@
 //! Operation Request → HitL System → IM Channel → User Approval → Action Execution
 //!                          ↓
 //!                    Approval Store (persistence)
+//!                          ↓
+//!                    Escalation Manager (time-based escalation)
+//!                          ↓
+//!                    Queue Manager (batch/delegation)
 //! ```
 //!
-//! ## Approval Types
+//! ## Features
 //!
-//! - Merge Requests: Code review and merge approvals
-//! - Trading Commands: High-value trading operations
-//! - Config Changes: System configuration modifications
-//! - High-Cost Operations: Operations with significant cost implications
-//! - Risk Operations: Operations with elevated risk levels
+//! - **Approval Types**: Merge requests, trading commands, config changes,
+//!   high-cost operations, risk operations, tool execution
+//! - **Escalation**: Time-based escalation rules with configurable actions
+//! - **Delegation**: Transfer approval authority between users
+//! - **Batch Processing**: Approve/reject multiple requests at once
+//! - **Queue Stats**: Monitor pending requests and escalation status
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -25,8 +30,14 @@ use serde::{Deserialize, Serialize};
 // Stub modules for future implementation
 pub mod actions;
 pub mod cards;
+pub mod escalation;
+pub mod queue;
 pub mod routes;
 pub mod store;
+
+// Re-export commonly used types
+pub use escalation::{EscalationEvent, EscalationManager, EscalationRule};
+pub use queue::{ApprovalQueue, BatchResult, DelegationRecord, QueueStats};
 
 /// Risk level for operations requiring approval.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

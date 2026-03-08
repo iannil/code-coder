@@ -14,6 +14,7 @@
 
 pub mod dsl;
 pub mod economic_bridge;
+pub mod forum;
 pub mod github;
 pub mod gitlab;
 pub mod hands;

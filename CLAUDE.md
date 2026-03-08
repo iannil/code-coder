@@ -216,7 +216,7 @@ bun run --cwd packages/ccode build
 
 - CodeCoder API Server: 4400 (Bun/TypeScript)
 - Web Frontend (Vite): 4401 (React)
-- Zero CLI Daemon: 4402 (Rust, 进程编排器)
+- Zero CLI Daemon: 4402 (Rust, 统一服务入口)
 - Faster Whisper Server: 4403 (Docker)
 
 **基础设施服务 (4410-4419):**
@@ -227,40 +227,42 @@ bun run --cwd packages/ccode build
 
 - MCP Server (HTTP): 4420 (Model Context Protocol)
 
-**Rust 微服务 (4430-4439):**
+> **注**: 原独立端口 (4430-4439) 已整合到 zero-hub，通过 zero-cli daemon (:4402) 统一管理。
 
-- Zero Gateway: 4430 (统一网关: 认证/路由/配额/MCP/Webhook)
-- Zero Channels: 4431 (IM 渠道: Telegram/Discord/Slack)
-- Zero Workflow: 4432 (工作流: Webhook/Cron/Git)
-- Zero Browser: 4433 (浏览器自动化: API 学习/录制回放)
-- Zero Trading: 4434 (PO3+SMT 自动化交易)
-- Zero API: 4435 (HTTP/WebSocket API: 暴露 zero-core)
-
-#### 服务架构
+#### 服务架构 (5 Crates)
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────┐
-│                              zero-cli daemon 命令                                      │
-│                                (进程编排器)                                            │
-│       职责: spawn 子进程、健康检查、自动重启、日志聚合                                   │
-│    │           │           │           │           │           │                       │
-│    ▼           ▼           ▼           ▼           ▼           ▼                       │
-│ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐                     │
-│ │ zero-  │ │ zero-  │ │ zero-  │ │ zero-  │ │ zero-  │ │ zero-  │                     │
-│ │gateway │ │channels│ │workflow│ │browser │ │trading │ │  api   │                     │
-│ │ :4430  │ │ :4431  │ │ :4432  │ │ :4433  │ │ :4434  │ │ :4435  │                     │
-│ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                     │
+│                              zero-cli daemon :4402                                     │
+│                          (统一入口 + 进程编排)                                          │
+│       职责: HTTP 服务、健康检查、自动重启、日志聚合                                       │
+│                                   │                                                    │
+│          ┌────────────────────────┼────────────────────────┐                          │
+│          │                        │                        │                          │
+│          ▼                        ▼                        ▼                          │
+│    ┌──────────┐            ┌──────────┐            ┌──────────┐                       │
+│    │zero-core │            │zero-hub  │            │zero-     │                       │
+│    │(工具库)  │            │(服务中枢)│            │trading   │                       │
+│    │          │            │          │            │(交易)    │                       │
+│    │tools/    │            │gateway/  │            │          │                       │
+│    │session/  │            │channels/ │            │          │                       │
+│    │security/ │            │workflow/ │            │          │                       │
+│    └──────────┘            └──────────┘            └──────────┘                       │
+│                                   │                                                    │
+│                                   ▼                                                    │
+│                            ┌──────────┐                                               │
+│                            │zero-     │                                               │
+│                            │common    │                                               │
+│                            │(共享库)  │                                               │
+│                            └──────────┘                                               │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Gateway 功能:**
+**zero-hub 内部模块:**
 
-- 配对码认证 (Pairing) + JWT 双模式
-- Webhook 端点 (/webhook)
-- MCP JSON-RPC 端点 (/mcp)
-- 用户管理 CRUD + RBAC
-- 配额管理和审计日志
-- Tunnel 支持 (Cloudflare/Tailscale/ngrok)
+- `gateway/` - 认证 (Pairing + JWT)、RBAC、配额、审计
+- `channels/` - IM 渠道 (Telegram/Discord/Slack/飞书/Email/iMessage)
+- `workflow/` - 调度 (Cron)、Webhook、Git 集成、Hands 自主执行
 
 ### 运维脚本
 
@@ -337,16 +339,16 @@ bun run script/migrate-config.ts
 - `packages/util/` - 共享工具
 - `script/` - 项目级构建和生成脚本
 
-**Rust Services (services/):**
+**Rust Services (services/) - 5 Crates:**
 
-- `services/zero-cli/` - Zero CLI 主程序，包含 daemon 命令（组合 gateway + channels + scheduler）
-- `services/zero-gateway/` - 独立网关服务（认证、路由、配额、安全沙箱）
-- `services/zero-channels/` - 独立频道服务（Telegram、Discord、Slack、Email）
-- `services/zero-workflow/` - 独立工作流服务（Webhook、Cron、Git 集成）
-- `services/zero-agent/` - Agent 执行逻辑（库）
-- `services/zero-memory/` - 内存/持久化（库）
-- `services/zero-tools/` - 工具定义（库）
-- `services/zero-common/` - 共享配置和工具（库）
+- `services/zero-cli/` - CLI + Daemon (统一入口)，依赖 zero-core, zero-hub
+- `services/zero-core/` - 核心工具库 (grep/glob/edit, NAPI 绑定, MCP/LSP 协议)
+- `services/zero-hub/` - 统一服务中枢，包含:
+  - `src/gateway/` - 认证、路由、配额、RBAC、审计
+  - `src/channels/` - IM 渠道 (Telegram/Discord/Slack/飞书/Email)
+  - `src/workflow/` - 调度、Webhook、Git、Hands 自主执行
+- `services/zero-trading/` - PO3+SMT 交易系统
+- `services/zero-common/` - 共享配置、日志、事件总线
 
 ### 核心技术
 

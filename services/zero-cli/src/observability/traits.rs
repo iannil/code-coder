@@ -25,6 +25,23 @@ pub enum ObserverEvent {
         component: String,
         message: String,
     },
+    // Heartbeat monitor events
+    ServiceRestart {
+        service_id: String,
+    },
+    Alert {
+        service_id: String,
+        channels: Vec<String>,
+    },
+    Escalation {
+        service_id: String,
+        escalate_to: Vec<String>,
+    },
+    HealthChange {
+        service_id: String,
+        previous_status: String,
+        current_status: String,
+    },
 }
 
 /// Numeric metrics

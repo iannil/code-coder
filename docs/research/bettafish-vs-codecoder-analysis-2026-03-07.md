@@ -1,7 +1,7 @@
 # BettaFish vs Code-Coder 比较分析报告
 
 > **分析日期**: 2026-03-07
-> **BettaFish**: https://github.com/666ghj/BettaFish
+> **BettaFish**: <https://github.com/666ghj/BettaFish>
 > **分析目标**: 评估两者异同，分析可参考的设计模式
 
 ---
@@ -48,6 +48,7 @@
 ### 2.2 项目结构
 
 #### BettaFish 结构
+
 ```
 BettaFish/
 ├── QueryEngine/         # 国内外新闻广度搜索
@@ -62,6 +63,7 @@ BettaFish/
 ```
 
 #### Code-Coder 结构
+
 ```
 code-coder/
 ├── packages/
@@ -105,6 +107,7 @@ code-coder/
 
 `★ Insight ─────────────────────────────────────`
 **架构哲学差异**：
+
 - **BettaFish** 采用"垂直整合"模式，5 个组件针对舆情分析的全链条深度优化
 - **Code-Coder** 采用"水平扩展"模式，31 个 Agent 覆盖多个垂直领域
 - 前者追求**单一领域的极致深度**，后者追求**跨领域的通用能力**
@@ -117,6 +120,7 @@ code-coder/
 ### 3.1 BettaFish: ForumEngine 论坛机制
 
 **工作流程**：
+
 ```python
 1. 用户提问 → Flask 主应用接收
 2. 并行启动：QueryEngine + MediaEngine + InsightEngine
@@ -131,6 +135,7 @@ code-coder/
 ```
 
 **核心特性**：
+
 - **辩论主持人模型**：LLM 担任主持人，引导讨论方向
 - **链式思维碰撞**：Agent 之间通过辩论产生集体智能
 - **避免同质化**：不同 Agent 有独特工具集和思维模式
@@ -139,6 +144,7 @@ code-coder/
 ### 3.2 Code-Coder: Task 委托 + Session 隔离
 
 **工作流程**：
+
 ```typescript
 1. 主 Agent 接收任务
 2. 使用 Task tool 创建子会话
@@ -148,6 +154,7 @@ code-coder/
 ```
 
 **核心特性**：
+
 - **父子会话隔离**：每个子 Agent 有独立状态
 - **Agent Registry**：动态发现和推荐
 - **触发器系统**：keyword, pattern, event, context
@@ -155,6 +162,7 @@ code-coder/
 
 `★ Insight ─────────────────────────────────────`
 **协作模式对比**：
+
 - **BettaFish 论坛模式**：类似多智能体强化学习，通过辩论实现集体智能涌现，适合**发散探索**
 - **Code-Coder 委托模式**：类似函数调用栈，通过层级分解处理复杂任务，适合**收敛执行**
 - 两种模式可以互补：Code-Coder 可在祝融说系列 Agent 中引入简化版论坛机制
@@ -167,6 +175,7 @@ code-coder/
 ### 4.1 BettaFish: ReportEngine
 
 **架构流程**：
+
 ```
 模板选择 → 布局设计 → 篇幅规划 → 章节生成 → IR 装订 → 渲染输出
 ```
@@ -184,6 +193,7 @@ code-coder/
 | **质量检测** | 分块质量检测 + 自动修复 |
 
 **IR 结构示例**：
+
 ```json
 {
   "blocks": [
@@ -203,6 +213,7 @@ code-coder/
 ### 4.2 Code-Coder: Session 输出系统
 
 **架构流程**：
+
 ```
 消息流 → Part 处理 → 实时渲染 → 导出选项
 ```
@@ -220,6 +231,7 @@ code-coder/
 
 `★ Insight ─────────────────────────────────────`
 **报告生成范式**：
+
 - **BettaFish** 追求**出版级质量**：专业的模板系统、IR 装订、多格式输出、图表系统
 - **Code-Coder** 追求**开发效率**：流式实时反馈、简洁的 Markdown 导出
 - 前者适合**对外交付**，后者适合**内部协作**
@@ -233,6 +245,7 @@ code-coder/
 ### 5.1 BettaFish: GraphRAG
 
 **架构**：
+
 ```python
 graph_builder: state + forum 日志 → 知识图谱
 graph_storage: Graph 对象管理 + graphrag.json 落盘
@@ -240,6 +253,7 @@ query_engine: 关键词/类型/深度检索
 ```
 
 **核心特性**：
+
 - 基于 Microsoft GraphRAG
 - 从 Agent 对话日志自动构建图谱
 - 支持实体、关系、社区检测
@@ -248,6 +262,7 @@ query_engine: 关键词/类型/深度检索
 ### 5.2 Code-Coder: 双层记忆架构
 
 **架构**：
+
 ```
 第一层：每日笔记 (memory/daily/{YYYY-MM-DD}.md)
   - 仅追加、不可修改
@@ -266,6 +281,7 @@ query_engine: 关键词/类型/深度检索
 ```
 
 **核心特性**：
+
 - Markdown 文件透明存储
 - Git 友好，版本控制
 - 对人类可直接阅读和编辑
@@ -273,6 +289,7 @@ query_engine: 关键词/类型/深度检索
 
 `★ Insight ─────────────────────────────────────`
 **记忆系统哲学**：
+
 - **BettaFish** 使用**结构化图谱**：适合关系复杂的舆情分析，查询性能优异
 - **Code-Coder** 使用**透明文本**：符合"对 Git 友好、对人类可读"的设计原则，可维护性强
 - 两种设计各有适用场景：舆情分析需要复杂关系查询，个人工作台需要透明可控
@@ -285,11 +302,13 @@ query_engine: 关键词/类型/深度检索
 ### 6.1 ForumEngine 协作机制
 
 **可借鉴点**：
+
 - 引入"主持人"角色协调多 Agent 讨论
 - 辩论式思考避免单一视角局限
 - 论坛日志可作为决策依据
 
 **Code-Coder 改进方向**：
+
 - 在祝融说系列 Agent 中引入"观察者论坛"机制
 - Macro Agent、Trader Agent、Picker Agent 可以进行辩论式分析
 - 实现简化版：无需完整 LLM 主持人，可使用结构化讨论协议
@@ -297,11 +316,13 @@ query_engine: 关键词/类型/深度检索
 ### 6.2 ReportEngine 的 IR 中间表示
 
 **可借鉴点**：
+
 - 将文档内容与样式分离
 - 结构化的章节存储和 manifest
 - 支持多格式渲染
 
 **Code-Coder 改进方向**：
+
 - 在 Writer Agent 中引入 Document IR
 - 支持输出为交互式 HTML 报告
 - 增强 report_template 系统，支持 BettaFish 风格的模板切片
@@ -309,11 +330,13 @@ query_engine: 关键词/类型/深度检索
 ### 6.3 GraphRAG 知识图谱
 
 **可借鉴点**：
+
 - 从对话日志自动构建知识图谱
 - 实体和关系的自动提取
 - 社区检测发现主题聚类
 
 **Code-Coder 改进方向**：
+
 - 增强现有的 causal graph 系统
 - 引入语义图谱和调用图谱的自动更新
 - 支持跨项目的知识关联
@@ -322,6 +345,7 @@ query_engine: 关键词/类型/深度检索
 ### 6.4 Node-Based 架构
 
 **可借鉴点**：
+
 ```python
 class BaseNode:
     def execute(self, state):
@@ -337,6 +361,7 @@ class SearchNode(BaseNode):
 ```
 
 **Code-Coder 改进方向**：
+
 - 部分复杂 Agent（如 Macro、Trader）可采用 Node 架构
 - 标准化 Agent 内部处理流程
 - 参考 BettaFish 的 nodes/ 目录结构
@@ -344,11 +369,13 @@ class SearchNode(BaseNode):
 ### 6.5 情感分析模型集成
 
 **可借鉴点**：
+
 - 多种情感分析方法（微调 BERT、GPT-2、Qwen、传统 ML）
 - 中间件模式集成到 Agent 工具中
 - 置信度阈值和批处理
 
 **Code-Coder 改进方向**：
+
 - Trader Agent 可集成情感分析用于市场情绪判断
 - Macro Agent 可利用情感分析解读舆情数据
 - 参考 SentimentAnalysisModel/ 目录结构
@@ -356,11 +383,13 @@ class SearchNode(BaseNode):
 ### 6.6 多模态内容处理
 
 **可借鉴点**：
+
 - MediaEngine 支持视频/图片内容解析
 - 搜索引擎结构化卡片提取（天气、日历、股票）
 - Playwright 浏览器自动化
 
 **Code-Coder 改进方向**：
+
 - zero-browser 已有基础，可增强多模态理解
 - 集成视觉模型到工具系统
 - 支持结构化数据卡片提取
@@ -372,6 +401,7 @@ class SearchNode(BaseNode):
 ### 7.1 爬虫系统 (MindSpider)
 
 **原因**：
+
 - Code-Coder 的 zero-browser 已提供浏览器自动化能力
 - MindSpider 针对中文社交媒体（微博、小红书、抖音）深度优化
 - 与 Code-Coder 的通用定位不同
@@ -379,6 +409,7 @@ class SearchNode(BaseNode):
 ### 7.2 数据库依赖 (PostgreSQL/MySQL)
 
 **原因**：
+
 - Code-Coder 使用 SQLite + 文件系统，更轻量
 - 个人工作台不需要重型数据库的并发能力
 - 简化部署和运维
@@ -386,6 +417,7 @@ class SearchNode(BaseNode):
 ### 7.3 Streamlit 界面
 
 **原因**：
+
 - Code-Coder 已有完善的 TUI (OpenTUI) 和 Web (React) 界面
 - Streamlit 性能较差，不适合实时交互
 - 不符合 Code-Coder 的技术栈
@@ -393,6 +425,7 @@ class SearchNode(BaseNode):
 ### 7.4 Flask 后端
 
 **原因**：
+
 - Code-Coder 使用 Hono (Bun) 和 Axum (Rust)
 - Flask 性能和异步能力较弱
 - 不符合双语言架构
@@ -404,11 +437,13 @@ class SearchNode(BaseNode):
 ### 8.1 短期改进 (1-2 周)
 
 **1. 引入 Agent 论坛机制**
+
 - [ ] 在祝融说系列 Agent 中实现简化版 ForumEngine
 - [ ] 支持 Macro、Trader、Picker 之间的辩论式分析
 - [ ] 记录论坛日志到 memory/daily/
 
 **2. 增强报告生成**
+
 - [ ] Writer Agent 支持输出 HTML 报告
 - [ ] 引入 Document IR 概念
 - [ ] 支持模板系统（参考 ReportEngine）
@@ -416,22 +451,26 @@ class SearchNode(BaseNode):
 ### 8.2 中期改进 (1-2 月)
 
 **1. GraphRAG 集成**
+
 - [ ] 增强现有的 causal graph 系统
 - [ ] 支持从对话日志自动构建语义图谱
 - [ ] 实现社区检测功能
 
 **2. Node 架构**
+
 - [ ] 复杂 Agent（Macro、Trader）采用 Node 架构
 - [ ] 标准化 Agent 内部处理流程
 
 ### 8.3 长期改进 (3-6 月)
 
 **1. 多模态能力**
+
 - [ ] 增强 zero-browser 的多模态理解
 - [ ] 支持视频/图片内容分析
 - [ ] 结构化数据卡片提取
 
 **2. 情感分析**
+
 - [ ] 集成情感分析到 Trader/Macro Agent
 - [ ] 支持市场情绪和舆情情绪判断
 
@@ -471,6 +510,6 @@ class SearchNode(BaseNode):
 
 ## 参考资料
 
-- **BettaFish GitHub**: https://github.com/666ghj/BettaFish
-- **BettaFish 关联项目 (MiroFish)**: https://github.com/666ghj/MiroFish
+- **BettaFish GitHub**: <https://github.com/666ghj/BettaFish>
+- **BettaFish 关联项目 (MiroFish)**: <https://github.com/666ghj/MiroFish>
 - **Code-Coder 架构文档**: `docs/architecture/`

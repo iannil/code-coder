@@ -9,6 +9,8 @@ use zero_core::{
     TodoList,
 };
 
+use crate::session::store::SessionStore;
+
 /// Shared application state
 pub struct AppState {
     /// Grep engine
@@ -33,6 +35,8 @@ pub struct AppState {
     pub truncator: Truncator,
     /// Session todo lists (session_id -> TodoList)
     pub todo_lists: RwLock<HashMap<String, TodoList>>,
+    /// Session store (SQLite-backed)
+    pub session_store: SessionStore,
 }
 
 impl AppState {
@@ -41,6 +45,9 @@ impl AppState {
         let data_dir = directories::ProjectDirs::from("ai", "codecoder", "zero-api")
             .map(|dirs| dirs.data_dir().to_path_buf())
             .unwrap_or_else(|| std::env::temp_dir().join("zero-api"));
+
+        // Ensure data directory exists
+        std::fs::create_dir_all(&data_dir)?;
 
         Ok(Self {
             grep: Grep::new(),
@@ -54,6 +61,7 @@ impl AppState {
             web_fetcher: WebFetcher::new(),
             truncator: Truncator::new(data_dir.join("tool-output")),
             todo_lists: RwLock::new(HashMap::new()),
+            session_store: SessionStore::new(&data_dir.join("sessions.db"))?,
         })
     }
 

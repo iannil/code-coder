@@ -1,6 +1,6 @@
 # OpenFang vs CodeCoder 对比分析
 
-> 生成时间: 2026-02-28
+> 生成时间: 2026-03-08
 > 版本: 1.0.0
 
 ## 上下文
@@ -116,7 +116,7 @@ languages = ["en", "zh"]
 - 敏感操作进入审批队列
 - 支持 FangHub 发布和共享
 
-### 2.2 CodeCoder: 23 个专业 Agent
+### 2.2 CodeCoder: 31 个专业 Agent
 
 CodeCoder 采用更细粒度的 **Agent 矩阵**：
 

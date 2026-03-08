@@ -239,6 +239,22 @@ export {
 } from "./metrics/reporter"
 export type { Report, ReportType, ReportOptions } from "./metrics/reporter"
 
+// Confidence Scoring (MiroFish-inspired)
+export {
+  ConfidenceScorer,
+  createConfidenceScorer,
+  scoreOutput,
+  isOutputConfident,
+  Confidence,
+} from "./confidence/index.js"
+export type {
+  ConfidenceScore,
+  ConfidenceDetails,
+  ConfidenceScorerConfig,
+  AgentOutput,
+  AgentContext,
+} from "./confidence/index.js"
+
 // Configuration
 export { AutonomousConfig, DEFAULT_AUTONOMOUS_MODE_CONFIG, mergeAutonomousModeConfig } from "./config/config"
 export {

@@ -135,3 +135,33 @@ export {
   type StoreStats,
   type MetricsOptions,
 } from './tracer.js'
+
+// ============================================================================
+// Emit API (emit.ts) - Lightweight Agent Lightning-style tracing
+// ============================================================================
+
+export {
+  emit,
+  toolStart,
+  toolEnd,
+  toolError,
+  stateTransition,
+  agentDecision,
+  error as emitError,
+  custom as emitCustom,
+  flush as emitFlush,
+  getBuffer as getEmitBuffer,
+  clear as clearEmitBuffer,
+  setAutoFlush,
+  withToolTracking,
+  scoped as scopedEmit,
+  type SpanId,
+  type EmitEvent,
+  type ToolStartEvent,
+  type ToolEndEvent,
+  type StateTransitionEvent,
+  type AgentDecisionEvent,
+  type ErrorEvent as EmitErrorEvent,
+  type CustomEvent as EmitCustomEvent,
+  type AnyEmitEvent,
+} from './emit.js'

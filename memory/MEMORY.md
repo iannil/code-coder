@@ -13,10 +13,11 @@
 
 ### 版本信息
 
-- **当前版本**: 0.0.1 (开发中，功能完成度 95%+)
+- **当前版本**: 0.0.1 (开发中，功能完成度 98%+)
 - **发布时间**: 待定
 - **Agent 数量**: 31 个
-- **测试覆盖**: TypeScript 74.93% / Rust 364 tests
+- **测试覆盖**: TypeScript 74.93% / Rust 364+ tests
+- **最后更新**: 2026-03-08
 
 ### 核心架构
 
@@ -422,6 +423,46 @@
 - **实现**: 删除 TypeScript fallback 代码，统一使用 Rust 实现
 - **影响**: Git 操作性能提升 ~8x
 - **验证**: 单元测试通过，实际 Git 操作验证通过
+
+### 2026-03-07: 架构优化研究完成
+
+- **决策**: 完成 8 个开源项目对比分析
+- **项目**: DeerFlow, STORM, MiroThinker, Paperclip, BettaFish, MiroFish, Agent Lightning, Goose
+- **识别**: 渐进式技能加载、多视角问题生成、GraphRAG、会话分支等可借鉴模式
+- **影响**: 制定 P0/P1/P2 优化计划
+- **位置**: docs/research/
+
+### 2026-03-07: NAPI 类型同步与编译修复
+
+- **决策**: 统一 TypeScript/Rust 类型定义
+- **完成项**:
+  - NAPI Handle 类型自动生成
+  - TypeScript/Rust 编译错误修复
+  - 技能加载器原生 (Rust) 实现
+  - 类型安全优化
+- **影响**: 跨语言调用更可靠，编译速度提升
+
+### 2026-03-08: P0/P2 架构优化实现
+
+- **P0 完成**:
+  - 技能预加载器 (packages/ccode/src/skill/preloader.ts)
+  - 置信度机制 (packages/ccode/src/autonomous/confidence/)
+  - 健康检查 (services/zero-cli/src/heartbeat/health.rs)
+  - 错误恢复 (packages/ccode/src/tool/error-recovery.ts)
+  - 事件发射器 (emit.ts + emitter.rs)
+- **P2 完成**:
+  - Document IR 层 (packages/ccode/src/document/ir/)
+  - 工具宏系统 (packages/ccode/src/tool/macro/)
+  - Forum 聚合器 (packages/ccode/src/agent/forum/)
+  - HITL 升级 (services/zero-hub/src/gateway/hitl/)
+- **P2 待办**: 会话分支、多视角问题生成、GraphRAG 增强
+
+### 2026-03-08: 架构简化 v3
+
+- **决策**: 清理冗余代码和过期文档
+- **删除**: autonomous-agent.ts (已被 forum/aggregator 替代)
+- **整理**: 移动 10 个已完成进度文件到 completed/
+- **影响**: 代码库更简洁，文档结构更清晰
 
 ## 经验教训
 
