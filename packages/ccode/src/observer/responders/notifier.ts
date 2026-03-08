@@ -7,7 +7,7 @@
  */
 
 import { Log } from "@/util/log"
-import type { Observation, Anomaly, Opportunity, EmergentPattern } from "../types"
+import type { Observation, Anomaly, Opportunity, EmergentPattern, GearPreset } from "../types"
 import type { Escalation } from "../controller"
 import { ObserverEvent } from "../events"
 import {
@@ -15,6 +15,7 @@ import {
   type ChannelType,
   type ChannelsClientConfig,
 } from "../integration/channels-client"
+import { getDialPanel, type DialPanel } from "../panel"
 
 const log = Log.create({ service: "observer.responders.notifier" })
 
@@ -76,6 +77,10 @@ export interface NotifierConfig {
     to: string[]
     from?: string
   }
+  /** Use dial-based control (new architecture) */
+  useDialControl: boolean
+  /** Observe dial threshold for proactive notifications (0-100) */
+  observeThreshold: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,6 +93,8 @@ const DEFAULT_CONFIG: NotifierConfig = {
   minPriority: "medium",
   rateLimit: 30,
   cooldownMs: 60000,
+  useDialControl: true,
+  observeThreshold: 50, // Observe dial > 50% enables proactive notifications
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,6 +191,7 @@ export class Notifier {
   private rateLimitCounter = 0
   private rateLimitResetTimer: ReturnType<typeof setInterval> | null = null
   private eventSubscriptions: Array<() => void> = []
+  private dialPanel: DialPanel | null = null
 
   constructor(config: Partial<NotifierConfig> = {}) {
     this.config = {
@@ -191,6 +199,36 @@ export class Notifier {
       ...config,
       rules: [...BUILT_IN_RULES, ...(config.rules ?? [])],
     }
+    if (this.config.useDialControl) {
+      this.dialPanel = getDialPanel()
+    }
+  }
+
+  /**
+   * Get the current observe dial value.
+   */
+  getObserveDialValue(): number {
+    return this.dialPanel?.getDial("observe") ?? 50
+  }
+
+  /**
+   * Check if notifications should be proactive.
+   * When observe dial < threshold, stay silent for non-urgent notifications.
+   */
+  shouldNotifyProactively(): boolean {
+    if (!this.config.useDialControl || !this.dialPanel) {
+      return true // Default to proactive
+    }
+    return this.dialPanel.shouldObserve()
+  }
+
+  /**
+   * Get the notification mode based on observe dial.
+   * Returns 'silent' for low observation, 'proactive' for high observation.
+   */
+  getNotificationMode(): "silent" | "proactive" {
+    const observeValue = this.getObserveDialValue()
+    return observeValue >= this.config.observeThreshold ? "proactive" : "silent"
   }
 
   /**
@@ -396,6 +434,18 @@ export class Notifier {
         id: notification.id,
         priority: notification.priority,
         minPriority: this.config.minPriority,
+      })
+      return
+    }
+
+    // Check observe dial - only urgent notifications bypass silent mode
+    const notificationMode = this.getNotificationMode()
+    if (notificationMode === "silent" && notification.priority !== "urgent") {
+      log.debug("Silent mode active, skipping non-urgent notification", {
+        id: notification.id,
+        priority: notification.priority,
+        observeDial: this.getObserveDialValue(),
+        threshold: this.config.observeThreshold,
       })
       return
     }

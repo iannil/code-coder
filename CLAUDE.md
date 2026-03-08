@@ -406,6 +406,105 @@ JavaScript SDK 从 OpenAPI 规范自动生成。修改 API 后，运行 `./scrip
 
 使用宏观经济分析框架解读数据。
 
+## 观察者网络 (Observer Network)
+
+观察者网络将 CodeCoder 从执行中心系统转变为观察中心系统，体现"祝融说"哲学：
+
+- **可能性基底** (Possibility Substrate): 原始观察事件流
+- **观察即收敛** (Observation as Convergence): 共识形成机制
+- **可用余量** (Available Margin): 模式切换自由度
+- **评估权** (Evaluation Authority): 人类干预点
+
+### 架构概览
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    观察者层 (Observer Layer)                        │
+│   CodeWatch │ WorldWatch │ SelfWatch │ MetaWatch                   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    事件流 (Event Stream)                            │
+│   缓冲 │ 路由 │ 聚合                                                │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    共识层 (Consensus Layer)                         │
+│   注意力 │ 模式检测 │ 异常检测 │ 世界模型                           │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    模式控制器 (Mode Controller)                     │
+│   AUTO │ MANUAL │ HYBRID │ CLOSE 评估                              │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    响应层 (Response Layer)                          │
+│   Notifier │ Analyzer │ Executor │ Historian                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 四大观察者节点
+
+| 观察者 | 职责 | 关联 Agent |
+|--------|------|-----------|
+| CodeWatch | 代码库扫描、Git 变更、构建状态 | explore |
+| WorldWatch | 市场数据、新闻舆情、API 变化 | macro, trader |
+| SelfWatch | Agent 行为、决策日志、错误模式 | code-reviewer, security-reviewer, decision |
+| MetaWatch | 观察质量、系统健康、观察盲点 | observer |
+
+### 操作模式
+
+- **AUTO**: 完全自主执行，适用于高置信度、低风险场景
+- **MANUAL**: 需要人类确认，适用于关键决策
+- **HYBRID**: 自动执行 + 事后确认，平衡效率与控制
+
+模式切换基于 CLOSE 五维评估 (Convergence, Leverage, Optionality, Surplus, Evolution)。
+
+### 使用示例
+
+```typescript
+import { ObserverNetwork } from "@/observer"
+
+// 启动观察者网络
+const network = await ObserverNetwork.start({
+  mode: "HYBRID",
+  riskTolerance: "balanced",
+  watchers: {
+    code: { enabled: true },
+    world: { enabled: true },
+    self: { enabled: true },
+    meta: { enabled: true },
+  },
+})
+
+// 订阅观察事件
+network.onObservation((obs) => {
+  console.log(`[${obs.watcherType}] ${obs.type}`)
+})
+
+// 获取当前世界模型
+const model = await network.getWorldModel()
+
+// 切换模式
+await network.switchMode("MANUAL", "用户请求")
+
+// 停止网络
+await network.stop()
+```
+
+### 关键文件
+
+- `packages/ccode/src/observer/` - 观察者网络模块
+- `packages/ccode/src/observer/watchers/` - 四大观察者实现
+- `packages/ccode/src/observer/consensus/` - 共识引擎
+- `packages/ccode/src/observer/controller/` - 模式控制器
+- `packages/ccode/src/observer/responders/` - 响应组件
+
 ## 代码风格指南
 
 尽可能始终使用并行工具。

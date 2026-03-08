@@ -371,10 +371,58 @@ export type Opportunity = z.infer<typeof Opportunity>
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Gear presets for intuitive control.
+ *
+ * Like a car's gear selector:
+ * - P (Park): Everything off, no resource consumption
+ * - N (Neutral): Observe only, no intervention
+ * - D (Drive): Balanced autonomy for daily use
+ * - S (Sport): High autonomy, aggressive mode
+ * - M (Manual): Full user control over each dial
+ */
+export type GearPreset = "P" | "N" | "D" | "S" | "M"
+
+/**
  * Operating mode for the system.
+ * @deprecated Use GearPreset instead. Kept for backward compatibility.
+ *
+ * Mapping:
+ * - AUTO → S (Sport)
+ * - HYBRID → D (Drive)
+ * - MANUAL → N (Neutral)
  */
 export const OperatingMode = z.enum(["AUTO", "MANUAL", "HYBRID"])
 export type OperatingMode = z.infer<typeof OperatingMode>
+
+/**
+ * Map legacy OperatingMode to GearPreset.
+ */
+export function operatingModeToGear(mode: OperatingMode): GearPreset {
+  switch (mode) {
+    case "AUTO":
+      return "S"
+    case "HYBRID":
+      return "D"
+    case "MANUAL":
+      return "N"
+  }
+}
+
+/**
+ * Map GearPreset to legacy OperatingMode.
+ */
+export function gearToOperatingMode(gear: GearPreset): OperatingMode {
+  switch (gear) {
+    case "P":
+    case "N":
+    case "M":
+      return "MANUAL"
+    case "D":
+      return "HYBRID"
+    case "S":
+      return "AUTO"
+  }
+}
 
 /**
  * CLOSE score thresholds for mode switching.

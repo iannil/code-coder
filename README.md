@@ -1,6 +1,6 @@
 # CodeCoder
 
-> Personal Brain Trust System - AI-powered development tool that combines engineering capabilities with decision wisdom.
+> AI Agent Observation System - Observe, trust, and evolve with AI agents through progressive autonomy from manual to automatic modes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bun](https://img.shields.io/badge/Bun-1.3+-black?logo=bun)](https://bun.sh)
@@ -11,30 +11,43 @@
 
 ---
 
-## What is CodeCoder?
+## Observation as Creation
 
-CodeCoder is an AI advisor platform that merges **engineering capabilities** with **decision wisdom**. It's not just a coding assistant - it's a comprehensive system designed to enhance both technical execution and strategic thinking.
+> Every interaction with AI is an act of "observation" — collapsing infinite possibilities into concrete reality.
 
-### Three-Layer Wisdom Architecture
+Based on **Zhurong Philosophy (祝融说)**, CodeCoder treats each AI interaction not as mere querying, but as a creative observation that shapes outcomes. You choose how to participate in this observation process: control every step yourself, or trust the Agent to complete it independently.
 
-| Layer | Capabilities |
-|-------|--------------|
-| **Engineering** | Code review, Security analysis, TDD, Architecture design, Reverse engineering |
-| **Domain** | Macro-economics, Trading analysis, Product selection, Minimum viable products, AI engineering |
-| **Thinking** | Zhurong Philosophy (祝融说), CLOSE decision framework, Observer theory |
+### Progressive Trust Journey
+
+Trust isn't binary — it's a spectrum. CodeCoder lets you start cautiously and evolve naturally:
+
+| Trust Level | Autonomy | Your Role | When to Use |
+|-------------|----------|-----------|-------------|
+| **Timid** | Minimal | Confirm every step | First-time use, sensitive tasks |
+| **Bold** | Low | Approve key decisions | Learning phase |
+| **Wild** | Medium | Set boundaries | Growing trust |
+| **Crazy** | High | Exception handling only | Established trust |
+| **Insane** | Very High | Critical alerts only | High confidence |
+| **Lunatic** | Full | Set goal, walk away | Complete trust |
+
+**This is a two-way observation:**
+
+- **You observe the Agent** → understand its capabilities → build trust
+- **Agent observes you** → learns your preferences → personalizes service
 
 ---
 
 ## Key Features
 
-- **31 Specialized Agents** - Three-mode design (@build, @writer, @decision) covering engineering, content creation, and decision consulting
+- **Observation Philosophy** - Based on Zhurong Theory: every interaction collapses possibilities into reality
+- **Progressive Trust** - 6 autonomy levels from Timid (manual) to Lunatic (automatic)
+- **Dual Observation** - You observe Agent → build trust; Agent observes you → learns preferences
+- **31 Specialized Agents** - Three-mode design (@build, @writer, @decision) covering engineering, content, and decisions
 - **30+ AI Providers** - Claude, OpenAI, Google, Ollama, Groq, Mistral, Azure, Bedrock, and more
-- **MCP Protocol** - Full Model Context Protocol support for local and remote servers with OAuth
-- **30+ LSP Integrations** - TypeScript, Python, Go, Rust, Java, and many more language servers
-- **Multi-mode Interface** - TUI (terminal), CLI, Web, and Headless API
-- **Dual-layer Memory** - Transparent Markdown-based memory system (daily notes + long-term memory)
-- **Secure Sandbox** - Process, Docker, and WASM execution backends
-- **Hands Autonomous Agent** - 6-level autonomy system with CLOSE framework integration
+- **Memory as Observation Record** - Daily notes (flow) + Long-term memory (sediment)
+- **CLOSE Framework** - Sustainable decision-making over optimal decisions
+- **MCP Protocol** - Full Model Context Protocol support with OAuth
+- **30+ LSP Integrations** - TypeScript, Python, Go, Rust, Java, and more
 
 ---
 
@@ -42,18 +55,26 @@ CodeCoder is an AI advisor platform that merges **engineering capabilities** wit
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           User Interface                                │
-│     TUI (:4400)    │    Web (:4401)    │    CLI    │  Telegram/Discord │
+│                      OBSERVATION (祝融说)                               │
+│   "Every interaction collapses possibilities into reality"              │
 └──────────────────────────────┬──────────────────────────────────────────┘
                                │
 ┌──────────────────────────────┴──────────────────────────────────────────┐
-│                    packages/ccode (TypeScript/Bun)                      │
-│      Agent Engine (31 Agents)  │  AI Providers  │  Memory System        │
+│                      PROGRESSIVE TRUST                                  │
+│                                                                         │
+│   ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐             │
+│   │  Timid  │───►│  Wild   │───►│  Crazy  │───►│ Lunatic │             │
+│   │(Manual) │    │(Hybrid) │    │ (Auto)  │    │ (Full)  │             │
+│   └─────────┘    └─────────┘    └─────────┘    └─────────┘             │
+│        │              │              │              │                   │
+│   Confirm         Approve        Exception      Set goal                │
+│   every step    key decisions    handling only  walk away               │
+│                                                                         │
 └──────────────────────────────┬──────────────────────────────────────────┘
                                │
 ┌──────────────────────────────┴──────────────────────────────────────────┐
-│                      services/zero-* (Rust)                             │
-│   zero-cli  │  zero-core  │  zero-hub  │  zero-trading  │  zero-common  │
+│                           EXECUTION                                     │
+│   31 Agents  │  30+ AI Providers  │  Memory  │  CLOSE Framework         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -78,29 +99,126 @@ cd code-coder
 # Install dependencies
 bun install
 
-# Start TUI (interactive terminal interface)
-bun dev
-
-# Or start headless API server
-bun dev serve --port 4400
+# Configure AI provider
+export ANTHROPIC_API_KEY="your-api-key"
 ```
 
-### First Run
-
-On first run, configure at least one AI provider:
+### Start Your Trust Journey
 
 ```bash
-# Using environment variable
-export ANTHROPIC_API_KEY="your-api-key"
+# Start in Manual Mode - observe and learn
+bun dev
 
-# Or configure via config file (~/.codecoder/config.json)
+# Set autonomy level (as trust grows)
+bun dev --autonomy wild    # Medium trust
+bun dev --autonomy crazy   # High trust
+
+# Full automatic mode (when trust is established)
+bun dev run --agent autonomous "Build a REST API"
 ```
+
+---
+
+## Trust Journey: From Manual to Automatic
+
+### Starting: Manual Mode
+
+Begin here. Every operation can be confirmed or modified before execution.
+
+```bash
+bun dev
+```
+
+**What you experience:**
+
+- See every step the Agent plans to take
+- Approve, modify, or reject each action
+- Observe how the Agent thinks and decides
+- Build understanding of its capabilities and limits
+
+**Best for:** First-time use, sensitive tasks, learning exploration
+
+### Growing: Hybrid Mode
+
+As trust builds, let low-risk operations run automatically while keeping control over high-impact decisions.
+
+```bash
+bun dev --autonomy wild
+```
+
+**What you experience:**
+
+- File reads and searches run automatically
+- File writes and system commands pause for approval
+- System learns your risk thresholds
+- Interruptions decrease as patterns establish
+
+**Best for:** Regular development work, growing familiarity
+
+### Established: Automatic Mode
+
+Set your goal and let the Agent work independently. You're notified only when something unexpected occurs.
+
+```bash
+bun dev run --agent autonomous "Implement user authentication with JWT"
+```
+
+**What you experience:**
+
+- Define the objective, not the steps
+- Agent handles planning and execution
+- Real-time progress updates
+- Intervention only on critical decisions or errors
+
+**Best for:** Well-defined tasks, trusted environments, maximum productivity
+
+---
+
+## Philosophy: Zhurong (祝融说)
+
+CodeCoder incorporates a unique decision-making philosophy based on "Zhurong Theory".
+
+### Observation Collapses Reality
+
+The universe is an infinite field of possibilities. "Observation" is a creative act that collapses these possibilities into concrete reality. Every conversation with AI is a shared observation — you and the Agent together "vote" on what becomes real.
+
+This explains the need for both automatic and manual modes:
+
+- **Manual Mode** = You participate in every observation collapse
+- **Automatic Mode** = You trust the Agent to observe and collapse independently
+
+### Dual Observation
+
+Trust is built through observation, and it flows both ways:
+
+| Direction | Process | Outcome |
+|-----------|---------|---------|
+| You → Agent | Observe behavior, verify reasoning | Understand capabilities, build trust |
+| Agent → You | Learn preferences, remember patterns | Personalized service, reduced friction |
+
+### CLOSE Decision Framework
+
+Every decision is evaluated across five dimensions:
+
+| Dimension | Meaning | Question |
+|-----------|---------|----------|
+| **C**apacity | Current capability | Can we do this? |
+| **L**everage | Amplification potential | What's the multiplier? |
+| **O**pportunity | Timing and context | Is now the right time? |
+| **S**ustainability | Long-term viability | Can we keep doing this? |
+| **E**xit | Reversibility | Can we undo if needed? |
+
+### Available Margin
+
+**Core Insight:** Sustainable decisions > Optimal decisions.
+
+Preserving unexploited potential (available margin) is more important than achieving the "best" outcome. The ability to "try again" matters more than the "perfect" solution.
 
 ---
 
 ## Agent System
 
-CodeCoder uses a 3-mode agent system for simplified user interaction:
+CodeCoder uses a 3-mode agent system for simplified interaction:
 
 | Mode | Primary Agent | Capabilities |
 |------|---------------|--------------|
@@ -108,7 +226,7 @@ CodeCoder uses a 3-mode agent system for simplified user interaction:
 | **@writer** | writer | expander, expander-fiction, expander-nonfiction, proofreader, verifier |
 | **@decision** | decision | macro, trader, value-analyst, picker, miniproduct, ai-engineer, synton-assistant |
 
-### Usage Examples
+### Usage
 
 ```bash
 # Default @build mode
@@ -137,24 +255,6 @@ bun dev @decision:macro
 | **Product (2)** | prd-generator, feasibility-assess | Requirements and feasibility |
 | **Other (1)** | synton-assistant | SYNTON-DB assistant |
 | **System Hidden (3)** | compaction, title, summary | Internal use |
-
----
-
-## Philosophy: Zhurong (祝融说)
-
-CodeCoder incorporates a unique decision-making philosophy based on "Zhurong Theory":
-
-- **Possibility Substrate** - The universe as an infinite field of potential
-- **Observation Collapses** - Observation as a creative act that "collapses" possibilities into certainty
-- **Available Margin** - The unexploited potential space, source of free will and creativity
-- **CLOSE Framework** - Five-dimensional evaluation for sustainable decision-making:
-  - **C**apacity - Current capability and resources
-  - **L**everage - Amplification potential
-  - **O**pportunity - Timing and context
-  - **S**ustainability - Long-term viability
-  - **E**xit - Reversibility and options
-
-**Core Insight:** Sustainable decisions > Optimal decisions. Maintaining the ability to "try again" is more important than pursuing the "best" solution.
 
 ---
 
@@ -286,5 +386,5 @@ See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <i>Built with Observer Theory in mind: every interaction collapses possibilities into reality.</i>
+  <i>Every observation collapses possibilities into reality.<br/>Choose how you participate: step by step, or let it flow.</i>
 </p>

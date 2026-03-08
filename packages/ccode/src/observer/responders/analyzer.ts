@@ -8,7 +8,7 @@
  */
 
 import { Log } from "@/util/log"
-import type { Anomaly, Opportunity, EmergentPattern, WorldModel } from "../types"
+import type { Anomaly, Opportunity, EmergentPattern, WorldModel, GearPreset } from "../types"
 import type { ConsensusSnapshot } from "../consensus"
 import { ObserverEvent } from "../events"
 import {
@@ -16,6 +16,7 @@ import {
   type AgentResult,
   type AgentClientConfig,
 } from "../integration/agent-client"
+import { getDialPanel, type DialPanel } from "../panel"
 
 const log = Log.create({ service: "observer.responders.analyzer" })
 
@@ -75,6 +76,10 @@ export interface AnalyzerConfig {
   agentMappings: Partial<Record<AnalysisType, string>>
   /** Analysis timeout (ms) */
   timeoutMs: number
+  /** Use dial-based control (new architecture) */
+  useDialControl: boolean
+  /** Decide dial threshold for autonomous decisions (0-100) */
+  decideThreshold: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +100,8 @@ const DEFAULT_CONFIG: AnalyzerConfig = {
     decision_review: "decision",
   },
   timeoutMs: 300000, // 5 minutes
+  useDialControl: true,
+  decideThreshold: 50, // Decide dial > 50% enables autonomous decisions
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,9 +119,40 @@ export class Analyzer {
   private idCounter = 0
   private running = false
   private eventSubscriptions: Array<() => void> = []
+  private dialPanel: DialPanel | null = null
 
   constructor(config: Partial<AnalyzerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
+    if (this.config.useDialControl) {
+      this.dialPanel = getDialPanel()
+    }
+  }
+
+  /**
+   * Get the current decide dial value.
+   */
+  getDecideDialValue(): number {
+    return this.dialPanel?.getDial("decide") ?? 0
+  }
+
+  /**
+   * Check if the analyzer should make autonomous decisions.
+   * When decide dial < threshold, only provide suggestions.
+   */
+  shouldDecideAutonomously(): boolean {
+    if (!this.config.useDialControl || !this.dialPanel) {
+      return this.config.autoAnalyze
+    }
+    return this.dialPanel.shouldDecideAutonomously()
+  }
+
+  /**
+   * Get the analysis mode based on decide dial.
+   * Returns 'suggestion' for low autonomy, 'decision' for high autonomy.
+   */
+  getAnalysisMode(): "suggestion" | "decision" {
+    const decideValue = this.getDecideDialValue()
+    return decideValue >= this.config.decideThreshold ? "decision" : "suggestion"
   }
 
   /**
@@ -489,8 +527,13 @@ export class Analyzer {
 
   private buildAnalysisPrompt(request: AnalysisRequest): string {
     const lines: string[] = []
+    const analysisMode = this.getAnalysisMode()
+    const decideValue = this.getDecideDialValue()
 
     lines.push(`# ${this.formatAnalysisType(request.type)} Analysis Request`)
+    lines.push("")
+    lines.push(`**Analysis Mode**: ${analysisMode === "decision" ? "Autonomous Decision" : "Suggestion Only"}`)
+    lines.push(`**Decide Dial**: ${decideValue}%`)
     lines.push("")
 
     switch (request.type) {

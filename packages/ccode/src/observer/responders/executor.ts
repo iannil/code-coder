@@ -8,10 +8,12 @@
  */
 
 import { Log } from "@/util/log"
-import type { Anomaly, Opportunity, OperatingMode } from "../types"
+import type { Anomaly, Opportunity, OperatingMode, GearPreset } from "../types"
+import { gearToOperatingMode } from "../types"
 import type { ModeDecision } from "../controller"
 import { ObserverEvent } from "../events"
 import { getBridge, type TriggerResponse, type HandExecution } from "@/autonomous/hands/bridge"
+import { getDialPanel, type DialPanel } from "../panel"
 
 const log = Log.create({ service: "observer.responders.executor" })
 
@@ -71,7 +73,7 @@ export interface ExecutionResult {
 export interface ExecutorConfig {
   /** Enable automatic execution */
   autoExecute: boolean
-  /** Current operating mode */
+  /** Current operating mode (deprecated, use dialPanel) */
   mode: OperatingMode
   /** Execution types that require approval */
   requireApproval: ExecutionType[]
@@ -81,6 +83,10 @@ export interface ExecutorConfig {
   timeoutMs: number
   /** Enable dry-run mode */
   dryRun: boolean
+  /** Use dial-based control (new architecture) */
+  useDialControl: boolean
+  /** Act dial threshold for immediate execution (0-100) */
+  actThreshold: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +100,8 @@ const DEFAULT_CONFIG: ExecutorConfig = {
   maxConcurrent: 1,
   timeoutMs: 600000, // 10 minutes
   dryRun: false,
+  useDialControl: true,
+  actThreshold: 50, // Act dial > 50% means immediate execution
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -112,9 +120,45 @@ export class Executor {
   private running = false
   private eventSubscriptions: Array<() => void> = []
   private approvalHandler: ((request: ExecutionRequest) => Promise<boolean>) | null = null
+  private dialPanel: DialPanel | null = null
 
   constructor(config: Partial<ExecutorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
+    if (this.config.useDialControl) {
+      this.dialPanel = getDialPanel()
+    }
+  }
+
+  /**
+   * Get the current act dial value.
+   */
+  getActDialValue(): number {
+    return this.dialPanel?.getDial("act") ?? 0
+  }
+
+  /**
+   * Check if immediate execution is allowed based on act dial.
+   */
+  shouldActImmediately(): boolean {
+    if (!this.config.useDialControl || !this.dialPanel) {
+      return this.config.mode === "AUTO"
+    }
+    return this.dialPanel.shouldActImmediately()
+  }
+
+  /**
+   * Check if execution requires approval based on dial value and type.
+   */
+  requiresApprovalForType(type: ExecutionType): boolean {
+    const actValue = this.getActDialValue()
+
+    // Always require approval for dangerous actions when act < 70%
+    if (this.config.requireApproval.includes(type) && actValue < 70) {
+      return true
+    }
+
+    // Act dial >= threshold means immediate execution
+    return actValue < this.config.actThreshold
   }
 
   /**
@@ -264,9 +308,10 @@ export class Executor {
     trigger: ExecutionRequest["trigger"]
     actions: ExecutionAction[]
   }): Promise<ExecutionRequest> {
-    const requiresApproval =
-      this.config.mode !== "AUTO" ||
-      this.config.requireApproval.includes(options.type)
+    // Use dial-based approval if enabled, otherwise fall back to mode-based
+    const requiresApproval = this.config.useDialControl
+      ? this.requiresApprovalForType(options.type)
+      : (this.config.mode !== "AUTO" || this.config.requireApproval.includes(options.type))
 
     const request: ExecutionRequest = {
       id: `exec_${Date.now()}_${++this.idCounter}`,
@@ -283,11 +328,14 @@ export class Executor {
     this.executions.set(request.id, request)
 
     if (requiresApproval) {
+      const actValue = this.getActDialValue()
       // Queue for approval
       log.info("Execution requires approval", {
         id: request.id,
         type: request.type,
         description: request.description,
+        actDial: actValue,
+        threshold: this.config.actThreshold,
       })
 
       // Try automatic approval if handler is set

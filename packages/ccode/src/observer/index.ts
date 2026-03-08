@@ -80,6 +80,85 @@
 export * from "./types"
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Dial & Gear Exports (New Architecture)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  Dial,
+  ThreeDials,
+  GEAR_PRESETS,
+  GEAR_INFO,
+  createDialsFromGear,
+  createCustomDials,
+  parseGear,
+  gearAllowsAutonomousDecisions,
+  gearAllowsAutonomousActions,
+  type DialMode,
+  type GearPreset,
+  type DialName,
+  type DialConfig,
+  type ThreeDialsConfig,
+  type DialValues,
+} from "./dial"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tower Exports (New Architecture)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  ObserverTower,
+  ObserverLevel,
+  RawObservationLevel,
+  PatternRecognitionLevel,
+  MetaObservationLevel,
+  createObserverTower,
+  createRawObservationLevel,
+  createPatternRecognitionLevel,
+  createMetaObservationLevel,
+  type ObserverTowerConfig,
+  type TowerStatus,
+  type LevelOutput,
+  type LevelStatus,
+  type LevelConfig,
+  type LevelData,
+  type LevelInsight,
+  type Level0Config,
+  type Level1Config,
+  type Level2Config,
+} from "./tower"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Panel Exports (New Architecture)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  DialPanel,
+  createDialPanel,
+  getDialPanel,
+  resetDialPanel,
+  GEAR_PRESET_DETAILS,
+  getGearPresetDetail,
+  getAllGearPresets,
+  suggestGear,
+  getGearRiskLevel,
+  validateGearTransition,
+  type DialPanelConfig,
+  type PanelState,
+  type DialChangeEvent,
+  type GearPresetDetail,
+} from "./panel"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Unified API (New Architecture)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  ObserverNetwork as ObserverNetworkV2,
+  type NetworkConfig,
+  type NetworkState,
+} from "./api"
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Event Exports
 // ─────────────────────────────────────────────────────────────────────────────
 

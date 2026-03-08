@@ -47,6 +47,7 @@
 pub mod gateway;
 pub mod channels;
 pub mod workflow;
+pub mod observer;
 
 use zero_common::config::Config;
 
@@ -123,6 +124,26 @@ pub use workflow::{
     TradingReviewSystem,
     HandExecutor,
     HandsScheduler,
+};
+
+// Re-export observer types
+pub use observer::{
+    Dial,
+    DialMode,
+    ThreeDials,
+    Gear,
+    GearTransition,
+    ObserverEvent,
+    ObserverStream,
+    StreamConfig,
+    StreamStats,
+    HealthCheck,
+    HealthStatus,
+    HealthReport,
+    ObserverStorage,
+    StoredEvent,
+    ObserverState,
+    build_router as build_observer_router,
 };
 
 /// Hub configuration for running multiple services.
