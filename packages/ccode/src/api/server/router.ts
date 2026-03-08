@@ -789,6 +789,32 @@ export async function registerRoutes(): Promise<void> {
   const { metricsHandler, metricsJsonHandler } = await import("./handlers/metrics")
   router.get("/metrics", metricsHandler)
   router.get("/api/v1/metrics", metricsJsonHandler)
+
+  // Observer Network routes (for Observer System integration)
+  const {
+    handleEscalationCallback,
+    getEscalation,
+    listEscalations,
+    getObserverStatus,
+    startObserver,
+    stopObserver,
+    switchObserverMode,
+    getWorldModel,
+    getConsensusSnapshot,
+    getOpportunities,
+    observerHealth,
+  } = await import("./handlers/observer")
+  router.post("/api/v1/observer/escalations/:id/callback", handleEscalationCallback)
+  router.get("/api/v1/observer/escalations/:id", getEscalation)
+  router.get("/api/v1/observer/escalations", listEscalations)
+  router.get("/api/v1/observer/status", getObserverStatus)
+  router.post("/api/v1/observer/start", startObserver)
+  router.post("/api/v1/observer/stop", stopObserver)
+  router.post("/api/v1/observer/mode", switchObserverMode)
+  router.get("/api/v1/observer/world-model", getWorldModel)
+  router.get("/api/v1/observer/snapshot", getConsensusSnapshot)
+  router.get("/api/v1/observer/opportunities", getOpportunities)
+  router.get("/api/v1/observer/health", observerHealth)
 }
 
 // ============================================================================

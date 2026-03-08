@@ -443,6 +443,70 @@ async fn handle_telegram_callback(
         }
     }
 
+    // Parse escalation callback: esc:{escalation_id}:{action}
+    if data.starts_with("esc:") {
+        let parts: Vec<&str> = data.split(':').collect();
+        if parts.len() >= 3 {
+            let escalation_id = parts[1];
+            let action = parts[2]; // approve, reject, defer, manual
+
+            tracing::info!(
+                escalation_id = %escalation_id,
+                action = %action,
+                "Processing escalation callback"
+            );
+
+            // Call CodeCoder API to handle the escalation decision
+            let result = handle_escalation_decision(
+                &state.codecoder_endpoint,
+                escalation_id,
+                action,
+                callback.from.id,
+            ).await;
+
+            // Answer the callback query
+            let answer_text = match &result {
+                Ok(_) => "✅ 已处理",
+                Err(_) => "❌ 处理失败",
+            };
+            let _ = answer_callback_query(token, &callback.id, Some(answer_text)).await;
+
+            // Edit the message to show the result
+            if let Some(msg) = callback.message {
+                let action_text = match action {
+                    "approve" => "✅ 已批准",
+                    "reject" => "❌ 已拒绝",
+                    "defer" => "⏸️ 已延迟",
+                    "manual" => "🔄 已切换到手动模式",
+                    _ => "已处理",
+                };
+                let _ = edit_telegram_message(token, &msg.chat.id.to_string(), msg.message_id, action_text).await;
+            }
+
+            return match result {
+                Ok(_) => (
+                    StatusCode::OK,
+                    Json(WebhookResponse {
+                        success: true,
+                        message: Some(format!("Escalation {} handled: {}", escalation_id, action)),
+                        challenge: None,
+                    }),
+                ),
+                Err(e) => {
+                    tracing::error!(error = %e, "Failed to handle escalation");
+                    (
+                        StatusCode::OK, // Return OK to Telegram even on error
+                        Json(WebhookResponse {
+                            success: false,
+                            message: Some(format!("Failed to handle escalation: {e}")),
+                            challenge: None,
+                        }),
+                    )
+                }
+            };
+        }
+    }
+
     // Unknown callback, just acknowledge
     let _ = answer_callback_query(token, &callback.id, None).await;
 
@@ -482,6 +546,40 @@ async fn reply_to_question(
     if !resp.status().is_success() {
         let err = resp.text().await.unwrap_or_default();
         anyhow::bail!("CodeCoder API error: {}", err);
+    }
+
+    Ok(())
+}
+
+/// Handle an escalation decision via CodeCoder Observer API
+async fn handle_escalation_decision(
+    codecoder_endpoint: &str,
+    escalation_id: &str,
+    action: &str,
+    user_id: i64,
+) -> anyhow::Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!(
+        "{}/api/v1/observer/escalations/{}/callback",
+        codecoder_endpoint, escalation_id
+    );
+
+    let body = serde_json::json!({
+        "action": action,
+        "userId": user_id.to_string(),
+        "source": "telegram"
+    });
+
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let err = resp.text().await.unwrap_or_default();
+        anyhow::bail!("CodeCoder Observer API error: {}", err);
     }
 
     Ok(())

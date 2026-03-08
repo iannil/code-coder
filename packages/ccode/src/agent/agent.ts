@@ -46,6 +46,22 @@ import { Global } from "@/util/global"
 import path from "path"
 
 export namespace Agent {
+  /**
+   * Observer capability for agents to participate in the Observer Network.
+   * Enables agents to contribute observations to the consensus engine.
+   *
+   * @see packages/ccode/src/observer/types.ts for WatcherType definition
+   */
+  export const ObserverCapability = z.object({
+    /** Which watcher types this agent can contribute to */
+    canWatch: z.array(z.enum(["code", "world", "self", "meta"])),
+    /** Whether this agent's observations contribute to consensus formation */
+    contributeToConsensus: z.boolean().default(true),
+    /** Whether this agent reports to MetaWatch for quality monitoring */
+    reportToMeta: z.boolean().default(true),
+  })
+  export type ObserverCapability = z.infer<typeof ObserverCapability>
+
   export const Info = z
     .object({
       name: z.string(),
@@ -68,6 +84,8 @@ export namespace Agent {
       steps: z.number().int().positive().optional(),
       /** Auto-approve configuration for this agent */
       autoApprove: AutoApproveConfigSchema.optional(),
+      /** Observer Network capability - enables agent to contribute to observation system */
+      observerCapability: ObserverCapability.optional(),
     })
     .meta({
       ref: "Agent",
@@ -204,6 +222,12 @@ export namespace Agent {
           allowedTools: ["Read", "Glob", "Grep", "LS", "WebFetch", "WebSearch"],
           riskThreshold: "low",
         },
+        // Observer capability: CodeWatch - code repository scanning
+        observerCapability: {
+          canWatch: ["code"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       compaction: {
         name: "compaction",
@@ -259,6 +283,12 @@ export namespace Agent {
         prompt: PROMPT_CODE_REVIEWER,
         permission: PermissionNext.merge(defaults, user),
         options: {},
+        // Observer capability: SelfWatch - code quality evaluation
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       "security-reviewer": {
         name: "security-reviewer",
@@ -268,6 +298,12 @@ export namespace Agent {
         prompt: PROMPT_SECURITY_REVIEWER,
         permission: PermissionNext.merge(defaults, user),
         options: {},
+        // Observer capability: SelfWatch - security state evaluation
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       "tdd-guide": {
         name: "tdd-guide",
@@ -420,6 +456,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.7,
+        // Observer capability: MetaWatch - observer system introspection
+        observerCapability: {
+          canWatch: ["meta"],
+          contributeToConsensus: true,
+          reportToMeta: false, // MetaWatch doesn't report to itself
+        },
       },
       decision: {
         name: "decision",
@@ -430,6 +472,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.6,
+        // Observer capability: SelfWatch - CLOSE decision support for mode controller
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       macro: {
         name: "macro",
@@ -440,6 +488,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.5,
+        // Observer capability: WorldWatch - macro data observation
+        observerCapability: {
+          canWatch: ["world"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       trader: {
         name: "trader",
@@ -450,6 +504,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.5,
+        // Observer capability: WorldWatch - market data observation
+        observerCapability: {
+          canWatch: ["world"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       picker: {
         name: "picker",
@@ -597,6 +657,10 @@ export namespace Agent {
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      // Merge observer capability from config (allows user-defined agents to participate in Observer Network)
+      if (value.observerCapability) {
+        item.observerCapability = mergeDeep(item.observerCapability ?? {}, value.observerCapability) as typeof item.observerCapability
+      }
     }
 
     // Ensure Truncate.DIR is allowed unless explicitly configured
