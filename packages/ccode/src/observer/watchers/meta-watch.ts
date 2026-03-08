@@ -36,6 +36,8 @@ export interface MetaWatchOptions extends WatcherOptions {
   maxConsensusDrift?: number
   /** Watched watcher IDs (if empty, watches all) */
   watchedWatchers?: string[]
+  /** Latency threshold in ms (default: 1000) */
+  latencyThreshold?: number
 }
 
 interface WatcherMetrics {
@@ -59,6 +61,7 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
   private qualityThreshold: number
   private coverageThreshold: number
   private maxConsensusDrift: number
+  private latencyThreshold: number
   private watchedWatchers: string[]
   private watcherMetrics: Map<string, WatcherMetrics> = new Map()
   private eventSubscriptions: Array<() => void> = []
@@ -73,6 +76,7 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
     this.qualityThreshold = options.qualityThreshold ?? 0.7
     this.coverageThreshold = options.coverageThreshold ?? 0.6
     this.maxConsensusDrift = options.maxConsensusDrift ?? 0.3
+    this.latencyThreshold = options.latencyThreshold ?? 1000
     this.watchedWatchers = options.watchedWatchers ?? []
   }
 
@@ -144,6 +148,7 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
       qualityThreshold: this.qualityThreshold,
       coverageThreshold: this.coverageThreshold,
       maxConsensusDrift: this.maxConsensusDrift,
+      latencyThreshold: this.latencyThreshold,
     })
   }
 
@@ -162,6 +167,10 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
     // Perform periodic health check
     const healthCheck = await this.performHealthCheck()
     if (healthCheck) return healthCheck
+
+    // Check for latency threshold breaches
+    const latencyCheck = this.checkLatencyThreshold()
+    if (latencyCheck) return latencyCheck
 
     // Check for coverage gaps
     const coverageCheck = this.checkCoverageGaps()
@@ -219,6 +228,34 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
   }
 
   /**
+   * Get latency status for all watchers.
+   */
+  getLatencyStatus(): {
+    avgLatency: number
+    threshold: number
+    exceededCount: number
+    watcherLatencies: Record<string, number>
+  } {
+    const watchers = this.getWatcherMetrics()
+    const avgLatency = this.calculateAvgLatency()
+    const exceededCount = watchers.filter(
+      (w) => w.avgLatency > this.latencyThreshold && w.health !== "stopped",
+    ).length
+
+    const watcherLatencies: Record<string, number> = {}
+    for (const w of watchers) {
+      watcherLatencies[w.watcherId] = w.avgLatency
+    }
+
+    return {
+      avgLatency,
+      threshold: this.latencyThreshold,
+      exceededCount,
+      watcherLatencies,
+    }
+  }
+
+  /**
    * Perform a manual calibration check.
    */
   async calibrate(): Promise<MetaObservation> {
@@ -258,6 +295,16 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
         type: "low_quality",
         severity: "medium",
         description: `Observation quality is ${(health.quality * 100).toFixed(0)}% (threshold: ${(this.qualityThreshold * 100).toFixed(0)}%)`,
+      })
+    }
+
+    // Check latency
+    const avgLatency = this.calculateAvgLatency()
+    if (avgLatency > this.latencyThreshold) {
+      issues.push({
+        type: "latency_exceeded",
+        severity: avgLatency > this.latencyThreshold * 2 ? "high" : "medium",
+        description: `Average latency is ${avgLatency.toFixed(0)}ms (threshold: ${this.latencyThreshold}ms)`,
       })
     }
 
@@ -364,6 +411,49 @@ export class MetaWatch extends BaseWatcher<MetaObservation> {
         "Check data source reliability",
         "Investigate high-latency watchers",
       ]
+
+      return observation
+    }
+
+    return null
+  }
+
+  private checkLatencyThreshold(): MetaObservation | null {
+    const watchers = this.getWatcherMetrics()
+    const highLatencyWatchers = watchers.filter(
+      (w) => w.avgLatency > this.latencyThreshold && w.health !== "stopped",
+    )
+
+    if (highLatencyWatchers.length > 0) {
+      const avgLatency = this.calculateAvgLatency()
+
+      const observation = this.createObservation("observation_quality", {
+        health: avgLatency > this.latencyThreshold * 2 ? "failing" : "degraded",
+        coverage: this.calculateCoverage(),
+        accuracy: this.calculateQuality(),
+        latency: avgLatency,
+      })
+
+      observation.issues = highLatencyWatchers.map((w) => ({
+        type: "latency_exceeded",
+        severity: w.avgLatency > this.latencyThreshold * 2 ? "high" as const : "medium" as const,
+        description: `Watcher ${w.watcherId} (${w.watcherType}) has latency ${w.avgLatency.toFixed(0)}ms (threshold: ${this.latencyThreshold}ms)`,
+      }))
+
+      observation.tags = ["latency_exceeded"]
+
+      observation.recommendations = [
+        "Check system load and available resources",
+        "Consider reducing observation frequency",
+        "Review watcher configurations for optimization",
+        "Investigate slow data sources or API calls",
+      ]
+
+      log.warn("Latency threshold exceeded", {
+        watcherCount: highLatencyWatchers.length,
+        threshold: this.latencyThreshold,
+        avgLatency,
+      })
 
       return observation
     }

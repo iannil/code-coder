@@ -37,6 +37,10 @@ export interface SelfWatchOptions extends WatcherOptions {
   trackTools?: boolean
   /** Error pattern window in ms */
   errorWindowMs?: number
+  /** Cost spike multiplier threshold (default: 2.0) */
+  costSpikeThreshold?: number
+  /** Cost history window size for spike detection */
+  costHistorySize?: number
 }
 
 interface AgentAction {
@@ -57,6 +61,14 @@ interface ResourceSnapshot {
   timestamp: Date
 }
 
+interface SessionCostRecord {
+  sessionId: string
+  tokensUsed: number
+  costUSD: number
+  duration: number
+  timestamp: Date
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // SelfWatch Implementation
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,9 +81,12 @@ export class SelfWatch extends BaseWatcher<SelfObservation> {
   private recentActions: AgentAction[] = []
   private recentErrors: Array<{ error: string; timestamp: Date }> = []
   private resourceSnapshots: ResourceSnapshot[] = []
+  private sessionCostHistory: SessionCostRecord[] = []
   private eventSubscriptions: Array<() => void> = []
   private maxHistorySize = 100
   private errorWindowMs: number
+  private costSpikeThreshold: number
+  private costHistorySize: number
 
   constructor(options: SelfWatchOptions = {}) {
     super("self", {
@@ -80,6 +95,8 @@ export class SelfWatch extends BaseWatcher<SelfObservation> {
     })
     this.sessionId = options.sessionId ?? null
     this.errorWindowMs = options.errorWindowMs ?? 300000 // 5 minutes
+    this.costSpikeThreshold = options.costSpikeThreshold ?? 2.0
+    this.costHistorySize = options.costHistorySize ?? 50
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -125,6 +142,24 @@ export class SelfWatch extends BaseWatcher<SelfObservation> {
         const props = event.properties as any
         if (this.sessionId && props.sessionId !== this.sessionId) return
         await this.observeSafetyTrigger(props)
+      }),
+    )
+
+    // Subscribe to SessionCompleted for cost tracking
+    this.eventSubscriptions.push(
+      Bus.subscribe(AutonomousEvent.SessionCompleted, async (event) => {
+        const props = event.properties as any
+        if (this.sessionId && props.sessionId !== this.sessionId) return
+        await this.observeSessionCost(props)
+      }),
+    )
+
+    // Subscribe to MetricsUpdated for real-time resource tracking
+    this.eventSubscriptions.push(
+      Bus.subscribe(AutonomousEvent.MetricsUpdated, async (event) => {
+        const props = event.properties as any
+        if (this.sessionId && props.sessionId !== this.sessionId) return
+        await this.observeMetricsUpdate(props)
       }),
     )
 
@@ -459,6 +494,108 @@ export class SelfWatch extends BaseWatcher<SelfObservation> {
     await this.emit(observation)
   }
 
+  private async observeSessionCost(props: {
+    sessionId: string
+    requestId: string
+    result: {
+      success: boolean
+      qualityScore: number
+      crazinessScore: number
+      duration: number
+      tokensUsed: number
+      costUSD: number
+    }
+  }): Promise<void> {
+    const record: SessionCostRecord = {
+      sessionId: props.sessionId,
+      tokensUsed: props.result.tokensUsed,
+      costUSD: props.result.costUSD,
+      duration: props.result.duration,
+      timestamp: new Date(),
+    }
+
+    // Add to history
+    this.sessionCostHistory.push(record)
+    if (this.sessionCostHistory.length > this.costHistorySize) {
+      this.sessionCostHistory.shift()
+    }
+
+    // Calculate efficiency metrics
+    const tokensPerSecond = record.duration > 0
+      ? record.tokensUsed / (record.duration / 1000)
+      : 0
+    const costEfficiency = record.costUSD > 0
+      ? record.tokensUsed / record.costUSD
+      : 0
+
+    // Check for cost spike
+    const avgCost = this.calculateAverageCost()
+    const isCostSpike = avgCost > 0 && record.costUSD > avgCost * this.costSpikeThreshold
+
+    const observation = this.createObservation("cost", "session", {
+      action: "session_completed",
+      input: { sessionId: props.sessionId },
+      output: {
+        tokensUsed: record.tokensUsed,
+        costUSD: record.costUSD,
+        duration: record.duration,
+        tokensPerSecond,
+        costEfficiency,
+        isCostSpike,
+      },
+      duration: record.duration,
+      success: props.result.success,
+    })
+
+    observation.quality = {
+      efficiency: this.normalizeEfficiency(costEfficiency),
+    }
+
+    // Add cost spike tag if detected
+    if (isCostSpike) {
+      observation.tags = ["cost_spike"]
+      observation.confidence = 0.95
+      log.warn("Cost spike detected", {
+        sessionId: props.sessionId,
+        cost: record.costUSD,
+        avgCost,
+        threshold: this.costSpikeThreshold,
+      })
+    }
+
+    await this.emit(observation)
+  }
+
+  private async observeMetricsUpdate(props: {
+    sessionId: string
+    metrics: {
+      qualityScore: number
+      crazinessScore: number
+      autonomyLevel: string
+      tasksCompleted: number
+      tasksTotal: number
+    }
+  }): Promise<void> {
+    const taskProgress = props.metrics.tasksTotal > 0
+      ? props.metrics.tasksCompleted / props.metrics.tasksTotal
+      : 0
+
+    const observation = this.createObservation("resource_usage", "session", {
+      action: "metrics_update",
+      input: { sessionId: props.sessionId },
+      output: props.metrics,
+      duration: 0,
+      success: true,
+    })
+
+    observation.quality = {
+      closeScore: props.metrics.qualityScore,
+      efficiency: taskProgress,
+    }
+
+    await this.emit(observation)
+  }
+
   // ─────────────────────────────────────────────────────────────────────────────
   // Private Methods - Analysis
   // ─────────────────────────────────────────────────────────────────────────────
@@ -528,6 +665,55 @@ export class SelfWatch extends BaseWatcher<SelfObservation> {
 
     // Normalize to 0-1 range (assuming 1000 tokens/sec/$ is excellent)
     return Math.min(costEfficiency / 1000, 1)
+  }
+
+  private calculateAverageCost(): number {
+    if (this.sessionCostHistory.length === 0) return 0
+
+    const totalCost = this.sessionCostHistory.reduce(
+      (sum, record) => sum + record.costUSD,
+      0,
+    )
+    return totalCost / this.sessionCostHistory.length
+  }
+
+  private normalizeEfficiency(tokensPerDollar: number): number {
+    // Normalize tokens/$ to 0-1 range
+    // Assuming 100,000 tokens/$ is excellent efficiency
+    return Math.min(tokensPerDollar / 100000, 1)
+  }
+
+  /**
+   * Get session cost history.
+   */
+  getSessionCostHistory(limit?: number): SessionCostRecord[] {
+    return this.sessionCostHistory.slice(-(limit ?? 20))
+  }
+
+  /**
+   * Get cost statistics.
+   */
+  getCostStatistics(): {
+    totalCost: number
+    avgCost: number
+    maxCost: number
+    minCost: number
+    sessionCount: number
+  } {
+    if (this.sessionCostHistory.length === 0) {
+      return { totalCost: 0, avgCost: 0, maxCost: 0, minCost: 0, sessionCount: 0 }
+    }
+
+    const costs = this.sessionCostHistory.map((r) => r.costUSD)
+    const totalCost = costs.reduce((sum, c) => sum + c, 0)
+
+    return {
+      totalCost,
+      avgCost: totalCost / costs.length,
+      maxCost: Math.max(...costs),
+      minCost: Math.min(...costs),
+      sessionCount: costs.length,
+    }
   }
 }
 
