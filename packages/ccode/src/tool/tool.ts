@@ -4,7 +4,7 @@ import type { Agent } from "../agent/agent"
 import type { PermissionNext } from "../permission/next"
 import { Truncate } from "./truncation"
 import { Hook } from "../hook"
-import { NamedError } from "@codecoder-ai/util/error"
+import { NamedError } from "@codecoder-ai/core/util/error"
 import { AutonomousModeHook } from "../autonomous"
 
 /** Extract optional hook-relevant fields from tool args safely */

@@ -15,9 +15,9 @@ pub use traits::{Channel, CliChannelAdapter};
 // Alias for convenience: use CliChannel to mean the adapted version
 pub type CliChannel = CliChannelAdapter;
 
-// Re-export concrete channel implementations from zero-channels
+// Re-export concrete channel implementations from zero-hub::channels
 // These are used directly via their own APIs (not through the Channel trait)
-pub use zero_channels::TelegramChannel;
+pub use zero_hub::TelegramChannel;
 
 use crate::config::Config;
 use anyhow::Result;
@@ -94,15 +94,15 @@ impl NotificationSink for ChannelNotificationSink {
                 );
 
                 let buttons = vec![vec![
-                    zero_channels::telegram::InlineButton::new(
+                    zero_hub::channels::telegram::InlineButton::new(
                         "✅ 批准",
                         format!("approve:{request_id}"),
                     ),
-                    zero_channels::telegram::InlineButton::new(
+                    zero_hub::channels::telegram::InlineButton::new(
                         "✅ 始终批准",
                         format!("always:{request_id}"),
                     ),
-                    zero_channels::telegram::InlineButton::new(
+                    zero_hub::channels::telegram::InlineButton::new(
                         "❌ 拒绝",
                         format!("reject:{request_id}"),
                     ),
@@ -607,7 +607,7 @@ pub async fn start_channels(config: Config) -> Result<()> {
     let common_cfg = to_common_config(&config);
 
     // Start the channels server
-    zero_channels::start_server(&common_cfg).await?;
+    zero_hub::channels::start_server(&common_cfg).await?;
 
     Ok(())
 }

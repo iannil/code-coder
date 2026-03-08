@@ -10,6 +10,7 @@
 //! - Audit logging for compliance
 //! - Event bus for inter-service communication
 //! - HTTP client factory with unified timeout management
+//! - Memory system (SQLite, vector search, embeddings)
 
 #![warn(clippy::all)]
 #![allow(clippy::pedantic)]
@@ -24,8 +25,8 @@ pub mod guardrails;
 #[cfg(feature = "hitl-client")]
 pub mod hitl_client;
 pub mod keywords;
+pub mod memory;
 pub mod messages;
-#[cfg(feature = "http-client")]
 pub mod http_client;
 pub mod hybrid;
 pub mod logging;
@@ -90,7 +91,14 @@ pub use redis::{
 
 pub use metrics::{MetricsRegistry, MetricsSnapshot};
 
-#[cfg(feature = "http-client")]
+// Memory system types (merged from zero-memory)
+pub use memory::{
+    chunk_markdown, bytes_to_vec, cosine_similarity, hybrid_merge, vec_to_bytes,
+    create_embedding_provider, Chunk, EmbeddingProvider, HybridSearchEngine, MarkdownMemory,
+    Memory, MemoryCategory, MemoryEntry, NoopEmbedding, OpenAiEmbedding, QdrantMemory,
+    QdrantMetadata, ScoredResult, SqliteMemory, DEFAULT_KEYWORD_WEIGHT, DEFAULT_VECTOR_WEIGHT,
+};
+
 pub use http_client::{build_client, build_client_with_timeout, default_client, ClientCategory};
 
 #[cfg(feature = "axum")]
@@ -107,7 +115,6 @@ pub mod prelude {
     pub use crate::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
     pub use crate::keywords::{detect_agent, detect_alias, keywords, KeywordsConfig};
     pub use crate::messages::{messages, t, MessagesConfig};
-    #[cfg(feature = "http-client")]
     pub use crate::http_client::{build_client, ClientCategory};
     pub use crate::logging::init_logging;
     pub use crate::notification::NotificationSink;

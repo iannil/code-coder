@@ -31,6 +31,7 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
+import { parseModeCapability, getMode, validateCapability } from "@/agent/mode"
 
 export type PromptProps = {
   sessionID?: string
@@ -511,6 +512,38 @@ export function Prompt(props: PromptProps) {
       exit()
       return
     }
+
+    // Handle @mode:capability syntax (e.g., @build:security-review)
+    // This switches to the capability agent for this message
+    let targetAgent: string | undefined
+    let inputToProcess = store.prompt.input
+
+    const modeCapMatch = trimmed.match(/^@(\w+):(\w+(?:-\w+)*)\s*/)
+    if (modeCapMatch) {
+      const [fullMatch, modeId, capabilityName] = modeCapMatch
+      const mode = getMode(modeId)
+      if (mode) {
+        // Validate capability is in the mode
+        if (validateCapability(modeId, capabilityName)) {
+          targetAgent = capabilityName
+          // Remove the @mode:capability prefix from the input
+          inputToProcess = store.prompt.input.slice(fullMatch.length).trim()
+          toast.show({
+            variant: "info",
+            message: `Using ${capabilityName} agent`,
+            duration: 2000,
+          })
+        } else {
+          // Capability not found in mode, show warning
+          toast.show({
+            variant: "warning",
+            message: `${capabilityName} is not a capability of @${modeId} mode`,
+            duration: 3000,
+          })
+        }
+      }
+    }
+
     const selectedModel = local.model.current()
     if (!selectedModel) {
       promptModelWarning()
@@ -523,7 +556,7 @@ export function Prompt(props: PromptProps) {
           return sessionID
         })()
     const messageID = Identifier.ascending("message")
-    let inputText = store.prompt.input
+    let inputText = inputToProcess
 
     // Expand pasted text inline before submitting
     const allExtmarks = input.extmarks.getAllForTypeId(promptPartTypeId)
@@ -548,10 +581,13 @@ export function Prompt(props: PromptProps) {
     const currentMode = store.mode
     const variant = local.model.variant.current()
 
+    // Determine which agent to use: @mode:capability target > current agent
+    const agentToUse = targetAgent ?? local.agent.current().name
+
     if (store.mode === "shell") {
       sdk.client.session.shell({
         sessionID,
-        agent: local.agent.current().name,
+        agent: agentToUse,
         model: {
           providerID: selectedModel.providerID,
           modelID: selectedModel.modelID,
@@ -578,7 +614,7 @@ export function Prompt(props: PromptProps) {
         sessionID,
         command: command.slice(1),
         arguments: args,
-        agent: local.agent.current().name,
+        agent: agentToUse,
         model: `${selectedModel.providerID}/${selectedModel.modelID}`,
         messageID,
         variant,
@@ -595,7 +631,7 @@ export function Prompt(props: PromptProps) {
           sessionID,
           ...selectedModel,
           messageID,
-          agent: local.agent.current().name,
+          agent: agentToUse,
           model: selectedModel,
           variant,
           parts: [

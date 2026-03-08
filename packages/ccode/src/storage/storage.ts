@@ -11,7 +11,7 @@ import { Log } from "@/util/log"
 import path from "path"
 import { Global } from "../global"
 import { lazy } from "@/util/lazy"
-import { NamedError } from "@codecoder-ai/util/error"
+import { NamedError } from "@codecoder-ai/core/util/error"
 import z from "zod"
 
 export namespace Storage {

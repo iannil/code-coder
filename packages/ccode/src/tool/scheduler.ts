@@ -12,7 +12,7 @@
 
 import z from "zod"
 import { Tool } from "./tool"
-import { ConfigManager } from "@codecoder-ai/util/config"
+import { ConfigManager } from "@codecoder-ai/core/util/config"
 import { Log } from "@/util/log"
 import { SCHEDULER_REQUEST_TIMEOUT_MS } from "@/config/timeouts"
 

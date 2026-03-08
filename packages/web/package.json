@@ -22,7 +22,6 @@
     "test:e2e:headed": "SKIP_E2E=false npx playwright test --headed"
   },
   "dependencies": {
-    "@codecoder-ai/util": "workspace:*",
     "@hookform/resolvers": "^3.9.1",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-collapsible": "1.1.12",

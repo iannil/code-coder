@@ -7,13 +7,11 @@
 #   - redis:         Redis Server (Docker) - 会话存储，IM 渠道依赖
 #   - api:           CodeCoder API Server (Bun/TypeScript)
 #   - web:           Web Frontend (Vite/React)
+#   - zero-server:   统一 Rust 服务 (4430) - Gateway+Channels+Workflow+API
 #   - zero-daemon:   进程编排器 (Rust) - 管理以下子进程:
-#                      • zero-gateway (4430): 认证/路由/配额/MCP/Webhook
-#                      • zero-channels (4431): Telegram/Discord/Slack
-#                      • zero-workflow (4432): Webhook/Cron/Git
+#                      • zero-server (4430): 统一服务 (Gateway+Channels+Workflow+API)
 #                      • zero-browser (4433): 浏览器自动化/API学习
 #                      • zero-trading (4434): PO3+SMT自动化交易
-#                      • zero-api (4435): HTTP/WebSocket API (zero-core)
 #   - whisper:       Whisper STT Server (Docker)
 #
 # 用法:
@@ -60,7 +58,9 @@ CORE_SERVICES="api web zero-daemon whisper"
 # 所有服务 (基础设施 + 核心服务)
 ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
 # Rust 微服务 (由 daemon spawn，日志文件独立)
-RUST_MICROSERVICES="zero-gateway zero-channels zero-workflow zero-browser zero-trading zero-api"
+# 注意: zero-gateway, zero-channels, zero-workflow, zero-api 已合并为库
+# 现在由 zero-server 统一提供这些功能
+RUST_MICROSERVICES="zero-server zero-browser zero-trading"
 
 # 噪音过滤模式 (用于 tail 命令)
 # 这些模式匹配连接池、HTTP/2 帧等底层库日志，通常不含业务上下文
@@ -73,12 +73,9 @@ get_service_port() {
         web) echo "4401" ;;
         zero-daemon) echo "4402" ;;
         whisper) echo "4403" ;;
-        zero-gateway) echo "4430" ;;
-        zero-channels) echo "4431" ;;
-        zero-workflow) echo "4432" ;;
+        zero-server) echo "4430" ;;
         zero-browser) echo "4433" ;;
         zero-trading) echo "4434" ;;
-        zero-api) echo "4435" ;;
         redis) echo "${REDIS_PORT}" ;;
         *) echo "" ;;
     esac
@@ -91,12 +88,9 @@ get_service_name() {
         zero-daemon) echo "Zero CLI Daemon" ;;
         whisper) echo "Whisper STT Server" ;;
         redis) echo "Redis Server" ;;
-        zero-gateway) echo "Zero Gateway" ;;
-        zero-channels) echo "Zero Channels" ;;
-        zero-workflow) echo "Zero Workflow" ;;
+        zero-server) echo "Zero Server (Unified)" ;;
         zero-browser) echo "Zero Browser" ;;
         zero-trading) echo "Zero Trading" ;;
-        zero-api) echo "Zero API" ;;
         *) echo "" ;;
     esac
 }
@@ -112,14 +106,14 @@ get_service_type() {
 
 is_valid_service() {
     case "$1" in
-        api|web|zero-daemon|whisper|redis) return 0 ;;
+        api|web|zero-daemon|whisper|redis|zero-server) return 0 ;;
         *) return 1 ;;
     esac
 }
 
 is_core_service() {
     case "$1" in
-        api|web|zero-daemon|whisper) return 0 ;;
+        api|web|zero-daemon|whisper|zero-server) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -734,12 +728,9 @@ show_status() {
 
     echo "╠════════════════════════════════════════════════════════════════════════╣"
     echo -e "║ ${CYAN}由 daemon 管理的微服务${NC}                                                ║"
-    echo "║   • zero-gateway:  端口 4430 (认证/路由/配额)                          ║"
-    echo "║   • zero-channels: 端口 4431 (Telegram/Discord/Slack)                 ║"
-    echo "║   • zero-workflow: 端口 4432 (Webhook/Cron/Git)                       ║"
+    echo "║   • zero-server:   端口 4430 (统一服务: Gateway+Channels+Workflow+API) ║"
     echo "║   • zero-browser:  端口 4433 (浏览器自动化)                            ║"
     echo "║   • zero-trading:  端口 4434 (PO3+SMT 自动化交易)                      ║"
-    echo "║   • zero-api:      端口 4435 (HTTP/WebSocket API)                     ║"
     echo "╚════════════════════════════════════════════════════════════════════════╝"
     echo ""
 
@@ -782,7 +773,7 @@ show_status() {
     # 显示 Rust 构建状态
     echo "Rust 服务构建状态:"
     if [ -d "${RUST_TARGET_DIR}" ]; then
-        for bin in zero-cli zero-gateway zero-channels zero-workflow zero-api; do
+        for bin in zero-cli zero-server zero-browser zero-trading; do
             if [ -f "${RUST_TARGET_DIR}/${bin}" ]; then
                 local size
                 size=$(du -h "${RUST_TARGET_DIR}/${bin}" | cut -f1)
@@ -892,12 +883,9 @@ get_service_color() {
         zero-daemon) echo "\033[0;35m" ;;   # 紫色
         whisper) echo "\033[0;36m" ;;       # 青色
         redis) echo "\033[0;31m" ;;         # 红色
-        zero-gateway) echo "\033[0;33m" ;;  # 黄色
-        zero-channels) echo "\033[0;91m" ;; # 亮红色
-        zero-workflow) echo "\033[0;94m" ;; # 亮蓝色
+        zero-server) echo "\033[0;33m" ;;  # 黄色 (统一服务)
         zero-browser) echo "\033[0;95m" ;;  # 亮紫色
         zero-trading) echo "\033[0;96m" ;;  # 亮青色
-        zero-api) echo "\033[0;92m" ;;      # 亮绿色
         *) echo "\033[0m" ;;                # 默认
     esac
 }
@@ -1405,8 +1393,8 @@ check_health() {
     case "${service}" in
         api) url="http://127.0.0.1:${port}/health" ;;
         web) url="http://127.0.0.1:${port}/" ;;
-        zero-daemon|zero-gateway) url="http://127.0.0.1:${port}/health" ;;
-        zero-channels|zero-workflow|zero-api) url="http://127.0.0.1:${port}/health" ;;
+        zero-daemon|zero-server) url="http://127.0.0.1:${port}/health" ;;
+        zero-browser|zero-trading) url="http://127.0.0.1:${port}/health" ;;
         whisper) url="http://127.0.0.1:${port}/health" ;;
     esac
 
@@ -1471,9 +1459,7 @@ clean_files() {
 # 服务端口映射 (用于 metrics)
 METRICS_ENDPOINTS=(
     "ccode-api:4400"
-    "zero-gateway:4430"
-    "zero-channels:4431"
-    "zero-api:4435"
+    "zero-server:4430"
 )
 
 # 获取单个服务的指标
@@ -1850,15 +1836,13 @@ show_dashboard() {
 
         # 检查每个服务
         local services_line=""
-        for service in api zero-gateway zero-channels zero-api whisper redis; do
+        for service in api zero-server whisper redis; do
             local status_icon
             local port
 
             case "${service}" in
                 api) port=4400 ;;
-                zero-gateway) port=4430 ;;
-                zero-channels) port=4431 ;;
-                zero-api) port=4435 ;;
+                zero-server) port=4430 ;;
                 whisper) port=4403 ;;
                 redis) port="${REDIS_PORT}" ;;
             esac
@@ -2014,12 +1998,9 @@ show_help() {
     echo "  whisper            Whisper STT Server (端口 4403, Docker)"
     echo ""
     echo "由 daemon 管理的微服务 (自动启动，无需手动管理):"
-    echo "  zero-gateway       网关服务 (端口 4430) - 认证/路由/配额"
-    echo "  zero-channels      频道服务 (端口 4431) - Telegram/Discord/Slack"
-    echo "  zero-workflow      工作流服务 (端口 4432) - Webhook/Cron/Git"
+    echo "  zero-server        统一服务 (端口 4430) - Gateway+Channels+Workflow+API"
     echo "  zero-browser       浏览器服务 (端口 4433) - 浏览器自动化/API学习"
     echo "  zero-trading       交易服务 (端口 4434) - PO3+SMT自动化交易"
-    echo "  zero-api           API 服务 (端口 4435) - HTTP/WebSocket API"
     echo ""
     echo "服务组:"
     echo "  all                所有服务 (基础设施 + 核心服务)"
@@ -2049,7 +2030,7 @@ show_help() {
     echo "  ./ops.sh slow 500               # 显示 > 500ms 的请求"
     echo "  ./ops.sh logs redis             # 查看 Redis 日志"
     echo "  ./ops.sh logs zero-daemon       # 查看 Daemon 日志"
-    echo "  ./ops.sh logs zero-channels     # 查看 Rust 微服务日志"
+    echo "  ./ops.sh logs zero-server       # 查看统一 Rust 服务日志"
     echo "  ./ops.sh logs all               # 查看所有服务日志快照"
     echo "  ./ops.sh logs trace <trace_id>  # 按 trace_id 搜索日志"
     echo "  ./ops.sh tail api               # 实时跟踪 API 日志"
@@ -2060,12 +2041,9 @@ show_help() {
     echo "架构说明:"
     echo "  Redis 用于存储 IM 渠道的会话映射 (conversation_id → session_id)"
     echo "  zero-daemon 是进程编排器，spawn 并监控以下子进程:"
-    echo "    • zero-gateway  (4430): 认证、路由、配额、MCP、Webhook"
-    echo "    • zero-channels (4431): Telegram、Discord、Slack 等 IM 渠道"
-    echo "    • zero-workflow (4432): Webhook、Cron、Git 工作流"
+    echo "    • zero-server   (4430): 统一服务 (Gateway+Channels+Workflow+API)"
     echo "    • zero-browser  (4433): 浏览器自动化、API 学习与重放"
     echo "    • zero-trading  (4434): PO3+SMT 自动化交易"
-    echo "    • zero-api      (4435): HTTP/WebSocket API (暴露 zero-core)"
     echo "  Management API: http://127.0.0.1:4402 (/health, /status, /restart/:name)"
     echo "  所有服务共享 ~/.codecoder/config.json 配置"
     echo "  所有服务日志和 PID 文件统一存储在: ~/.codecoder/"

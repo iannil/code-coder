@@ -10,7 +10,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use zero_memory::{Memory, MemoryCategory};
+use zero_common::memory::{Memory, MemoryCategory};
 
 /// A crystallized piece of knowledge extracted from successful execution.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -310,7 +310,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
     use std::time::Duration;
-    use zero_memory::MemoryEntry;
+    use zero_common::memory::MemoryEntry;
 
     /// Mock memory implementation for testing.
     struct MockMemory {

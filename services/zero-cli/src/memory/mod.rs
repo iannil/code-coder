@@ -1,14 +1,14 @@
 //! Memory system for `ZeroBot`.
 //!
 //! This module provides the memory factory and unique hygiene functionality.
-//! Core memory implementations are imported from `zero-memory`.
+//! Core memory implementations are imported from `zero-common::memory`.
 
 pub mod crystallize;
 pub mod hygiene;
 
 
-// Re-export memory types from zero-memory
-pub use zero_memory::{MarkdownMemory, Memory, MemoryCategory, SqliteMemory};
+// Re-export memory types from zero-common::memory
+pub use zero_common::memory::{MarkdownMemory, Memory, MemoryCategory, SqliteMemory};
 
 use crate::config::MemoryConfig;
 use std::path::Path;

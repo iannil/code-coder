@@ -1,4 +1,4 @@
-import { NamedError } from "@codecoder-ai/util/error"
+import { NamedError } from "@codecoder-ai/core/util/error"
 import matter from "gray-matter"
 import { z } from "zod"
 

@@ -12,6 +12,7 @@ import { Provider } from "@/provider/provider"
 import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
+import { getMode } from "@/agent/mode"
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
@@ -34,11 +35,29 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
     }
 
     const agent = iife(() => {
+      const args = useArgs()
       const agents = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+
+      // Determine initial agent: explicit agent > mode's primary agent > first agent
+      const initialAgent = (() => {
+        if (args.agent) {
+          const found = agents().find((x) => x.name === args.agent)
+          if (found) return found.name
+        }
+        if (args.mode) {
+          const mode = getMode(args.mode)
+          if (mode) {
+            const found = agents().find((x) => x.name === mode.primaryAgent)
+            if (found) return found.name
+          }
+        }
+        return agents()[0]?.name ?? "build"
+      })()
+
       const [agentStore, setAgentStore] = createStore<{
         current: string
       }>({
-        current: agents()[0].name,
+        current: initialAgent,
       })
       const { theme } = useTheme()
       const colors = createMemo(() => [

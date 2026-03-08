@@ -69,6 +69,13 @@ export * from './lsp.js'
 export * from './mcp.js'
 export * from './compaction.js'
 
+// Memory module (merged from @codecoder-ai/memory)
+// Re-exported as namespace to avoid conflicts with util/config.ts DEFAULT_CONFIG
+export * as memory from './memory/index.js'
+
+// Util module (merged from @codecoder-ai/util)
+export * from './util/index.js'
+
 // Export permission module (selective to avoid conflicts)
 export {
   AutoApproveEngine,
@@ -318,9 +325,12 @@ export const MemorySystemHandle = nativeBindings?.MemorySystemHandle
 export const createMemorySystem = nativeBindings?.createMemorySystem
 
 // Observability (emit API for tracing, metrics, cost tracking)
-export const ObservabilityStoreHandle = nativeBindings?.ObservabilityStoreHandle
-export const openObservabilityStore = nativeBindings?.openObservabilityStore
-export const createMemoryObservabilityStore = nativeBindings?.createMemoryObservabilityStore
+// TODO: NAPI bindings not yet implemented in Rust.
+// These are exported as undefined to allow TypeScript compilation while preserving
+// runtime checks in tracer.ts. When implementing, add type definitions to binding.d.ts.
+export const ObservabilityStoreHandle: undefined = undefined
+export const openObservabilityStore: undefined = undefined
+export const createMemoryObservabilityStore: undefined = undefined
 
 // Phase 11: Skill Parser (native YAML frontmatter parsing)
 export const parseSkillContent = nativeBindings?.parseSkillContent

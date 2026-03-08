@@ -14,11 +14,9 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 
 // Re-export Zero Service crates for convenience
-pub use zero_agent;
-pub use zero_channels;
+pub use zero_hub;
 pub use zero_common;
-pub use zero_memory;
-pub use zero_tools;
+pub use zero_core;
 
 pub mod agent;
 pub mod alerts;
@@ -42,6 +40,7 @@ pub mod providers;
 pub mod runtime;
 pub mod sandbox;
 pub mod security;
+pub mod server;
 pub mod service;
 pub mod session;
 pub mod skills;
@@ -49,12 +48,12 @@ pub mod tools;
 pub mod tunnel;
 pub mod util;
 
-// Re-export STT/TTS from zero-channels for backwards compatibility
+// Re-export STT/TTS from zero-hub::channels for backwards compatibility
 pub mod stt {
-    pub use zero_channels::stt::*;
+    pub use zero_hub::channels::stt::*;
 }
 pub mod tts {
-    pub use zero_channels::tts::*;
+    pub use zero_hub::channels::tts::*;
 }
 
 pub use config::Config;

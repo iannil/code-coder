@@ -598,7 +598,7 @@ fn setup_provider() -> Result<(String, String, String)> {
         || provider_name == "google-gemini"
     {
         // Special handling for Gemini: check for CLI auth first
-        if zero_gateway::GeminiProvider::has_any_auth() {
+        if zero_hub::gateway::GeminiProvider::has_any_auth() {
             print_bullet(&format!(
                 "{} Gemini CLI credentials detected! You can skip the API key.",
                 style("✓").green().bold()

@@ -138,13 +138,13 @@ impl Default for SecurityPolicy {
     }
 }
 
-// Convert local SecurityPolicy to zero_tools::SecurityPolicy for use with zero-tools
-impl From<SecurityPolicy> for zero_tools::SecurityPolicy {
+// Convert local SecurityPolicy to zero_core::agent_tools::SecurityPolicy for use with zero-tools
+impl From<SecurityPolicy> for zero_core::agent_tools::SecurityPolicy {
     fn from(policy: SecurityPolicy) -> Self {
         let autonomy = match policy.autonomy {
-            AutonomyLevel::ReadOnly => zero_tools::security::AutonomyLevel::ReadOnly,
-            AutonomyLevel::Supervised => zero_tools::security::AutonomyLevel::Supervised,
-            AutonomyLevel::Full => zero_tools::security::AutonomyLevel::Full,
+            AutonomyLevel::ReadOnly => zero_core::agent_tools::security::AutonomyLevel::ReadOnly,
+            AutonomyLevel::Supervised => zero_core::agent_tools::security::AutonomyLevel::Supervised,
+            AutonomyLevel::Full => zero_core::agent_tools::security::AutonomyLevel::Full,
         };
         Self {
             autonomy,
@@ -153,17 +153,17 @@ impl From<SecurityPolicy> for zero_tools::SecurityPolicy {
             allowed_commands: policy.allowed_commands,
             forbidden_paths: policy.forbidden_paths,
             max_actions_per_hour: policy.max_actions_per_hour,
-            tracker: zero_tools::security::ActionTracker::new(),
+            tracker: zero_core::agent_tools::security::ActionTracker::new(),
         }
     }
 }
 
-impl From<&SecurityPolicy> for zero_tools::SecurityPolicy {
+impl From<&SecurityPolicy> for zero_core::agent_tools::SecurityPolicy {
     fn from(policy: &SecurityPolicy) -> Self {
         let autonomy = match policy.autonomy {
-            AutonomyLevel::ReadOnly => zero_tools::security::AutonomyLevel::ReadOnly,
-            AutonomyLevel::Supervised => zero_tools::security::AutonomyLevel::Supervised,
-            AutonomyLevel::Full => zero_tools::security::AutonomyLevel::Full,
+            AutonomyLevel::ReadOnly => zero_core::agent_tools::security::AutonomyLevel::ReadOnly,
+            AutonomyLevel::Supervised => zero_core::agent_tools::security::AutonomyLevel::Supervised,
+            AutonomyLevel::Full => zero_core::agent_tools::security::AutonomyLevel::Full,
         };
         Self {
             autonomy,
@@ -172,7 +172,7 @@ impl From<&SecurityPolicy> for zero_tools::SecurityPolicy {
             allowed_commands: policy.allowed_commands.clone(),
             forbidden_paths: policy.forbidden_paths.clone(),
             max_actions_per_hour: policy.max_actions_per_hour,
-            tracker: zero_tools::security::ActionTracker::new(),
+            tracker: zero_core::agent_tools::security::ActionTracker::new(),
         }
     }
 }

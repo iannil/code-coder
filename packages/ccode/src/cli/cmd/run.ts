@@ -7,6 +7,7 @@ import { bootstrap } from "../bootstrap"
 import { EOL } from "os"
 import { select } from "@clack/prompts"
 import { Agent } from "../../agent/agent"
+import { getMode } from "../../agent/mode"
 import { Command } from "../../command"
 import { LocalSession, LocalEvent } from "@/api"
 import { Permission } from "@/permission"
@@ -70,6 +71,12 @@ export const RunCommand = cmd({
       .option("agent", {
         type: "string",
         describe: "agent to use",
+      })
+      .option("mode", {
+        type: "string",
+        choices: ["build", "writer", "decision"] as const,
+        default: "build",
+        describe: "agent mode: build (dev), writer (content), decision (advisory)",
       })
       .option("format", {
         type: "string",
@@ -236,27 +243,39 @@ export const RunCommand = cmd({
         }
       })()
 
-      // Validate agent if specified
+      // Validate agent if specified, or resolve from mode
       const resolvedAgent = await (async () => {
-        if (!args.agent) return undefined
-        const agent = await Agent.get(args.agent)
-        if (!agent) {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${args.agent}" not found. Falling back to default agent`,
-          )
-          return undefined
+        // If explicit agent specified, validate it
+        if (args.agent) {
+          const agent = await Agent.get(args.agent)
+          if (!agent) {
+            UI.println(
+              UI.Style.TEXT_WARNING_BOLD + "!",
+              UI.Style.TEXT_NORMAL,
+              `agent "${args.agent}" not found. Falling back to default agent`,
+            )
+            return undefined
+          }
+          if (agent.mode === "subagent") {
+            UI.println(
+              UI.Style.TEXT_WARNING_BOLD + "!",
+              UI.Style.TEXT_NORMAL,
+              `agent "${args.agent}" is a subagent, not a primary agent. Falling back to default agent`,
+            )
+            return undefined
+          }
+          return args.agent
         }
-        if (agent.mode === "subagent") {
-          UI.println(
-            UI.Style.TEXT_WARNING_BOLD + "!",
-            UI.Style.TEXT_NORMAL,
-            `agent "${args.agent}" is a subagent, not a primary agent. Falling back to default agent`,
-          )
-          return undefined
+
+        // If mode specified, use the mode's primary agent
+        if (args.mode) {
+          const mode = getMode(args.mode)
+          if (mode) {
+            return mode.primaryAgent
+          }
         }
-        return args.agent
+
+        return undefined
       })()
 
       if (args.command) {

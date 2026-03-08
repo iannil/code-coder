@@ -1,18 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "zero-api",
     "zero-cli",
     "zero-common",
     "zero-core",
-    "zero-gateway",
-    "zero-channels",
-    "zero-workflow",
+    "zero-hub",
     "zero-trading",
-    "zero-memory",
-    "zero-tools",
-    "zero-agent",
-    "zero-browser",
 ]
 
 # Shared dependencies across workspace
@@ -148,14 +141,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 qdrant-client = "1.8"
 
 # Internal crates
-zero-api = { path = "zero-api" }
 zero-common = { path = "zero-common" }
 zero-core = { path = "zero-core" }
-zero-memory = { path = "zero-memory" }
-zero-tools = { path = "zero-tools" }
-zero-agent = { path = "zero-agent" }
-zero-channels = { path = "zero-channels" }
-zero-gateway = { path = "zero-gateway" }
+zero-hub = { path = "zero-hub", features = ["full"] }
 
 # Streams
 futures-util = "0.3"

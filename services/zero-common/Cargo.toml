@@ -60,8 +60,14 @@ cron = { workspace = true }
 # Regex
 regex = { workspace = true }
 
-# HTTP client (for HitL client)
-reqwest = { workspace = true, optional = true }
+# Database (for memory module)
+rusqlite = { workspace = true }
+
+# Vector database (for memory module)
+qdrant-client = { workspace = true }
+
+# HTTP client (for HitL client and memory module)
+reqwest = { workspace = true }
 
 # Axum (for tracing middleware)
 axum = { workspace = true, optional = true }
@@ -80,9 +86,9 @@ ts-rs = { workspace = true, optional = true }
 default = []
 ts-bindings = ["ts-rs"]
 redis-backend = ["redis", "futures-util"]
-hitl-client = ["reqwest"]
-guardrails = ["reqwest"]
-http-client = ["reqwest"]
+hitl-client = []
+guardrails = []
+http-client = []
 blocking = ["reqwest/blocking"]
 axum = ["dep:axum", "dep:tower"]
 testing = []

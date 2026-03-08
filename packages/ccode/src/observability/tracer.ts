@@ -48,6 +48,148 @@ export type ToolStatus = 'success' | 'error' | 'cancelled' | 'timeout' | 'blocke
 export type AgentLifecycleType = 'start' | 'complete' | 'error' | 'fork' | 'resume' | 'pause' | 'cancel'
 export type SpanKind = 'internal' | 'client' | 'server' | 'producer' | 'consumer'
 
+// ============================================================================
+// Native Store Stub Types (NAPI not yet implemented)
+// ============================================================================
+
+/**
+ * Stub interface for the native observability store.
+ * The actual NAPI bindings are not yet implemented in Rust.
+ * This interface documents the expected API for when they are added.
+ */
+interface NativeObservabilityStore {
+  emitLlmCall(event: {
+    traceId?: string
+    parentSpanId?: string
+    sessionId?: string
+    agentId?: string
+    provider: string
+    model: string
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    latencyMs: number
+    costUsd: number
+    success: boolean
+    error?: string
+    stopReason?: string
+  }): void
+
+  emitToolExecution(event: {
+    traceId?: string
+    parentSpanId?: string
+    sessionId?: string
+    agentId?: string
+    toolName: string
+    toolCallId?: string
+    durationMs: number
+    status: NapiToolStatus
+    error?: string
+    inputSizeBytes?: number
+    outputSizeBytes?: number
+  }): void
+
+  emitAgentLifecycle(event: {
+    traceId?: string
+    parentSpanId?: string
+    sessionId?: string
+    agentId: string
+    agentType: string
+    lifecycleType: NapiAgentLifecycleType
+    parentAgentId?: string
+    durationMs?: number
+    error?: string
+    turnCount?: number
+  }): void
+
+  emitSpan(event: {
+    traceId?: string
+    parentSpanId?: string
+    sessionId?: string
+    agentId?: string
+    name: string
+    kind?: NapiSpanKind
+    durationMs: number
+    success: boolean
+    error?: string
+  }): void
+
+  totalCost(from: string, to: string): number
+  totalTokens(from: string, to: string): [number, number]
+  aggregateMetrics(from: string, to: string): NativeMetricsSummary
+  stats(): NativeStoreStats
+  cleanup(): number
+  compact(): void
+  healthCheck(): boolean
+}
+
+interface NativeMetricsSummary {
+  fromTs: string
+  toTs: string
+  totalEvents: number
+  llm: NativeLlmMetrics
+  tools: NativeToolMetrics
+  agents: NativeAgentMetrics
+}
+
+interface NativeLlmMetrics {
+  totalCalls: number
+  successfulCalls: number
+  failedCalls: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheReadTokens: number
+  totalCacheWriteTokens: number
+  totalLatencyMs: number
+  avgLatencyMs: number
+  p50LatencyMs: number
+  p95LatencyMs: number
+  p99LatencyMs: number
+  totalCostUsd: number
+  avgCostPerCallUsd: number
+  cacheHitRate: number
+  successRate: number
+}
+
+interface NativeToolMetrics {
+  totalExecutions: number
+  successfulExecutions: number
+  failedExecutions: number
+  blockedExecutions: number
+  timeoutExecutions: number
+  cancelledExecutions: number
+  totalDurationMs: number
+  avgDurationMs: number
+  p50DurationMs: number
+  p95DurationMs: number
+  totalInputBytes: number
+  totalOutputBytes: number
+  successRate: number
+}
+
+interface NativeAgentMetrics {
+  totalStarts: number
+  totalCompletions: number
+  totalErrors: number
+  totalForks: number
+  avgTurns: number
+  avgDurationMs: number
+  completionRate: number
+}
+
+interface NativeStoreStats {
+  totalEvents: number
+  llmCalls: number
+  toolExecutions: number
+  agentEvents: number
+  totalCostUsd: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  oldestTs?: string
+  newestTs?: string
+}
+
 export interface LlmCallEvent {
   /** Trace ID for correlation (auto-generated if not provided) */
   traceId?: string
@@ -234,9 +376,12 @@ export interface MetricsOptions {
  *
  * Provides a thin TypeScript wrapper around the native Rust observability store.
  * All storage and aggregation happens in Rust for maximum performance.
+ *
+ * NOTE: The native NAPI bindings are not yet implemented. All Tracer methods
+ * will throw "Native observability bindings not available" until they are.
  */
 export class Tracer {
-  private store: ReturnType<typeof native.openObservabilityStore> | null = null
+  private store: NativeObservabilityStore | null = null
   private readonly dbPath: string
   private currentTraceId: string | null = null
   private currentSessionId: string | null = null
@@ -249,12 +394,14 @@ export class Tracer {
   /**
    * Initialize the tracer (lazy initialization)
    */
-  private ensureStore(): ReturnType<typeof native.openObservabilityStore> {
+  private ensureStore(): NativeObservabilityStore {
     if (this.store === null) {
-      if (!native.openObservabilityStore) {
+      // NOTE: native.openObservabilityStore is undefined until NAPI bindings are implemented
+      const openStore = native.openObservabilityStore as ((path: string) => NativeObservabilityStore) | undefined
+      if (!openStore) {
         throw new Error('Native observability bindings not available')
       }
-      this.store = native.openObservabilityStore(this.dbPath)
+      this.store = openStore(this.dbPath)
     }
     return this.store
   }
@@ -492,37 +639,45 @@ export class Tracer {
 // Helper Functions
 // ============================================================================
 
-function mapToolStatus(status: ToolStatus): native.NapiToolStatus {
-  const map: Record<ToolStatus, native.NapiToolStatus> = {
-    success: 'Success' as native.NapiToolStatus,
-    error: 'Error' as native.NapiToolStatus,
-    cancelled: 'Cancelled' as native.NapiToolStatus,
-    timeout: 'Timeout' as native.NapiToolStatus,
-    blocked: 'Blocked' as native.NapiToolStatus,
+// NAPI type stubs - These types are expected by the native Rust store but the
+// observability NAPI bindings are not yet implemented. We define them locally
+// so TypeScript compiles without errors. The values are cast as the store
+// methods expect PascalCase enum variants.
+type NapiToolStatus = 'Success' | 'Error' | 'Cancelled' | 'Timeout' | 'Blocked'
+type NapiAgentLifecycleType = 'Start' | 'Complete' | 'Error' | 'Fork' | 'Resume' | 'Pause' | 'Cancel'
+type NapiSpanKind = 'Internal' | 'Client' | 'Server' | 'Producer' | 'Consumer'
+
+function mapToolStatus(status: ToolStatus): NapiToolStatus {
+  const map: Record<ToolStatus, NapiToolStatus> = {
+    success: 'Success',
+    error: 'Error',
+    cancelled: 'Cancelled',
+    timeout: 'Timeout',
+    blocked: 'Blocked',
   }
   return map[status]
 }
 
-function mapAgentLifecycleType(type: AgentLifecycleType): native.NapiAgentLifecycleType {
-  const map: Record<AgentLifecycleType, native.NapiAgentLifecycleType> = {
-    start: 'Start' as native.NapiAgentLifecycleType,
-    complete: 'Complete' as native.NapiAgentLifecycleType,
-    error: 'Error' as native.NapiAgentLifecycleType,
-    fork: 'Fork' as native.NapiAgentLifecycleType,
-    resume: 'Resume' as native.NapiAgentLifecycleType,
-    pause: 'Pause' as native.NapiAgentLifecycleType,
-    cancel: 'Cancel' as native.NapiAgentLifecycleType,
+function mapAgentLifecycleType(type: AgentLifecycleType): NapiAgentLifecycleType {
+  const map: Record<AgentLifecycleType, NapiAgentLifecycleType> = {
+    start: 'Start',
+    complete: 'Complete',
+    error: 'Error',
+    fork: 'Fork',
+    resume: 'Resume',
+    pause: 'Pause',
+    cancel: 'Cancel',
   }
   return map[type]
 }
 
-function mapSpanKind(kind: SpanKind): native.NapiSpanKind {
-  const map: Record<SpanKind, native.NapiSpanKind> = {
-    internal: 'Internal' as native.NapiSpanKind,
-    client: 'Client' as native.NapiSpanKind,
-    server: 'Server' as native.NapiSpanKind,
-    producer: 'Producer' as native.NapiSpanKind,
-    consumer: 'Consumer' as native.NapiSpanKind,
+function mapSpanKind(kind: SpanKind): NapiSpanKind {
+  const map: Record<SpanKind, NapiSpanKind> = {
+    internal: 'Internal',
+    client: 'Client',
+    server: 'Server',
+    producer: 'Producer',
+    consumer: 'Consumer',
   }
   return map[kind]
 }

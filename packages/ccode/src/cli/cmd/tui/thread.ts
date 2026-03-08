@@ -59,6 +59,12 @@ export const TuiThreadCommand = cmd({
         type: "string",
         describe: "agent to use",
       })
+      .option("mode", {
+        type: "string",
+        choices: ["build", "writer", "decision"] as const,
+        default: "build",
+        describe: "agent mode: build (dev), writer (content), decision (advisory)",
+      })
       .option("backend", {
         type: "string",
         choices: ["worker", "ipc"] as const,
@@ -146,6 +152,7 @@ export const TuiThreadCommand = cmd({
         continue: args.continue,
         sessionID: args.session,
         agent: args.agent,
+        mode: args.mode,
         model: args.model,
         prompt,
       },

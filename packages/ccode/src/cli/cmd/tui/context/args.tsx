@@ -3,6 +3,7 @@ import { createSimpleContext } from "./helper"
 export interface Args {
   model?: string
   agent?: string
+  mode?: string
   prompt?: string
   continue?: boolean
   sessionID?: string

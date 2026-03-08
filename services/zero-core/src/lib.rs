@@ -6,6 +6,8 @@
 //! - **protocol**: MCP, LSP, JSON-RPC implementations
 //! - **security**: Vault, sandbox, permissions, secrets management
 //! - **foundation**: Configuration, file utilities, scheduler, memory
+//! - **agent**: AI agent execution engine with tool-calling loop
+//! - **agent_tools**: Tool system for AI agent capabilities
 //!
 //! # Architecture
 //!
@@ -31,11 +33,19 @@
 //! │   ┌─────────┐  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
 //! │   │  tools  │  │ session │  │ protocol │  │ security │  │foundation│  │
 //! │   └─────────┘  └─────────┘  └──────────┘  └──────────┘  └──────────┘  │
+//! │   ┌─────────┐  ┌─────────────┐                                        │
+//! │   │  agent  │  │ agent_tools │                                        │
+//! │   └─────────┘  └─────────────┘                                        │
 //! └─────────────────────────────────────────────────────────────────────────┘
 //! ```
 
+// Core modules
+pub mod agent;
+pub mod agent_tools;
 pub mod audit;
 pub mod autonomous;
+#[cfg(feature = "browser")]
+pub mod browser;
 pub mod context;
 pub mod foundation;
 pub mod git;
@@ -232,6 +242,28 @@ pub use provider::{
     normalize_messages, remap_provider_options,
     CacheResult, ModelInfo, NormalizeResult,
     ProviderMessage, ProviderMessageContent,
+};
+
+// Agent execution engine re-exports
+pub use agent::{
+    AgentExecutor, ToolCall, ToolContext, Provider,
+    // Streaming types
+    AnthropicProvider, ContentPart, Message as StreamMessage, Role, StreamEvent, StreamRequest,
+    StreamingProvider, ToolDef, Usage,
+    // Confirmation types
+    ConfirmationRegistry, ConfirmationResponse, NotificationSink,
+    PendingConfirmation, get_confirmation_registry, get_notification_sink,
+    handle_confirmation_response, handle_confirmation_response_with_type,
+    init_confirmation_registry, notify, request_confirmation_and_wait,
+    set_notification_sink,
+};
+
+// Agent tools re-exports
+pub use agent_tools::{
+    Tool, ToolResult, ToolSpec, SecurityPolicy,
+    BrowserTool, CodeCoderTool, EditTool, FileReadTool, FileWriteTool,
+    GlobTool, GrepTool, MemoryForgetTool, MemoryRecallTool, MemoryStoreTool,
+    ShellTool,
 };
 
 /// Library version

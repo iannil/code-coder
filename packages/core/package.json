@@ -13,6 +13,21 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts",
       "bun": "./src/index.ts"
+    },
+    "./util/*": {
+      "import": "./src/util/*.ts",
+      "types": "./src/util/*.ts",
+      "bun": "./src/util/*.ts"
+    },
+    "./memory": {
+      "import": "./src/memory/index.ts",
+      "types": "./src/memory/index.ts",
+      "bun": "./src/memory/index.ts"
+    },
+    "./memory/*": {
+      "import": "./src/memory/*.ts",
+      "types": "./src/memory/*.ts",
+      "bun": "./src/memory/*.ts"
     }
   },
   "files": [
@@ -32,7 +47,8 @@
     "@napi-rs/cli": "3.0.0-alpha.70",
     "@types/bun": "catalog:",
     "tinybench": "^2.9.0",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "zod": "catalog:"
   },
   "napi": {
     "name": "codecoder-core",

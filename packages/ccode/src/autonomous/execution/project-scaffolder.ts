@@ -16,8 +16,8 @@ import { Log } from "@/util/log"
 import { GitOps } from "./git-ops"
 
 // Re-export ProjectRegistry and ProjectEntry for convenience
-export { ProjectRegistry, type ProjectEntry } from "@codecoder-ai/util/project-registry"
-import { ProjectRegistry, type ProjectEntry } from "@codecoder-ai/util/project-registry"
+export { ProjectRegistry, type ProjectEntry } from "@codecoder-ai/core/util/project-registry"
+import { ProjectRegistry, type ProjectEntry } from "@codecoder-ai/core/util/project-registry"
 
 const log = Log.create({ service: "autonomous.project-scaffolder" })
 

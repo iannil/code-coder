@@ -1,4 +1,4 @@
-import type { NamedError } from "@codecoder-ai/util/error"
+import type { NamedError } from "@codecoder-ai/core/util/error"
 import { MessageV2 } from "./message-v2"
 
 export namespace SessionRetry {

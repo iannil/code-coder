@@ -15,7 +15,7 @@ import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { jsonResponse, errorResponse } from "../middleware"
 import { spawn } from "child_process"
 import path from "path"
-import { ConfigManager } from "@codecoder-ai/util/config"
+import { ConfigManager } from "@codecoder-ai/core/util/config"
 import { Project } from "@/project/project"
 import { Session } from "@/session"
 

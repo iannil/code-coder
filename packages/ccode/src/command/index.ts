@@ -11,7 +11,7 @@ import { ConfigMarkdown } from "../config/markdown"
 import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { Session } from "@/session"
-import { NamedError } from "@codecoder-ai/util/error"
+import { NamedError } from "@codecoder-ai/core/util/error"
 
 export namespace Command {
   const log = Log.create({ service: "command" })

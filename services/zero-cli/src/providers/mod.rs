@@ -5,7 +5,7 @@
 //!
 //! ## Architecture
 //!
-//! - `zero_gateway::Provider`: Full-featured trait with `ChatRequest`/`ChatResponse`
+//! - `zero_hub::gateway::Provider`: Full-featured trait with `ChatRequest`/`ChatResponse`
 //! - `Provider` (this module): Simplified trait with `chat_with_system()` for CLI use
 //! - `GatewayProviderAdapter`: Bridges gateway providers to CLI trait
 //! - `ResilientProvider` (from zero-gateway): Provides retry + fallback behavior
@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 // Re-export gateway provider types for direct access
-pub use zero_gateway::{
+pub use zero_hub::gateway::{
     AnthropicProvider, AuthStyle, CompatibleProvider, GeminiProvider, OllamaProvider,
     OpenAIProvider, OpenRouterProvider, ResilienceConfig, ResilientProvider,
 };
@@ -28,7 +28,7 @@ pub use zero_gateway::{
 /// This is a simplified interface that works with the CLI's chat-based workflow.
 /// For the full-featured API with ChatRequest/ChatResponse, use zero-gateway directly.
 ///
-/// This trait is a superset of `zero_agent::Provider`, allowing CLI providers
+/// This trait is a superset of `zero_core::agent::Provider`, allowing CLI providers
 /// to be used with `AgentExecutor` for tool-calling workflows.
 #[async_trait]
 pub trait Provider: Send + Sync {
@@ -65,13 +65,13 @@ pub trait Provider: Send + Sync {
 
 /// Adapter that wraps a zero-gateway provider to implement the zero-cli Provider trait.
 ///
-/// This adapter also implements `zero_agent::Provider`, allowing it to be used
+/// This adapter also implements `zero_core::agent::Provider`, allowing it to be used
 /// with `AgentExecutor` for tool-calling workflows.
-pub struct GatewayProviderAdapter<P: zero_gateway::Provider> {
+pub struct GatewayProviderAdapter<P: zero_hub::gateway::Provider> {
     inner: P,
 }
 
-impl<P: zero_gateway::Provider> GatewayProviderAdapter<P> {
+impl<P: zero_hub::gateway::Provider> GatewayProviderAdapter<P> {
     pub fn new(provider: P) -> Self {
         Self { inner: provider }
     }
@@ -83,7 +83,7 @@ impl<P: zero_gateway::Provider> GatewayProviderAdapter<P> {
 }
 
 #[async_trait]
-impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P> {
+impl<P: zero_hub::gateway::Provider + 'static> Provider for GatewayProviderAdapter<P> {
     fn name(&self) -> &str {
         self.inner.name()
     }
@@ -99,9 +99,9 @@ impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P>
         model: &str,
         temperature: f64,
     ) -> anyhow::Result<String> {
-        let request = zero_gateway::ChatRequest {
+        let request = zero_hub::gateway::ChatRequest {
             model: model.to_string(),
-            messages: vec![zero_gateway::provider::Message {
+            messages: vec![zero_hub::gateway::provider::Message {
                 role: "user".to_string(),
                 content: message.to_string(),
             }],
@@ -122,10 +122,10 @@ impl<P: zero_gateway::Provider + 'static> Provider for GatewayProviderAdapter<P>
     }
 }
 
-/// Implement `zero_agent::Provider` for `GatewayProviderAdapter`.
+/// Implement `zero_core::agent::Provider` for `GatewayProviderAdapter`.
 /// This allows CLI providers to be used with `AgentExecutor`.
 #[async_trait]
-impl<P: zero_gateway::Provider + 'static> zero_agent::Provider for GatewayProviderAdapter<P> {
+impl<P: zero_hub::gateway::Provider + 'static> zero_core::agent::Provider for GatewayProviderAdapter<P> {
     fn name(&self) -> &str {
         self.inner.name()
     }
@@ -233,7 +233,7 @@ pub async fn api_error(provider: &str, response: reqwest::Response) -> anyhow::E
 fn create_gateway_provider(
     name: &str,
     api_key: Option<&str>,
-) -> anyhow::Result<Arc<dyn zero_gateway::Provider>> {
+) -> anyhow::Result<Arc<dyn zero_hub::gateway::Provider>> {
     match name {
         // ── Primary providers ───────────────────────────────────
         "openrouter" => Ok(Arc::new(OpenRouterProvider::new(api_key))),
@@ -519,7 +519,7 @@ pub fn create_resilient_provider(
     api_key: Option<&str>,
     reliability: &crate::config::ReliabilityConfig,
 ) -> anyhow::Result<Box<dyn Provider>> {
-    let mut gateway_providers: Vec<Arc<dyn zero_gateway::Provider>> = Vec::new();
+    let mut gateway_providers: Vec<Arc<dyn zero_hub::gateway::Provider>> = Vec::new();
 
     // Add primary provider
     gateway_providers.push(create_gateway_provider(primary_name, api_key)?);

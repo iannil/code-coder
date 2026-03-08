@@ -13,14 +13,14 @@ pub use browser_open::BrowserOpenTool;
 pub use registry::ToolRegistry;
 pub use skill_search::SkillSearchTool;
 
-// Re-export tool types from zero-tools
-pub use zero_tools::{
+// Re-export tool types from zero-core
+pub use zero_core::agent_tools::{
     BrowserTool, CodeCoderTool, EditTool, FileReadTool, FileWriteTool, GlobTool, GrepTool,
     MemoryForgetTool, MemoryRecallTool, MemoryStoreTool, ShellTool, Tool, ToolResult,
 };
 
-// Re-export SecurityPolicy from zero-tools for direct use
-pub use zero_tools::SecurityPolicy as ZeroToolsSecurityPolicy;
+// Re-export SecurityPolicy from zero-core for direct use
+pub use zero_core::agent_tools::SecurityPolicy as ZeroToolsSecurityPolicy;
 
 use crate::memory::Memory;
 use crate::security::SecurityPolicy;
@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 /// Create the default tool registry
 pub fn default_tools(security: Arc<SecurityPolicy>) -> Vec<Box<dyn Tool>> {
-    // Convert local SecurityPolicy to zero_tools::SecurityPolicy
+    // Convert local SecurityPolicy to zero_core::agent_tools::SecurityPolicy
     let zt_security: Arc<ZeroToolsSecurityPolicy> = Arc::new(security.as_ref().into());
     vec![
         Box::new(ShellTool::new(zt_security.clone())),
@@ -49,7 +49,7 @@ pub fn all_tools(
     vault_config: &crate::config::VaultConfig,
     vault_path: &std::path::Path,
 ) -> Vec<Box<dyn Tool>> {
-    // Convert local SecurityPolicy to zero_tools::SecurityPolicy
+    // Convert local SecurityPolicy to zero_core::agent_tools::SecurityPolicy
     let zt_security: Arc<ZeroToolsSecurityPolicy> = Arc::new(security.as_ref().into());
 
     let mut tools: Vec<Box<dyn Tool>> = vec![
@@ -103,7 +103,7 @@ mod tests {
     use super::*;
     use crate::config::{BrowserConfig, CodeCoderConfig, MemoryConfig};
     use tempfile::TempDir;
-    use zero_tools::ToolSpec;
+    use zero_core::agent_tools::ToolSpec;
 
     #[test]
     fn default_tools_has_six() {

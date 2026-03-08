@@ -143,6 +143,15 @@ lru = { workspace = true }
 # SIMD operations (optional, controlled by feature flag)
 wide = { workspace = true, optional = true }
 
+# Browser automation (optional, for zero-browser functionality)
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"], optional = true }
+futures = { version = "0.3", optional = true }
+
+# HTTP server for browser routes (optional)
+axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
+tower-http = { workspace = true, optional = true }
+
 [features]
 default = ["simd"]
 simd = ["wide"]
@@ -151,6 +160,7 @@ keyring-support = ["keyring"]
 napi-bindings = ["napi", "napi-derive", "napi-build"]
 lsp = ["tower-lsp", "async-process"]
 pty = ["portable-pty"]
+browser = ["chromiumoxide", "futures", "axum", "tower", "tower-http"]
 
 [dev-dependencies]
 tempfile = { workspace = true }

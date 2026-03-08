@@ -76,9 +76,9 @@ impl ChannelMessage {
     }
 }
 
-/// Convert from zero-channels `ChannelMessage` to local `ChannelMessage`
-impl From<zero_channels::ChannelMessage> for ChannelMessage {
-    fn from(msg: zero_channels::ChannelMessage) -> Self {
+/// Convert from zero-hub::channels `ChannelMessage` to local `ChannelMessage`
+impl From<zero_hub::channels::ChannelMessage> for ChannelMessage {
+    fn from(msg: zero_hub::channels::ChannelMessage) -> Self {
         // Extract values before moving fields
         let channel_type = msg.channel_type.as_str().to_string();
         let content = msg.text().unwrap_or_default().to_string();
@@ -125,15 +125,15 @@ pub trait Channel: Send + Sync {
 // Adapters: Wrap zero-channels implementations to implement local Channel trait
 // ============================================================================
 
-/// Wrapper for `zero_channels::CliChannel` that implements the local Channel trait.
+/// Wrapper for `zero_hub::channels::CliChannel` that implements the local Channel trait.
 pub struct CliChannelAdapter {
-    inner: zero_channels::CliChannel,
+    inner: zero_hub::channels::CliChannel,
 }
 
 impl CliChannelAdapter {
     pub fn new() -> Self {
         Self {
-            inner: zero_channels::CliChannel::new(),
+            inner: zero_hub::channels::CliChannel::new(),
         }
     }
 }
@@ -157,10 +157,10 @@ impl Channel for CliChannelAdapter {
     }
 
     async fn listen(&self, tx: mpsc::Sender<ChannelMessage>) -> Result<()> {
-        use zero_channels::Channel as ZeroChannel;
+        use zero_hub::channels::Channel as ZeroChannel;
 
         // Create a callback that converts and sends messages
-        let callback = move |msg: zero_channels::ChannelMessage| {
+        let callback = move |msg: zero_hub::channels::ChannelMessage| {
             let local_msg: ChannelMessage = msg.into();
             // Use blocking_send since we're in a sync callback context
             let _ = tx.blocking_send(local_msg);

@@ -24,7 +24,8 @@ use super::protocol::{
 use crate::config::Config;
 use crate::session::store::SessionStore;
 use crate::tools::{self, Tool};
-use zero_agent::streaming::{AnthropicProvider, StreamEvent, StreamingProvider};
+use zero_core::agent::{AnthropicProvider, StreamEvent, StreamingProvider};
+use zero_core::agent::streaming::{ContentPart, Message, Role, StreamRequest, ToolDef};
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Client Connection State
@@ -615,11 +616,11 @@ impl IpcServer {
         };
 
         // Build tool definitions
-        let tool_defs: Vec<zero_agent::streaming::ToolDef> = self
+        let tool_defs: Vec<ToolDef> = self
             .tools
             .iter()
             .filter(|t| params.tools.is_empty() || params.tools.contains(&t.name().to_string()))
-            .map(|t| zero_agent::streaming::ToolDef {
+            .map(|t| ToolDef {
                 name: t.name().to_string(),
                 description: t.description().to_string(),
                 input_schema: t.parameters_schema(),
@@ -627,48 +628,48 @@ impl IpcServer {
             .collect();
 
         // Convert messages
-        let messages: Vec<zero_agent::streaming::Message> = params
+        let messages: Vec<Message> = params
             .messages
             .iter()
             .map(|m| {
                 let role = match m.role.as_str() {
-                    "user" => zero_agent::streaming::Role::User,
-                    "assistant" => zero_agent::streaming::Role::Assistant,
-                    "system" => zero_agent::streaming::Role::System,
-                    "tool" => zero_agent::streaming::Role::Tool,
-                    _ => zero_agent::streaming::Role::User,
+                    "user" => Role::User,
+                    "assistant" => Role::Assistant,
+                    "system" => Role::System,
+                    "tool" => Role::Tool,
+                    _ => Role::User,
                 };
 
                 let content = if let Some(tool_call_id) = &m.tool_call_id {
-                    vec![zero_agent::streaming::ContentPart::ToolResult {
+                    vec![ContentPart::ToolResult {
                         tool_use_id: tool_call_id.clone(),
                         content: m.content.clone(),
                     }]
                 } else if let Some(tool_calls) = &m.tool_calls {
                     tool_calls
                         .iter()
-                        .map(|tc| zero_agent::streaming::ContentPart::ToolUse {
+                        .map(|tc| ContentPart::ToolUse {
                             id: tc.id.clone(),
                             name: tc.name.clone(),
                             input: tc.arguments.clone(),
                         })
                         .collect()
                 } else {
-                    vec![zero_agent::streaming::ContentPart::Text {
+                    vec![ContentPart::Text {
                         text: m.content.clone(),
                     }]
                 };
 
-                zero_agent::streaming::Message { role, content }
+                Message { role, content }
             })
             .collect();
 
         // Add user message
         let mut all_messages = messages;
-        all_messages.push(zero_agent::streaming::Message::user(&params.message));
+        all_messages.push(Message::user(&params.message));
 
         // Create stream request
-        let stream_request = zero_agent::streaming::StreamRequest {
+        let stream_request = StreamRequest {
             system: params.system.clone(),
             messages: all_messages,
             tools: tool_defs,

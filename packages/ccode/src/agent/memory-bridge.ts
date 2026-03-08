@@ -19,7 +19,7 @@ import {
   type UnifiedMemory,
   type MemoryEntry,
   type MemoryCategory,
-} from "@codecoder-ai/memory"
+} from "@codecoder-ai/core/memory"
 
 const log = Log.create({ service: "agent.memory-bridge" })
 

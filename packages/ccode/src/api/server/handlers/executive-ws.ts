@@ -12,7 +12,7 @@
 import type { ServerWebSocket } from "bun"
 import { exec } from "child_process"
 import { promisify } from "util"
-import { ConfigManager } from "@codecoder-ai/util/config"
+import { ConfigManager } from "@codecoder-ai/core/util/config"
 
 const execAsync = promisify(exec)
 const configManager = new ConfigManager()

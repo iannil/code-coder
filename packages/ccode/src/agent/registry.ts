@@ -23,6 +23,32 @@ import {
   type TriggerRule,
   type AgentKeywords,
 } from "@/config/keywords"
+import {
+  MODES,
+  DEFAULT_MODE,
+  getMode,
+  getDefaultMode,
+  listModes,
+  agentBelongsToMode,
+  findModesForAgent,
+  getAgentsInMode,
+  parseModeCapability,
+  type Mode,
+} from "./mode"
+
+// Re-export mode system for convenience
+export {
+  MODES,
+  DEFAULT_MODE,
+  getMode,
+  getDefaultMode,
+  listModes,
+  agentBelongsToMode,
+  findModesForAgent,
+  getAgentsInMode,
+  parseModeCapability,
+  type Mode,
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Zod Workaround
@@ -95,6 +121,12 @@ export const AgentCategory = z.enum([
 export type AgentCategory = z.infer<typeof AgentCategory>
 
 /**
+ * Agent role within a mode.
+ */
+export const AgentRole = z.enum(["primary", "alternative", "capability", "system", "hidden"])
+export type AgentRole = z.infer<typeof AgentRole>
+
+/**
  * Extended agent metadata for registry.
  */
 export const AgentMetadata = z.object({
@@ -108,6 +140,10 @@ export const AgentMetadata = z.object({
   longDescription: z.string().optional(),
   /** Agent category */
   category: AgentCategory.default("custom"),
+  /** Mode this agent belongs to (build, writer, decision, or undefined for system) */
+  mode: z.string().optional(),
+  /** Role within the mode (primary, alternative, capability, system, hidden) */
+  role: AgentRole.default("capability"),
   /** Agent capabilities */
   capabilities: defaultArray(AgentCapability),
   /** Auto-invocation triggers */
@@ -147,10 +183,15 @@ export interface SearchResult {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
+  // ─────────────────────────────────────────────────────────────────────────────
+  // @build Mode - Software Development
+  // ─────────────────────────────────────────────────────────────────────────────
   general: {
     displayName: "General Assistant",
     shortDescription: "General-purpose assistant for conversation and queries",
     category: "custom",
+    mode: "build",
+    role: "capability",
     capabilities: [
       { id: "conversation", name: "Conversation", description: "Natural conversation", primary: true },
       { id: "query", name: "Query Handling", description: "Answer questions and queries", primary: true },
@@ -171,12 +212,14 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     tags: ["general", "assistant", "conversation"],
     builtin: true,
     icon: "💬",
-    recommended: true,  // Default agent for unmatched queries
+    recommended: true,
   },
   build: {
     displayName: "Build",
     shortDescription: "Primary development agent for building features and fixing bugs",
     category: "engineering",
+    mode: "build",
+    role: "primary",
     capabilities: [
       { id: "code-write", name: "Code Writing", description: "Write and modify code", primary: true },
       { id: "file-edit", name: "File Editing", description: "Edit files in the codebase", primary: true },
@@ -199,12 +242,13 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     tags: ["development", "coding", "primary"],
     builtin: true,
     icon: "🔨",
-    // Build requires explicit trigger matching (not default for unmatched queries)
   },
   plan: {
     displayName: "Plan",
     shortDescription: "Creates detailed implementation plans before coding",
     category: "engineering",
+    mode: "build",
+    role: "alternative",
     capabilities: [
       { id: "planning", name: "Planning", description: "Create step-by-step plans", primary: true },
       { id: "analysis", name: "Analysis", description: "Analyze requirements and codebase", primary: true },
@@ -226,10 +270,30 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "📋",
   },
+  autonomous: {
+    displayName: "Autonomous",
+    shortDescription: "Fully autonomous execution with self-correction",
+    category: "system",
+    mode: "build",
+    role: "alternative",
+    capabilities: [
+      { id: "autonomous", name: "Autonomous Execution", description: "Self-directed task completion", primary: true },
+      { id: "self-correction", name: "Self Correction", description: "Detect and fix own errors", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "autonomous", priority: 10 },
+      { type: "keyword", value: "自主", priority: 9 },
+    ],
+    tags: ["autonomous", "system", "self-directed"],
+    builtin: true,
+    icon: "🤖",
+  },
   "code-reviewer": {
     displayName: "Code Reviewer",
     shortDescription: "Comprehensive code quality reviews with actionable feedback",
     category: "engineering",
+    mode: "build",
+    role: "capability",
     capabilities: [
       { id: "review", name: "Code Review", description: "Review code for quality issues", primary: true },
       { id: "suggestions", name: "Suggestions", description: "Provide improvement suggestions", primary: true },
@@ -250,12 +314,13 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     tags: ["review", "quality", "engineering"],
     builtin: true,
     icon: "🔍",
-    // Code-reviewer requires explicit trigger (e.g., "review", "check code")
   },
   "security-reviewer": {
     displayName: "Security Reviewer",
     shortDescription: "Analyzes code for security vulnerabilities",
     category: "engineering",
+    mode: "build",
+    role: "capability",
     capabilities: [
       { id: "security-audit", name: "Security Audit", description: "Identify security issues", primary: true },
       { id: "owasp-check", name: "OWASP Check", description: "Check OWASP Top 10", primary: true },
@@ -273,6 +338,8 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     displayName: "TDD Guide",
     shortDescription: "Enforces test-driven development methodology",
     category: "engineering",
+    mode: "build",
+    role: "capability",
     capabilities: [
       { id: "tdd", name: "TDD Workflow", description: "Guide through TDD process", primary: true },
       { id: "test-writing", name: "Test Writing", description: "Write tests first", primary: true },
@@ -290,6 +357,8 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     displayName: "Architect",
     shortDescription: "Designs system architecture and establishes patterns",
     category: "engineering",
+    mode: "build",
+    role: "capability",
     capabilities: [
       { id: "architecture", name: "Architecture Design", description: "Design system architecture", primary: true },
       { id: "patterns", name: "Design Patterns", description: "Apply design patterns", primary: true },
@@ -303,10 +372,120 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "🏗️",
   },
+  explore: {
+    displayName: "Explorer",
+    shortDescription: "Fast codebase exploration and search",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "search", name: "Code Search", description: "Search codebase", primary: true },
+      { id: "explore", name: "Exploration", description: "Explore file structure", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "find", priority: 10 },
+      { type: "keyword", value: "search", priority: 9 },
+      { type: "keyword", value: "where", priority: 7 },
+    ],
+    tags: ["search", "exploration", "engineering"],
+    builtin: true,
+    icon: "🔭",
+  },
+  "code-reverse": {
+    displayName: "Code Reverse Engineer",
+    shortDescription: "Reverse engineering and code analysis",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "reverse-engineering", name: "Reverse Engineering", description: "Analyze and understand code", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "reverse", priority: 10 },
+      { type: "keyword", value: "decompile", priority: 9 },
+    ],
+    tags: ["reverse-engineering", "analysis", "engineering"],
+    builtin: true,
+    icon: "🔬",
+  },
+  "jar-code-reverse": {
+    displayName: "JAR Reverse Engineer",
+    shortDescription: "Reverse engineering for Java JAR files",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "jar-analysis", name: "JAR Analysis", description: "Analyze Java JAR files", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "jar", priority: 10 },
+      { type: "keyword", value: "java reverse", priority: 9 },
+    ],
+    tags: ["java", "jar", "reverse-engineering"],
+    builtin: true,
+    icon: "☕",
+  },
+  verifier: {
+    displayName: "Verifier",
+    shortDescription: "Verification and validation agent",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "verification", name: "Verification", description: "Verify code and outputs", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "verify", priority: 10 },
+      { type: "keyword", value: "validate", priority: 9 },
+    ],
+    tags: ["verification", "validation"],
+    builtin: true,
+    icon: "✅",
+  },
+  "prd-generator": {
+    displayName: "PRD Generator",
+    shortDescription: "Generate product requirement documents",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "prd", name: "PRD Generation", description: "Generate product requirements", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "prd", priority: 10 },
+      { type: "keyword", value: "requirements", priority: 8 },
+    ],
+    tags: ["product", "requirements", "documentation"],
+    builtin: true,
+    icon: "📄",
+  },
+  "feasibility-assess": {
+    displayName: "Feasibility Assessor",
+    shortDescription: "Assess technical and business feasibility",
+    category: "engineering",
+    mode: "build",
+    role: "capability",
+    capabilities: [
+      { id: "feasibility", name: "Feasibility Assessment", description: "Assess project feasibility", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "feasibility", priority: 10 },
+      { type: "keyword", value: "assess", priority: 7 },
+    ],
+    tags: ["feasibility", "assessment", "planning"],
+    builtin: true,
+    icon: "📊",
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // @writer Mode - Content Creation
+  // ─────────────────────────────────────────────────────────────────────────────
   writer: {
     displayName: "Writer",
     shortDescription: "Long-form content writing (20k+ words)",
     category: "content",
+    mode: "writer",
+    role: "primary",
     capabilities: [
       { id: "long-form", name: "Long-form Writing", description: "Write books and long articles", primary: true },
       { id: "outlining", name: "Outlining", description: "Create content outlines", primary: true },
@@ -320,10 +499,63 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "✍️",
   },
+  expander: {
+    displayName: "Expander",
+    shortDescription: "Expand and elaborate on content",
+    category: "content",
+    mode: "writer",
+    role: "capability",
+    capabilities: [
+      { id: "expansion", name: "Content Expansion", description: "Expand brief content into detailed writing", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "expand", priority: 10 },
+      { type: "keyword", value: "elaborate", priority: 9 },
+    ],
+    tags: ["expansion", "elaboration", "content"],
+    builtin: true,
+    icon: "📖",
+  },
+  "expander-fiction": {
+    displayName: "Fiction Expander",
+    shortDescription: "Expand fiction and narrative content",
+    category: "content",
+    mode: "writer",
+    role: "capability",
+    capabilities: [
+      { id: "fiction-expansion", name: "Fiction Expansion", description: "Expand fiction narratives", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "fiction", priority: 10 },
+      { type: "keyword", value: "story", priority: 8 },
+    ],
+    tags: ["fiction", "narrative", "creative-writing"],
+    builtin: true,
+    icon: "📚",
+  },
+  "expander-nonfiction": {
+    displayName: "Nonfiction Expander",
+    shortDescription: "Expand nonfiction and technical content",
+    category: "content",
+    mode: "writer",
+    role: "capability",
+    capabilities: [
+      { id: "nonfiction-expansion", name: "Nonfiction Expansion", description: "Expand nonfiction content", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "nonfiction", priority: 10 },
+      { type: "keyword", value: "technical writing", priority: 8 },
+    ],
+    tags: ["nonfiction", "technical", "educational"],
+    builtin: true,
+    icon: "📰",
+  },
   proofreader: {
     displayName: "Proofreader",
     shortDescription: "Grammar, spelling, and style checking",
     category: "content",
+    mode: "writer",
+    role: "capability",
     capabilities: [
       { id: "proofreading", name: "Proofreading", description: "Check grammar and spelling", primary: true },
       { id: "style-check", name: "Style Check", description: "Ensure style consistency", primary: true },
@@ -337,27 +569,16 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "📝",
   },
-  observer: {
-    displayName: "Observer (祝融说)",
-    shortDescription: "Analysis through Zhu Rong philosophy",
-    category: "philosophy",
-    capabilities: [
-      { id: "philosophy", name: "Philosophical Analysis", description: "Apply observer theory", primary: true },
-      { id: "possibility", name: "Possibility Space", description: "Explore possibility space", primary: true },
-    ],
-    triggers: [
-      { type: "keyword", value: "祝融说", priority: 10 },
-      { type: "keyword", value: "observer", priority: 9 },
-      { type: "keyword", value: "可能性", priority: 8 },
-    ],
-    tags: ["philosophy", "zhurong", "analysis"],
-    builtin: true,
-    icon: "👁️",
-  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // @decision Mode - Decision Making & Philosophy (祝融说)
+  // ─────────────────────────────────────────────────────────────────────────────
   decision: {
     displayName: "Decision (CLOSE)",
     shortDescription: "Sustainable decision-making with CLOSE framework",
     category: "philosophy",
+    mode: "decision",
+    role: "primary",
     capabilities: [
       { id: "decision", name: "Decision Analysis", description: "Apply CLOSE framework", primary: true },
       { id: "sustainability", name: "Sustainability", description: "Evaluate decision sustainability", primary: true },
@@ -371,10 +592,31 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "🎯",
   },
+  observer: {
+    displayName: "Observer (祝融说)",
+    shortDescription: "Analysis through Zhu Rong philosophy",
+    category: "philosophy",
+    mode: "decision",
+    role: "alternative",
+    capabilities: [
+      { id: "philosophy", name: "Philosophical Analysis", description: "Apply observer theory", primary: true },
+      { id: "possibility", name: "Possibility Space", description: "Explore possibility space", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "祝融说", priority: 10 },
+      { type: "keyword", value: "observer", priority: 9 },
+      { type: "keyword", value: "可能性", priority: 8 },
+    ],
+    tags: ["philosophy", "zhurong", "analysis"],
+    builtin: true,
+    icon: "👁️",
+  },
   macro: {
     displayName: "Macro Economist",
     shortDescription: "Macroeconomic data analysis",
     category: "analysis",
+    mode: "decision",
+    role: "capability",
     capabilities: [
       { id: "macro-analysis", name: "Macro Analysis", description: "Analyze economic data", primary: true },
       { id: "data-interpretation", name: "Data Interpretation", description: "Interpret economic indicators", primary: true },
@@ -392,6 +634,8 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     displayName: "Trader Guide",
     shortDescription: "Short-term trading analysis (educational)",
     category: "analysis",
+    mode: "decision",
+    role: "capability",
     capabilities: [
       { id: "technical-analysis", name: "Technical Analysis", description: "Chart and pattern analysis", primary: true },
       { id: "position-sizing", name: "Position Sizing", description: "Risk management", primary: true },
@@ -405,38 +649,127 @@ const BUILTIN_METADATA: Record<string, Partial<AgentMetadata>> = {
     builtin: true,
     icon: "📈",
   },
-  explore: {
-    displayName: "Explorer",
-    shortDescription: "Fast codebase exploration and search",
-    category: "engineering",
+  "value-analyst": {
+    displayName: "Value Analyst",
+    shortDescription: "Value investing and fundamental analysis",
+    category: "analysis",
+    mode: "decision",
+    role: "capability",
     capabilities: [
-      { id: "search", name: "Code Search", description: "Search codebase", primary: true },
-      { id: "explore", name: "Exploration", description: "Explore file structure", primary: true },
+      { id: "value-analysis", name: "Value Analysis", description: "Analyze intrinsic value", primary: true },
     ],
     triggers: [
-      { type: "keyword", value: "find", priority: 10 },
-      { type: "keyword", value: "search", priority: 9 },
-      { type: "keyword", value: "where", priority: 7 },
+      { type: "keyword", value: "value", priority: 9 },
+      { type: "keyword", value: "fundamental", priority: 8 },
     ],
-    tags: ["search", "exploration", "engineering"],
+    tags: ["value-investing", "fundamentals", "analysis"],
     builtin: true,
-    icon: "🔭",
+    icon: "💎",
   },
-  autonomous: {
-    displayName: "Autonomous",
-    shortDescription: "Fully autonomous execution with self-correction",
-    category: "system",
+  picker: {
+    displayName: "Product Picker",
+    shortDescription: "Product selection and evaluation",
+    category: "analysis",
+    mode: "decision",
+    role: "capability",
     capabilities: [
-      { id: "autonomous", name: "Autonomous Execution", description: "Self-directed task completion", primary: true },
-      { id: "self-correction", name: "Self Correction", description: "Detect and fix own errors", primary: true },
+      { id: "selection", name: "Product Selection", description: "Evaluate and select products", primary: true },
     ],
     triggers: [
-      { type: "keyword", value: "autonomous", priority: 10 },
-      { type: "keyword", value: "自主", priority: 9 },
+      { type: "keyword", value: "pick", priority: 10 },
+      { type: "keyword", value: "选品", priority: 9 },
     ],
-    tags: ["autonomous", "system", "self-directed"],
+    tags: ["selection", "product", "evaluation"],
+    builtin: true,
+    icon: "🛒",
+  },
+  miniproduct: {
+    displayName: "Mini Product Designer",
+    shortDescription: "Design minimal viable products",
+    category: "analysis",
+    mode: "decision",
+    role: "capability",
+    capabilities: [
+      { id: "mvp", name: "MVP Design", description: "Design minimal viable products", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "miniproduct", priority: 10 },
+      { type: "keyword", value: "mvp", priority: 9 },
+      { type: "keyword", value: "极小产品", priority: 9 },
+    ],
+    tags: ["mvp", "product", "design"],
+    builtin: true,
+    icon: "🎨",
+  },
+  "ai-engineer": {
+    displayName: "AI Engineer",
+    shortDescription: "AI/ML engineering guidance",
+    category: "analysis",
+    mode: "decision",
+    role: "capability",
+    capabilities: [
+      { id: "ai-guidance", name: "AI Guidance", description: "Guide AI/ML engineering decisions", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "ai engineer", priority: 10 },
+      { type: "keyword", value: "ml", priority: 8 },
+    ],
+    tags: ["ai", "ml", "engineering"],
     builtin: true,
     icon: "🤖",
+  },
+  "synton-assistant": {
+    displayName: "Synton Assistant",
+    shortDescription: "Synton project specialized assistance",
+    category: "custom",
+    mode: "decision",
+    role: "capability",
+    capabilities: [
+      { id: "synton", name: "Synton Support", description: "Synton project assistance", primary: true },
+    ],
+    triggers: [
+      { type: "keyword", value: "synton", priority: 10 },
+    ],
+    tags: ["synton", "specialized"],
+    builtin: true,
+    icon: "🔧",
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // System Agents (Hidden from users)
+  // ─────────────────────────────────────────────────────────────────────────────
+  compaction: {
+    displayName: "Compaction",
+    shortDescription: "Context window compaction",
+    category: "system",
+    role: "hidden",
+    capabilities: [],
+    triggers: [],
+    tags: ["system", "internal"],
+    builtin: true,
+    icon: "📦",
+  },
+  title: {
+    displayName: "Title Generator",
+    shortDescription: "Generate conversation titles",
+    category: "system",
+    role: "hidden",
+    capabilities: [],
+    triggers: [],
+    tags: ["system", "internal"],
+    builtin: true,
+    icon: "🏷️",
+  },
+  summary: {
+    displayName: "Summary Generator",
+    shortDescription: "Generate conversation summaries",
+    category: "system",
+    role: "hidden",
+    capabilities: [],
+    triggers: [],
+    tags: ["system", "internal"],
+    builtin: true,
+    icon: "📋",
   },
 }
 
@@ -483,6 +816,8 @@ export class AgentRegistry {
         shortDescription: builtinMeta?.shortDescription ?? agent.description,
         longDescription: builtinMeta?.longDescription,
         category: builtinMeta?.category ?? "custom",
+        mode: builtinMeta?.mode,
+        role: builtinMeta?.role ?? "capability",
         capabilities: builtinMeta?.capabilities ?? [],
         triggers,
         examples: builtinMeta?.examples ?? [],
@@ -592,6 +927,41 @@ export class AgentRegistry {
    */
   listByCategory(category: AgentCategory): AgentMetadata[] {
     return this.list().filter((a) => a.category === category)
+  }
+
+  /**
+   * List agents by mode.
+   */
+  listByMode(modeId: string): AgentMetadata[] {
+    return this.list().filter((a) => a.mode === modeId)
+  }
+
+  /**
+   * List agents by role within a mode.
+   */
+  listByRole(role: AgentRole): AgentMetadata[] {
+    return this.list().filter((a) => a.role === role)
+  }
+
+  /**
+   * Get primary agent for a mode.
+   */
+  getPrimaryForMode(modeId: string): AgentMetadata | undefined {
+    return this.list().find((a) => a.mode === modeId && a.role === "primary")
+  }
+
+  /**
+   * Get all capabilities (non-primary agents) for a mode.
+   */
+  getCapabilitiesForMode(modeId: string): AgentMetadata[] {
+    return this.list().filter((a) => a.mode === modeId && a.role === "capability")
+  }
+
+  /**
+   * List agents visible to users (excludes hidden/system).
+   */
+  listVisible(): AgentMetadata[] {
+    return this.list().filter((a) => a.role !== "hidden")
   }
 
   /**
