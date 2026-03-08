@@ -85,3 +85,12 @@ mock.module("@/infrastructure/storage/storage", () => ({
     list: async () => [],
   },
 }))
+
+// Mock the Hands bridge for executor tests
+mock.module("@/autonomous/hands/bridge", () => ({
+  getBridge: () => ({
+    health: async () => false,
+    trigger: async () => ({ success: false, error: "Not available in tests" }),
+    list: async () => [],
+  }),
+}))
