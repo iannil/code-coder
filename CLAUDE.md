@@ -4,24 +4,43 @@
 
 ## 项目概述
 
-CodeCoder 是一个个人工作台，融合工程能力与决策智慧。默认包含 rust 编写的 zero-* 系列（`services/zero-*`），和 typescript 编写的 ccode 系列（`packages/ccode`）。
+CodeCoder 是一个**以观察为中心的 AI 代理系统**，可实现从完全自动到完全手动的自主控制。
 
-使用 Turborepo 和 Bun 构建的 monorepo，支持多个 AI 提供商（Claude、OpenAI、Google、通过 MCP 支持本地模型）、CLI/TUI 界面，采用客户端/服务器架构支持远程操作。
+核心特性：
+- **观察者网络 (Observer Network)** — 四大观察者持续监控代码、世界、自身和元层
+- **档位控制 (Gear System)** — P/N/D/S/M 五档 + 三旋钮精确控制自动化程度
+- **响应代理 (Response Agents)** — 31 个专业 AI Agent 作为响应能力
+
+使用 Turborepo 和 Bun 构建的 monorepo，包含 TypeScript (packages/ccode) 和 Rust (services/zero-*) 双语言架构。
+
+### 架构层次
+
+```
+Gear Control Layer (档位控制)
+         │ 控制观察深度和响应自动化
+         ▼
+Observer Network (观察者网络)
+         │ 形成共识后驱动响应
+         ▼
+Response Layer (响应层 - 31 个 Agent)
+```
 
 ### 核心定位
 
-1. 工程层：代码审查、安全分析、TDD、架构设计、逆向工程
-2. 领域层：宏观经济、交易分析、选品策略、极小产品、AI 工程
-3. 思维层：祝融说哲学体系、CLOSE 决策框架、观察者理论
+| 层级 | 实现 |
+|------|------|
+| **观察层** | CodeWatch, WorldWatch, SelfWatch, MetaWatch → Consensus Engine |
+| **控制层** | Gear System (P/N/D/S/M) + Three Dials (Observe/Decide/Act) |
+| **响应层** | 31 个专业 Agent：工程、领域、思维三大类 |
 
 ### 哲学框架
 
 本项目内置基于"祝融说"的决策与认知系统，核心理念：
 
-- 可能性基底：宇宙的终极实在是包含一切潜能的无限场域
-- 观察即收敛：观察是创造性行为，导致可能性"坍缩"为确定性
-- 可用余量：尚未被固化的潜能空间，是自由意志和创造力的来源
-- 可持续决策 > 最优决策：保持"再来一次"的能力比追求"最优解"更重要
+- **可能性基底** → Observer Network 捕获的原始事件流
+- **观察即收敛** → Consensus Engine 将可能性坍缩为确定性
+- **可用余量** → Gear System 保持的控制自由度
+- **可持续决策 > 最优决策** → CLOSE 评估框架 + 风险控制
 
 ### Agent 3-Mode 系统
 
