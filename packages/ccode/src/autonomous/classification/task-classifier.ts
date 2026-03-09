@@ -14,6 +14,7 @@ import {
   DEFAULT_CLASSIFIER_CONFIG,
   RESEARCH_KEYWORDS,
   IMPLEMENTATION_KEYWORDS,
+  DECISION_KEYWORDS,
   QUERY_KEYWORDS,
   ClassificationResultSchema,
 } from "./types"
@@ -41,9 +42,10 @@ function extractResearchTopic(message: string): string | undefined {
 function ruleBasedClassify(message: string): { type: TaskType; confidence: number } {
   const researchCount = countKeywordMatches(message, RESEARCH_KEYWORDS)
   const implementationCount = countKeywordMatches(message, IMPLEMENTATION_KEYWORDS)
+  const decisionCount = countKeywordMatches(message, DECISION_KEYWORDS)
   const queryCount = countKeywordMatches(message, QUERY_KEYWORDS)
 
-  const total = researchCount + implementationCount + queryCount
+  const total = researchCount + implementationCount + decisionCount + queryCount
 
   if (total === 0) {
     return { type: "other", confidence: 0.3 }
@@ -52,6 +54,7 @@ function ruleBasedClassify(message: string): { type: TaskType; confidence: numbe
   const scores = [
     { type: "research" as const, count: researchCount },
     { type: "implementation" as const, count: implementationCount },
+    { type: "decision" as const, count: decisionCount },
     { type: "query" as const, count: queryCount },
   ].sort((a, b) => b.count - a.count)
 
@@ -74,6 +77,7 @@ async function llmClassify(
   const systemPrompt = `You are a task classifier. Classify the user's request into one of these types:
 - implementation: Code writing, feature creation, bug fixes, deployment
 - research: Information gathering, analysis, trend research, data synthesis
+- decision: Choices, trade-offs, evaluations, career/investment decisions, CLOSE framework
 - query: Simple questions, explanations, definitions
 - other: Anything else`
 
@@ -90,7 +94,7 @@ async function llmClassify(
       ],
       model: language,
       schema: z.object({
-        type: z.enum(["implementation", "research", "query", "other"]),
+        type: z.enum(["implementation", "research", "decision", "query", "other"]),
         confidence: z.number(),
         reasoning: z.string(),
         researchTopic: z.string().optional(),
