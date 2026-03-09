@@ -227,7 +227,11 @@ export class WebSearcher {
 
     confidence = Math.max(0, Math.min(1, confidence))
 
-    const shouldSearch = confidence < this.config.confidenceThreshold
+    // Detect research vs error-solving query
+    // Research queries have no error/technology context - we must search
+    // because there's no internal knowledge to rely on
+    const isResearchQuery = !errorMessage && !technology
+    const shouldSearch = isResearchQuery || confidence < this.config.confidenceThreshold
 
     // Generate search queries
     const suggestedQueries = this.generateSearchQueries(problem, errorMessage, technology)
@@ -235,7 +239,9 @@ export class WebSearcher {
     const decision: SearchDecision = {
       shouldSearch,
       reason: shouldSearch
-        ? `Confidence ${(confidence * 100).toFixed(0)}% below threshold ${(this.config.confidenceThreshold * 100).toFixed(0)}%`
+        ? isResearchQuery
+          ? "Research query detected - searching for external information"
+          : `Confidence ${(confidence * 100).toFixed(0)}% below threshold ${(this.config.confidenceThreshold * 100).toFixed(0)}%`
         : `Confidence ${(confidence * 100).toFixed(0)}% sufficient to proceed`,
       confidence,
       suggestedQueries,
@@ -244,6 +250,7 @@ export class WebSearcher {
     log.info("Search need evaluated", {
       sessionId: this.sessionId,
       shouldSearch,
+      isResearchQuery,
       confidence,
       queryCount: suggestedQueries.length,
     })
