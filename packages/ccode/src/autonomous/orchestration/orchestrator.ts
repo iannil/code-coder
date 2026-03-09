@@ -409,6 +409,165 @@ export class Orchestrator {
   }
 
   /**
+   * Process a decision task using research + CLOSE evaluation
+   */
+  private async processDecisionTask(request: string): Promise<{
+    success: boolean
+    result: {
+      success: boolean
+      mode: "decision"
+      topic: string
+      research: string
+      closeScore: {
+        convergence: number
+        leverage: number
+        optionality: number
+        surplus: number
+        evolution: number
+        overall: number
+      }
+      recommendation: string
+      alternatives: string[]
+      duration: number
+      tokensUsed: number
+      costUSD: number
+    } | null
+  }> {
+    log.info("Processing decision task", {
+      sessionId: this.context.sessionId,
+      topic: request.slice(0, 100),
+    })
+
+    await this.stateMachine.transition(AutonomousState.EXECUTING, {
+      reason: "Starting decision analysis",
+    })
+
+    // Phase 1: Gather context via research
+    const researchLoop = createResearchLoop({ maxSources: 8 })
+
+    try {
+      const research = await researchLoop.research({
+        sessionId: this.context.sessionId,
+        topic: request,
+      })
+
+      // Phase 2: Run CLOSE evaluation
+      await this.stateMachine.transition(AutonomousState.EVALUATING, {
+        reason: "Running CLOSE evaluation",
+      })
+
+      const closeResult = await this.evaluateWithCLOSE(request, research)
+      const usage = this.safetyGuard.getCurrentUsage()
+
+      await this.stateMachine.transition(AutonomousState.COMPLETED, {
+        reason: "Decision analysis completed",
+      })
+
+      return {
+        success: true,
+        result: {
+          success: true,
+          mode: "decision",
+          topic: request,
+          research: research.report ?? "",
+          closeScore: closeResult.score,
+          recommendation: closeResult.recommendation,
+          alternatives: closeResult.alternatives,
+          duration: Date.now() - this.context.startTime,
+          tokensUsed: usage.tokensUsed,
+          costUSD: usage.costUSD,
+        },
+      }
+    } catch (error) {
+      log.error("Decision task failed", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+
+      await this.stateMachine.transition(AutonomousState.FAILED, {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+
+      return { success: false, result: null }
+    }
+  }
+
+  /**
+   * Evaluate a decision using CLOSE framework (祝融说)
+   */
+  private async evaluateWithCLOSE(
+    request: string,
+    research: ResearchResult,
+  ): Promise<{
+    score: {
+      convergence: number
+      leverage: number
+      optionality: number
+      surplus: number
+      evolution: number
+      overall: number
+    }
+    recommendation: string
+    alternatives: string[]
+  }> {
+    const { generateObject } = await import("ai")
+    const { Provider } = await import("@/provider/provider")
+    const z = (await import("zod")).default
+
+    const defaultModel = await Provider.defaultModel()
+    const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
+    const language = await Provider.getLanguage(model)
+
+    const result = await generateObject({
+      model: language,
+      schema: z.object({
+        convergence: z.number().min(0).max(10).describe("How certain/convergent is the outcome? 0=chaotic, 10=certain"),
+        leverage: z.number().min(0).max(10).describe("How much impact per unit effort? 0=none, 10=massive"),
+        optionality: z
+          .number()
+          .min(0)
+          .max(10)
+          .describe("How reversible? How many future options preserved? 0=irreversible, 10=fully reversible"),
+        surplus: z.number().min(0).max(10).describe("How much buffer/margin for error? 0=none, 10=abundant"),
+        evolution: z.number().min(0).max(10).describe("Does this enable growth/learning? 0=stagnation, 10=high growth"),
+        recommendation: z.string().describe("Primary recommendation based on CLOSE analysis"),
+        alternatives: z.array(z.string()).describe("2-3 alternative options"),
+      }),
+      prompt: `Analyze this decision using the CLOSE framework (祝融说):
+
+Decision: ${request}
+
+Research Context:
+${research.report?.slice(0, 2000) ?? "No research available"}
+
+Evaluate each CLOSE dimension (0-10):
+- C (Convergence): How certain/predictable is the outcome?
+- L (Leverage): How much impact per unit of effort?
+- O (Optionality): How reversible? Future options preserved?
+- S (Surplus): How much buffer/margin for error?
+- E (Evolution): Does this enable growth and learning?
+
+Provide a clear recommendation and 2-3 alternatives.`,
+    })
+
+    const obj = result.object
+    const overall = (obj.convergence + obj.leverage + obj.optionality + obj.surplus + obj.evolution) / 5
+
+    return {
+      score: {
+        convergence: obj.convergence,
+        leverage: obj.leverage,
+        optionality: obj.optionality,
+        surplus: obj.surplus,
+        evolution: obj.evolution,
+        overall,
+      },
+      recommendation: obj.recommendation,
+      alternatives: obj.alternatives,
+    }
+  }
+
+  /**
    * Process a research task using the research loop
    */
   private async processResearchTask(request: string): Promise<{
@@ -418,7 +577,7 @@ export class Orchestrator {
       mode: "research"
       topic: string
       report: string
-      sources: Array<{ url: string; title: string; relevance: number }>
+      sources: Array<{ url: string; title: string; snippet: string; credibility: "high" | "medium" | "low" }>
       insights: string[]
       duration: number
       tokensUsed: number
