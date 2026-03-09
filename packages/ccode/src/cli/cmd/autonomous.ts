@@ -311,38 +311,114 @@ async function setupEventListeners(callbacks: EventCallbacks): Promise<() => voi
 
 function displayResults(result: {
   success: boolean
-  qualityScore: number
-  crazinessScore: number
+  mode?: "code" | "research" | "decision"
+  // Code mode
+  qualityScore?: number
+  crazinessScore?: number
+  iterationsCompleted?: number
+  // Research mode
+  topic?: string
+  report?: string
+  sources?: Array<{ url: string; title: string }>
+  insights?: string[]
+  // Decision mode
+  research?: string
+  closeScore?: {
+    convergence: number
+    leverage: number
+    optionality: number
+    surplus: number
+    evolution: number
+    overall: number
+  }
+  recommendation?: string
+  alternatives?: string[]
+  // Common
   duration: number
   tokensUsed: number
   costUSD: number
-  iterationsCompleted?: number
 }): void {
   prompts.log.success("Autonomous execution completed!")
 
   const minutes = Math.floor(result.duration / 60000)
   const seconds = Math.floor((result.duration % 60000) / 1000)
 
+  const mode = result.mode ?? "code"
+  const modeTitle = mode.toUpperCase()
+
   const lines = [
     "",
     "═══════════════════════════════════════════════════",
-    "              AUTONOMOUS MODE REPORT",
+    `         AUTONOMOUS MODE REPORT [${modeTitle}]`,
     "═══════════════════════════════════════════════════",
-    "",
-    `  Quality Score:    ${result.qualityScore.toFixed(1)}/100`,
-    `  Craziness Score:  ${result.crazinessScore.toFixed(1)}/100`,
-    "",
-    `  Duration:         ${minutes}m ${seconds}s`,
-    `  Tokens Used:      ${result.tokensUsed.toLocaleString()}`,
-    `  Cost:             $${result.costUSD.toFixed(4)}`,
     "",
   ]
 
-  if (result.iterationsCompleted !== undefined) {
-    lines.push(`  Iterations:       ${result.iterationsCompleted}`)
-    lines.push("")
+  // Mode-specific content
+  if (mode === "code") {
+    lines.push(`  Quality Score:    ${(result.qualityScore ?? 0).toFixed(1)}/100`)
+    lines.push(`  Craziness Score:  ${(result.crazinessScore ?? 0).toFixed(1)}/100`)
+    if (result.iterationsCompleted !== undefined) {
+      lines.push(`  Iterations:       ${result.iterationsCompleted}`)
+    }
+  } else if (mode === "research") {
+    if (result.topic) {
+      lines.push(`  Topic:            ${result.topic.slice(0, 50)}...`)
+    }
+    if (result.sources) {
+      lines.push(`  Sources Found:    ${result.sources.length}`)
+    }
+    if (result.insights) {
+      lines.push(`  Insights:         ${result.insights.length}`)
+    }
+    if (result.report) {
+      lines.push("")
+      lines.push("  Report Preview:")
+      lines.push("  ─────────────────────────────────────────────────")
+      const preview = result.report.slice(0, 500).split("\n").slice(0, 10)
+      for (const line of preview) {
+        lines.push(`  ${line}`)
+      }
+      if (result.report.length > 500) {
+        lines.push("  ...")
+      }
+    }
+  } else if (mode === "decision") {
+    if (result.closeScore) {
+      lines.push("  CLOSE Score:")
+      lines.push(`    Convergence:    ${result.closeScore.convergence.toFixed(1)}/10`)
+      lines.push(`    Leverage:       ${result.closeScore.leverage.toFixed(1)}/10`)
+      lines.push(`    Optionality:    ${result.closeScore.optionality.toFixed(1)}/10`)
+      lines.push(`    Surplus:        ${result.closeScore.surplus.toFixed(1)}/10`)
+      lines.push(`    Evolution:      ${result.closeScore.evolution.toFixed(1)}/10`)
+      lines.push(`    ───────────────`)
+      lines.push(`    Overall:        ${result.closeScore.overall.toFixed(1)}/10`)
+    }
+    if (result.recommendation) {
+      lines.push("")
+      lines.push("  Recommendation:")
+      lines.push("  ─────────────────────────────────────────────────")
+      const recLines = result.recommendation.split("\n").slice(0, 5)
+      for (const line of recLines) {
+        lines.push(`  ${line}`)
+      }
+    }
+    if (result.alternatives && result.alternatives.length > 0) {
+      lines.push("")
+      lines.push("  Alternatives:")
+      for (let i = 0; i < result.alternatives.length; i++) {
+        lines.push(`    ${i + 1}. ${result.alternatives[i]}`)
+      }
+    }
   }
 
+  // Common footer
+  lines.push("")
+  lines.push("  ─────────────────────────────────────────────────")
+  lines.push(`  Duration:         ${minutes}m ${seconds}s`)
+  lines.push(`  Tokens Used:      ${result.tokensUsed.toLocaleString()}`)
+  lines.push(`  Cost:             $${result.costUSD.toFixed(4)}`)
+  lines.push("")
   lines.push("═══════════════════════════════════════════════════")
 
   for (const line of lines) {
