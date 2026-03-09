@@ -1,8 +1,14 @@
 # CodeCoder 核心概念
 
-> 生成时间: 2026-03-01
+> 生成时间: 2026-03-09
+> 架构层次: Gear Control → Observer Network → Response Layer
 
-本文档梳理 CodeCoder 系统的八个核心概念：AGENT、PROMPT、SKILL、TOOL、CHANNEL、MEMORY、WORKFLOW、HAND，以及它们之间的关系。
+本文档梳理 CodeCoder 系统的核心概念，按观察者架构层次组织：
+
+**控制层:** GEAR (档位控制)
+**观察层:** OBSERVER (观察者网络), CONSENSUS (共识引擎)
+**响应层:** AGENT, PROMPT, SKILL, TOOL, MEMORY
+**接入层:** CHANNEL, WORKFLOW, HAND
 
 ---
 
