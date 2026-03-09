@@ -24,8 +24,11 @@ const log = Log.create({ service: "cli.autonomous" })
 
 type AutonomyLevel = "lunatic" | "insane" | "crazy" | "wild" | "bold" | "timid"
 
+type TaskMode = "code" | "research" | "decision" | "auto"
+
 interface AutonomousArgs {
   request: string
+  mode?: TaskMode
   "autonomy-level"?: AutonomyLevel
   budget?: string
   unattended?: boolean
@@ -103,6 +106,12 @@ export const AutonomousCommand = cmd({
         default: false,
         describe: "Run without any user interaction (auto-continue on blocks)",
       })
+      .option("mode", {
+        type: "string",
+        choices: ["code", "research", "decision", "auto"] as const,
+        default: "auto" as TaskMode,
+        describe: "Task mode: code (TDD), research (web search), decision (CLOSE), auto (classify)",
+      })
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
@@ -161,6 +170,7 @@ async function runAutonomous(args: AutonomousArgs): Promise<void> {
 
   // Create orchestrator config
   const config: OrchestratorConfig = {
+    mode: args.mode ?? "auto",
     autonomyLevel,
     resourceBudget,
     unattended: args.unattended ?? false,
