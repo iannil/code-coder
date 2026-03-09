@@ -72,13 +72,22 @@ bun dev --gear M --observe 80 --decide 30 --act 10
 
 ## Features
 
-- **Transmission-like autonomy control** - P/N/D/S/M gears + three fine-tuning dials
-- **31 AI Agents** organized in 3 modes (build, writer, decision)
-- **Observer Network** - Four watchers (Code, World, Self, Meta) with consensus engine
-- **Multi-provider support** - Claude, GPT, Gemini, Ollama, and 20+ providers via Vercel AI SDK
-- **Dual-language architecture** - TypeScript for intelligence, Rust for security boundaries
-- **Markdown-based memory** - Transparent, Git-friendly knowledge system
-- **Multi-platform IM integration** - Telegram, Discord, Slack, Feishu, Email
+**Observation Layer:**
+- **Observer Network** — Four watchers (Code, World, Self, Meta) with consensus engine
+- **Continuous monitoring** — Always-on observation with configurable depth
+
+**Control Layer:**
+- **Gear System** — P/N/D/S/M transmission-like autonomy control
+- **Three dials** — Fine-grained control over Observe/Decide/Act dimensions
+
+**Response Layer:**
+- **31 AI Agents** — Specialized responders organized in 3 modes (build, writer, decision)
+- **Multi-provider support** — Claude, GPT, Gemini, Ollama, and 20+ providers
+
+**Infrastructure:**
+- **Dual-language architecture** — TypeScript for intelligence, Rust for security boundaries
+- **Markdown-based memory** — Transparent, Git-friendly knowledge system
+- **Multi-platform IM** — Telegram, Discord, Slack, Feishu, Email
 
 ## Quick Start
 
