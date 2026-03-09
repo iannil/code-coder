@@ -524,7 +524,7 @@ export type WatcherStatus = z.infer<typeof WatcherStatus>
  */
 export const ObserverNetworkConfig = z.object({
   /** Is the observer network enabled */
-  enabled: z.boolean().default(false),
+  enabled: z.boolean().default(true),
   /** Default operating mode */
   defaultMode: OperatingMode.default("HYBRID"),
   /** CLOSE thresholds */

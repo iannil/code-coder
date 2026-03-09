@@ -561,58 +561,229 @@ export class Executor {
     // Check if Hands service is available
     const isHealthy = await handsBridge.health()
 
+    // Track execution metrics
+    const startTime = Date.now()
+    const actDialValue = this.getActDialValue()
+
     if (action.type === "trigger_hand" || action.type === "hands_action") {
-      if (!isHealthy) {
-        throw new Error("Hands service not available")
-      }
-
-      const handId = (action.params?.handId as string) ?? action.id
-      const triggerResult = await handsBridge.trigger({
-        handId,
-        params: action.params,
-      })
-
-      if (!triggerResult.success) {
-        throw new Error(triggerResult.error ?? "Hand trigger failed")
-      }
-
-      return `Hand ${handId} triggered: ${triggerResult.executionId}`
+      return this.executeHandAction(action, handsBridge, isHealthy)
     }
 
     if (action.type === "suggested_action" || action.type === "anomaly_fix") {
-      // For generic actions, try to find an appropriate hand
+      // For generic actions, try to find an appropriate hand first
       if (isHealthy) {
-        const hands = await handsBridge.list()
-        const matchingHand = hands.find((h) =>
-          h.enabled &&
-          (h.name.toLowerCase().includes(action.type.replace("_", " ")) ||
-           h.id.includes(action.type))
-        )
-
-        if (matchingHand) {
-          const result = await handsBridge.trigger({
-            handId: matchingHand.id,
-            params: {
-              action: action.description,
-              ...action.params,
-            },
-          })
-
-          if (result.success) {
-            return `Executed via hand ${matchingHand.id}: ${result.executionId}`
-          }
-        }
+        const result = await this.tryMatchingHand(action, handsBridge)
+        if (result) return result
       }
     }
 
     // Fall back to command execution if provided
     if (action.command) {
-      // Execute shell command (should be sandboxed in production)
-      log.info("Executing command", { command: action.command })
-      return `Command execution: ${action.command} (pending sandbox integration)`
+      return this.executeCommand(action, actDialValue)
     }
 
+    const duration = Date.now() - startTime
+    log.debug("Action processed", { id: action.id, duration })
     return `Action ${action.id} processed: ${action.description}`
+  }
+
+  /**
+   * Execute a direct hand action with retry logic.
+   */
+  private async executeHandAction(
+    action: ExecutionAction,
+    bridge: ReturnType<typeof getBridge>,
+    isHealthy: boolean,
+    retries = 2,
+  ): Promise<string> {
+    if (!isHealthy) {
+      throw new Error("Hands service not available")
+    }
+
+    const handId = (action.params?.handId as string) ?? action.id
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const triggerResult = await bridge.trigger({
+          handId,
+          params: action.params,
+        })
+
+        if (triggerResult.success) {
+          log.info("Hand triggered successfully", {
+            handId,
+            executionId: triggerResult.executionId,
+            attempt,
+          })
+          return `Hand ${handId} triggered: ${triggerResult.executionId}`
+        }
+
+        lastError = new Error(triggerResult.error ?? "Hand trigger failed")
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        log.warn("Hand trigger attempt failed", {
+          handId,
+          attempt,
+          error: lastError.message,
+        })
+      }
+
+      // Exponential backoff before retry
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt) * 500))
+      }
+    }
+
+    throw lastError ?? new Error("Hand trigger failed after retries")
+  }
+
+  /**
+   * Try to find and execute a matching hand for generic actions.
+   */
+  private async tryMatchingHand(
+    action: ExecutionAction,
+    bridge: ReturnType<typeof getBridge>,
+  ): Promise<string | null> {
+    try {
+      const hands = await bridge.list()
+      const actionKeywords = action.type.replace(/_/g, " ").toLowerCase().split(" ")
+
+      // Score hands by keyword match
+      const scoredHands = hands
+        .filter((h) => h.enabled)
+        .map((h) => {
+          const nameWords = h.name.toLowerCase().split(/[\s_-]+/)
+          const matchScore = actionKeywords.reduce((score, keyword) => {
+            if (h.id.includes(keyword) || nameWords.some((w) => w.includes(keyword))) {
+              return score + 1
+            }
+            return score
+          }, 0)
+          return { hand: h, score: matchScore }
+        })
+        .filter((h) => h.score > 0)
+        .sort((a, b) => b.score - a.score)
+
+      if (scoredHands.length === 0) return null
+
+      const matchingHand = scoredHands[0].hand
+      const result = await bridge.trigger({
+        handId: matchingHand.id,
+        params: {
+          action: action.description,
+          ...action.params,
+        },
+      })
+
+      if (result.success) {
+        log.info("Executed via matching hand", {
+          handId: matchingHand.id,
+          executionId: result.executionId,
+          matchScore: scoredHands[0].score,
+        })
+        return `Executed via hand ${matchingHand.id}: ${result.executionId}`
+      }
+    } catch (error) {
+      log.debug("No matching hand found or execution failed", {
+        actionType: action.type,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+
+    return null
+  }
+
+  /**
+   * Execute a shell command with sandbox protection.
+   */
+  private async executeCommand(action: ExecutionAction, actDialValue: number): Promise<string> {
+    const command = action.command!
+    const startTime = Date.now()
+
+    // Risk-based permission check using dial value
+    const isHighRiskCommand = this.isHighRiskCommand(command)
+
+    if (isHighRiskCommand && actDialValue < 70) {
+      log.warn("High-risk command blocked by dial threshold", {
+        command: command.substring(0, 50),
+        actDial: actDialValue,
+        threshold: 70,
+      })
+      throw new Error(`High-risk command requires act dial >= 70% (current: ${actDialValue}%)`)
+    }
+
+    log.info("Executing sandboxed command", {
+      command: command.substring(0, 100),
+      highRisk: isHighRiskCommand,
+      actDial: actDialValue,
+    })
+
+    try {
+      // Use Bun.spawn for sandboxed execution
+      const proc = Bun.spawn(["sh", "-c", command], {
+        cwd: action.params?.cwd as string | undefined,
+        env: {
+          ...process.env,
+          EXECUTOR_ACTION_ID: action.id,
+          EXECUTOR_SANDBOXED: "true",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+
+      // Wait with timeout
+      const timeoutMs = this.config.timeoutMs
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Command timeout after ${timeoutMs}ms`)), timeoutMs)
+      })
+
+      const exitCode = await Promise.race([proc.exited, timeoutPromise])
+
+      const stdout = await new Response(proc.stdout).text()
+      const stderr = await new Response(proc.stderr).text()
+      const duration = Date.now() - startTime
+
+      if (exitCode !== 0) {
+        log.warn("Command exited with non-zero code", { exitCode, stderr, duration })
+        throw new Error(`Command failed with exit code ${exitCode}: ${stderr || stdout}`)
+      }
+
+      log.info("Command completed", {
+        actionId: action.id,
+        duration,
+        outputLength: stdout.length,
+      })
+
+      return stdout.trim() || `Command completed successfully (exit code: ${exitCode})`
+    } catch (error) {
+      const duration = Date.now() - startTime
+      log.error("Command execution failed", {
+        actionId: action.id,
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  }
+
+  /**
+   * Check if a command is considered high-risk.
+   */
+  private isHighRiskCommand(command: string): boolean {
+    const highRiskPatterns = [
+      /\brm\s+-rf?\b/i,
+      /\bgit\s+push\s+(-f|--force)\b/i,
+      /\bgit\s+reset\s+--hard\b/i,
+      /\bdrop\s+(database|table)\b/i,
+      /\btruncate\b/i,
+      /\bsudo\b/i,
+      /\bchmod\s+777\b/i,
+      /\bcurl\s+.*\s*\|\s*(sh|bash)\b/i,
+      /\beval\s+.*\$/i,
+    ]
+
+    return highRiskPatterns.some((pattern) => pattern.test(command))
   }
 
   private processQueue(): void {

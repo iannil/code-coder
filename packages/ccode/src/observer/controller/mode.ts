@@ -20,7 +20,8 @@
  */
 
 import { Log } from "@/util/log"
-import type { OperatingMode, Anomaly, Opportunity } from "../types"
+import type { OperatingMode, Anomaly, Opportunity, GearPreset } from "../types"
+import { operatingModeToGear, gearToOperatingMode } from "../types"
 import type { ConsensusSnapshot } from "../consensus"
 import { ObserverEvent } from "../events"
 import {
@@ -75,6 +76,7 @@ export interface ModeControllerConfig {
 
 export interface ModeControllerStats {
   currentMode: OperatingMode
+  currentGear: GearPreset
   modeSwitches: number
   escalations: number
   pendingEscalations: number
@@ -108,7 +110,9 @@ export class ModeController {
   private escalation: EscalationManager
 
   private currentMode: OperatingMode
+  private currentGear: GearPreset
   private previousMode: OperatingMode | null = null
+  private previousGear: GearPreset | null = null
   private running = false
   private evaluationTimer: ReturnType<typeof setInterval> | null = null
   private startTime: Date | null = null
@@ -126,6 +130,7 @@ export class ModeController {
   constructor(config: Partial<ModeControllerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.currentMode = this.config.initialMode
+    this.currentGear = operatingModeToGear(this.currentMode)
     this.thresholds = new ThresholdManager(this.config.riskTolerance)
 
     if (this.config.thresholds) {
@@ -239,13 +244,17 @@ export class ModeController {
     if (newMode === this.currentMode) return
 
     this.previousMode = this.currentMode
+    this.previousGear = this.currentGear
     this.currentMode = newMode
+    this.currentGear = operatingModeToGear(newMode)
     this.modeSwitchCount++
 
     const BusModule = await import("@/bus")
     await BusModule.Bus.publish(ObserverEvent.ModeSwitched, {
       previousMode: this.previousMode,
       newMode: this.currentMode,
+      previousGear: this.previousGear,
+      newGear: this.currentGear,
       reason: reason ?? "Manual switch",
       timestamp: new Date(),
     })
@@ -253,8 +262,47 @@ export class ModeController {
     log.info("Mode switched", {
       from: this.previousMode,
       to: this.currentMode,
+      gear: this.currentGear,
       reason,
     })
+  }
+
+  /**
+   * Switch gear directly (preferred over switchMode).
+   */
+  async switchGear(newGear: GearPreset, reason?: string): Promise<void> {
+    const newMode = gearToOperatingMode(newGear)
+    if (newGear === this.currentGear) return
+
+    this.previousMode = this.currentMode
+    this.previousGear = this.currentGear
+    this.currentGear = newGear
+    this.currentMode = newMode
+    this.modeSwitchCount++
+
+    const BusModule = await import("@/bus")
+    await BusModule.Bus.publish(ObserverEvent.ModeSwitched, {
+      previousMode: this.previousMode,
+      newMode: this.currentMode,
+      previousGear: this.previousGear,
+      newGear: this.currentGear,
+      reason: reason ?? "Gear switch",
+      timestamp: new Date(),
+    })
+
+    log.info("Gear switched", {
+      from: this.previousGear,
+      to: this.currentGear,
+      mode: this.currentMode,
+      reason,
+    })
+  }
+
+  /**
+   * Get current gear.
+   */
+  getGear(): GearPreset {
+    return this.currentGear
   }
 
   /**
@@ -285,6 +333,7 @@ export class ModeController {
   getStats(): ModeControllerStats {
     return {
       currentMode: this.currentMode,
+      currentGear: this.currentGear,
       modeSwitches: this.modeSwitchCount,
       escalations: this.escalationCount,
       pendingEscalations: this.escalation.getPending().length,
@@ -332,6 +381,8 @@ export class ModeController {
     this.lastDecision = null
     this.modeSwitchCount = 0
     this.escalationCount = 0
+    this.previousMode = null
+    this.previousGear = null
     this.escalation.clear()
     this.evaluator.clear()
   }

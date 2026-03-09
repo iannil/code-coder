@@ -268,7 +268,7 @@ export class WorldModelBuilder {
     const resourceObs = observations.filter((o) => o.type === "resource_usage")
     let resourceUsage = { tokens: 0, cost: 0, duration: 0 }
     for (const obs of resourceObs) {
-      const input = obs.observation.input as any
+      const input = obs.observation?.input as any
       if (input) {
         resourceUsage.tokens += input.tokens ?? 0
         resourceUsage.cost += input.cost ?? 0
@@ -277,7 +277,7 @@ export class WorldModelBuilder {
     }
 
     // Count recent errors
-    const errorObs = observations.filter((o) => !o.observation.success)
+    const errorObs = observations.filter((o) => o.observation && !o.observation.success)
     const recentErrors = errorObs.length
 
     // Calculate decision quality
@@ -285,7 +285,7 @@ export class WorldModelBuilder {
     let decisionQuality: number | undefined
     if (decisionObs.length > 0) {
       const scores = decisionObs
-        .map((o) => o.quality.closeScore)
+        .map((o) => o.quality?.closeScore)
         .filter((s) => typeof s === "number") as number[]
       if (scores.length > 0) {
         decisionQuality = scores.reduce((a, b) => a + b, 0) / scores.length

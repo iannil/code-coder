@@ -7,7 +7,12 @@ import { Flag } from "@/util/flag/flag"
 import { lazy } from "@/util/lazy"
 
 export namespace ModelsDev {
-  const log = Log.create({ service: "models.dev" })
+  // Lazy logger to avoid circular dependency
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) _log = Log.create({ service: "models.dev" })
+    return _log
+  }
   const filepath = path.join(Global.Path.cache, "models.json")
 
   export const Model = z.object({
@@ -105,7 +110,7 @@ export namespace ModelsDev {
         throw new Error("fetch failed")
       }
       if (!response.ok) {
-        log.warn("models.dev fetch failed", { status: response.status })
+        getLog().warn("models.dev fetch failed", { status: response.status })
         return {}
       }
       const json = await response.text()
@@ -113,7 +118,7 @@ export namespace ModelsDev {
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e)
       if (errorMsg !== "timeout") {
-        log.warn("models.dev fetch error", { error: errorMsg })
+        getLog().warn("models.dev fetch error", { error: errorMsg })
       }
       return {}
     }
@@ -126,7 +131,7 @@ export namespace ModelsDev {
 
   export async function refresh() {
     const file = Bun.file(filepath)
-    log.info("refreshing", {
+    getLog().info("refreshing", {
       file,
     })
     try {
@@ -139,7 +144,7 @@ export namespace ModelsDev {
         },
         signal: controller.signal,
       }).catch((e) => {
-        log.error("Failed to fetch models.dev", {
+        getLog().error("Failed to fetch models.dev", {
           error: e,
         })
         return null
@@ -150,12 +155,12 @@ export namespace ModelsDev {
       if (result && result.ok) {
         await Bun.write(file, await result.text())
         ModelsDev.Data.reset()
-        log.info("models.dev refreshed successfully")
+        getLog().info("models.dev refreshed successfully")
       } else {
-        log.warn("models.dev fetch failed", { status: result?.status })
+        getLog().warn("models.dev fetch failed", { status: result?.status })
       }
     } catch (e) {
-      log.error("models.dev refresh error", {
+      getLog().error("models.dev refresh error", {
         error: e instanceof Error ? e.message : String(e),
       })
     }

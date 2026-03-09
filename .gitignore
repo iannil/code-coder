@@ -43,3 +43,4 @@ services/zero-bot/target/
 .logs/
 .reports/
 **/.benchmarks/
+**/*.node

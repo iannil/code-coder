@@ -6,7 +6,12 @@ export namespace State {
     dispose?: (state: any) => Promise<void>
   }
 
-  const log = Log.create({ service: "state" })
+  // Lazy logger to avoid circular dependency
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) _log = Log.create({ service: "state" })
+    return _log
+  }
   const recordsByKey = new Map<string, Map<any, Entry>>()
 
   export function create<S>(root: () => string, init: () => S, dispose?: (state: Awaited<S>) => Promise<void>) {
@@ -32,13 +37,13 @@ export namespace State {
     const entries = recordsByKey.get(key)
     if (!entries) return
 
-    log.info("waiting for state disposal to complete", { key })
+    getLog().info("waiting for state disposal to complete", { key })
 
     let disposalFinished = false
 
     setTimeout(() => {
       if (!disposalFinished) {
-        log.warn(
+        getLog().warn(
           "state disposal is taking an unusually long time - if it does not complete in a reasonable time, please report this as a bug",
           { key },
         )
@@ -52,7 +57,7 @@ export namespace State {
       const task = Promise.resolve(entry.state)
         .then((state) => entry.dispose!(state))
         .catch((error) => {
-          log.error("Error while disposing state:", { error, key })
+          getLog().error("Error while disposing state:", { error, key })
         })
 
       tasks.push(task)
@@ -61,7 +66,7 @@ export namespace State {
     recordsByKey.delete(key)
     await Promise.all(tasks)
     disposalFinished = true
-    log.info("state disposal completed", { key })
+    getLog().info("state disposal completed", { key })
   }
 
   /**
@@ -71,6 +76,6 @@ export namespace State {
    */
   export function reset() {
     recordsByKey.clear()
-    log.debug("state reset - all cached state cleared")
+    getLog().debug("state reset - all cached state cleared")
   }
 }

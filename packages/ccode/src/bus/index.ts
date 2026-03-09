@@ -4,7 +4,12 @@ import { Instance } from "@/project/instance"
 import { BusEvent } from "./bus-event"
 
 export namespace Bus {
-  const log = Log.create({ service: "bus" })
+  // Lazy logger to avoid circular dependency
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) _log = Log.create({ service: "bus" })
+    return _log
+  }
   type Subscription = (event: any) => void
 
   export const InstanceDisposed = BusEvent.define(
@@ -45,7 +50,7 @@ export namespace Bus {
       type: def.type,
       properties,
     }
-    log.info("publishing", {
+    getLog().info("publishing", {
       type: def.type,
     })
     const pending = []
@@ -82,14 +87,14 @@ export namespace Bus {
   }
 
   function raw(type: string, callback: (event: any) => void) {
-    log.info("subscribing", { type })
+    getLog().info("subscribing", { type })
     const subscriptions = state().subscriptions
     let match = subscriptions.get(type) ?? []
     match.push(callback)
     subscriptions.set(type, match)
 
     return () => {
-      log.info("unsubscribing", { type })
+      getLog().info("unsubscribing", { type })
       const match = subscriptions.get(type)
       if (!match) return
       const index = match.indexOf(callback)

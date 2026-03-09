@@ -4,3 +4,7 @@ gen
 app.log
 src/provider/models-snapshot.ts
 bin
+
+# Log files
+dev.log
+*.log

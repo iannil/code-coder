@@ -24,6 +24,9 @@ import {
   WatcherStatus,
 } from "./types"
 
+/** GearPreset zod schema */
+const GearPresetSchema = z.enum(["P", "N", "D", "S", "M"])
+
 export namespace ObserverEvent {
   // ─────────────────────────────────────────────────────────────────────────────
   // Observation Events (from watchers)
@@ -209,6 +212,8 @@ export namespace ObserverEvent {
     z.object({
       previousMode: OperatingMode,
       newMode: OperatingMode,
+      previousGear: GearPresetSchema.optional(),
+      newGear: GearPresetSchema.optional(),
       reason: z.string(),
       timestamp: z.date(),
     }),

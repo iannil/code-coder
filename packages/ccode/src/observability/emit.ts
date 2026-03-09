@@ -27,7 +27,12 @@ import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 
-const log = Log.create({ service: "emit" })
+// Lazy logger to avoid circular dependency with Log module
+let _log: Log.Logger | null = null
+const getLog = () => {
+  if (!_log) _log = Log.create({ service: "emit" })
+  return _log
+}
 
 // ============================================================================
 // Bus Event Definition
@@ -153,7 +158,7 @@ function emitEvent(event: AnyEmitEvent): void {
   eventBuffer.push(event)
 
   // Log as JSON for downstream processing
-  log.debug("emit", { event })
+  getLog().debug("emit", { event })
 
   // Publish to event bus for real-time consumers
   Bus.publish(EmitBusEvent, event).catch(() => {

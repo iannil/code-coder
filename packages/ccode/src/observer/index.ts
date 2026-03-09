@@ -363,7 +363,9 @@ import type {
   ObserverNetworkConfig,
   WatcherStatus,
   OperatingMode,
+  GearPreset,
 } from "./types"
+import { operatingModeToGear, gearToOperatingMode } from "./types"
 import { getEventStream, resetEventStream, type EventStreamConfig } from "./event-stream"
 import { ObserverEvent } from "./events"
 import {
@@ -421,6 +423,8 @@ export interface NetworkStartConfig {
 export interface ObserverNetworkInstance {
   /** Get current operating mode */
   getMode(): OperatingMode
+  /** Get current gear preset */
+  getGear(): import("./dial").GearPreset
   /** Get all watcher statuses */
   getWatcherStatuses(): WatcherStatus[]
   /** Get event stream statistics */
@@ -433,8 +437,10 @@ export interface ObserverNetworkInstance {
   getSnapshot(): import("./consensus").ConsensusSnapshot | null
   /** Get active opportunities */
   getOpportunities(): import("./types").Opportunity[]
-  /** Switch operating mode */
+  /** Switch operating mode (legacy, prefer switchGear) */
   switchMode(mode: OperatingMode, reason?: string): Promise<void>
+  /** Switch gear preset (recommended) */
+  switchGear(gear: import("./dial").GearPreset, reason?: string): Promise<void>
   /** Get pending escalations */
   getPendingEscalations(): import("./controller").Escalation[]
   /** Handle human decision for escalation */
@@ -464,6 +470,60 @@ export namespace ObserverNetwork {
   let running = false
   let startTime: Date | null = null
   let modeSwitchCount = 0
+
+  /**
+   * Quick start with Drive (D) mode - balanced autonomy.
+   * Enables all watchers with default configuration.
+   */
+  export async function quickStart(): Promise<ObserverNetworkInstance> {
+    return start({
+      mode: "HYBRID",
+      riskTolerance: "balanced",
+      autoModeSwitch: true,
+      watchers: {
+        code: true,
+        world: true,
+        self: true,
+        meta: true,
+      },
+    })
+  }
+
+  /**
+   * Start in Sport (S) mode - high autonomy.
+   * Use with caution in production environments.
+   */
+  export async function startAggressive(): Promise<ObserverNetworkInstance> {
+    return start({
+      mode: "AUTO",
+      riskTolerance: "aggressive",
+      autoModeSwitch: true,
+      watchers: {
+        code: true,
+        world: true,
+        self: true,
+        meta: true,
+      },
+    })
+  }
+
+  /**
+   * Start in Neutral (N) mode - observe only, no intervention.
+   * Safe for monitoring without any automatic actions.
+   */
+  export async function startObserveOnly(): Promise<ObserverNetworkInstance> {
+    return start({
+      mode: "MANUAL",
+      riskTolerance: "conservative",
+      autoModeSwitch: false,
+      watchers: {
+        code: true,
+        world: true,
+        self: true,
+        meta: true,
+      },
+    })
+  }
 
   /**
    * Start the Observer Network.
@@ -632,6 +692,8 @@ export namespace ObserverNetwork {
     return {
       getMode: () => modeController?.getMode() ?? currentMode,
 
+      getGear: () => modeController?.getGear() ?? operatingModeToGear(currentMode),
+
       getWatcherStatuses: () => {
         return Object.values(watchers)
           .filter(Boolean)
@@ -684,6 +746,29 @@ export namespace ObserverNetwork {
           })
 
           log.info("Mode switched", { from: previousMode, to: mode, reason })
+        }
+      },
+
+      switchGear: async (gear, reason) => {
+        if (modeController) {
+          await modeController.switchGear(gear, reason)
+        } else {
+          const previousMode = currentMode
+          const previousGear = operatingModeToGear(currentMode)
+          currentMode = gearToOperatingMode(gear)
+          modeSwitchCount++
+
+          const BusModule = await import("@/bus")
+          await BusModule.Bus.publish(ObserverEvent.ModeSwitched, {
+            previousMode,
+            newMode: currentMode,
+            previousGear,
+            newGear: gear,
+            reason: reason ?? "Gear switch",
+            timestamp: new Date(),
+          })
+
+          log.info("Gear switched", { from: previousGear, to: gear, mode: currentMode, reason })
         }
       },
 

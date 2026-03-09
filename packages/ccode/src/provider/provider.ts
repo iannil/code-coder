@@ -38,7 +38,12 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 
 export namespace Provider {
-  const log = Log.create({ service: "provider" })
+  // Lazy logger to avoid circular dependency
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) _log = Log.create({ service: "provider" })
+    return _log
+  }
 
   /**
    * Provider factory function type.
@@ -691,7 +696,7 @@ export namespace Provider {
     } = {}
     const sdk = new Map<number, SDK>()
 
-    log.info("init")
+    getLog().info("init")
 
     // ══════════════════════════════════════════════════════════════════════
     // Load providers from config.provider (primary source)
@@ -712,7 +717,7 @@ export namespace Provider {
     // Apply default model from settings
     if (globalSettings.default) {
       ;(config as Record<string, unknown>).model = globalSettings.default
-      log.info("using provider._settings.default as model", { model: globalSettings.default })
+      getLog().info("using provider._settings.default as model", { model: globalSettings.default })
     }
 
     // Load providers from config.provider
@@ -721,7 +726,7 @@ export namespace Provider {
         // Skip _settings - it's not a provider, it's global settings
         if (providerID === "_settings") continue
         configProviders.push([providerID, provider])
-        log.info("loaded provider from config.provider", { providerID })
+        getLog().info("loaded provider from config.provider", { providerID })
       }
     }
 
@@ -758,7 +763,7 @@ export namespace Provider {
               },
             },
           ]
-          log.info("merged apiKey from secrets.llm into existing provider", { providerID })
+          getLog().info("merged apiKey from secrets.llm into existing provider", { providerID })
         }
         continue
       }
@@ -771,7 +776,7 @@ export namespace Provider {
       }
 
       configProviders.push([providerID, legacyProvider])
-      log.info("loaded provider from legacy llm/secrets config (deprecated)", { providerID })
+      getLog().info("loaded provider from legacy llm/secrets config (deprecated)", { providerID })
     }
     // ══════════════════════════════════════════════════════════════════════
 
@@ -799,7 +804,7 @@ export namespace Provider {
       const match = database[providerID]
       if (!match) {
         if (options?.warnIfMissing) {
-          log.warn("Provider not found in database, skipping", { providerID })
+          getLog().warn("Provider not found in database, skipping", { providerID })
         }
         return false
       }
@@ -931,7 +936,7 @@ export namespace Provider {
         } else {
           // Provider not in models.dev database - this is expected for some providers
           // when models.dev fetch fails or provider is not registered there
-          log.debug("Provider does not exist in model list, skipping custom loader", { providerID })
+          getLog().debug("Provider does not exist in model list, skipping custom loader", { providerID })
           continue
         }
       } else {
@@ -999,7 +1004,7 @@ export namespace Provider {
         continue
       }
 
-      log.info("found", { providerID })
+      getLog().info("found", { providerID })
     }
 
     return {
@@ -1164,7 +1169,7 @@ export namespace Provider {
         model.providerID === "google-vertex-anthropic" ? "@ai-sdk/google-vertex/anthropic" : model.api.npm
       const bundledFn = BUNDLED_PROVIDERS[bundledKey]
       if (bundledFn) {
-        log.info("using bundled provider", { providerID: model.providerID, pkg: bundledKey })
+        getLog().info("using bundled provider", { providerID: model.providerID, pkg: bundledKey })
         const loaded = bundledFn({
           name: model.providerID,
           ...options,
@@ -1177,7 +1182,7 @@ export namespace Provider {
       if (!model.api.npm.startsWith("file://")) {
         installedPath = await BunProc.install(model.api.npm, "latest")
       } else {
-        log.info("loading local provider", { pkg: model.api.npm })
+        getLog().info("loading local provider", { pkg: model.api.npm })
         installedPath = model.api.npm
       }
 

@@ -15,7 +15,14 @@ import { NamedError } from "@codecoder-ai/core/util/error"
 import z from "zod"
 
 export namespace Storage {
-  const log = Log.create({ service: "storage" })
+  // Lazy logger to avoid circular dependency with Log module
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) {
+      _log = Log.create({ service: "storage" })
+    }
+    return _log
+  }
 
   // ============================================================================
   // Error Types
@@ -80,7 +87,7 @@ export namespace Storage {
         return bindings as unknown as NativeBindings
       }
     } catch (e) {
-      log.error("Failed to load @codecoder-ai/core native bindings", { error: e })
+      getLog().error("Failed to load @codecoder-ai/core native bindings", { error: e })
     }
 
     throw new StorageUnavailableError({
@@ -96,7 +103,7 @@ export namespace Storage {
     const dbPath = path.join(Global.Path.data, "storage.db")
 
     kvStore = await bindings.openKvStore(dbPath)
-    log.info("Using native SQLite KV store", { path: dbPath })
+    getLog().info("Using native SQLite KV store", { path: dbPath })
 
     return { dbPath }
   })
@@ -263,7 +270,7 @@ export namespace Storage {
   export async function compact(): Promise<void> {
     const store = await getStore()
     await store.compact()
-    log.info("Storage compacted")
+    getLog().info("Storage compacted")
   }
 
   // ============================================================================
@@ -352,7 +359,7 @@ export namespace Storage {
       try {
         return JSON.parse(value) as T
       } catch (e) {
-        log.warn("Failed to parse JSON in batchReadOptional", {
+        getLog().warn("Failed to parse JSON in batchReadOptional", {
           key: keys[index].join("/"),
           error: e,
         })
@@ -419,7 +426,7 @@ export namespace Storage {
    * @deprecated Backup is not needed for SQLite - it has ACID guarantees
    */
   export async function backup(_key: string[]): Promise<string | undefined> {
-    log.debug("backup() is deprecated - SQLite provides ACID guarantees")
+    getLog().debug("backup() is deprecated - SQLite provides ACID guarantees")
     return undefined
   }
 
@@ -427,7 +434,7 @@ export namespace Storage {
    * @deprecated Restore is not needed for SQLite - it has ACID guarantees
    */
   export async function restore(_key: string[]): Promise<boolean> {
-    log.debug("restore() is deprecated - SQLite provides ACID guarantees")
+    getLog().debug("restore() is deprecated - SQLite provides ACID guarantees")
     return false
   }
 

@@ -74,10 +74,30 @@ export declare class CausalGraphHandle {
   getStats(): NapiCausalStats
   /** Check for cycles (should be none in a valid causal graph) */
   hasCycles(): boolean
+  /** Find recurring decision-outcome patterns */
+  findPatterns(agentId: string | undefined | null, minOccurrences: number, limit: number): Array<NapiCausalPattern>
+  /** Find decisions similar to the given prompt */
+  findSimilarDecisions(prompt: string, agentId: string, limit: number): Array<NapiSimilarDecision>
+  /** Analyze decision trends over time */
+  analyzeTrends(agentId: string | undefined | null, periodDays: number): NapiTrendAnalysis
+  /** Get aggregated insights for an agent */
+  getAgentInsights(agentId: string): NapiAgentInsights
   /** Serialize to JSON */
   toJson(): string
   /** Deserialize from JSON */
   static fromJson(json: string): CausalGraphHandle
+}
+
+/** Handle to a code indexer */
+export declare class CodeIndexerHandle {
+  /** Create a new code indexer */
+  constructor()
+  /** Index a single file from content */
+  indexFile(path: string, content: string): NapiFileIndex
+  /** Index a directory */
+  indexDirectory(root: string, options?: NapiIndexOptions | undefined | null): NapiProjectIndex
+  /** Detect language from file path */
+  detectLanguage(path: string): string
 }
 
 /** Handle to a Compactor for managing context window */
@@ -91,6 +111,28 @@ export declare class CompactorHandle {
   compact(messages: Array<NapiMessage>): NapiCompactResult
   /** Set the compaction strategy */
   setStrategy(strategy: NapiCompactionStrategy): void
+  /**
+   * Check if token usage overflows the model's context limit
+   *
+   * Returns true if compaction is needed based on model limits.
+   */
+  isOverflow(tokens: NapiTokenUsage, limit: NapiModelLimit): boolean
+  /**
+   * Compute a prune plan for tool outputs
+   *
+   * Goes backwards through tool parts, protecting recent ones up to `protect` tokens,
+   * then marks older ones for pruning. The actual pruning is done by TypeScript.
+   */
+  computePrunePlan(toolParts: Array<NapiToolPartInfo>, config: NapiPruneConfig): NapiPrunePlan
+  /**
+   * Compute a prune plan with message-level turn tracking
+   *
+   * This version tracks user message "turns" to skip the most recent 2 turns,
+   * matching the original TypeScript behavior.
+   */
+  computePrunePlanWithTurns(messages: Array<NapiMessageInfo>, config: NapiPruneConfig): NapiPrunePlan
+  /** Estimate tokens for multiple strings in a batch (more efficient) */
+  estimateBatchTokens(texts: Array<string>): number
 }
 
 /** Handle to a configuration loader for high-performance operations */
@@ -163,6 +205,22 @@ export declare class ContextCacheStoreHandle {
   removeEntry(projectId: string, path: string): void
 }
 
+/** Context loader handle for NAPI */
+export declare class ContextLoaderHandle {
+  /** Create a new context loader for the given directory */
+  constructor(root: string, options?: NapiScanOptions | undefined | null)
+  /** Scan the directory and return file entries and structure */
+  scan(): NapiScanResult
+  /** Set fingerprint for categorization */
+  setFingerprint(fingerprint: NapiFingerprintInfo): void
+  /** Categorize files based on fingerprint */
+  categorize(entries: Array<NapiFileEntry>): NapiFileIndex
+  /** Extract import dependencies from source files */
+  extractDependencies(entries: Array<NapiFileEntry>, language: NapiProjectLanguage): NapiDependencyGraph
+  /** Find files related to a given file */
+  findRelatedFiles(filePath: string, index: NapiFileIndex, dependencies: NapiDependencyGraph): Array<string>
+}
+
 /** Handle to a credential manager */
 export declare class CredentialManagerHandle {
   /** Get the backend being used */
@@ -197,6 +255,115 @@ export declare class EditorHandle {
   generateDiff(oldContent: string, newContent: string, filePath: string): string
   /** Compute a diff between two files */
   diffFiles(oldPath: string, newPath: string): string
+}
+
+/**
+ * Handle to an in-memory embedding index for fast KNN search.
+ *
+ * Uses SIMD-accelerated cosine similarity for efficient search operations.
+ * All vectors are stored as f32 internally for memory efficiency.
+ */
+export declare class EmbeddingIndexHandle {
+  /**
+   * Create a new embedding index with the specified dimension.
+   *
+   * # Arguments
+   * * `dimension` - The dimension of vectors that will be stored (e.g., 1536 for OpenAI)
+   */
+  constructor(dimension: number)
+  /**
+   * Add a single embedding to the index.
+   *
+   * If an embedding with the same ID already exists, it will be replaced.
+   * The vector will be normalized before storage for consistent similarity computation.
+   *
+   * # Arguments
+   * * `id` - Unique identifier for this embedding
+   * * `vector` - The embedding vector (must match index dimension)
+   */
+  add(id: string, vector: Array<number>): void
+  /**
+   * Add multiple embeddings in a batch operation.
+   *
+   * More efficient than calling add() repeatedly.
+   *
+   * # Arguments
+   * * `items` - Vector of {id, vector} items to add
+   */
+  addBatch(items: Array<NapiEmbeddingItem>): void
+  /**
+   * Search for the K nearest neighbors to a query vector.
+   *
+   * Uses SIMD-accelerated cosine similarity for fast computation.
+   *
+   * # Arguments
+   * * `query` - The query vector to search for
+   * * `k` - Maximum number of results to return
+   * * `threshold` - Minimum similarity threshold (0.0-1.0)
+   *
+   * # Returns
+   * Vector of {id, score} results sorted by descending similarity
+   */
+  search(query: Array<number>, k: number, threshold: number): Array<NapiEmbeddingSearchResult>
+  /**
+   * Compute similarity between a query and a specific embedding.
+   *
+   * # Arguments
+   * * `query` - The query vector
+   * * `id` - The ID of the embedding to compare against
+   *
+   * # Returns
+   * Similarity score (0.0-1.0), or null if embedding not found
+   */
+  similarity(query: Array<number>, id: string): number | null
+  /**
+   * Batch similarity: compute similarities between a query and multiple embeddings.
+   *
+   * # Arguments
+   * * `query` - The query vector
+   * * `ids` - IDs of embeddings to compare against
+   *
+   * # Returns
+   * Vector of {id, score} results (only for existing embeddings)
+   */
+  batchSimilarity(query: Array<number>, ids: Array<string>): Array<NapiEmbeddingSearchResult>
+  /**
+   * Remove an embedding from the index.
+   *
+   * # Arguments
+   * * `id` - The ID of the embedding to remove
+   *
+   * # Returns
+   * True if the embedding was removed, false if it didn't exist
+   */
+  remove(id: string): boolean
+  /**
+   * Check if an embedding exists in the index.
+   *
+   * # Arguments
+   * * `id` - The ID to check
+   */
+  has(id: string): boolean
+  /** Get all embedding IDs in the index. */
+  ids(): Array<string>
+  /** Get index statistics. */
+  stats(): NapiEmbeddingIndexStats
+  /** Clear all embeddings from the index. */
+  clear(): void
+  /**
+   * Serialize the index to bytes for persistence.
+   *
+   * Format: dimension (4 bytes) + count (4 bytes) + entries
+   * Each entry: id_len (4 bytes) + id (utf8) + vector (dimension * 4 bytes)
+   */
+  toBytes(): Buffer
+  /**
+   * Deserialize an index from bytes.
+   *
+   * # Arguments
+   * * `bytes` - Serialized index data from to_bytes()
+   */
+  static fromBytes(bytes: Buffer): EmbeddingIndexHandle
 }
 
 /** Handle to a file watcher */
@@ -404,6 +571,38 @@ export declare class HistoryStoreHandle {
   invalidate(projectId: string): void
 }
 
+/** Handle to compiled hook configuration */
+export declare class HookConfigHandle {
+  /** Create a new hook config handle from JSON configuration */
+  constructor(configJson: string)
+  /** Evaluate hooks for a given lifecycle and context */
+  evaluate(lifecycle: NapiHookLifecycle, ctx: NapiHookContext): HookEvalResult
+  /** Get the number of hooks for a lifecycle */
+  hookCount(lifecycle: NapiHookLifecycle): number
+  /** Scan content for patterns using a specific action's patterns */
+  scanActionPatterns(lifecycle: NapiHookLifecycle, hookName: string, actionIndex: number, content: string): PatternMatchResult
+}
+
+/** Handle to a compiled ignore engine for efficient reuse */
+export declare class IgnoreEngineHandle {
+  /** Create a new ignore engine with default configuration */
+  constructor()
+  /** Create a new ignore engine with custom configuration */
+  static withConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
+  /** Load gitignore rules from a specific file */
+  loadGitignore(path: string): void
+  /** Add a single pattern to the engine */
+  addPattern(pattern: string): void
+  /** Check if a path should be ignored */
+  isIgnored(path: string): boolean
+  /** Check multiple paths at once */
+  isIgnoredBatch(paths: Array<string>): Array<boolean>
+  /** Check if a path should be ignored with detailed result */
+  check(path: string): NapiIgnoreCheckResult
+  /** Get all files in a directory that are not ignored */
+  listFiles(root: string): Array<string>
+}
+
 /** Handle to an injection scanner instance (for reuse) */
 export declare class InjectionScannerHandle {
   /** Scan input for injection */
@@ -604,6 +803,54 @@ export declare class McpClientManagerHandle {
   cancelOauth(serverName: string): Promise<void>
 }
 
+/** Handle to a unified memory system */
+export declare class MemorySystemHandle {
+  /** Create a new memory system for a project */
+  constructor(dataDir: string, projectId: string)
+  /** Get unified statistics for all memory subsystems */
+  stats(): NapiMemoryStats
+  /** Invalidate all caches */
+  invalidate(): void
+  /** Export memory snapshot */
+  export(): NapiMemorySnapshot
+  /** Import memory snapshot */
+  importSnapshot(snapshot: NapiMemorySnapshot, options: NapiImportOptions): NapiImportResult
+  /** Cleanup expired data */
+  cleanup(maxAgeDays: number): NapiCleanupResult
+  /** Get the project ID */
+  projectId(): string
+  /** Get the data directory path */
+  dataDir(): string
+  /** Store an embedding */
+  storeEmbedding(id: string, text: string, vector: Array<number>, metadata?: string | undefined | null): void
+  /** Search for similar embeddings */
+  searchSimilar(query: Array<number>, limit: number, threshold: number): Array<NapiKnnResult>
+  /** Get an embedding by ID */
+  getEmbedding(id: string): NapiStoredEmbedding | null
+  /** Remove an embedding by ID */
+  removeEmbedding(id: string): NapiStoredEmbedding | null
+  /** Clear all embeddings */
+  clearEmbeddings(): void
+  /** Record a decision */
+  recordDecision(decisionType: NapiDecisionType, title: string, description: string, rationale?: string | undefined | null, alternatives?: string | undefined | null): string
+  /** Record a file edit */
+  recordEdit(sessionId: string | undefined | null, filePath: string, editType: NapiFileEditType, additions: number, deletions: number, diff?: string | undefined | null): string
+  /** Register a tool */
+  registerTool(tool: NapiToolDefinition): void
+  /** Unregister a tool */
+  unregisterTool(name: string): NapiToolDefinition | null
+  /** Get a tool by name */
+  getTool(name: string): NapiToolDefinition | null
+  /** List all registered tools */
+  listTools(): Array<NapiToolDefinition>
+  /** Search tools by query (keyword search) */
+  searchTools(query: string, limit: number): Array<NapiToolMatch>
+  /** Search tools using semantic similarity */
+  searchToolsSemantic(queryEmbedding: Array<number>, limit: number, threshold: number): Array<NapiToolMatch>
+  /** Get tool count */
+  toolCount(): number
+}
+
 /** Handle to a MessageStore */
 export declare class MessageStoreHandle {
   /** Add a message to the store */
@@ -636,6 +883,32 @@ export declare class NapiAuditLog {
   count(filter?: NapiAuditFilter | undefined | null): Promise<number>
   /** Clear all entries */
   clear(): Promise<void>
+}
+
+/** Handle to an ObservabilityStore */
+export declare class ObservabilityStoreHandle {
+  /** Emit an LLM call event */
+  emitLlmCall(event: NapiLlmCallEvent): void
+  /** Emit a tool execution event */
+  emitToolExecution(event: NapiToolExecutionEvent): void
+  /** Emit an agent lifecycle event */
+  emitAgentLifecycle(event: NapiAgentLifecycleEvent): void
+  /** Emit a span event */
+  emitSpan(event: NapiSpanEvent): void
+  /** Get total cost for a time period */
+  totalCost(fromTs: string, toTs: string): number
+  /** Get total tokens for a time period */
+  totalTokens(fromTs: string, toTs: string): Array<number>
+  /** Aggregate metrics for a time period */
+  aggregateMetrics(fromTs: string, toTs: string): NapiMetricsSummary
+  /** Get store statistics */
+  stats(): NapiObservabilityStoreStats
+  /** Clean up old events */
+  cleanup(): number
+  /** Compact the database */
+  compact(): void
+  /** Health check */
+  healthCheck(): boolean
 }
 
 /** Thread-safe wrapper for PatchApplicator */
@@ -674,47 +947,42 @@ export declare class PermissionManagerHandle {
   clear(): void
 }
 
-export declare class PtyManagerHandle {
+/** A registry of named schemas for efficient lookup and reuse */
+export declare class SchemaRegistryHandle {
+  /** Create a new empty schema registry */
   constructor()
-  /** Create a new shell session */
-  create(config: NapiPtyConfig): string
-  /** Create a new session with a specific command */
-  createCommand(command: string, args: Array<string>, config: NapiPtyConfig): string
-  /** List all session IDs */
+  /** Register a schema by name */
+  register(name: string, schemaJson: string): void
+  /** Unregister a schema by name */
+  unregister(name: string): boolean
+  /** Check if a schema is registered */
+  has(name: string): boolean
+  /** List all registered schema names */
   list(): Array<string>
-  /** List all session info */
-  listInfo(): Array<NapiPtyInfo>
-  /** Clean up exited sessions */
-  cleanup(): void
-  /** Kill all sessions */
-  killAll(): void
+  /** Get the number of registered schemas */
+  count(): number
+  /** Validate a document against a named schema */
+  validate(schemaName: string, documentJson: string): NapiSchemaValidationResult
+  /** Check if a document is valid against a named schema (quick check) */
+  isValid(schemaName: string, documentJson: string): boolean
+  /** Clear all registered schemas */
+  clear(): void
 }
 
-export declare class PtySessionHandle {
-  /** Get the session ID */
-  get id(): string
-  /** Check if the session is running */
-  isRunning(): boolean
-  /** Get session info */
-  info(): NapiPtyInfo
-  /** Read output from the PTY */
-  read(): Buffer
-  /** Read output with timeout (milliseconds) */
-  readWithTimeout(timeoutMs: number): Buffer
-  /** Write data to the PTY */
-  write(data: Buffer): void
-  /** Write a line (with newline) to the PTY */
-  writeLine(line: string): void
-  /** Resize the terminal */
-  resize(cols: number, rows: number): void
-  /** Kill the process */
-  kill(): void
-  /** Wait for the process to exit */
-  wait(): number
-  /** Wait for the process with timeout (milliseconds) */
-  waitWithTimeout(timeoutMs: number): number | null
-  /** Get exit code (if exited) */
-  exitCode(): number | null
+/** Handle to a compiled JSON schema for efficient reuse */
+export declare class SchemaValidatorHandle {
+  /** Create a new schema validator from a JSON schema string */
+  constructor(schemaJson: string)
+  /** Create a validator from a schema with a name for debugging */
+  static withName(schemaJson: string, name: string): SchemaValidatorHandle
+  /** Validate a document against the schema */
+  validate(documentJson: string): NapiSchemaValidationResult
+  /** Check if a document is valid (quick check, no issue details) */
+  isValid(documentJson: string): boolean
+  /** Validate multiple documents in batch */
+  validateBatch(documentsJson: Array<string>): NapiBatchValidationResult
+  /** Get the schema name (if set) */
+  schemaName(): string | null
 }
 
 /** Thread-safe wrapper for SemanticGraph */
@@ -865,6 +1133,37 @@ export declare class TaskQueueHandle {
   sessionId(): string
   /** Serialize queue to JSON */
   serialize(): string
+}
+
+/** Thread-safe handle to the tool registry */
+export declare class ToolRegistryHandle {
+  /** Create a new tool registry with all built-in tools */
+  constructor()
+  /** List all available tool specifications */
+  listTools(): Array<NapiToolSpec>
+  /** Get a specific tool's specification by name */
+  getSpec(name: string): NapiToolSpec | null
+  /** Check if a tool exists in the registry */
+  hasTool(name: string): boolean
+  /** Get the number of registered tools */
+  toolCount(): number
+  /** Validate tool arguments against its schema */
+  validateArgs(name: string, argsJson: string): NapiValidationResult
+  /**
+   * Execute a tool with the given arguments
+   *
+   * Note: This is an async function that dispatches to the appropriate
+   * native implementation based on the tool name.
+   */
+  execute(name: string, argsJson: string): Promise<NapiToolExecuteResult>
+  /**
+   * Execute multiple tools in parallel (native batch execution)
+   *
+   * Native tools (grep, glob, read, edit, write, ls, apply_patch, multiedit)
+   * are executed in parallel using futures::future::join_all. Non-native tools
+   * return an error with 'not_native' flag.
+   */
+  executeBatch(calls: Array<NapiToolCall>): Promise<NapiBatchResult>
 }
 
 /** Handle to a TraceStore */
@@ -1134,6 +1433,17 @@ export declare export declare function cloneGitRepo(url: string, path: string, o
 /** Compute unified diff between two strings (standalone function) */
 export declare export declare function computeDiff(oldContent: string, newContent: string, filePath: string): string
 
+/**
+ * Compute a prune plan for tool outputs (standalone function)
+ *
+ * Goes backwards through tool parts, protecting recent ones up to `protect` tokens,
+ * then marks older ones for pruning.
+ */
+export declare export declare function computePrunePlan(toolParts: Array<NapiToolPartInfo>, config: NapiPruneConfig): NapiPrunePlan
+
+/** Compute a prune plan with message-level turn tracking (standalone function) */
+export declare export declare function computePrunePlanWithTurns(messages: Array<NapiMessageInfo>, config: NapiPruneConfig): NapiPrunePlan
+
 /** Check if a string matches a regex pattern (unanchored) */
 export declare export declare function containsPattern(pattern: string, value: string): boolean
 
@@ -1169,6 +1479,9 @@ export interface CreateAdrInput {
 /** Create a new auto-approve engine with configuration */
 export declare export declare function createAutoApproveEngine(config: AutoApproveConfig): AutoApproveEngineHandle
 
+/** Create a new code indexer */
+export declare export declare function createCodeIndexer(): CodeIndexerHandle
+
 /** Create a new compactor with default settings (128k max, 100k target) */
 export declare export declare function createCompactor(): CompactorHandle
 
@@ -1177,6 +1490,9 @@ export declare export declare function createCompactorWithLimits(maxTokens: numb
 
 /** Create a new config loader */
 export declare export declare function createConfigLoader(paths?: Array<string> | undefined | null): ConfigLoaderHandle
+
+/** Create a context loader (convenience function) */
+export declare export declare function createContextLoader(root: string, options?: NapiScanOptions | undefined | null): ContextLoaderHandle
 
 /** Create a new credential manager */
 export declare export declare function createCredentialManager(fileFallbackPath?: string | undefined | null): CredentialManagerHandle
@@ -1194,6 +1510,9 @@ export interface CreateDecisionInput {
   tags?: Array<string>
 }
 
+/** Create default prune config */
+export declare export declare function createDefaultPruneConfig(): NapiPruneConfig
+
 /** Input for creating an edit record */
 export interface CreateEditRecordInput {
   edits: Array<NapiFileEdit>
@@ -1204,6 +1523,14 @@ export interface CreateEditRecordInput {
   tokensUsed?: number
   duration?: number
 }
+
+/**
+ * Create a new embedding index with the specified dimension.
+ *
+ * # Arguments
+ * * `dimension` - The dimension of vectors that will be stored (e.g., 1536 for OpenAI)
+ */
+export declare export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
 
 /** Create a credential manager that only uses file storage (for testing) */
 export declare export declare function createFileCredentialManager(path: string): CredentialManagerHandle
@@ -1219,6 +1546,12 @@ export declare export declare function createFileWatcher(): FileWatcherHandle
 
 /** Create a new file watcher with custom configuration */
 export declare export declare function createFileWatcherWithConfig(config: FileWatcherConfig): FileWatcherHandle
+
+/** Create an ignore engine with default configuration */
+export declare export declare function createIgnoreEngine(): IgnoreEngineHandle
+
+/** Create an ignore engine with custom configuration */
+export declare export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
 
 /** Create a new injection scanner */
 export declare export declare function createInjectionScanner(): InjectionScannerHandle
@@ -1251,6 +1584,12 @@ export declare export declare function createMemoryHistoryStore(): HistoryStoreH
 /** Create an in-memory KV store (for testing) */
 export declare export declare function createMemoryKvStore(): KvStoreHandle
 
+/** Create an in-memory observability store (for testing) */
+export declare export declare function createMemoryObservabilityStore(): ObservabilityStoreHandle
+
+/** Create a new memory system */
+export declare export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
+
 /** Create an in-memory trace store (for testing) */
 export declare export declare function createMemoryTraceStore(): TraceStoreHandle
 
@@ -1272,11 +1611,20 @@ export declare export declare function createPermissiveEngine(unattended: boolea
 /** Create a safe-only auto-approve engine */
 export declare export declare function createSafeOnlyEngine(unattended: boolean): AutoApproveEngineHandle
 
+/** Create a new schema registry */
+export declare export declare function createSchemaRegistry(): SchemaRegistryHandle
+
+/** Create a new schema validator */
+export declare export declare function createSchemaValidator(schemaJson: string): SchemaValidatorHandle
+
 /** Create a new state machine */
 export declare export declare function createStateMachine(config?: NapiStateMachineConfig | undefined | null): StateMachineHandle
 
 /** Create a new task queue */
 export declare export declare function createTaskQueue(sessionId: string, config?: NapiTaskQueueConfig | undefined | null): TaskQueueHandle
+
+/** Create a new tool registry with all built-in tools */
+export declare export declare function createToolRegistry(): ToolRegistryHandle
 
 /** Credential type tag */
 export declare const enum CredentialType {
@@ -1300,6 +1648,9 @@ export declare export declare function describeFingerprint(fingerprint: NapiFing
 
 /** Detect technologies using the global fingerprint engine */
 export declare export declare function detectJavaTechnologies(input: NapiFingerprintInput): Array<NapiDetection>
+
+/** Detect language from file extension */
+export declare export declare function detectLanguageFromPath(path: string): string
 
 /** Detect web technologies using the global fingerprint engine */
 export declare export declare function detectWebTechnologies(input: NapiWebFingerprintInput): Array<NapiWebDetection>
@@ -1360,6 +1711,9 @@ export interface ExecutionContext {
   isProduction: boolean
 }
 
+/** Extract dependencies from a directory (convenience function) */
+export declare export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions | undefined | null): NapiDependencyGraph
+
 /**
  * Extract all fenced and indented code blocks from markdown text.
  *
@@ -1400,6 +1754,9 @@ export declare export declare function extractShellDirectories(commands: Array<N
 
 /** Extract permission patterns from commands */
 export declare export declare function extractShellPermissionPatterns(commands: Array<NapiParsedCommand>): NapiPermissionPatterns
+
+/** Extract just the frontmatter YAML from skill content */
+export declare export declare function extractSkillFrontmatter(content: string): string | null
 
 /** Type of file edit */
 export declare const enum FileEditType {
@@ -1442,6 +1799,12 @@ export interface FileWatcherConfig {
   ignore?: Array<string>
 }
 
+/** Filter a list of paths, returning only those that are not ignored */
+export declare export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
+
+/** Filter a list of paths using custom patterns */
+export declare export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
+
 /**
  * Find the best match among multiple candidates using Jaro-Winkler similarity
  *
@@ -1480,8 +1843,76 @@ export interface FuzzyReplaceResult {
   error?: string
 }
 
+/**
+ * Generate a combined hash embedding from multiple texts.
+ *
+ * Useful for document-level embeddings from chunks.
+ *
+ * # Arguments
+ * * `texts` - The texts to combine
+ * * `dimension` - The desired embedding dimension (default: 1536)
+ */
+export declare export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number | undefined | null): Array<number>
+
 /** Generate fingerprint for a project directory */
 export declare export declare function generateFingerprint(rootPath: string): NapiFingerprintInfo
+
+/**
+ * Generate a hash-based embedding for the given text.
+ *
+ * This is a deterministic, offline-capable fallback when real embeddings
+ * (OpenAI, Ollama) are not available. While not semantically meaningful,
+ * it provides consistent results for the same input.
+ *
+ * # Arguments
+ * * `text` - The text to embed
+ * * `dimension` - The desired embedding dimension (default: 1536)
+ */
+export declare export declare function generateHashEmbedding(text: string, dimension?: number | undefined | null): Array<number>
+
+/**
+ * Generate hash-based embeddings for multiple texts (batch operation).
+ *
+ * More efficient than calling generate_hash_embedding repeatedly.
+ *
+ * # Arguments
+ * * `texts` - The texts to embed
+ * * `dimension` - The desired embedding dimension (default: 1536)
+ */
+export declare export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number | undefined | null): Array<Array<number>>
+
+/**
+ * Generate a hash-based embedding with full result info.
+ *
+ * # Arguments
+ * * `text` - The text to embed
+ */
+export declare export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
+
+/**
+ * Generate a hash embedding with position encoding.
+ *
+ * Useful for sequences where position matters.
+ *
+ * # Arguments
+ * * `text` - The text to embed
+ * * `position` - Position in the sequence
+ * * `max_position` - Maximum position in the sequence
+ * * `dimension` - The desired embedding dimension (default: 1536)
+ */
+export declare export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number | undefined | null): Array<number>
+
+/** Get specifications for all built-in Rust tools (without creating a registry) */
+export declare export declare function getBuiltinToolSpecs(): Array<NapiToolSpec>
+
+/** Get the default ignored folder names */
+export declare export declare function getIgnoreDefaultFolders(): Array<string>
+
+/** Get the default ignore patterns */
+export declare export declare function getIgnoreDefaultPatterns(): Array<string>
+
+/** Get the list of tool names that have native Rust implementations */
+export declare export declare function getNativeToolNames(): Array<string>
 
 /**
  * Get the SDK key for provider options based on npm package
@@ -1490,6 +1921,9 @@ export declare export declare function generateFingerprint(rootPath: string): Na
  * npm package. Returns null if no mapping exists.
  */
 export declare export declare function getSdkKey(npm: string): string | null
+
+/** Get supported languages */
+export declare export declare function getSupportedLanguages(): Array<string>
 
 /**
  * Get recommended temperature for a model
@@ -1598,8 +2032,45 @@ export interface GrepResult {
   truncated: boolean
 }
 
+/**
+ * Calculate cosine similarity between two embeddings.
+ *
+ * Uses SIMD-accelerated computation.
+ *
+ * # Arguments
+ * * `a` - First embedding vector
+ * * `b` - Second embedding vector
+ */
+export declare export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number
+
+/** Hook evaluation result */
+export interface HookEvalResult {
+  /** Hooks that matched the context */
+  matchingHooks: Array<HookMatchResult>
+  /** Total number of hooks evaluated */
+  totalHooksEvaluated: number
+  /** Evaluation duration in microseconds */
+  evalDurationUs: number
+}
+
+/** Hook match result */
+export interface HookMatchResult {
+  /** Name of the matching hook */
+  hookName: string
+  /** Indices of matching actions (for efficient action selection) */
+  matchingActionIndices: Array<number>
+  /** Whether any action has block=true */
+  hasBlockingAction: boolean
+}
+
 /** Hybrid merge: combine vector and keyword results with weighted fusion */
 export declare export declare function hybridMergeResults(vectorResults: Array<NapiVectorResult>, keywordResults: Array<NapiVectorResult>, vectorWeight: number, keywordWeight: number, limit: number): Array<NapiScoredResult>
+
+/** Index a single file from content */
+export declare export declare function indexFileContent(path: string, content: string): NapiFileIndex
+
+/** Index multiple files (batch operation) */
+export declare export declare function indexFilesBatch(files: Array<NapiFileInput>): Array<NapiFileIndex>
 
 /** Initialize the library */
 export declare export declare function init(): void
@@ -1674,6 +2145,16 @@ export declare export declare function isGitRepo(path: string): boolean
 
 /** Check if system keyring is available */
 export declare export declare function isKeyringAvailable(): boolean
+
+/**
+ * Check if token usage overflows the model's context limit (standalone function)
+ *
+ * Returns true if compaction is needed based on model limits.
+ */
+export declare export declare function isOverflow(tokens: NapiTokenUsage, limit: NapiModelLimit): boolean
+
+/** Quick one-shot schema validation (returns boolean only) */
+export declare export declare function isValidJsonSchema(documentJson: string, schemaJson: string): boolean
 
 /** Get JAR analysis summary */
 export declare export declare function jarAnalysisSummary(jarPath: string): string
@@ -1982,6 +2463,63 @@ export interface NapiAgentConfig {
   steps?: number
 }
 
+/** Agent insights result */
+export interface NapiAgentInsights {
+  totalDecisions: number
+  successRate: number
+  avgConfidence: number
+  strongestActionType?: string
+  weakestActionType?: string
+  recentTrend: string
+  suggestions: Array<string>
+}
+
+/** Agent lifecycle event input */
+export interface NapiAgentLifecycleEvent {
+  /** Trace ID for correlation */
+  traceId?: string
+  /** Parent span ID (if nested) */
+  parentSpanId?: string
+  /** Session ID */
+  sessionId?: string
+  /** Agent ID */
+  agentId: string
+  /** Agent type */
+  agentType: string
+  /** Lifecycle type */
+  lifecycleType: NapiAgentLifecycleType
+  /** Parent agent ID (for Fork events) */
+  parentAgentId?: string
+  /** Duration in milliseconds (for Complete/Error events) */
+  durationMs?: number
+  /** Error message (for Error events) */
+  error?: string
+  /** Turn count (for Complete events) */
+  turnCount?: number
+}
+
+/** Agent lifecycle type enum */
+export declare const enum NapiAgentLifecycleType {
+  Start = 'Start',
+  Complete = 'Complete',
+  Error = 'Error',
+  Fork = 'Fork',
+  Resume = 'Resume',
+  Pause = 'Pause',
+  Cancel = 'Cancel'
+}
+
+/** Agent metrics */
+export interface NapiAgentMetrics {
+  totalStarts: number
+  totalCompletions: number
+  totalErrors: number
+  totalForks: number
+  avgTurns: number
+  avgDurationMs: number
+  completionRate: number
+}
+
 /** Agent statistics */
 export interface NapiAgentStats {
   name: string
@@ -2123,6 +2661,28 @@ export interface NapiBatchItem {
   value: string
 }
 
+/** Batch execution result */
+export interface NapiBatchResult {
+  /** Results in same order as input calls */
+  results: Array<NapiToolExecuteResult>
+  /** Total execution duration in milliseconds */
+  totalDurationMs: number
+  /** Number of calls that were native (vs fallback) */
+  nativeCount: number
+}
+
+/** Result of batch validation */
+export interface NapiBatchValidationResult {
+  /** Number of documents validated */
+  total: number
+  /** Number of valid documents */
+  validCount: number
+  /** Number of invalid documents */
+  invalidCount: number
+  /** Results for each document (indexed by input order) */
+  results: Array<NapiSchemaValidationResult>
+}
+
 /** Best match result */
 export interface NapiBestFuzzyMatch {
   /** The matched text */
@@ -2195,6 +2755,19 @@ export interface NapiCausalChain {
   outcomes: Array<NapiOutcomeNode>
 }
 
+/** Causal pattern for recurring decision-outcome combinations */
+export interface NapiCausalPattern {
+  id: string
+  name: string
+  description: string
+  agentId: string
+  actionType: string
+  occurrences: number
+  successRate: number
+  avgConfidence: number
+  examples: Array<string>
+}
+
 /** Causal query for NAPI */
 export interface NapiCausalQuery {
   agentId?: string
@@ -2252,11 +2825,49 @@ export interface NapiClassInfo {
   javaVersion: string
 }
 
+/** Cleanup result for NAPI */
+export interface NapiCleanupResult {
+  /** Total items removed */
+  removed: number
+  /** Items removed by subsystem (JSON object) */
+  bySubsystem: string
+  /** Bytes freed (approximate) */
+  bytesFreed: number
+}
+
 /** Clone options */
 export interface NapiCloneOptions {
   depth?: number
   branch?: string
   reinitialize?: boolean
+}
+
+/** Code symbol */
+export interface NapiCodeSymbol {
+  /** Symbol name */
+  name: string
+  /** Symbol kind */
+  kind: string
+  /** Start line (1-indexed) */
+  startLine: number
+  /** End line (1-indexed) */
+  endLine: number
+  /** Start column (0-indexed) */
+  startColumn: number
+  /** End column (0-indexed) */
+  endColumn: number
+  /** Parent symbol name */
+  parent?: string
+  /** Documentation comment */
+  docComment?: string
+  /** Parameters */
+  parameters: Array<string>
+  /** Return type */
+  returnType?: string
+  /** Is exported */
+  isExported: boolean
+  /** Is async */
+  isAsync: boolean
 }
 
 /** Command configuration */
@@ -2433,12 +3044,28 @@ export interface NapiDecisionRecord {
   timestamp: number
 }
 
+/** Decision type for NAPI */
+export declare const enum NapiDecisionType {
+  Architecture = 'Architecture',
+  Implementation = 'Implementation',
+  Refactor = 'Refactor',
+  Bugfix = 'Bugfix',
+  Feature = 'Feature',
+  Other = 'Other'
+}
+
 /** Dependency info */
 export interface NapiDependency {
   groupId?: string
   artifactId?: string
   version?: string
   scope?: string
+}
+
+/** Dependency graph for NAPI */
+export interface NapiDependencyGraph {
+  imports: Record<string, Array<string>>
+  importedBy: Record<string, Array<string>>
 }
 
 /** Technology detection result */
@@ -2478,6 +3105,14 @@ export interface NapiDirectoryInfo {
   dist?: string
   build?: string
   public?: string
+}
+
+/** Directory structure for NAPI */
+export interface NapiDirectoryStructure {
+  path: string
+  name: string
+  files: Array<string>
+  subdirectories: Array<NapiDirectoryStructure>
 }
 
 /** Edit operation */
@@ -2531,6 +3166,32 @@ export interface NapiEditStats {
   agentStats: Array<NapiAgentStats>
 }
 
+/** Index statistics */
+export interface NapiEmbeddingIndexStats {
+  /** Total number of embeddings in the index */
+  count: number
+  /** Embedding dimension */
+  dimension: number
+  /** Approximate memory usage in bytes */
+  memoryBytes: number
+}
+
+/** Item for batch add operations */
+export interface NapiEmbeddingItem {
+  /** Embedding identifier */
+  id: string
+  /** Embedding vector */
+  vector: Array<number>
+}
+
+/** Search result from embedding index */
+export interface NapiEmbeddingSearchResult {
+  /** Embedding identifier */
+  id: string
+  /** Similarity score (0.0-1.0) */
+  score: number
+}
+
 /** Entry metadata */
 export interface NapiEntryMeta {
   key: string
@@ -2559,6 +3220,14 @@ export interface NapiErrorSummary {
   groups: Array<NapiErrorGroup>
 }
 
+/** Event type enum */
+export declare const enum NapiEventType {
+  LlmCall = 'LlmCall',
+  ToolExecution = 'ToolExecution',
+  AgentLifecycle = 'AgentLifecycle',
+  Span = 'Span'
+}
+
 /** A single file edit */
 export interface NapiFileEdit {
   path: string
@@ -2573,6 +3242,66 @@ export interface NapiFileEdit {
 export interface NapiFileEditCount {
   path: string
   count: number
+}
+
+/** File edit type for NAPI */
+export declare const enum NapiFileEditType {
+  Create = 'Create',
+  Update = 'Update',
+  Delete = 'Delete',
+  Move = 'Move'
+}
+
+/** File entry for NAPI */
+export interface NapiFileEntry {
+  path: string
+  relativePath: string
+  name: string
+  extension?: string
+  directory: boolean
+  size: number
+  lastModified: number
+}
+
+/** File index for NAPI */
+export interface NapiFileIndex {
+  byPath: Record<string, NapiFileEntry>
+  byExtension: Record<string, Array<string>>
+  byName: Record<string, Array<string>>
+  routes: Array<string>
+  components: Array<string>
+  tests: Array<string>
+  configs: Array<string>
+}
+
+/** File index result */
+export interface NapiFileIndex {
+  /** File path */
+  path: string
+  /** Language */
+  language: string
+  /** All symbols */
+  symbols: Array<NapiCodeSymbol>
+  /** Function symbols */
+  functions: Array<NapiCodeSymbol>
+  /** Class symbols */
+  classes: Array<NapiCodeSymbol>
+  /** Type symbols */
+  types: Array<NapiCodeSymbol>
+  /** Import symbols */
+  imports: Array<NapiCodeSymbol>
+  /** Export symbols */
+  exports: Array<NapiCodeSymbol>
+  /** Total lines */
+  totalLines: number
+  /** Parse errors */
+  errors: Array<string>
+}
+
+/** File input for batch indexing */
+export interface NapiFileInput {
+  path: string
+  content: string
 }
 
 /** File metadata for scoring */
@@ -2667,6 +3396,140 @@ export interface NapiGitStatus {
   files: Array<NapiFileStatus>
 }
 
+/** Result of generating a hash-based embedding */
+export interface NapiHashEmbeddingResult {
+  /** The embedding vector */
+  vector: Array<number>
+  /** Embedding dimension */
+  dimension: number
+  /** Model identifier (always "hash") */
+  model: string
+}
+
+/** History snapshot for NAPI */
+export interface NapiHistorySnapshot {
+  /** Total edit records */
+  editRecordsCount: number
+  /** Total edit sessions */
+  sessionsCount: number
+  /** Total decisions */
+  decisionsCount: number
+  /** Total ADRs */
+  adrsCount: number
+  /** Serialized data (JSON) */
+  data: string
+}
+
+/** History statistics for NAPI */
+export interface NapiHistoryStats {
+  /** Total edit records */
+  totalEdits: number
+  /** Total edit sessions */
+  totalSessions: number
+  /** Total decisions */
+  totalDecisions: number
+  /** Total ADRs */
+  totalAdrs: number
+  /** Total additions across all edits */
+  totalAdditions: number
+  /** Total deletions across all edits */
+  totalDeletions: number
+}
+
+/** Hook evaluation context */
+export interface NapiHookContext {
+  tool?: string
+  command?: string
+  filePath?: string
+  fileContent?: string
+  inputJson?: string
+  output?: string
+}
+
+/** Lifecycle type */
+export declare const enum NapiHookLifecycle {
+  PreToolUse = 'PreToolUse',
+  PostToolUse = 'PostToolUse',
+  PreResponse = 'PreResponse',
+  Stop = 'Stop'
+}
+
+/** Result of checking if a path should be ignored */
+export interface NapiIgnoreCheckResult {
+  /** Whether the path should be ignored */
+  ignored: boolean
+  /** Which pattern caused the ignore (if any) */
+  matchedPattern?: string
+  /** Whether the match was from a negation rule */
+  negated: boolean
+}
+
+/** Configuration for the ignore engine */
+export interface NapiIgnoreConfig {
+  /** Use default folder patterns (default: true) */
+  useDefaultFolders?: boolean
+  /** Use default file patterns (default: true) */
+  useDefaultFiles?: boolean
+  /** Additional patterns to add */
+  additionalPatterns?: Array<string>
+  /** Patterns to whitelist (never ignore) */
+  whitelistPatterns?: Array<string>
+  /** Whether to respect .gitignore files (default: true) */
+  respectGitignore?: boolean
+  /** Whether to respect .ccignore files (default: true) */
+  respectCcignore?: boolean
+}
+
+/** Import options for NAPI */
+export interface NapiImportOptions {
+  /** Merge with existing data */
+  merge: boolean
+  /** Overwrite existing entries on conflict */
+  overwriteConflicts: boolean
+  /** Only import specific subsystems (JSON array) */
+  subsystems?: string
+}
+
+/** Import result for NAPI */
+export interface NapiImportResult {
+  /** Number of items imported */
+  imported: number
+  /** Number of items skipped */
+  skipped: number
+  /** Number of conflicts encountered */
+  conflicts: number
+  /** Error messages (JSON array) */
+  errors: string
+}
+
+/** Index options */
+export interface NapiIndexOptions {
+  /** File patterns to include */
+  patterns?: Array<string>
+  /** Maximum depth */
+  maxDepth?: number
+  /** Include hidden files */
+  includeHidden?: boolean
+  /** Include vendor directories */
+  includeVendor?: boolean
+  /** Languages to index */
+  languages?: Array<string>
+}
+
+/** Index statistics */
+export interface NapiIndexStats {
+  /** Total files */
+  totalFiles: number
+  /** Total symbols */
+  totalSymbols: number
+  /** Files by language */
+  byLanguage: Record<string, number>
+  /** Error count */
+  errorCount: number
+  /** Duration in milliseconds */
+  durationMs: number
+}
+
 /** Init options */
 export interface NapiInitOptions {
   defaultBranch?: string
@@ -2725,6 +3588,79 @@ export interface NapiJavaFingerprint {
 export interface NapiJavaPackageInfo {
   name: string
   classCount: number
+}
+
+/** KNN search result for NAPI */
+export interface NapiKnnResult {
+  /** Result identifier */
+  id: string
+  /** Similarity score (0.0-1.0) */
+  score: number
+}
+
+/** Supported language */
+export declare const enum NapiLanguage {
+  Typescript = 'Typescript',
+  Javascript = 'Javascript',
+  Python = 'Python',
+  Go = 'Go',
+  Rust = 'Rust',
+  Bash = 'Bash',
+  Unknown = 'Unknown'
+}
+
+/** LLM call event input */
+export interface NapiLlmCallEvent {
+  /** Trace ID for correlation */
+  traceId?: string
+  /** Parent span ID (if nested) */
+  parentSpanId?: string
+  /** Session ID */
+  sessionId?: string
+  /** Agent ID that made the call */
+  agentId?: string
+  /** LLM provider */
+  provider: string
+  /** Model ID */
+  model: string
+  /** Input tokens */
+  inputTokens: number
+  /** Output tokens */
+  outputTokens: number
+  /** Cache read tokens */
+  cacheReadTokens?: number
+  /** Cache write tokens */
+  cacheWriteTokens?: number
+  /** Latency in milliseconds */
+  latencyMs: number
+  /** Cost in USD */
+  costUsd: number
+  /** Whether the call succeeded */
+  success: boolean
+  /** Error message if failed */
+  error?: string
+  /** Stop reason */
+  stopReason?: string
+}
+
+/** LLM metrics */
+export interface NapiLlmMetrics {
+  totalCalls: number
+  successfulCalls: number
+  failedCalls: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheReadTokens: number
+  totalCacheWriteTokens: number
+  totalLatencyMs: number
+  avgLatencyMs: number
+  p50LatencyMs: number
+  p95LatencyMs: number
+  p99LatencyMs: number
+  totalCostUsd: number
+  avgCostPerCallUsd: number
+  cacheHitRate: number
+  successRate: number
 }
 
 /** Login credential */
@@ -2807,6 +3743,38 @@ export interface NapiMcpAuthEntry {
   oauthState?: string
 }
 
+/** Complete memory snapshot for NAPI */
+export interface NapiMemorySnapshot {
+  /** Schema version */
+  version: number
+  /** Timestamp (ms since epoch) */
+  timestamp: number
+  /** Project ID */
+  projectId: string
+  /** History snapshot (optional) */
+  history?: NapiHistorySnapshot
+  /** Vector snapshot (optional) */
+  vectors?: NapiVectorSnapshotData
+  /** Metadata as JSON string */
+  metadata: string
+}
+
+/** Unified memory statistics for NAPI */
+export interface NapiMemoryStats {
+  /** History subsystem stats */
+  history: NapiHistoryStats
+  /** Vector subsystem stats */
+  vectors: NapiVectorStats
+  /** Tokenizer subsystem stats */
+  tokenizer: NapiTokenizerStats
+  /** Total approximate memory usage in bytes */
+  totalMemoryBytes: number
+  /** Last invalidation timestamp (ms since epoch) */
+  lastInvalidation?: number
+  /** Last cleanup timestamp (ms since epoch) */
+  lastCleanup?: number
+}
+
 /** Message in a conversation */
 export interface NapiMessage {
   id: string
@@ -2817,6 +3785,38 @@ export interface NapiMessage {
   toolCallId?: string
   toolName?: string
   compacted: boolean
+}
+
+/** Message info for prune computation with turn tracking */
+export interface NapiMessageInfo {
+  /** Message ID */
+  messageId: string
+  /** Message role (user, assistant) */
+  role: string
+  /** Whether this is a summary message */
+  isSummary: boolean
+  /** Tool parts in this message */
+  toolParts: Array<NapiToolPartInfo>
+}
+
+/** Metrics summary */
+export interface NapiMetricsSummary {
+  fromTs: string
+  toTs: string
+  totalEvents: number
+  llm: NapiLlmMetrics
+  tools: NapiToolMetrics
+  agents: NapiAgentMetrics
+}
+
+/** Model token limits */
+export interface NapiModelLimit {
+  /** Context window size (total tokens) */
+  context: number
+  /** Maximum output tokens */
+  output: number
+  /** Maximum input tokens (optional, derived from context - output) */
+  input?: number
 }
 
 /** Node data for NAPI */
@@ -2838,6 +3838,19 @@ export interface NapiOAuthCredential {
   expiresAt?: number
   scope?: string
   patterns: Array<string>
+}
+
+/** Store statistics */
+export interface NapiObservabilityStoreStats {
+  totalEvents: number
+  llmCalls: number
+  toolExecutions: number
+  agentEvents: number
+  totalCostUsd: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  oldestTs?: string
+  newestTs?: string
 }
 
 /** Operation result */
@@ -2892,6 +3905,38 @@ export interface NapiParsedCommand {
   startByte: number
   /** End byte position in source */
   endByte: number
+}
+
+/** Parsed skill result */
+export interface NapiParsedSkill {
+  /** Skill metadata */
+  metadata: NapiSkillMetadata
+  /** Markdown content body */
+  content: string
+  /** Raw frontmatter YAML */
+  rawFrontmatter: string
+}
+
+/** Result wrapper for batch parsing */
+export interface NapiParsedSkillResult {
+  /** Whether parsing succeeded */
+  success: boolean
+  /** Parsed skill (if success) */
+  skill?: NapiParsedSkill
+  /** Error (if failure) */
+  error?: NapiSkillParseError
+}
+
+/** Reference to a message part that should be pruned */
+export interface NapiPartReference {
+  /** Message ID */
+  messageId: string
+  /** Part ID */
+  partId: string
+  /** Tool name */
+  tool: string
+  /** Estimated tokens in this part */
+  tokens: number
 }
 
 /** A chunk within an update hunk */
@@ -3005,6 +4050,16 @@ export interface NapiProjectCache {
   time: NapiCacheTime
 }
 
+/** Project index result */
+export interface NapiProjectIndex {
+  /** Root directory */
+  root: string
+  /** Indexed files */
+  files: Record<string, NapiFileIndex>
+  /** Statistics */
+  stats: NapiIndexStats
+}
+
 /** Project language enum for NAPI */
 export declare const enum NapiProjectLanguage {
   TypeScript = 'TypeScript',
@@ -3024,6 +4079,26 @@ export interface NapiProviderConfig {
   organization?: string
   whitelist: Array<string>
   blacklist: Array<string>
+}
+
+/** Configuration for pruning tool outputs */
+export interface NapiPruneConfig {
+  /** Minimum tokens to prune before executing (default: 20_000) */
+  minimum: number
+  /** Protected token threshold - keep this many recent tokens (default: 40_000) */
+  protect: number
+  /** Tools to never prune (e.g., "skill") */
+  protectedTools: Array<string>
+}
+
+/** Result of prune planning (which parts to mark as compacted) */
+export interface NapiPrunePlan {
+  /** Parts to mark as compacted */
+  partsToPrune: Array<NapiPartReference>
+  /** Total tokens that will be pruned */
+  totalTokensToPrune: number
+  /** Whether the prune should be executed (pruned >= minimum) */
+  shouldExecute: boolean
 }
 
 export interface NapiPtyConfig {
@@ -3133,6 +4208,37 @@ export declare const enum NapiRouteType {
   App = 'App',
   Pages = 'Pages',
   Api = 'Api'
+}
+
+/** Scan options for NAPI */
+export interface NapiScanOptions {
+  maxDepth?: number
+  includeHidden?: boolean
+  ignorePatterns?: Array<string>
+}
+
+/** Scan result for NAPI */
+export interface NapiScanResult {
+  entries: Array<NapiFileEntry>
+  structure: NapiDirectoryStructure
+}
+
+/** A validation issue from schema validation */
+export interface NapiSchemaIssue {
+  /** JSON path to the issue (e.g., "/server/port") */
+  path: string
+  /** Human-readable error message */
+  message: string
+}
+
+/** Result of schema validation */
+export interface NapiSchemaValidationResult {
+  /** Whether the document is valid */
+  valid: boolean
+  /** Number of issues found */
+  issueCount: number
+  /** All validation issues */
+  issues: Array<NapiSchemaIssue>
 }
 
 /** Scored file result */
@@ -3251,6 +4357,43 @@ export interface NapiShellRiskAssessment {
   riskyCommands: Array<string>
 }
 
+/** Result of finding similar decisions */
+export interface NapiSimilarDecision {
+  decisionId: string
+  prompt: string
+  similarity: number
+}
+
+/** Skill metadata from YAML frontmatter */
+export interface NapiSkillMetadata {
+  /** Skill name */
+  name: string
+  /** Skill description */
+  description: string
+  /** Skill category */
+  category?: string
+  /** Trigger patterns */
+  triggers: Array<string>
+  /** Whether user-invocable */
+  userInvocable: boolean
+  /** Required tools */
+  requiredTools: Array<string>
+  /** Skill version */
+  version?: string
+  /** Author */
+  author?: string
+}
+
+/** Skill parse error info */
+export interface NapiSkillParseError {
+  /** Error message */
+  message: string
+  /** Line number (if available) */
+  line?: number
+  /** Column number (if available) */
+  column?: number
+}
+
 /** Slow operation for NAPI */
 export interface NapiSlowOperation {
   function: string
@@ -3258,6 +4401,37 @@ export interface NapiSlowOperation {
   durationMs: number
   traceId: string
   timestamp: string
+}
+
+/** Span event input */
+export interface NapiSpanEvent {
+  /** Trace ID for correlation */
+  traceId?: string
+  /** Parent span ID (if nested) */
+  parentSpanId?: string
+  /** Session ID */
+  sessionId?: string
+  /** Agent ID */
+  agentId?: string
+  /** Span name/operation */
+  name: string
+  /** Span kind */
+  kind?: NapiSpanKind
+  /** Duration in milliseconds */
+  durationMs: number
+  /** Whether the span succeeded */
+  success: boolean
+  /** Error message if failed */
+  error?: string
+}
+
+/** Span kind enum */
+export declare const enum NapiSpanKind {
+  Internal = 'Internal',
+  Client = 'Client',
+  Server = 'Server',
+  Producer = 'Producer',
+  Consumer = 'Consumer'
 }
 
 /** State machine configuration */
@@ -3273,12 +4447,44 @@ export interface NapiStateMetadata {
   reason?: string
 }
 
+/** A stored embedding for NAPI */
+export interface NapiStoredEmbedding {
+  /** Unique identifier */
+  id: string
+  /** Original text */
+  text: string
+  /** Embedding vector */
+  vector: Array<number>
+  /** Creation timestamp (ms since epoch) */
+  createdAt: number
+  /** Metadata as JSON string */
+  metadata: string
+}
+
 /** Store statistics */
 export interface NapiStoreStats {
   totalEntries: number
   totalSizeBytes: number
   oldestEntryMs?: number
   newestEntryMs?: number
+}
+
+/** Symbol kind */
+export declare const enum NapiSymbolKind {
+  Function = 'Function',
+  Method = 'Method',
+  Class = 'Class',
+  Interface = 'Interface',
+  Struct = 'Struct',
+  Enum = 'Enum',
+  Variable = 'Variable',
+  Constant = 'Constant',
+  Type = 'Type',
+  Module = 'Module',
+  Namespace = 'Namespace',
+  Property = 'Property',
+  Import = 'Import',
+  Export = 'Export'
 }
 
 /** Task definition for NAPI */
@@ -3332,6 +4538,158 @@ export interface NapiTimeRange {
   durationMs: number
 }
 
+/** Tokenizer statistics for NAPI */
+export interface NapiTokenizerStats {
+  /** Number of cache entries */
+  cacheEntries: number
+  /** Cache hit count */
+  cacheHits: number
+  /** Cache miss count */
+  cacheMisses: number
+  /** Cache hit rate (0.0 - 1.0) */
+  hitRate: number
+}
+
+/** Current token usage from an assistant response */
+export interface NapiTokenUsage {
+  /** Input tokens */
+  input: number
+  /** Output tokens */
+  output: number
+  /** Cache read tokens */
+  cacheRead: number
+  /** Cache write tokens */
+  cacheWrite: number
+}
+
+/** Tool call specification for batch execution */
+export interface NapiToolCall {
+  /** Tool name */
+  tool: string
+  /** Tool arguments as JSON string */
+  argsJson: string
+  /** Call ID for tracking */
+  callId: string
+}
+
+/** Tool definition for NAPI */
+export interface NapiToolDefinition {
+  /** Tool name (unique identifier) */
+  name: string
+  /** Human-readable description */
+  description: string
+  /** JSON Schema for parameters */
+  parametersSchema: string
+  /** Whether this is a native Rust implementation */
+  native: boolean
+  /** Optional embedding for semantic search (as JSON array) */
+  embedding?: string
+  /** Tags for filtering (as JSON array) */
+  tags: string
+}
+
+/** Result of tool execution */
+export interface NapiToolExecuteResult {
+  /** Whether the tool succeeded */
+  success: boolean
+  /** Tool output (stdout, result text, etc.) */
+  output: string
+  /** Error message if failed */
+  error?: string
+  /** Execution duration in milliseconds */
+  durationMs: number
+}
+
+/** Tool execution event input */
+export interface NapiToolExecutionEvent {
+  /** Trace ID for correlation */
+  traceId?: string
+  /** Parent span ID (if nested) */
+  parentSpanId?: string
+  /** Session ID */
+  sessionId?: string
+  /** Agent ID that executed the tool */
+  agentId?: string
+  /** Tool name */
+  toolName: string
+  /** Tool call ID from LLM */
+  toolCallId?: string
+  /** Duration in milliseconds */
+  durationMs: number
+  /** Tool status */
+  status: NapiToolStatus
+  /** Error message if failed */
+  error?: string
+  /** Input size in bytes */
+  inputSizeBytes?: number
+  /** Output size in bytes */
+  outputSizeBytes?: number
+}
+
+/** Tool match result for NAPI */
+export interface NapiToolMatch {
+  /** Tool name */
+  name: string
+  /** Match score (0.0 - 1.0) */
+  score: number
+  /** Tool description */
+  description: string
+}
+
+/** Tool metrics */
+export interface NapiToolMetrics {
+  totalExecutions: number
+  successfulExecutions: number
+  failedExecutions: number
+  blockedExecutions: number
+  timeoutExecutions: number
+  cancelledExecutions: number
+  totalDurationMs: number
+  avgDurationMs: number
+  p50DurationMs: number
+  p95DurationMs: number
+  totalInputBytes: number
+  totalOutputBytes: number
+  successRate: number
+}
+
+/** Tool part info for prune computation */
+export interface NapiToolPartInfo {
+  /** Message ID */
+  messageId: string
+  /** Part ID */
+  partId: string
+  /** Tool name */
+  tool: string
+  /** Tool status (completed, error, etc.) */
+  status: string
+  /** Whether already compacted */
+  compacted: boolean
+  /** Output text (for token estimation) */
+  output: string
+}
+
+/** Tool specification for LLM function calling */
+export interface NapiToolSpec {
+  /** Tool name (unique identifier) */
+  name: string
+  /** Human-readable description for the LLM */
+  description: string
+  /** JSON Schema for the tool's parameters (as JSON string) */
+  parametersSchema: string
+  /** Whether this tool is implemented natively in Rust */
+  native: boolean
+}
+
+/** Tool status enum */
+export declare const enum NapiToolStatus {
+  Success = 'Success',
+  Error = 'Error',
+  Cancelled = 'Cancelled',
+  Timeout = 'Timeout',
+  Blocked = 'Blocked'
+}
+
 /** Trace entry for NAPI */
 export interface NapiTraceEntry {
   ts: string
@@ -3375,6 +4733,16 @@ export interface NapiTransitionResult {
   error?: string
 }
 
+/** Trend analysis result */
+export interface NapiTrendAnalysis {
+  totalDecisions: number
+  successRateBefore: number
+  successRateAfter: number
+  confidenceBefore: number
+  confidenceAfter: number
+  actionTypeShifts: string
+}
+
 /** Type summary for NAPI */
 export interface NapiTypeSummary {
   permission: number
@@ -3396,10 +4764,38 @@ export interface NapiValidationIssue {
   message: string
 }
 
+/** Result of argument validation */
+export interface NapiValidationResult {
+  /** Whether the arguments are valid */
+  valid: boolean
+  /** Validation error messages */
+  errors: Array<string>
+}
+
 /** Vector result pair for hybrid merge */
 export interface NapiVectorResult {
   id: string
   score: number
+}
+
+/** Vector snapshot for NAPI */
+export interface NapiVectorSnapshotData {
+  /** Number of embeddings */
+  embeddingsCount: number
+  /** Embedding dimension */
+  dimension: number
+  /** Serialized embedding data */
+  data: string
+}
+
+/** Vector statistics for NAPI */
+export interface NapiVectorStats {
+  /** Total number of embeddings stored */
+  totalEmbeddings: number
+  /** Embedding dimension */
+  dimension: number
+  /** Approximate memory usage in bytes */
+  memoryBytes: number
 }
 
 /** Technology detection result */
@@ -3493,6 +4889,9 @@ export declare export declare function openHistoryStore(path: string): HistorySt
 /** Open or create a KV store at the given path */
 export declare export declare function openKvStore(path: string): Promise<KvStoreHandle>
 
+/** Open an observability store at the given path */
+export declare export declare function openObservabilityStore(path: string): ObservabilityStoreHandle
+
 /** Open or create a session store */
 export declare export declare function openSessionStore(path: string): SessionStoreHandle
 
@@ -3522,6 +4921,18 @@ export declare export declare function parseRiskLevel(level: string): string
 
 /** Parse a shell command using the global parser */
 export declare export declare function parseShellCommand(command: string): NapiShellParseResult
+
+/** Parse a skill from content string */
+export declare export declare function parseSkillContent(content: string): NapiParsedSkill
+
+/** Parse a skill from a file path */
+export declare export declare function parseSkillFromFile(path: string): NapiParsedSkill
+
+/** Parse just the metadata from skill content (faster for listing) */
+export declare export declare function parseSkillMetadataOnly(content: string): NapiSkillMetadata
+
+/** Parse multiple skills from an array of contents (batch operation) */
+export declare export declare function parseSkillsBatch(contents: Array<string>): Array<NapiParsedSkillResult>
 
 /** Result of pattern matching */
 export interface PatternMatchResult {
@@ -3617,6 +5028,9 @@ export declare export declare function sanitizeInjectionInput(input: string): st
 /** Scan content for patterns and report line numbers (one-shot) */
 export declare export declare function scanContentPatterns(content: string, patterns: Array<string>): ContentMatchResult
 
+/** Scan a directory and return all file entries (convenience function) */
+export declare export declare function scanDirectory(root: string, options?: NapiScanOptions | undefined | null): NapiScanResult
+
 /** Scan input for prompt injection */
 export declare export declare function scanInjection(input: string): InjectionScanResult
 
@@ -3635,14 +5049,15 @@ export declare export declare function scoreRelevance(query: string, content: st
 /** Score content relevance with custom config */
 export declare export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
 
+/** Quick check if a path matches default ignore patterns */
+export declare export declare function shouldIgnorePath(path: string): boolean
+
 /** Compute the similarity ratio between two strings (0.0 to 1.0) */
 export declare export declare function similarityRatio(s1: string, s2: string): number
 
-/** Spawn a new PTY session */
-export declare export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
+export declare export declare function spawnPty(config: NapiPtyConfig): void
 
-/** Spawn a new PTY session with a specific command */
-export declare export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): PtySessionHandle
+export declare export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): void
 
 /** State category */
 export declare const enum StateCategory {
@@ -3658,6 +5073,9 @@ export declare const enum StateCategory {
  * Returns the markdown content without the frontmatter block.
  */
 export declare export declare function stripMarkdownFrontmatter(text: string): string
+
+/** Strip frontmatter from skill content, returning just the body */
+export declare export declare function stripSkillFrontmatter(content: string): string
 
 /** Task priority */
 export declare const enum TaskPriority {
@@ -3723,6 +5141,12 @@ export interface TransformModelInfo {
 /** Truncate text to fit within a token budget */
 export declare export declare function truncateToTokens(text: string, maxTokens: number): string
 
+/** One-shot schema validation (compiles schema each time) */
+export declare export declare function validateJsonSchema(documentJson: string, schemaJson: string): NapiSchemaValidationResult
+
+/** Validate a skill without returning the full parsed result */
+export declare export declare function validateSkillContent(content: string): boolean
+
 /** Calculate Euclidean distance between two vectors */
 export declare export declare function vectorDistance(a: Array<number>, b: Array<number>): number
 
@@ -3756,432 +5180,3 @@ export declare const enum WatchEventKind {
 
 /** Convenience function to watch a single path with a callback */
 export declare export declare function watchPath(path: string, callback: (path: string, event: string) => void, config?: FileWatcherConfig | undefined | null): FileWatcherHandle
-
-// ============================================================================
-// Ignore Engine (Phase 12 - NAPI Bindings)
-// ============================================================================
-
-/** Configuration for the ignore engine */
-export interface NapiIgnoreConfig {
-  /** Use default folder patterns (default: true) */
-  useDefaultFolders?: boolean
-  /** Use default file patterns (default: true) */
-  useDefaultFiles?: boolean
-  /** Additional patterns to add */
-  additionalPatterns?: Array<string>
-  /** Patterns to whitelist (never ignore) */
-  whitelistPatterns?: Array<string>
-  /** Whether to respect .gitignore files (default: true) */
-  respectGitignore?: boolean
-  /** Whether to respect .ccignore files (default: true) */
-  respectCcignore?: boolean
-}
-
-/** Result of checking if a path should be ignored */
-export interface NapiIgnoreCheckResult {
-  /** Whether the path should be ignored */
-  ignored: boolean
-  /** Which pattern caused the ignore (if any) */
-  matchedPattern?: string
-  /** Whether the match was from a negation rule */
-  negated: boolean
-}
-
-/** Handle to a compiled ignore engine for efficient reuse */
-export declare class IgnoreEngineHandle {
-  /** Create a new ignore engine with default configuration */
-  constructor()
-  /** Create a new ignore engine with custom configuration */
-  static withConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
-  /** Load gitignore rules from a specific file */
-  loadGitignore(path: string): void
-  /** Add a single pattern to the engine */
-  addPattern(pattern: string): void
-  /** Check if a path should be ignored */
-  isIgnored(path: string): boolean
-  /** Check multiple paths at once */
-  isIgnoredBatch(paths: Array<string>): Array<boolean>
-  /** Check if a path should be ignored with detailed result */
-  check(path: string): NapiIgnoreCheckResult
-  /** Get all files in a directory that are not ignored */
-  listFiles(root: string): Array<string>
-}
-
-/** Quick check if a path matches default ignore patterns */
-export declare function shouldIgnorePath(path: string): boolean
-
-/** Get the default ignore patterns */
-export declare function getIgnoreDefaultPatterns(): Array<string>
-
-/** Get the default ignored folder names */
-export declare function getIgnoreDefaultFolders(): Array<string>
-
-/** Create an ignore engine with default configuration */
-export declare function createIgnoreEngine(): IgnoreEngineHandle
-
-/** Create an ignore engine with custom configuration */
-export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
-
-/** Filter a list of paths, returning only those that are not ignored */
-export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
-
-/** Filter a list of paths using custom patterns */
-export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
-
-// ============================================================================
-// Context Loader (Phase 12 - NAPI Bindings)
-// ============================================================================
-
-/** File entry for NAPI */
-export interface NapiFileEntry {
-  path: string
-  relativePath: string
-  name: string
-  extension?: string
-  directory: boolean
-  size: number
-  lastModified: number
-}
-
-/** Directory structure for NAPI */
-export interface NapiDirectoryStructure {
-  path: string
-  name: string
-  files: Array<string>
-  subdirectories: Array<NapiDirectoryStructure>
-}
-
-/** File index for NAPI */
-export interface NapiFileIndex {
-  byPath: Record<string, NapiFileEntry>
-  byExtension: Record<string, Array<string>>
-  byName: Record<string, Array<string>>
-  routes: Array<string>
-  components: Array<string>
-  tests: Array<string>
-  configs: Array<string>
-}
-
-/** Dependency graph for NAPI */
-export interface NapiDependencyGraph {
-  imports: Record<string, Array<string>>
-  importedBy: Record<string, Array<string>>
-}
-
-/** Scan options for NAPI */
-export interface NapiScanOptions {
-  maxDepth?: number
-  includeHidden?: boolean
-  ignorePatterns?: Array<string>
-}
-
-/** Scan result for NAPI */
-export interface NapiScanResult {
-  entries: Array<NapiFileEntry>
-  structure: NapiDirectoryStructure
-}
-
-/** Context loader handle for NAPI */
-export declare class ContextLoaderHandle {
-  /** Create a new context loader for the given directory */
-  constructor(root: string, options?: NapiScanOptions)
-  /** Scan the directory and return file entries and structure */
-  scan(): NapiScanResult
-  /** Set fingerprint for categorization */
-  setFingerprint(fingerprint: NapiFingerprintInfo): void
-  /** Categorize files based on fingerprint */
-  categorize(entries: Array<NapiFileEntry>): NapiFileIndex
-  /** Extract import dependencies from source files */
-  extractDependencies(entries: Array<NapiFileEntry>, language: NapiProjectLanguage): NapiDependencyGraph
-  /** Find files related to a given file */
-  findRelatedFiles(filePath: string, index: NapiFileIndex, dependencies: NapiDependencyGraph): Array<string>
-}
-
-/** Create a context loader (convenience function) */
-export declare function createContextLoader(root: string, options?: NapiScanOptions): ContextLoaderHandle
-
-/** Scan a directory and return all file entries (convenience function) */
-export declare function scanDirectory(root: string, options?: NapiScanOptions): NapiScanResult
-
-/** Extract dependencies from a directory (convenience function) */
-export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions): NapiDependencyGraph
-
-// ============================================================================
-// Embedding Index (Phase 12 - NAPI Bindings)
-// ============================================================================
-
-/** Search result from embedding index */
-export interface NapiEmbeddingSearchResult {
-  /** Embedding identifier */
-  id: string
-  /** Similarity score (0.0-1.0) */
-  score: number
-}
-
-/** Item for batch add operations */
-export interface NapiEmbeddingItem {
-  /** Embedding identifier */
-  id: string
-  /** Embedding vector */
-  vector: Array<number>
-}
-
-/** Index statistics */
-export interface NapiEmbeddingIndexStats {
-  /** Total number of embeddings in the index */
-  count: number
-  /** Embedding dimension */
-  dimension: number
-  /** Approximate memory usage in bytes */
-  memoryBytes: number
-}
-
-/** Handle to an in-memory embedding index for fast KNN search */
-export declare class EmbeddingIndexHandle {
-  /** Create a new embedding index with the specified dimension */
-  constructor(dimension: number)
-  /** Deserialize an index from bytes */
-  static fromBytes(bytes: Buffer): EmbeddingIndexHandle
-  /** Add a single embedding to the index */
-  add(id: string, vector: Array<number>): void
-  /** Add multiple embeddings in a batch operation */
-  addBatch(items: Array<NapiEmbeddingItem>): void
-  /** Search for the K nearest neighbors to a query vector */
-  search(query: Array<number>, k: number, threshold: number): Array<NapiEmbeddingSearchResult>
-  /** Compute similarity between a query and a specific embedding */
-  similarity(query: Array<number>, id: string): number | null
-  /** Batch similarity: compute similarities between a query and multiple embeddings */
-  batchSimilarity(query: Array<number>, ids: Array<string>): Array<NapiEmbeddingSearchResult>
-  /** Remove an embedding from the index */
-  remove(id: string): boolean
-  /** Check if an embedding exists in the index */
-  has(id: string): boolean
-  /** Get all embedding IDs in the index */
-  ids(): Array<string>
-  /** Get index statistics */
-  stats(): NapiEmbeddingIndexStats
-  /** Clear all embeddings from the index */
-  clear(): void
-  /** Serialize the index to bytes for persistence */
-  toBytes(): Buffer
-}
-
-/** Create a new embedding index with the specified dimension */
-export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
-
-// ============================================================================
-// Memory System (Phase 12 - NAPI Bindings)
-// ============================================================================
-
-/** History statistics for NAPI */
-export interface NapiHistoryStats {
-  totalEdits: number
-  totalSessions: number
-  totalDecisions: number
-  totalAdrs: number
-  totalAdditions: number
-  totalDeletions: number
-}
-
-/** Vector statistics for NAPI */
-export interface NapiVectorStats {
-  totalEmbeddings: number
-  dimension: number
-  memoryBytes: number
-}
-
-/** Tokenizer statistics for NAPI */
-export interface NapiTokenizerStats {
-  cacheEntries: number
-  cacheHits: number
-  cacheMisses: number
-  hitRate: number
-}
-
-/** Unified memory statistics for NAPI */
-export interface NapiMemoryStats {
-  history: NapiHistoryStats
-  vectors: NapiVectorStats
-  tokenizer: NapiTokenizerStats
-  totalMemoryBytes: number
-  lastInvalidation?: number
-  lastCleanup?: number
-}
-
-/** History snapshot for NAPI */
-export interface NapiHistorySnapshot {
-  editRecordsCount: number
-  sessionsCount: number
-  decisionsCount: number
-  adrsCount: number
-  data: string
-}
-
-/** Vector snapshot for NAPI */
-export interface NapiVectorSnapshotData {
-  embeddingsCount: number
-  dimension: number
-  data: string
-}
-
-/** Complete memory snapshot for NAPI */
-export interface NapiMemorySnapshot {
-  version: number
-  timestamp: number
-  projectId: string
-  history?: NapiHistorySnapshot
-  vectors?: NapiVectorSnapshotData
-  metadata: string
-}
-
-/** Import options for NAPI */
-export interface NapiImportOptions {
-  merge: boolean
-  overwriteConflicts: boolean
-  subsystems?: string
-}
-
-/** Import result for NAPI */
-export interface NapiImportResult {
-  imported: number
-  skipped: number
-  conflicts: number
-  errors: string
-}
-
-/** Cleanup result for NAPI */
-export interface NapiCleanupResult {
-  removed: number
-  bySubsystem: string
-  bytesFreed: number
-}
-
-/** A stored embedding for NAPI */
-export interface NapiStoredEmbedding {
-  id: string
-  text: string
-  vector: Array<number>
-  createdAt: number
-  metadata: string
-}
-
-/** KNN search result for NAPI */
-export interface NapiKnnResult {
-  id: string
-  score: number
-}
-
-/** Tool definition for NAPI */
-export interface NapiToolDefinition {
-  name: string
-  description: string
-  parametersSchema: string
-  native: boolean
-  embedding?: string
-  tags: string
-}
-
-/** Tool match result for NAPI */
-export interface NapiToolMatch {
-  name: string
-  score: number
-  description: string
-}
-
-/** Decision type for NAPI */
-export declare const enum NapiDecisionType {
-  Architecture = 'Architecture',
-  Implementation = 'Implementation',
-  Refactor = 'Refactor',
-  Bugfix = 'Bugfix',
-  Feature = 'Feature',
-  Other = 'Other'
-}
-
-/** File edit type for NAPI */
-export declare const enum NapiFileEditType {
-  Create = 'Create',
-  Update = 'Update',
-  Delete = 'Delete',
-  Move = 'Move'
-}
-
-/** Handle to a unified memory system */
-export declare class MemorySystemHandle {
-  /** Create a new memory system for a project */
-  constructor(dataDir: string, projectId: string)
-  /** Get unified statistics for all memory subsystems */
-  stats(): NapiMemoryStats
-  /** Invalidate all caches */
-  invalidate(): void
-  /** Export memory snapshot */
-  export(): NapiMemorySnapshot
-  /** Import memory snapshot */
-  importSnapshot(snapshot: NapiMemorySnapshot, options: NapiImportOptions): NapiImportResult
-  /** Cleanup expired data */
-  cleanup(maxAgeDays: number): NapiCleanupResult
-  /** Get the project ID */
-  projectId(): string
-  /** Get the data directory path */
-  dataDir(): string
-  /** Store an embedding */
-  storeEmbedding(id: string, text: string, vector: Array<number>, metadata?: string): void
-  /** Search for similar embeddings */
-  searchSimilar(query: Array<number>, limit: number, threshold: number): Array<NapiKnnResult>
-  /** Get an embedding by ID */
-  getEmbedding(id: string): NapiStoredEmbedding | null
-  /** Remove an embedding by ID */
-  removeEmbedding(id: string): NapiStoredEmbedding | null
-  /** Clear all embeddings */
-  clearEmbeddings(): void
-  /** Record a decision */
-  recordDecision(decisionType: NapiDecisionType, title: string, description: string, rationale?: string, alternatives?: string): string
-  /** Record a file edit */
-  recordEdit(sessionId: string | undefined, filePath: string, editType: NapiFileEditType, additions: number, deletions: number, diff?: string): string
-  /** Register a tool */
-  registerTool(tool: NapiToolDefinition): void
-  /** Unregister a tool */
-  unregisterTool(name: string): NapiToolDefinition | null
-  /** Get a tool by name */
-  getTool(name: string): NapiToolDefinition | null
-  /** List all registered tools */
-  listTools(): Array<NapiToolDefinition>
-  /** Search tools by query (keyword search) */
-  searchTools(query: string, limit: number): Array<NapiToolMatch>
-  /** Search tools using semantic similarity */
-  searchToolsSemantic(queryEmbedding: Array<number>, limit: number, threshold: number): Array<NapiToolMatch>
-  /** Get tool count */
-  toolCount(): number
-}
-
-/** Create a new memory system */
-export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
-
-// ============================================================================
-// Hash Embedding (Phase 12 - NAPI Bindings)
-// ============================================================================
-
-/** Result of generating a hash-based embedding */
-export interface NapiHashEmbeddingResult {
-  vector: Array<number>
-  dimension: number
-  model: string
-}
-
-/** Generate a hash-based embedding for the given text */
-export declare function generateHashEmbedding(text: string, dimension?: number): Array<number>
-
-/** Generate a hash-based embedding with full result info */
-export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
-
-/** Generate hash-based embeddings for multiple texts (batch operation) */
-export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number): Array<Array<number>>
-
-/** Generate a combined hash embedding from multiple texts */
-export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number): Array<number>
-
-/** Generate a hash embedding with position encoding */
-export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number): Array<number>
-
-/** Calculate cosine similarity between two embeddings */
-export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number

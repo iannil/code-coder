@@ -2,6 +2,8 @@
  * Observer Status Component
  *
  * Displays Observer Network status in the TUI including:
+ * - Current gear preset (P/N/D/S/M)
+ * - Three dials visualization (Observe/Decide/Act)
  * - Current operating mode (AUTO/MANUAL/HYBRID)
  * - Watcher statuses (running/stopped/error)
  * - Recent observations
@@ -9,7 +11,9 @@
  * - CLOSE scores
  */
 
-import type { WatcherStatus, OperatingMode, Observation } from "@/observer/types"
+import type { WatcherStatus, OperatingMode, Observation, GearPreset } from "@/observer/types"
+import type { DialValues } from "@/observer/dial"
+import { GEAR_INFO } from "@/observer/dial"
 import type { CLOSEEvaluation } from "@/observer/controller/close-evaluator"
 import type { Escalation } from "@/observer/controller/escalation"
 import type { ModeControllerStats } from "@/observer/controller/mode"
@@ -21,6 +25,10 @@ import type { ModeControllerStats } from "@/observer/controller/mode"
 export interface ObserverDisplayProps {
   /** Current operating mode */
   mode: OperatingMode
+  /** Current gear preset */
+  gear?: GearPreset
+  /** Dial values (observe, decide, act) */
+  dials?: DialValues
   /** Watcher statuses */
   watchers: WatcherStatus[]
   /** Recent observations (last 5-10) */
@@ -33,6 +41,114 @@ export interface ObserverDisplayProps {
   stats?: ModeControllerStats
   /** Display in compact mode */
   compact?: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gear Display
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Get gear icon and color
+ */
+export function getGearDisplay(gear: GearPreset): { icon: string; color: string; label: string } {
+  const info = GEAR_INFO[gear]
+  switch (gear) {
+    case "P":
+      return { icon: "P", color: "gray", label: info.name }
+    case "N":
+      return { icon: "N", color: "yellow", label: info.name }
+    case "D":
+      return { icon: "D", color: "green", label: info.name }
+    case "S":
+      return { icon: "S", color: "red", label: info.name }
+    case "M":
+      return { icon: "M", color: "blue", label: info.name }
+  }
+}
+
+/**
+ * Render gear selector indicator
+ */
+export function renderGearIndicator(currentGear: GearPreset, compact = false): string {
+  const gears: GearPreset[] = ["P", "N", "D", "S", "M"]
+
+  if (compact) {
+    return `[${currentGear}]`
+  }
+
+  const indicator = gears
+    .map((g) => {
+      if (g === currentGear) {
+        return `[${g}]`
+      }
+      return ` ${g} `
+    })
+    .join("")
+
+  return `◀ ${indicator} ▶`
+}
+
+/**
+ * Render gear with description
+ */
+export function renderGearWithDescription(gear: GearPreset): string {
+  const info = GEAR_INFO[gear]
+  return `[${gear}] ${info.name}: ${info.description}`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dial Display
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Render a single dial as a progress bar
+ */
+function renderDialBar(label: string, value: number, width = 20): string {
+  const filled = Math.round((value / 100) * width)
+  const empty = width - filled
+  const bar = "█".repeat(filled) + "░".repeat(empty)
+  return `${label.padEnd(8)} ${bar} ${value.toString().padStart(3)}%`
+}
+
+/**
+ * Render three dials as compact inline
+ */
+export function renderDialsCompact(dials: DialValues): string {
+  const o = dials.observe.toString().padStart(3)
+  const d = dials.decide.toString().padStart(3)
+  const a = dials.act.toString().padStart(3)
+  return `O:${o} D:${d} A:${a}`
+}
+
+/**
+ * Render three dials with bars
+ */
+export function renderDials(dials: DialValues): string {
+  const lines: string[] = []
+  lines.push(renderDialBar("Observe", dials.observe))
+  lines.push(renderDialBar("Decide", dials.decide))
+  lines.push(renderDialBar("Act", dials.act))
+  return lines.join("\n")
+}
+
+/**
+ * Render dial knobs ASCII art
+ */
+export function renderDialKnobs(dials: DialValues): string {
+  // Convert value to knob position (8 positions around the dial)
+  const getKnobChar = (value: number): string => {
+    const normalized = Math.round((value / 100) * 7)
+    const chars = ["○", "◔", "◑", "◕", "●", "◕", "◑", "◔"]
+    return chars[normalized] ?? "○"
+  }
+
+  const lines: string[] = []
+  lines.push("  ┌─────────────────────┐")
+  lines.push(`  │  ${getKnobChar(dials.observe)} Observe: ${dials.observe.toString().padStart(3)}%  │`)
+  lines.push(`  │  ${getKnobChar(dials.decide)} Decide:  ${dials.decide.toString().padStart(3)}%  │`)
+  lines.push(`  │  ${getKnobChar(dials.act)} Act:     ${dials.act.toString().padStart(3)}%  │`)
+  lines.push("  └─────────────────────┘")
+  return lines.join("\n")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,6 +353,8 @@ function renderRecentObservations(observations: Observation[], compact = false):
 export function renderObserverStatus(props: ObserverDisplayProps): string {
   const {
     mode,
+    gear,
+    dials,
     watchers,
     recentObservations,
     pendingEscalations,
@@ -257,7 +375,23 @@ export function renderObserverStatus(props: ObserverDisplayProps): string {
   lines.push("═".repeat(50))
   lines.push("")
 
+  // Gear section (new)
+  if (gear) {
+    lines.push("── GEAR ──")
+    lines.push(renderGearIndicator(gear))
+    lines.push(renderGearWithDescription(gear))
+    lines.push("")
+  }
+
+  // Dials section (new)
+  if (dials) {
+    lines.push("── DIALS ──")
+    lines.push(renderDials(dials))
+    lines.push("")
+  }
+
   // Mode section
+  lines.push("── MODE ──")
   lines.push(`模式: ${icon} ${mode} - ${getModeDescription(mode)}`)
   lines.push("")
 
@@ -292,6 +426,7 @@ export function renderObserverStatus(props: ObserverDisplayProps): string {
   // Stats section
   if (stats) {
     lines.push("── 统计 ──")
+    lines.push(`档位: ${stats.currentGear}`)
     lines.push(`模式切换: ${stats.modeSwitches}`)
     lines.push(`运行时间: ${formatUptime(stats.uptime)}`)
     lines.push("")
@@ -306,13 +441,23 @@ export function renderObserverStatus(props: ObserverDisplayProps): string {
  * Render compact status bar
  */
 export function renderObserverStatusCompact(props: ObserverDisplayProps): string {
-  const { mode, watchers, pendingEscalations, closeEvaluation } = props
+  const { mode, gear, dials, watchers, pendingEscalations, closeEvaluation } = props
   const { icon } = getModeDisplay(mode)
 
   const parts: string[] = []
 
+  // Gear (new)
+  if (gear) {
+    parts.push(renderGearIndicator(gear, true))
+  }
+
   // Mode
   parts.push(`${icon} ${mode}`)
+
+  // Dials (new)
+  if (dials) {
+    parts.push(renderDialsCompact(dials))
+  }
 
   // Watchers summary
   const runningCount = watchers.filter((w) => w.running).length
@@ -332,16 +477,24 @@ export function renderObserverStatusCompact(props: ObserverDisplayProps): string
 }
 
 /**
- * Render inline status for TUI status line
+ * Render inline status for TUI status line (enhanced with gear)
  */
 export function renderObserverStatusBar(props: ObserverDisplayProps): string {
-  const { mode, watchers, closeEvaluation } = props
+  const { mode, gear, dials, watchers, closeEvaluation } = props
   const { icon } = getModeDisplay(mode)
 
   const runningCount = watchers.filter((w) => w.running).length
   const watcherStatus = runningCount === watchers.length ? "✓" : `${runningCount}/${watchers.length}`
 
-  let statusBar = `[OBS] ${icon}${mode} W:${watcherStatus}`
+  // Start with gear if available
+  let statusBar = gear ? `[${gear}] ` : ""
+  statusBar += `${icon}${mode} W:${watcherStatus}`
+
+  // Add dials summary if available
+  if (dials) {
+    const avgDial = Math.round((dials.observe + dials.decide + dials.act) / 3)
+    statusBar += ` D:${avgDial}%`
+  }
 
   if (closeEvaluation) {
     const riskLevel = closeEvaluation.risk >= 7 ? "⚠️" : closeEvaluation.risk >= 4 ? "○" : "✓"
@@ -367,4 +520,67 @@ function formatUptime(ms: number): string {
     return `${minutes}m ${seconds % 60}s`
   }
   return `${seconds}s`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gear Status Data Type (for SolidJS integration)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Gear status data for TUI display
+ */
+export interface GearStatusData {
+  gear: GearPreset
+  dials: DialValues
+  mode: OperatingMode
+  watchersRunning: number
+  watchersTotal: number
+  closeScore?: number
+  riskLevel: "safe" | "moderate" | "high"
+}
+
+/**
+ * Get gear color based on gear preset
+ */
+export function getGearColor(gear: GearPreset): string {
+  switch (gear) {
+    case "P":
+      return "gray"
+    case "N":
+      return "yellow"
+    case "D":
+      return "green"
+    case "S":
+      return "red"
+    case "M":
+      return "blue"
+  }
+}
+
+/**
+ * Get dial bar character based on value (0-100)
+ */
+export function getDialChar(value: number): string {
+  if (value >= 80) return "█"
+  if (value >= 60) return "▓"
+  if (value >= 40) return "▒"
+  if (value >= 20) return "░"
+  return "·"
+}
+
+/**
+ * Format gear status for inline display
+ * Example: "[D] ▓▒░ HYBRID W:4/4 C:7.2✓"
+ */
+export function formatGearStatusInline(status: GearStatusData): string {
+  const gearChar = `[${status.gear}]`
+  const dialChars = `${getDialChar(status.dials.observe)}${getDialChar(status.dials.decide)}${getDialChar(status.dials.act)}`
+  const watcherStatus = status.watchersRunning === status.watchersTotal
+    ? "✓"
+    : `${status.watchersRunning}/${status.watchersTotal}`
+  const closeText = status.closeScore !== undefined
+    ? ` C:${status.closeScore.toFixed(1)}${status.riskLevel === "safe" ? "✓" : status.riskLevel === "high" ? "⚠" : "○"}`
+    : ""
+
+  return `${gearChar} ${dialChars} ${status.mode} W:${watcherStatus}${closeText}`
 }

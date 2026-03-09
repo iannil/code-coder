@@ -576,3 +576,13 @@ module.exports.NapiCompactionStrategy = nativeBinding.NapiCompactionStrategy
 module.exports.NapiCommandRiskLevel = nativeBinding.NapiCommandRiskLevel
 module.exports.RiskLevel = nativeBinding.RiskLevel
 module.exports.AuthStatus = nativeBinding.AuthStatus
+
+// Phase 10: File Ignore Engine
+module.exports.IgnoreEngineHandle = nativeBinding.IgnoreEngineHandle
+module.exports.createIgnoreEngine = nativeBinding.createIgnoreEngine
+module.exports.createIgnoreEngineWithConfig = nativeBinding.createIgnoreEngineWithConfig
+module.exports.shouldIgnorePath = nativeBinding.shouldIgnorePath
+module.exports.filterIgnoredPaths = nativeBinding.filterIgnoredPaths
+module.exports.filterPathsWithPatterns = nativeBinding.filterPathsWithPatterns
+module.exports.getIgnoreDefaultFolders = nativeBinding.getIgnoreDefaultFolders
+module.exports.getIgnoreDefaultPatterns = nativeBinding.getIgnoreDefaultPatterns

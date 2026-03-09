@@ -15,7 +15,12 @@ import { GlobalBus } from "@/bus/global"
 import { existsSync } from "fs"
 
 export namespace Project {
-  const log = Log.create({ service: "project" })
+  // Lazy logger to avoid circular dependency
+  let _log: Log.Logger | null = null
+  const getLog = () => {
+    if (!_log) _log = Log.create({ service: "project" })
+    return _log
+  }
   export const Info = z
     .object({
       id: z.string(),
@@ -56,7 +61,7 @@ export namespace Project {
   }
 
   export async function fromDirectory(directory: string) {
-    log.info("fromDirectory", { directory })
+    getLog().info("fromDirectory", { directory })
 
     const { id, sandbox, worktree, vcs } = await iife(async () => {
       const matches = Filesystem.up({ targets: [".git"], start: directory })
@@ -260,7 +265,7 @@ export namespace Project {
     const globalSessions = await Storage.list(["session", "global"]).catch(() => [])
     if (globalSessions.length === 0) return
 
-    log.info("migrating sessions from global", { newProjectID, worktree, count: globalSessions.length })
+    getLog().info("migrating sessions from global", { newProjectID, worktree, count: globalSessions.length })
 
     await work(10, globalSessions, async (key) => {
       const sessionID = key[key.length - 1]
@@ -269,11 +274,11 @@ export namespace Project {
       if (session.directory && session.directory !== worktree) return
 
       session.projectID = newProjectID
-      log.info("migrating session", { sessionID, from: "global", to: newProjectID })
+      getLog().info("migrating session", { sessionID, from: "global", to: newProjectID })
       await Storage.write(["session", newProjectID, sessionID], session)
       await Storage.remove(key)
     }).catch((error) => {
-      log.error("failed to migrate sessions from global to project", { error, projectId: newProjectID })
+      getLog().error("failed to migrate sessions from global to project", { error, projectId: newProjectID })
     })
   }
 
