@@ -135,6 +135,43 @@ export class Orchestrator {
   }
 
   /**
+   * Resolve the task mode from config or classification
+   */
+  private async resolveTaskMode(request: string): Promise<"code" | "research" | "decision"> {
+    // If explicit mode provided (not "auto"), use it
+    if (this.config.mode && this.config.mode !== "auto") {
+      log.info("Using explicit task mode", { mode: this.config.mode })
+      return this.config.mode
+    }
+
+    // Otherwise, classify with LLM
+    log.info("Classifying task type", { requestPreview: request.slice(0, 50) })
+    const classification = await classifyTask(request)
+
+    log.info("Task classified", {
+      type: classification.type,
+      confidence: classification.confidence,
+      reasoning: classification.reasoning,
+    })
+
+    // Map TaskType to our modes
+    switch (classification.type) {
+      case "implementation":
+      case "fix":
+        return "code"
+      case "research":
+      case "query":
+        return "research"
+      case "decision":
+        return "decision"
+      case "acceptance":
+        return "code" // Acceptance is part of code flow
+      default:
+        return "code" // Default to code mode
+    }
+  }
+
+  /**
    * Start the Autonomous Mode session
    */
   async start(request: string): Promise<void> {
