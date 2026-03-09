@@ -90,10 +90,8 @@ export const MODES: Record<string, Mode> = {
     primaryAgent: "writer",
     alternativePrimaries: [],
     capabilities: [
-      // Content expansion
+      // Content expansion (unified: supports fiction/nonfiction auto-detection)
       "expander",
-      "expander-fiction",
-      "expander-nonfiction",
       // Quality assurance
       "proofreader",
       "verifier",

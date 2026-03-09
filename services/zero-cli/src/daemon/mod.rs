@@ -27,18 +27,19 @@ pub fn get_tool_registry() -> Option<&'static Arc<RwLock<ToolRegistry>>> {
 
 /// Run the daemon in process orchestrator mode.
 ///
-/// This mode spawns zero-gateway, zero-channels, zero-workflow, and zero-trading as separate
-/// child processes and monitors them via health checks. It also provides:
+/// This mode provides an integrated service hub with:
+/// - Gateway, Channels, Workflow, Observer (from zero-hub library, built into daemon)
 /// - MCP tool registry integration
 /// - Heartbeat worker for autonomous tasks
 /// - State file persistence
 /// - Management HTTP API on port 4402
+/// - Optional spawn of zero-trading as a separate child process
 pub async fn run_orchestrator(
     config: Config,
     host: String,
-    gateway_port: u16,
-    channels_port: u16,
-    workflow_port: u16,
+    _gateway_port: u16,  // Legacy: now built-in
+    _channels_port: u16, // Legacy: now built-in
+    _workflow_port: u16, // Legacy: now built-in
     trading_port: u16,
     log_dir: Option<PathBuf>,
 ) -> Result<()> {
@@ -154,37 +155,8 @@ pub async fn run_orchestrator(
     // Create service manager
     let mut manager = ServiceManager::new(bin_dir);
 
-    // Add zero-gateway service
-    manager.add_service(ServiceConfig {
-        name: "zero-gateway".into(),
-        binary: "zero-gateway".into(),
-        port: gateway_port,
-        host: host.clone(),
-        args: vec![],
-        log_file: Some(resolved_log_dir.join("zero-gateway.log")),
-    });
-
-    // Add zero-channels service
-    manager.add_service(ServiceConfig {
-        name: "zero-channels".into(),
-        binary: "zero-channels".into(),
-        port: channels_port,
-        host: host.clone(),
-        args: vec![],
-        log_file: Some(resolved_log_dir.join("zero-channels.log")),
-    });
-
-    // Add zero-workflow service
-    manager.add_service(ServiceConfig {
-        name: "zero-workflow".into(),
-        binary: "zero-workflow".into(),
-        port: workflow_port,
-        host: host.clone(),
-        args: vec![],
-        log_file: Some(resolved_log_dir.join("zero-workflow.log")),
-    });
-
-    // Add zero-trading service
+    // Add zero-trading service (the only external binary we spawn)
+    // Note: gateway, channels, workflow, observer are now built into daemon via zero-hub
     manager.add_service(ServiceConfig {
         name: "zero-trading".into(),
         binary: "zero-trading".into(),
@@ -252,12 +224,15 @@ pub async fn run_orchestrator(
         ""
     };
 
-    println!("🧠 ZeroBot daemon started (process orchestrator)");
+    println!("🧠 ZeroBot daemon started (integrated service hub)");
     println!("   Management API: http://{host}:{MANAGEMENT_API_PORT}");
+    println!("   Built-in services (from zero-hub):");
+    println!("     • gateway:  authentication, routing, RBAC");
+    println!("     • channels: IM integrations (Telegram/Discord/etc.)");
+    println!("     • workflow: scheduling, webhooks, automation");
+    println!("     • observer: monitoring and alerting");
     println!("   Managed services:");
-    println!("     • zero-gateway:  http://{host}:{gateway_port}");
-    println!("     • zero-channels: http://{host}:{channels_port}");
-    println!("     • zero-workflow: http://{host}:{workflow_port}");
+    println!("     • zero-trading: http://{host}:{trading_port}");
     println!("   Components: state-writer{mcp_status}{heartbeat_status}");
     println!("   Press Ctrl+C to stop");
 
@@ -326,8 +301,8 @@ fn find_rust_bin_dir() -> Result<PathBuf> {
 
     for path in &candidates {
         if path.exists() {
-            // Verify at least one expected binary exists
-            if path.join("zero-gateway").exists() || path.join("zero-gateway.exe").exists() {
+            // Verify at least one expected binary exists (zero-trading)
+            if path.join("zero-trading").exists() || path.join("zero-trading.exe").exists() {
                 return Ok(path.clone());
             }
         }
@@ -346,7 +321,7 @@ fn find_rust_bin_dir() -> Result<PathBuf> {
     }
 
     anyhow::bail!(
-        "Could not find Rust binary directory with zero-gateway. \
+        "Could not find Rust binary directory with zero-trading. \
          Run 'cargo build --release' in services/ first."
     )
 }

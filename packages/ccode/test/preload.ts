@@ -4,7 +4,7 @@ import os from "os"
 import path from "path"
 import fs from "fs/promises"
 import fsSync from "fs"
-import { afterAll, beforeEach } from "bun:test"
+import { afterAll, beforeEach, mock } from "bun:test"
 
 const dir = path.join(os.tmpdir(), "codecoder-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
@@ -51,23 +51,67 @@ delete process.env["FIREWORKS_API_KEY"]
 delete process.env["CEREBRAS_API_KEY"]
 delete process.env["SAMBANOVA_API_KEY"]
 
-// Now safe to import from src/
-const { Log } = await import("../src/util/log")
-const { State } = await import("../src/project/state")
-const { Instance } = await import("../src/project/instance")
-// Note: resetAllLazy() can cause initialization order issues
-// const { resetAllLazy } = await import("@codecoder-ai/util/lazy")
+// Check if we're running observer tests - they need special mocking
+// Observer tests have their own setup.ts that must run first
+const isObserverTest = process.argv.some((arg) => arg.includes("test/observer"))
 
-Log.init({
-  print: true,
-  dev: true,
-  level: "DEBUG",
+// Set up minimal Log mock FIRST, before any src/ imports
+// This prevents initialization errors in modules that use Log.create() at module level
+const createLogger = (tags?: Record<string, unknown>) => ({
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+  tag: () => createLogger(tags),
+  clone: () => createLogger(tags),
+  time: () => ({ stop: () => {}, [Symbol.dispose]: () => {} }),
+  structured: {
+    configureObservability: () => {},
+    initObservability: async () => {},
+    createSpan: () => ({ end: () => {} }),
+    point: () => {},
+  },
 })
 
-// Reset state before each test to ensure test isolation
-// This clears all cached singleton state from Instance.state() calls
-beforeEach(() => {
-  State.reset()
-  Instance.reset()
-  // resetAllLazy() - disabled: can cause re-initialization issues
-})
+// Create a mock Zod-like schema for Log.Level
+const mockZodSchema = {
+  parse: (v: string) => v,
+  safeParse: (v: string) => ({ success: true, data: v }),
+  optional: () => mockZodSchema,
+  default: () => mockZodSchema,
+  describe: () => mockZodSchema,
+}
+
+// Set up Log mock before any imports
+mock.module("@/util/log", () => ({
+  Log: {
+    Level: mockZodSchema,
+    Default: createLogger({ service: "default" }),
+    init: async () => {},
+    create: createLogger,
+    file: () => "",
+  },
+}))
+
+if (!isObserverTest) {
+  // Now safe to import from src/
+  const { Log } = await import("../src/util/log")
+  const { State } = await import("../src/project/state")
+  const { Instance } = await import("../src/project/instance")
+  // Note: resetAllLazy() can cause initialization order issues
+  // const { resetAllLazy } = await import("@codecoder-ai/util/lazy")
+
+  Log.init({
+    print: true,
+    dev: true,
+    level: "DEBUG",
+  })
+
+  // Reset state before each test to ensure test isolation
+  // This clears all cached singleton state from Instance.state() calls
+  beforeEach(() => {
+    State.reset()
+    Instance.reset()
+    // resetAllLazy() - disabled: can cause re-initialization issues
+  })
+}

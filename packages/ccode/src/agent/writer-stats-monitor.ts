@@ -7,12 +7,12 @@ import { ChapterDraftManager } from "./chapter-draft-manager"
 const log = Log.create({ service: "writer-stats-monitor" })
 
 /**
- * WriterStatsMonitor - Periodic execution statistics for expander agents
+ * WriterStatsMonitor - Periodic execution statistics for expander agent
  *
- * When writer agent calls expander/expander-fiction/expander-nonfiction to generate
- * long-form content (tens of thousands of words), execution can take several minutes.
- * This monitor provides periodic status updates every 30 seconds to inform the user
- * about the current execution state.
+ * When writer agent calls the unified expander agent (supports fiction/nonfiction)
+ * to generate long-form content (tens of thousands of words), execution can take
+ * several minutes. This monitor provides periodic status updates every 30 seconds
+ * to inform the user about the current execution state.
  *
  * It also integrates with ChapterDraftManager to periodically save generated content
  * to prevent progress loss during long generation sessions.

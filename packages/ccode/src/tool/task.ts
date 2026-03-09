@@ -163,8 +163,8 @@ export const TaskTool = Tool.define("task", async (ctx) => {
       using _ = defer(() => ctx.abort.removeEventListener("abort", cancel))
       const promptParts = await SessionPrompt.resolvePromptParts(params.prompt)
 
-      // Start monitoring for expander agents (long-form content generation)
-      const isExpanderAgent = ["expander", "expander-fiction", "expander-nonfiction"].includes(params.subagent_type)
+      // Start monitoring for expander agent (unified: supports fiction/nonfiction)
+      const isExpanderAgent = params.subagent_type === "expander"
       if (isExpanderAgent) {
         WriterStatsMonitor.start({
           sessionID: session.id,

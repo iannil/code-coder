@@ -213,11 +213,18 @@ export class Executor {
     }
     this.eventSubscriptions = []
 
-    // Cancel pending executions
+    // Cancel pending executions in queue
     for (const execution of this.queue) {
       execution.status = "rejected"
     }
     this.queue = []
+
+    // Also reject all pending executions awaiting approval
+    for (const execution of this.executions.values()) {
+      if (execution.status === "pending") {
+        execution.status = "rejected"
+      }
+    }
 
     log.info("Executor stopped")
   }

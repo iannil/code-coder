@@ -55,7 +55,7 @@ bun dev @build:security-review
 bun dev @decision:macro
 ```
 
-### 31 个 Agent 概览
+### 29 个 Agent 概览
 
 **主模式 (4):**
 build、plan、writer、autonomous
@@ -66,8 +66,8 @@ code-reverse、jar-code-reverse
 **工程质量 (6):**
 general、explore、code-reviewer、security-reviewer、tdd-guide、architect
 
-**内容创作 (5):**
-expander、expander-fiction、expander-nonfiction、proofreader、verifier
+**内容创作 (3):**
+expander (支持 fiction/nonfiction 自动检测)、proofreader、verifier
 
 **祝融说系列 ZRS (8):**
 observer、decision、macro、trader、picker、miniproduct、ai-engineer、value-analyst

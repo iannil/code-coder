@@ -282,7 +282,13 @@ export class EscalationManager {
    * Get all escalations.
    */
   getAll(): Escalation[] {
-    return Array.from(this.escalations.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    return Array.from(this.escalations.values()).sort((a, b) => {
+      const timeDiff = b.createdAt.getTime() - a.createdAt.getTime()
+      // Use ID as secondary sort for stability when timestamps are equal
+      // IDs are formatted as "esc_{timestamp}_{counter}", so lexicographic comparison works
+      if (timeDiff !== 0) return timeDiff
+      return b.id.localeCompare(a.id)
+    })
   }
 
   /**

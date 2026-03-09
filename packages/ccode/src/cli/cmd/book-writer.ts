@@ -21,7 +21,7 @@ interface BookExpandArgs {
   autonomy?: "autonomous" | "stage-confirm" | "interactive"
   output?: string
   "document-id"?: string
-  agent?: "expander" | "expander-fiction" | "expander-nonfiction"
+  // Note: agent option removed - now uses unified "expander" agent with domain auto-detection
 }
 
 // ============================================================================
@@ -65,12 +65,8 @@ const BookExpandCommand = cmd({
         type: "string",
         describe: "Existing document ID to expand (for continuing expansion)",
       })
-      .option("agent", {
-        type: "string",
-        choices: ["expander", "expander-fiction", "expander-nonfiction"] as const,
-        default: "expander",
-        describe: "Agent to use for expansion",
-      })
+      // Note: agent option removed - now uses unified "expander" agent
+      // Domain is determined by --type option or auto-detected
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {

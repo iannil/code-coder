@@ -117,12 +117,27 @@ export class MemoryClient {
       }
     }
 
-    // Write all to storage as single JSONL file
+    // Write to storage - group by directory for consistency with recordObservation
     if (this.config.enableFileStorage && entries.length > 0) {
-      const filename = `batch-${Date.now()}.jsonl`
-      const filePath = path.join(this.observerPath, "events", filename)
-      const content = entries.map((e) => JSON.stringify(e)).join("\n") + "\n"
-      await Bun.write(filePath, content)
+      const byDirectory = new Map<string, ObserverHistoryEntry[]>()
+
+      for (const entry of entries) {
+        const subdir = entry.type === "pattern" ? "patterns"
+          : entry.type === "decision" || entry.type === "escalation" ? "decisions"
+          : "events"
+
+        const existing = byDirectory.get(subdir) || []
+        existing.push(entry)
+        byDirectory.set(subdir, existing)
+      }
+
+      const timestamp = Date.now()
+      for (const [subdir, dirEntries] of byDirectory) {
+        const filename = `batch-${timestamp}.jsonl`
+        const filePath = path.join(this.observerPath, subdir, filename)
+        const content = dirEntries.map((e) => JSON.stringify(e)).join("\n") + "\n"
+        await Bun.write(filePath, content)
+      }
     }
   }
 
@@ -141,39 +156,49 @@ export class MemoryClient {
       return []
     }
 
-    const eventsDir = path.join(this.observerPath, "events")
     const results: ObserverHistoryEntry[] = []
 
+    // Determine which directories to scan based on type filter
+    const dirsToScan = this.getQueryDirectories(options.type)
+
     try {
-      const globber = new Bun.Glob("**/*.jsonl")
-      for await (const file of globber.scan({ cwd: eventsDir })) {
-        const content = await Bun.file(path.join(eventsDir, file)).text()
-        const lines = content.trim().split("\n")
+      for (const subdir of dirsToScan) {
+        const dir = path.join(this.observerPath, subdir)
+        const globber = new Bun.Glob("**/*.jsonl")
 
-        for (const line of lines) {
-          if (!line.trim()) continue
-          try {
-            const entry = JSON.parse(line) as ObserverHistoryEntry
-            entry.timestamp = new Date(entry.timestamp)
+        try {
+          for await (const file of globber.scan({ cwd: dir })) {
+            const content = await Bun.file(path.join(dir, file)).text()
+            const lines = content.trim().split("\n")
 
-            // Filter by type
-            if (options.type) {
-              const types = Array.isArray(options.type) ? options.type : [options.type]
-              if (!types.includes(entry.type)) continue
+            for (const line of lines) {
+              if (!line.trim()) continue
+              try {
+                const entry = JSON.parse(line) as ObserverHistoryEntry
+                entry.timestamp = new Date(entry.timestamp)
+
+                // Filter by type
+                if (options.type) {
+                  const types = Array.isArray(options.type) ? options.type : [options.type]
+                  if (!types.includes(entry.type)) continue
+                }
+
+                // Filter by time
+                if (options.startTime && entry.timestamp < options.startTime) continue
+                if (options.endTime && entry.timestamp > options.endTime) continue
+
+                results.push(entry)
+
+                if (options.limit && results.length >= options.limit) {
+                  return results.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+                }
+              } catch {
+                // Skip malformed lines
+              }
             }
-
-            // Filter by time
-            if (options.startTime && entry.timestamp < options.startTime) continue
-            if (options.endTime && entry.timestamp > options.endTime) continue
-
-            results.push(entry)
-
-            if (options.limit && results.length >= options.limit) {
-              return results.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-            }
-          } catch {
-            // Skip malformed lines
           }
+        } catch {
+          // Directory may not exist, continue to next
         }
       }
     } catch (error) {
@@ -181,6 +206,31 @@ export class MemoryClient {
     }
 
     return results.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+  }
+
+  /**
+   * Determine which directories to scan based on type filter.
+   */
+  private getQueryDirectories(type?: ObserverHistoryEntry["type"] | ObserverHistoryEntry["type"][]): string[] {
+    if (!type) {
+      // No filter - scan all directories
+      return ["events", "patterns", "decisions"]
+    }
+
+    const types = Array.isArray(type) ? type : [type]
+    const dirs = new Set<string>()
+
+    for (const t of types) {
+      if (t === "pattern") {
+        dirs.add("patterns")
+      } else if (t === "decision" || t === "escalation") {
+        dirs.add("decisions")
+      } else {
+        dirs.add("events")
+      }
+    }
+
+    return Array.from(dirs)
   }
 
   /**

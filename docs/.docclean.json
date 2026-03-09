@@ -29,7 +29,7 @@
     "docs/guides/**",
     "docs/standards/**",
     "docs/templates/**",
-    "docs/zhurongshuo/**"
+    "docs/philosophy/**"
   ],
   "autoClean": {
     "enabled": false,

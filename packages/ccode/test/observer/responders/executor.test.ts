@@ -67,6 +67,7 @@ describe("Executor", () => {
         maxConcurrent: 1,
         timeoutMs: 1000,
         dryRun: true,
+        useDialControl: false, // Use mode-based approval, not dial-based
       })
       await manualExecutor.start()
 
@@ -119,6 +120,7 @@ describe("Executor", () => {
         maxConcurrent: 2,
         timeoutMs: 1000,
         dryRun: true,
+        useDialControl: false, // Use mode-based approval, not dial-based
       })
       await autoExecutor.start()
 

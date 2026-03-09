@@ -43,3 +43,13 @@ export {
   type AgentResult,
   type AgentClientConfig,
 } from "./agent-client"
+
+export {
+  ObservationRouter,
+  getObservationRouter,
+  resetObservationRouter,
+  createObservationRouter,
+  type RoutingRule,
+  type RoutingResult,
+  type RouterConfig,
+} from "./observation-router"

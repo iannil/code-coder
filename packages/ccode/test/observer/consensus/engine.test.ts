@@ -163,8 +163,9 @@ describe("ConsensusEngine", () => {
 
       // Add some observations to the event stream
       const stream = getEventStream()
-      stream.push(createCodeObservation())
-      stream.push(createWorldObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
+      await stream.ingest(createWorldObservation())
 
       const snapshot = await engine.update()
 
@@ -178,10 +179,11 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(createCodeObservation())
-      stream.push(createWorldObservation())
-      stream.push(createSelfObservation())
-      stream.push(createMetaObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
+      await stream.ingest(createWorldObservation())
+      await stream.ingest(createSelfObservation())
+      await stream.ingest(createMetaObservation())
 
       const snapshot = await engine.update()
 
@@ -193,7 +195,8 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(createCodeObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
 
       const snapshot = await engine.update()
 
@@ -209,8 +212,9 @@ describe("ConsensusEngine", () => {
 
       // Add multiple similar observations that might form a pattern
       const stream = getEventStream()
+      stream.start()
       for (let i = 0; i < 5; i++) {
-        stream.push(
+        await stream.ingest(
           createCodeObservation({
             type: "file_change",
             source: `/src/feature/file${i}.ts`,
@@ -229,8 +233,9 @@ describe("ConsensusEngine", () => {
 
       // Add observations
       const stream = getEventStream()
-      stream.push(createCodeObservation({ confidence: 0.3 }))
-      stream.push(
+      stream.start()
+      await stream.ingest(createCodeObservation({ confidence: 0.3 }))
+      await stream.ingest(
         createCodeObservation({
           type: "build_status",
           impact: { scope: "project", severity: "critical", affectedFiles: [] },
@@ -247,7 +252,8 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(
+      stream.start()
+      await stream.ingest(
         createWorldObservation({
           type: "trend",
           data: {
@@ -276,7 +282,8 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(createCodeObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
 
       await engine.update()
 
@@ -295,7 +302,8 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(createCodeObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
 
       await engine.update()
 
@@ -359,7 +367,8 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
-      stream.push(createCodeObservation())
+      stream.start()
+      await stream.ingest(createCodeObservation())
 
       await engine.update()
 
@@ -379,11 +388,12 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
+      stream.start()
       // Add high confidence observations from multiple watchers
-      stream.push(createCodeObservation({ confidence: 0.9 }))
-      stream.push(createWorldObservation({ confidence: 0.85 }))
-      stream.push(createSelfObservation({ confidence: 0.9 }))
-      stream.push(createMetaObservation({ confidence: 0.95 }))
+      await stream.ingest(createCodeObservation({ confidence: 0.9 }))
+      await stream.ingest(createWorldObservation({ confidence: 0.85 }))
+      await stream.ingest(createSelfObservation({ confidence: 0.9 }))
+      await stream.ingest(createMetaObservation({ confidence: 0.95 }))
 
       const snapshot = await engine.update()
 
@@ -395,8 +405,9 @@ describe("ConsensusEngine", () => {
       engine.start()
 
       const stream = getEventStream()
+      stream.start()
       // Only one watcher type
-      stream.push(createCodeObservation({ confidence: 0.8 }))
+      await stream.ingest(createCodeObservation({ confidence: 0.8 }))
 
       const snapshot = await engine.update()
 

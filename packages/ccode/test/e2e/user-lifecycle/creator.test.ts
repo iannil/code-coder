@@ -10,7 +10,7 @@ import path from "path"
 import { tmpdir } from "../../fixture/fixture"
 import { Instance } from "../../../src/project/instance"
 import { Provider } from "../../../src/provider/provider"
-import { Env } from "../../../src/env"
+import { Env } from "../../../src/util/env"
 import { Session } from "../../../src/session"
 import { Config } from "../../../src/config/config"
 import { Agent } from "../../../src/agent/agent"
@@ -196,7 +196,7 @@ describe.skipIf(SKIP_E2E)("ULC-CRT: Content Creator Lifecycle", () => {
       })
     })
 
-    test("ULC-CRT-WRTR-005: should have expander-fiction agent available", async () => {
+    test("ULC-CRT-WRTR-005: unified expander should support fiction via domain detection", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
           await Bun.write(
@@ -214,18 +214,19 @@ describe.skipIf(SKIP_E2E)("ULC-CRT: Content Creator Lifecycle", () => {
           Env.set("ANTHROPIC_API_KEY", "sk-ant-test-creator-key")
         },
         fn: async () => {
-          const fictionExpanderAgent = await Agent.get("expander-fiction")
+          const expanderAgent = await Agent.get("expander")
 
-          expect(fictionExpanderAgent).toBeDefined()
-          expect(fictionExpanderAgent.name).toBe("expander-fiction")
-          expect(fictionExpanderAgent.mode).toBe("subagent")
-          expect(fictionExpanderAgent.description).toContain("Fiction")
-          expect(fictionExpanderAgent.description).toContain("worldbuilding")
+          expect(expanderAgent).toBeDefined()
+          expect(expanderAgent.name).toBe("expander")
+          expect(expanderAgent.mode).toBe("subagent")
+          // Unified expander supports both fiction and nonfiction via domain tags
+          expect(expanderAgent.description).toContain("fiction")
+          expect(expanderAgent.description).toContain("nonfiction")
         },
       })
     })
 
-    test("ULC-CRT-WRTR-006: should have expander-nonfiction agent available", async () => {
+    test("ULC-CRT-WRTR-006: unified expander prompt should include domain detection", async () => {
       await using tmp = await tmpdir({
         init: async (dir) => {
           await Bun.write(
@@ -243,13 +244,15 @@ describe.skipIf(SKIP_E2E)("ULC-CRT: Content Creator Lifecycle", () => {
           Env.set("ANTHROPIC_API_KEY", "sk-ant-test-creator-key")
         },
         fn: async () => {
-          const nonfictionExpanderAgent = await Agent.get("expander-nonfiction")
+          const expanderAgent = await Agent.get("expander")
 
-          expect(nonfictionExpanderAgent).toBeDefined()
-          expect(nonfictionExpanderAgent.name).toBe("expander-nonfiction")
-          expect(nonfictionExpanderAgent.mode).toBe("subagent")
-          expect(nonfictionExpanderAgent.description).toContain("Non-fiction")
-          expect(nonfictionExpanderAgent.description).toContain("argumentation")
+          expect(expanderAgent).toBeDefined()
+          expect(expanderAgent.name).toBe("expander")
+          expect(expanderAgent.mode).toBe("subagent")
+          // Prompt should include domain detection capability
+          expect(expanderAgent.prompt).toContain("Domain Detection")
+          expect(expanderAgent.prompt).toContain("[DOMAIN:fiction]")
+          expect(expanderAgent.prompt).toContain("[DOMAIN:nonfiction]")
         },
       })
     })
@@ -273,7 +276,8 @@ describe.skipIf(SKIP_E2E)("ULC-CRT: Content Creator Lifecycle", () => {
         },
         fn: async () => {
           const agents = await Agent.list()
-          const creatorAgents = ["writer", "proofreader", "expander", "expander-fiction", "expander-nonfiction"]
+          // expander-fiction and expander-nonfiction merged into unified expander
+          const creatorAgents = ["writer", "proofreader", "expander"]
 
           const agentNames = agents.map((a) => a.name)
           for (const agentName of creatorAgents) {
@@ -483,13 +487,10 @@ The rain pattered against the glass, creating a symphony of nature's melancholy.
         },
         fn: async () => {
           const expander = await Agent.get("expander")
-          const expanderFiction = await Agent.get("expander-fiction")
-          const expanderNonfiction = await Agent.get("expander-nonfiction")
 
-          // All expander agents should have high output limits for long-form content
+          // Unified expander should have high output limits for long-form content
+          // (expander-fiction and expander-nonfiction merged into unified expander)
           expect(expander.options.maxOutputTokens).toBe(128_000)
-          expect(expanderFiction.options.maxOutputTokens).toBe(128_000)
-          expect(expanderNonfiction.options.maxOutputTokens).toBe(128_000)
         },
       })
     })

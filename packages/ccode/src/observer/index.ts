@@ -316,6 +316,10 @@ export {
   getAgentClient,
   resetAgentClient,
   createAgentClient,
+  ObservationRouter,
+  getObservationRouter,
+  resetObservationRouter,
+  createObservationRouter,
   type ChannelType,
   type SendMessageRequest,
   type MessageContent,
@@ -328,6 +332,9 @@ export {
   type AgentInvocation,
   type AgentResult,
   type AgentClientConfig,
+  type RoutingRule,
+  type RoutingResult,
+  type RouterConfig,
 } from "./integration"
 
 // ─────────────────────────────────────────────────────────────────────────────
