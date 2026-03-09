@@ -209,6 +209,82 @@ export class Orchestrator {
     success: boolean
     result: {
       success: boolean
+      mode?: "code" | "research" | "decision"
+      // Code mode fields
+      qualityScore?: number
+      crazinessScore?: number
+      iterationsCompleted?: number
+      // Research mode fields
+      topic?: string
+      report?: string
+      sources?: Array<{ url: string; title: string; snippet: string; credibility: "high" | "medium" | "low" }>
+      insights?: string[]
+      // Decision mode fields
+      research?: string
+      closeScore?: {
+        convergence: number
+        leverage: number
+        optionality: number
+        surplus: number
+        evolution: number
+        overall: number
+      }
+      recommendation?: string
+      alternatives?: string[]
+      // Common fields
+      duration: number
+      tokensUsed: number
+      costUSD: number
+    } | null
+  }> {
+    try {
+      // Step 1: Determine task mode
+      const mode = await this.resolveTaskMode(request)
+
+      log.info("Task mode resolved", {
+        sessionId: this.context.sessionId,
+        mode,
+      })
+
+      // Step 2: Route to appropriate execution path
+      switch (mode) {
+        case "research":
+          return this.processResearchTask(request)
+        case "decision":
+          return this.processDecisionTask(request)
+        case "code":
+        default:
+          return this.processCodeTask(request)
+      }
+    } catch (error) {
+      log.error("Session error", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+
+      await this.stateMachine.transition(AutonomousState.FAILED, {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+
+      await Bus.publish(AutonomousEvent.SessionFailed, {
+        sessionId: this.context.sessionId,
+        requestId: this.context.requestId,
+        error: error instanceof Error ? error.message : String(error),
+        state: this.stateMachine.getState(),
+      })
+
+      return { success: false, result: null }
+    }
+  }
+
+  /**
+   * Process a code task through TDD pipeline
+   */
+  private async processCodeTask(request: string): Promise<{
+    success: boolean
+    result: {
+      success: boolean
+      mode: "code"
       qualityScore: number
       crazinessScore: number
       duration: number
@@ -372,6 +448,7 @@ export class Orchestrator {
 
       const resultData = {
         success: true,
+        mode: "code" as const,
         qualityScore: evaluation?.qualityScore ?? 0,
         crazinessScore: evaluation?.crazinessScore ?? 0,
         duration: Date.now() - this.context.startTime,
