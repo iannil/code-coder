@@ -57,7 +57,7 @@ export { DecisionHistory } from "./decision/history"
 
 // Orchestration
 export { Orchestrator, createOrchestrator } from "./orchestration/orchestrator"
-export type { OrchestratorConfig, SessionContext } from "./orchestration/orchestrator"
+export type { OrchestratorConfig, SessionContext, TaskMode } from "./orchestration/orchestrator"
 export { PhaseRunner, createPhaseRunner, PhaseTemplates } from "./orchestration/phase-runner"
 export type { Phase, PhaseContext, PhaseResult, PhaseRunnerConfig } from "./orchestration/phase-runner"
 export { TaskQueue, createTaskQueue } from "./orchestration/task-queue"
