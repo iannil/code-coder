@@ -6,10 +6,20 @@
 
 ### 1.1 CodeCoder 是什么
 
-CodeCoder 是一个开源 AI 编程代理，让 AI 像人类开发者一样工作——能够阅读代码、执行命令、编辑文件、搜索网络，并在需要时请求用户授权。
+CodeCoder 是一个以观察为中心的 AI 代理系统 (Observation-Centric AI Agent System)，基于"祝融说"哲学构建。核心理念是将传统的"执行中心"架构转变为"观察中心"架构。
+
+**核心组件**:
+
+- **观察者网络 (Observer Network)**: 系统核心，包含四大观察者节点（CodeWatch、WorldWatch、SelfWatch、MetaWatch），持续观察代码、外部世界、自身行为和系统健康
+- **齿轮系统 (Gear System)**: 分级自动化控制机制，从 Gear 0（完全手动）到 Gear 4（完全自主），用户可根据场景动态调整
+- **共识引擎 (Consensus Engine)**: 基于 CLOSE 五维评估法处理观察事件，形成行动建议
+
+系统让 AI 像人类开发者一样工作——能够阅读代码、执行命令、编辑文件、搜索网络，并在需要时请求用户授权。
 
 ### 1.2 核心特性
 
+- **观察者网络**: 四大观察者节点（CodeWatch、WorldWatch、SelfWatch、MetaWatch）提供全方位感知能力
+- **齿轮系统**: 分级自动化控制（Gear 0-4），动态调整人机协作程度
 - **多 AI 提供商支持**: Claude、OpenAI、Google Gemini、本地模型等 20+ 提供商
 - **CLI/TUI 界面**: 基于 SolidJS + OpenTUI 的终端用户界面
 - **MCP 协议支持**: Model Context Protocol，可扩展的工具生态系统
