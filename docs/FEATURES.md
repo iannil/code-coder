@@ -6,10 +6,12 @@
 
 ## 1. 项目概览
 
-**CodeCoder** 是一个**个人智囊系统**（Personal Brain Trust System），融合工程能力与决策智慧的 AI 顾问平台。
+**CodeCoder** 是一个**AI 代理观察系统**（AI Agent Observation System），融合工程能力与决策智慧的 AI 顾问平台。
 
 ### 核心特性
 
+- **观察者网络**: 四大观察者节点（CodeWatch/WorldWatch/SelfWatch/MetaWatch）实时监控
+- **档位控制系统**: P/N/D/S/M 五档控制，类似汽车档位的直观自主性调节
 - **多 AI 提供商支持**: Claude、OpenAI、Google、Amazon Bedrock、Azure 等 30+ 提供商
 - **多模式交互**: CLI 命令行、TUI 终端界面、无头 API 服务器
 - **客户端/服务器架构**: 支持本地和远程操作
@@ -21,17 +23,131 @@
 
 | 层级 | 定位 | 涵盖内容 |
 |------|------|----------|
-| 工程智囊层 | 代码与系统 | 代码审查、安全分析、TDD、架构设计、逆向工程 |
-| 领域智囊层 | 专业知识 | 宏观经济、交易分析、选品策略、极小产品、AI 工程 |
-| 思维智囊层 | 决策框架 | 祝融说哲学体系、CLOSE 决策框架、观察者理论 |
+| 观察智慧层 | 感知与洞察 | 观察者网络、共识引擎、世界模型、模式检测 |
+| 工程智慧层 | 代码与系统 | 代码审查、安全分析、TDD、架构设计、逆向工程 |
+| 领域智慧层 | 专业知识 | 宏观经济、交易分析、选品策略、极小产品、AI 工程 |
+| 思维智慧层 | 决策框架 | 祝融说哲学体系、CLOSE 决策框架、观察者理论 |
 
 ---
 
-## 2. CLI 命令系统
+## 2. 观察者网络 (Observer Network)
+
+观察者网络是 CodeCoder 的核心架构，将系统从执行中心转变为观察中心，体现"祝融说"哲学。
+
+### 2.1 四大观察者节点
+
+| 观察者 | 职责 | 关联 Agent | 观察类型 |
+|--------|------|-----------|----------|
+| **CodeWatch** | 代码库扫描、Git 变更、构建状态、测试覆盖 | explore | git_change, build_status, test_coverage, tech_debt, file_change |
+| **WorldWatch** | 市场数据、新闻舆情、API 变化、依赖更新 | macro, trader | market_data, news, api_change, dependency_release, security_advisory |
+| **SelfWatch** | Agent 行为、决策日志、错误模式、资源使用 | code-reviewer, security-reviewer, decision | agent_behavior, decision_log, error_pattern, tool_invocation |
+| **MetaWatch** | 观察质量、系统健康、观察盲点、共识漂移 | observer | observation_quality, system_health, blind_spot, consensus_drift |
+
+### 2.2 架构层次
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    观察者层 (Observer Layer)                        │
+│   CodeWatch │ WorldWatch │ SelfWatch │ MetaWatch                   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    事件流 (Event Stream)                            │
+│   缓冲 │ 路由 │ 聚合                                                │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    共识层 (Consensus Layer)                         │
+│   注意力 │ 模式检测 │ 异常检测 │ 世界模型                           │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    模式控制器 (Mode Controller)                     │
+│   档位控制 │ CLOSE 评估 │ 升级管理                                  │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    响应层 (Response Layer)                          │
+│   Notifier │ Analyzer │ Executor │ Historian                       │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### 2.3 共识引擎组件
+
+| 组件 | 功能 | 描述 |
+|------|------|------|
+| **AttentionCalculator** | 注意力计算 | 基于时间衰减和优先级权重计算观察事件的注意力分数 |
+| **PatternDetector** | 模式检测 | 识别趋势、相关性、周期、阈值和序列模式 |
+| **AnomalyDetector** | 异常检测 | 检测离群值、突变、缺失和时序异常 |
+| **OpportunityIdentifier** | 机会识别 | 发现优化、自动化、学习和市场机会 |
+| **WorldModelBuilder** | 世界模型构建 | 聚合观察事件为统一的世界状态视图 |
+
+### 2.4 响应组件
+
+| 组件 | 功能 | 描述 |
+|------|------|------|
+| **Notifier** | 通知发送 | 根据优先级和规则发送通知到各种渠道 |
+| **Analyzer** | 深度分析 | 调用相关 Agent 进行深度分析 |
+| **Executor** | 任务执行 | 根据决策执行自动化操作 |
+| **Historian** | 历史记录 | 记录观察、决策和执行的完整历史 |
+
+---
+
+## 3. 档位控制系统 (Gear System)
+
+档位系统提供类似汽车变速器的直观控制，通过三个独立旋钮控制系统自主性。
+
+### 3.1 档位预设
+
+| 档位 | 名称 | 描述 | 观察 | 决策 | 执行 |
+|------|------|------|------|------|------|
+| **P** | Park | 系统停止，无资源消耗 | 0% | 0% | 0% |
+| **N** | Neutral | 仅观察记录，不干预 | 50% | 0% | 0% |
+| **D** | Drive | 日常平衡自主模式 | 70% | 60% | 40% |
+| **S** | Sport | 高自主激进模式 | 90% | 80% | 70% |
+| **M** | Manual | 手动控制每个旋钮 | 自定义 | 自定义 | 自定义 |
+
+### 3.2 三旋钮控制
+
+| 旋钮 | 范围 | 低值行为 | 高值行为 |
+|------|------|----------|----------|
+| **Observe** | 0-100% | 被动等待 | 主动扫描 |
+| **Decide** | 0-100% | 仅提建议 | 自主决策 |
+| **Act** | 0-100% | 等待确认 | 立即执行 |
+
+### 3.3 档位使用场景
+
+| 场景 | 推荐档位 | 说明 |
+|------|----------|------|
+| 代码审查 | D (Drive) | 自动发现问题，等待确认修复 |
+| 生产监控 | N (Neutral) | 只监控记录，不自动干预 |
+| 自动化测试 | S (Sport) | 高度自主执行测试流程 |
+| 敏感操作 | P (Park) | 关闭自主性，完全手动控制 |
+| 定制需求 | M (Manual) | 精细调整各维度自主性 |
+
+### 3.4 CLOSE 评估框架
+
+档位切换基于 CLOSE 五维评估：
+
+| 维度 | 英文 | 含义 | 评估内容 |
+|------|------|------|----------|
+| C | Convergence | 收敛性 | 观察的确定性程度 |
+| L | Leverage | 杠杆率 | 行动的影响力 |
+| O | Optionality | 可选性 | 保留的选择空间 |
+| S | Surplus | 余量 | 可用资源余量 |
+| E | Evolution | 演化 | 学习成长空间 |
+
+---
+
+## 4. CLI 命令系统
 
 CLI 入口: `packages/ccode/src/index.ts`
 
-### 2.1 主要命令
+### 4.1 主要命令
 
 | 命令 | 功能描述 | 关键参数 |
 |------|----------|----------|
@@ -39,7 +155,7 @@ CLI 入口: `packages/ccode/src/index.ts`
 | `codecoder run [message..]` | 以命令行模式运行 | `--model`, `--agent`, `--continue`, `--session`, `--file`, `--format`, `--title`, `--variant` |
 | `codecoder serve` | 启动无头 API 服务器 | `--port` (默认 4400) |
 
-### 2.2 认证命令
+### 4.2 认证命令
 
 | 命令 | 功能描述 |
 |------|----------|
@@ -47,21 +163,21 @@ CLI 入口: `packages/ccode/src/index.ts`
 | `codecoder auth logout [provider]` | 登出指定提供商 |
 | `codecoder auth list` | 列出已认证的提供商 |
 
-### 2.3 Agent 管理命令
+### 4.3 Agent 管理命令
 
 | 命令 | 功能描述 |
 |------|----------|
 | `codecoder agent list` | 列出所有可用 Agent |
 | `codecoder agent generate` | 自动生成 Agent 配置 |
 
-### 2.4 模型管理命令
+### 4.4 模型管理命令
 
 | 命令 | 功能描述 |
 |------|----------|
 | `codecoder models list` | 列出所有可用模型 |
 | `codecoder models default` | 显示/设置默认模型 |
 
-### 2.5 Session 管理命令
+### 4.5 Session 管理命令
 
 | 命令 | 功能描述 |
 |------|----------|
@@ -70,7 +186,7 @@ CLI 入口: `packages/ccode/src/index.ts`
 | `codecoder session delete <id>` | 删除指定会话 |
 | `codecoder session export <id>` | 导出会话 |
 
-### 2.6 MCP 管理命令
+### 4.6 MCP 管理命令
 
 | 命令 | 功能描述 |
 |------|----------|
@@ -79,28 +195,28 @@ CLI 入口: `packages/ccode/src/index.ts`
 | `codecoder mcp connect <name>` | 连接 MCP 服务器 |
 | `codecoder mcp disconnect <name>` | 断开 MCP 服务器 |
 
-### 2.7 文档生成命令
+### 4.7 文档生成命令
 
 | 命令 | 功能描述 |
 |------|----------|
 | `codecoder document` | 长文档生成入口 |
 | `codecoder chapter` | 章节管理 |
 
-### 2.8 逆向工程命令
+### 4.8 逆向工程命令
 
 | 命令 | 功能描述 |
 |------|----------|
 | `codecoder reverse <url>` | 网站逆向工程分析 |
 | `codecoder jar-reverse <file>` | JAR 文件逆向工程分析 |
 
-### 2.9 记忆系统命令
+### 4.9 记忆系统命令
 
 | 命令 | 功能描述 |
 |------|----------|
 | `codecoder memory show` | 显示记忆内容 |
 | `codecoder memory clear` | 清除记忆 |
 
-### 2.10 调试命令
+### 4.10 调试命令
 
 | 命令 | 功能描述 |
 |------|----------|
@@ -114,7 +230,7 @@ CLI 入口: `packages/ccode/src/index.ts`
 | `codecoder debug paths` | 显示全局路径 |
 | `codecoder debug wait` | 无限等待（调试用） |
 
-### 2.11 辅助命令
+### 4.11 辅助命令
 
 | 命令 | 功能描述 |
 |------|----------|
@@ -124,26 +240,26 @@ CLI 入口: `packages/ccode/src/index.ts`
 
 ---
 
-## 3. Agent 系统
+## 5. Agent 系统
 
 Agent 定义: `packages/ccode/src/agent/agent.ts`
 Prompt 目录: `packages/ccode/src/agent/prompt/`
 
-### 3.1 主模式 Agent
+### 5.1 主模式 Agent
 
 | Agent | 名称 | 功能描述 | 模式 |
 |-------|------|----------|------|
 | `build` | 构建模式 | 默认主模式，支持提问和计划进入 | primary |
 | `plan` | 计划模式 | 计划编写模式，只能编辑计划文件 | primary |
 
-### 3.2 逆向工程 Agent
+### 5.2 逆向工程 Agent
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
 | `code-reverse` | 网站逆向 | 像素级网站复刻规划，分析技术栈、提取设计系统 | temperature: 0.3, color: cyan |
 | `jar-code-reverse` | JAR 逆向 | Java 源码重建，分析框架库、提取类结构 | temperature: 0.3, color: magenta |
 
-### 3.3 工程类 Agent
+### 5.3 工程类 Agent
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
@@ -154,14 +270,14 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `tdd-guide` | TDD 指导 | 强制测试驱动开发方法论 | subagent |
 | `architect` | 架构师 | 系统架构设计、接口定义、模式建立 | subagent |
 
-### 3.4 内容创作 Agent
+### 5.4 内容创作 Agent
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
 | `writer` | 写作 Agent | 长文写作专家（20k+ 字），大纲生成、章节写作、风格一致性 | temperature: 0.7 |
 | `proofreader` | 校对 Agent | 长文校对专家，使用 PROOF 框架检查语法、拼写、风格等 | temperature: 0.3 |
 
-### 3.5 祝融说系列 Agent (ZRS)
+### 5.5 祝融说系列 Agent (ZRS)
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
@@ -173,13 +289,13 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `miniproduct` | 极小产品教练 | 指导独立开发者 0-1 构建可盈利软件产品 | temperature: 0.6 |
 | `ai-engineer` | AI 工程师导师 | Python 基础到 LLM 应用开发、RAG 系统、微调优化 | temperature: 0.5 |
 
-### 3.6 工具辅助 Agent
+### 5.6 工具辅助 Agent
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
 | `synton-assistant` | SYNTON-DB 助手 | 帮助理解和使用 LLM 记忆数据库、PaQL 查询、Graph-RAG | temperature: 0.5 |
 
-### 3.7 系统隐藏 Agent
+### 5.7 系统隐藏 Agent
 
 | Agent | 名称 | 功能描述 | 特性 |
 |-------|------|----------|------|
@@ -187,7 +303,7 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `title` | 标题生成 | 自动生成会话标题 | hidden: true, temperature: 0.5 |
 | `summary` | 摘要生成 | 生成会话摘要 | hidden: true |
 
-### 3.8 Agent 配置参数
+### 5.8 Agent 配置参数
 
 | 参数 | 类型 | 描述 |
 |------|------|------|
@@ -206,11 +322,11 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 
 ---
 
-## 4. 工具系统 (Tools)
+## 6. 工具系统 (Tools)
 
 工具定义: `packages/ccode/src/tool/`
 
-### 4.1 文件操作工具
+### 6.1 文件操作工具
 
 | 工具 | 文件 | 功能描述 | 关键参数 |
 |------|------|----------|----------|
@@ -219,7 +335,7 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `edit` | `edit.ts` | 精确字符串替换编辑 | `filePath`, `oldString`, `newString`, `replaceAll` |
 | `multiedit` | `multiedit.ts` | 批量多文件编辑 | `edits[]` |
 
-### 4.2 搜索工具
+### 6.2 搜索工具
 
 | 工具 | 文件 | 功能描述 | 关键参数 |
 |------|------|----------|----------|
@@ -228,21 +344,21 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `codesearch` | `codesearch.ts` | 代码语义搜索 | `query` |
 | `ls` | `ls.ts` | 目录列表 | `path` |
 
-### 4.3 执行工具
+### 6.3 执行工具
 
 | 工具 | 文件 | 功能描述 | 关键参数 |
 |------|------|----------|----------|
 | `bash` | `bash.ts` | Shell 命令执行 | `command`, `timeout`, `workdir`, `description` |
 | `task` | `task.ts` | 子任务调度 | `prompt`, `agent`, `model` |
 
-### 4.4 网络工具
+### 6.4 网络工具
 
 | 工具 | 文件 | 功能描述 | 关键参数 |
 |------|------|----------|----------|
 | `webfetch` | `webfetch.ts` | Web 内容获取和处理 | `url`, `prompt` |
 | `websearch` | `websearch.ts` | Web 搜索 | `query`, `allowed_domains`, `blocked_domains` |
 
-### 4.5 交互工具
+### 6.5 交互工具
 
 | 工具 | 文件 | 功能描述 | 关键参数 |
 |------|------|----------|----------|
@@ -250,13 +366,13 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `plan` | `plan.ts` | 计划模式切换 | `enter`/`exit` |
 | `skill` | `skill.ts` | 技能调用 | `skill`, `args` |
 
-### 4.6 任务管理工具
+### 6.6 任务管理工具
 
 | 工具 | 文件 | 功能描述 |
 |------|------|----------|
 | `todo` | `todo.ts` | 任务列表管理 |
 
-### 4.7 其他工具
+### 6.7 其他工具
 
 | 工具 | 文件 | 功能描述 |
 |------|------|----------|
@@ -267,7 +383,7 @@ Prompt 目录: `packages/ccode/src/agent/prompt/`
 | `truncation` | `truncation.ts` | 输出截断处理 |
 | `registry` | `registry.ts` | 工具注册表 |
 
-### 4.8 工具定义结构
+### 6.8 工具定义结构
 
 ```typescript
 interface Tool.Info {
@@ -287,11 +403,11 @@ interface Tool.Info {
 
 ---
 
-## 5. AI Provider 系统
+## 7. AI Provider 系统
 
 Provider 定义: `packages/ccode/src/provider/provider.ts`
 
-### 5.1 内置 Provider（直接支持）
+### 7.1 内置 Provider（直接支持）
 
 | Provider ID | 名称 | SDK 包 |
 |-------------|------|--------|
@@ -318,7 +434,7 @@ Provider 定义: `packages/ccode/src/provider/provider.ts`
 | `gitlab` | GitLab Duo | `@gitlab/gitlab-ai-provider` |
 | `ccode` | CodeCoder 默认 | 内置 |
 
-### 5.2 认证方式
+### 7.2 认证方式
 
 | 认证类型 | 描述 | 支持的 Provider |
 |----------|------|-----------------|
@@ -327,7 +443,7 @@ Provider 定义: `packages/ccode/src/provider/provider.ts`
 | `env` | 环境变量 | 所有 Provider |
 | `wellknown` | Well-Known 配置 | 企业级部署 |
 
-### 5.3 模型属性
+### 7.3 模型属性
 
 ```typescript
 interface Model {
@@ -359,7 +475,7 @@ interface Model {
 }
 ```
 
-### 5.4 Provider 配置示例
+### 7.4 Provider 配置示例
 
 ```json
 {
@@ -385,18 +501,18 @@ interface Model {
 
 ---
 
-## 6. MCP (Model Context Protocol) 系统
+## 8. MCP (Model Context Protocol) 系统
 
 MCP 定义: `packages/ccode/src/mcp/index.ts`
 
-### 6.1 服务器类型
+### 8.1 服务器类型
 
 | 类型 | 配置字段 | 描述 |
 |------|----------|------|
 | `local` | `command`, `environment` | 本地进程 MCP 服务器 |
 | `remote` | `url`, `headers`, `oauth` | 远程 HTTP/SSE MCP 服务器 |
 
-### 6.2 本地服务器配置
+### 8.2 本地服务器配置
 
 ```json
 {
@@ -414,7 +530,7 @@ MCP 定义: `packages/ccode/src/mcp/index.ts`
 }
 ```
 
-### 6.3 远程服务器配置
+### 8.3 远程服务器配置
 
 ```json
 {
@@ -437,7 +553,7 @@ MCP 定义: `packages/ccode/src/mcp/index.ts`
 }
 ```
 
-### 6.4 OAuth 认证流程
+### 8.4 OAuth 认证流程
 
 1. **发现**: 自动发现 OAuth 元数据
 2. **注册**: 动态客户端注册（RFC 7591）或使用预配置 clientId
@@ -445,7 +561,7 @@ MCP 定义: `packages/ccode/src/mcp/index.ts`
 4. **回调**: 本地服务器接收回调
 5. **令牌**: 交换并存储令牌
 
-### 6.5 MCP 状态
+### 8.5 MCP 状态
 
 | 状态 | 描述 |
 |------|------|
@@ -455,7 +571,7 @@ MCP 定义: `packages/ccode/src/mcp/index.ts`
 | `needs_auth` | 需要认证 |
 | `needs_client_registration` | 需要客户端注册 |
 
-### 6.6 MCP 功能
+### 8.6 MCP 功能
 
 - **工具调用**: 调用 MCP 服务器提供的工具
 - **Prompt 模板**: 使用 MCP 提供的 prompt 模板
@@ -463,11 +579,11 @@ MCP 定义: `packages/ccode/src/mcp/index.ts`
 
 ---
 
-## 7. LSP (Language Server Protocol) 集成
+## 9. LSP (Language Server Protocol) 集成
 
 LSP 定义: `packages/ccode/src/lsp/server.ts`
 
-### 7.1 支持的语言服务器
+### 9.1 支持的语言服务器
 
 | ID | 语言/框架 | 扩展名 | 自动安装 |
 |----|----------|--------|----------|
@@ -508,7 +624,7 @@ LSP 定义: `packages/ccode/src/lsp/server.ts`
 | `tinymist` | Typst | .typ | 自动安装 |
 | `haskell-language-server` | Haskell | .hs, .lhs | 需要安装 |
 
-### 7.2 LSP 配置
+### 9.2 LSP 配置
 
 ```json
 {
@@ -526,7 +642,7 @@ LSP 定义: `packages/ccode/src/lsp/server.ts`
 }
 ```
 
-### 7.3 LSP 功能
+### 9.3 LSP 功能
 
 - **诊断信息**: 编译错误、警告、提示
 - **自动根目录检测**: 基于项目文件（package.json、go.mod 等）
@@ -535,11 +651,11 @@ LSP 定义: `packages/ccode/src/lsp/server.ts`
 
 ---
 
-## 8. Session 会话系统
+## 10. Session 会话系统
 
 Session 定义: `packages/ccode/src/session/index.ts`
 
-### 8.1 会话结构
+### 10.1 会话结构
 
 ```typescript
 interface Session.Info {
@@ -572,7 +688,7 @@ interface Session.Info {
 }
 ```
 
-### 8.2 会话操作
+### 10.2 会话操作
 
 | 操作 | 函数 | 描述 |
 |------|------|------|
@@ -584,7 +700,7 @@ interface Session.Info {
 | 分支 | `Session.fork({ sessionID, messageID })` | 从指定消息分支 |
 | 子会话 | `Session.children(parentID)` | 获取子会话 |
 
-### 8.3 消息类型
+### 10.3 消息类型
 
 | 类型 | 描述 |
 |------|------|
@@ -592,7 +708,7 @@ interface Session.Info {
 | `assistant` | 助手消息 |
 | `system` | 系统消息 |
 
-### 8.4 消息部分类型
+### 10.4 消息部分类型
 
 | Part 类型 | 描述 |
 |-----------|------|
@@ -603,7 +719,7 @@ interface Session.Info {
 | `step-start` | 步骤开始标记 |
 | `step-finish` | 步骤结束标记 |
 
-### 8.5 会话事件
+### 10.5 会话事件
 
 | 事件 | 描述 |
 |------|------|
@@ -616,11 +732,11 @@ interface Session.Info {
 
 ---
 
-## 9. 配置系统
+## 11. 配置系统
 
 配置定义: `packages/ccode/src/config/config.ts`
 
-### 9.1 配置文件位置（优先级从低到高）
+### 11.1 配置文件位置（优先级从低到高）
 
 1. Well-Known 远程配置
 2. 全局配置: `~/.config/codecoder/codecoder.json(c)`
@@ -629,7 +745,7 @@ interface Session.Info {
 5. `.codecoder/` 目录下的配置
 6. `CCODE_CONFIG_CONTENT` 环境变量
 
-### 9.2 主要配置项
+### 11.2 主要配置项
 
 ```typescript
 interface Config.Info {
@@ -666,7 +782,7 @@ interface Config.Info {
 }
 ```
 
-### 9.3 快捷键配置
+### 11.3 快捷键配置
 
 | 分类 | 示例快捷键 |
 |------|------------|
@@ -677,7 +793,7 @@ interface Config.Info {
 | Agent 操作 | `agent_list`, `agent_cycle` |
 | 输入编辑 | `input_clear`, `input_submit`, `input_newline` |
 
-### 9.4 环境变量支持
+### 11.4 环境变量支持
 
 配置文件中支持环境变量替换：
 
@@ -693,7 +809,7 @@ interface Config.Info {
 }
 ```
 
-### 9.5 文件引用支持
+### 11.5 文件引用支持
 
 ```json
 {
@@ -707,18 +823,18 @@ interface Config.Info {
 
 ---
 
-## 10. 记忆系统
+## 12. 记忆系统
 
 记忆系统位置: `./memory/`
 
-### 10.1 存储结构
+### 12.1 存储结构
 
 | 层级 | 路径 | 类型 | 用途 |
 |------|------|------|------|
 | 流层（每日） | `./memory/daily/{YYYY-MM-DD}.md` | 追加日志 | 每日交互记录、决策、任务 |
 | 沉积层（长期） | `./memory/MEMORY.md` | 结构化知识 | 用户偏好、项目上下文、关键决策 |
 
-### 10.2 操作规则
+### 12.2 操作规则
 
 | 操作 | 时机 | 行为 |
 |------|------|------|
@@ -726,7 +842,7 @@ interface Config.Info {
 | 即时写入 | 重要交互后 | 追加到当日笔记（不可变） |
 | 整合写入 | 检测到重要信息 | 更新 MEMORY.md（合并/替换） |
 
-### 10.3 长期记忆分类
+### 12.3 长期记忆分类
 
 - `## 用户偏好`
 - `## 项目上下文`
@@ -735,11 +851,11 @@ interface Config.Info {
 
 ---
 
-## 11. Skill 技能系统
+## 13. Skill 技能系统
 
 Skill 定义: `packages/ccode/src/skill/skill.ts`
 
-### 11.1 Skill 扫描路径
+### 13.1 Skill 扫描路径
 
 1. 内置 Skills: `packages/ccode/src/skill/builtin/*/SKILL.md`
 2. 项目 Skills: `.claude/skills/**/SKILL.md`
@@ -747,7 +863,7 @@ Skill 定义: `packages/ccode/src/skill/skill.ts`
 4. 全局 Skills: `~/.claude/skills/**/SKILL.md`
 5. 配置目录 Skills
 
-### 11.2 Skill 定义格式
+### 13.2 Skill 定义格式
 
 ```markdown
 ---
@@ -758,7 +874,7 @@ description: 技能描述
 技能的详细提示词内容...
 ```
 
-### 11.3 Skill 结构
+### 13.3 Skill 结构
 
 ```typescript
 interface Skill.Info {
@@ -768,7 +884,7 @@ interface Skill.Info {
 }
 ```
 
-### 11.4 内置 Skill
+### 13.4 内置 Skill
 
 | Skill | 描述 |
 |-------|------|
@@ -776,11 +892,11 @@ interface Skill.Info {
 
 ---
 
-## 12. Hook 钩子系统
+## 14. Hook 钩子系统
 
 Hook 定义: `packages/ccode/src/hook/hook.ts`
 
-### 12.1 生命周期钩子
+### 14.1 生命周期钩子
 
 | 钩子 | 触发时机 |
 |------|----------|
@@ -789,7 +905,7 @@ Hook 定义: `packages/ccode/src/hook/hook.ts`
 | `PreResponse` | 响应生成前 |
 | `Stop` | 会话停止时 |
 
-### 12.2 钩子动作类型
+### 14.2 钩子动作类型
 
 | 动作类型 | 描述 |
 |----------|------|
@@ -802,7 +918,7 @@ Hook 定义: `packages/ccode/src/hook/hook.ts`
 | `analyze_changes` | 分析变更 |
 | `scan_files` | 扫描文件 |
 
-### 12.3 钩子配置
+### 14.3 钩子配置
 
 ```json
 // .codecoder/hooks/hooks.json
@@ -829,7 +945,7 @@ Hook 定义: `packages/ccode/src/hook/hook.ts`
 }
 ```
 
-### 12.4 钩子上下文
+### 14.4 钩子上下文
 
 ```typescript
 interface Hook.Context {
@@ -846,11 +962,11 @@ interface Hook.Context {
 
 ---
 
-## 13. Permission 权限系统
+## 15. Permission 权限系统
 
 Permission 定义: `packages/ccode/src/permission/next.ts`
 
-### 13.1 权限动作
+### 15.1 权限动作
 
 | 动作 | 描述 |
 |------|------|
@@ -858,7 +974,7 @@ Permission 定义: `packages/ccode/src/permission/next.ts`
 | `deny` | 拒绝 |
 | `ask` | 询问用户 |
 
-### 13.2 权限类型
+### 15.2 权限类型
 
 | 权限 | 描述 |
 |------|------|
@@ -881,7 +997,7 @@ Permission 定义: `packages/ccode/src/permission/next.ts`
 | `plan_enter` | 进入计划模式 |
 | `plan_exit` | 退出计划模式 |
 
-### 13.3 权限配置示例
+### 15.3 权限配置示例
 
 ```json
 {
@@ -904,7 +1020,7 @@ Permission 定义: `packages/ccode/src/permission/next.ts`
 }
 ```
 
-### 13.4 权限规则评估
+### 15.4 权限规则评估
 
 规则按顺序评估，后定义的规则覆盖前面的：
 
@@ -914,17 +1030,17 @@ Permission 定义: `packages/ccode/src/permission/next.ts`
 
 ---
 
-## 14. TUI 终端界面
+## 16. TUI 终端界面
 
 TUI 目录: `packages/ccode/src/cli/cmd/tui/`
 
-### 14.1 技术栈
+### 16.1 技术栈
 
 - **框架**: SolidJS
 - **终端**: OpenTUI
 - **样式**: TailwindCSS
 
-### 14.2 主要组件
+### 16.2 主要组件
 
 | 组件 | 功能 |
 |------|------|
@@ -937,7 +1053,7 @@ TUI 目录: `packages/ccode/src/cli/cmd/tui/`
 | `Modal` | 模态对话框 |
 | `Toast` | 通知提示 |
 
-### 14.3 TUI 配置
+### 16.3 TUI 配置
 
 ```json
 {
@@ -951,7 +1067,7 @@ TUI 目录: `packages/ccode/src/cli/cmd/tui/`
 }
 ```
 
-### 14.4 主要快捷键
+### 16.4 主要快捷键
 
 | 快捷键 | 功能 |
 |--------|------|
@@ -967,11 +1083,11 @@ TUI 目录: `packages/ccode/src/cli/cmd/tui/`
 
 ---
 
-## 15. 共享工具库 (packages/util)
+## 17. 共享工具库 (packages/util)
 
 工具库目录: `packages/util/src/`
 
-### 15.1 工具函数
+### 17.1 工具函数
 
 | 模块 | 文件 | 主要导出 |
 |------|------|----------|
@@ -987,7 +1103,7 @@ TUI 目录: `packages/ccode/src/cli/cmd/tui/`
 | Slug | `slug.ts` | URL 友好标识符生成 |
 | 惰性求值 | `lazy.ts` | 惰性初始化 |
 
-### 15.2 NamedError 使用
+### 17.2 NamedError 使用
 
 ```typescript
 import { NamedError } from "@codecoder-ai/util/error"
@@ -1011,17 +1127,17 @@ if (MyError.isInstance(error)) {
 
 ---
 
-## 16. 脚本系统
+## 18. 脚本系统
 
 脚本目录: `script/`
 
-### 16.1 主要脚本
+### 18.1 主要脚本
 
 | 脚本 | 功能 |
 |------|------|
 | `generate.ts` | SDK 生成脚本 |
 
-### 16.2 构建命令
+### 18.2 构建命令
 
 ```bash
 # 安装依赖
@@ -1052,6 +1168,10 @@ cd packages/ccode && bun test
 | 模块 | 关键文件路径 |
 |------|-------------|
 | CLI 入口 | `packages/ccode/src/index.ts` |
+| **观察者网络** | `packages/ccode/src/observer/index.ts` |
+| **档位控制** | `packages/ccode/src/observer/dial.ts` |
+| **共识引擎** | `packages/ccode/src/observer/consensus/engine.ts` |
+| **模式控制器** | `packages/ccode/src/observer/controller/index.ts` |
 | Agent 定义 | `packages/ccode/src/agent/agent.ts` |
 | Tool 定义 | `packages/ccode/src/tool/*.ts` |
 | Provider | `packages/ccode/src/provider/provider.ts` |
