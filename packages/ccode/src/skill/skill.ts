@@ -1,5 +1,6 @@
 import z from "zod"
 import path from "path"
+import fs from "fs/promises"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
 import { NamedError } from "@codecoder-ai/core/util/error"
@@ -43,19 +44,68 @@ export namespace Skill {
   const BUILTIN_SKILL_GLOB = new Bun.Glob("*/SKILL.md")
 
   /**
-   * Parse skill metadata using native Rust parser.
+   * JavaScript fallback for parsing skill YAML frontmatter.
+   * Used when native parseSkillFromFile binding is unavailable.
    */
-  const parseSkill = async (filePath: string): Promise<{ name: string; description: string } | undefined> => {
-    if (!parseSkillFromFile) {
-      throw new Error("Native parseSkillFromFile binding is unavailable")
+  const parseSkillFallback = async (
+    filePath: string,
+  ): Promise<{ name: string; description: string } | undefined> => {
+    const content = await fs.readFile(filePath, "utf-8")
+
+    // Extract YAML frontmatter (between --- markers)
+    const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
+    if (!frontmatterMatch) {
+      log.warn("no frontmatter found in skill file", { filePath })
+      return undefined
     }
 
-    try {
-      const parsed = parseSkillFromFile(filePath)
-      return {
-        name: parsed.metadata.name,
-        description: parsed.metadata.description,
+    const frontmatter = frontmatterMatch[1]
+
+    // Parse simple YAML key-value pairs
+    const getName = (yaml: string): string | undefined => {
+      const match = yaml.match(/^name:\s*(.+)$/m)
+      return match ? match[1].trim().replace(/^["']|["']$/g, "") : undefined
+    }
+
+    const getDescription = (yaml: string): string | undefined => {
+      const match = yaml.match(/^description:\s*(.+)$/m)
+      return match ? match[1].trim().replace(/^["']|["']$/g, "") : undefined
+    }
+
+    const name = getName(frontmatter)
+    const description = getDescription(frontmatter) ?? ""
+
+    if (!name) {
+      log.warn("skill file missing name in frontmatter", { filePath })
+      return undefined
+    }
+
+    return { name, description }
+  }
+
+  /**
+   * Parse skill metadata using native Rust parser with JavaScript fallback.
+   */
+  const parseSkill = async (filePath: string): Promise<{ name: string; description: string } | undefined> => {
+    // Use native parser if available, otherwise fallback to JavaScript
+    if (parseSkillFromFile) {
+      try {
+        const parsed = parseSkillFromFile(filePath)
+        return {
+          name: parsed.metadata.name,
+          description: parsed.metadata.description,
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : `Failed to parse skill ${filePath}`
+        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        log.error("failed to load skill with native parser", { skill: filePath, err })
+        return undefined
       }
+    }
+
+    // Fallback to JavaScript parser
+    try {
+      return await parseSkillFallback(filePath)
     } catch (err) {
       const message = err instanceof Error ? err.message : `Failed to parse skill ${filePath}`
       Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })

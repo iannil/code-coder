@@ -675,7 +675,7 @@ export namespace Provider {
   }
 
   const state = Instance.state(async () => {
-    using _ = log.time("state")
+    using _ = getLog().time("state")
     const config = await Config.get()
     const modelsDev = await ModelsDev.get()
     const database = mapValues(modelsDev, fromModelsDevProvider)
@@ -1099,7 +1099,7 @@ export namespace Provider {
 
   async function getSDK(model: Model) {
     try {
-      using _ = log.time("getSDK", {
+      using _ = getLog().time("getSDK", {
         providerID: model.providerID,
       })
       const s = await state()

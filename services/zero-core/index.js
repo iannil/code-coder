@@ -68,7 +68,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-android-arm64')
+        return require('codecoder-core-android-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -80,7 +80,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-android-arm-eabi')
+        return require('codecoder-core-android-arm-eabi')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -96,7 +96,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-win32-x64-msvc')
+        return require('codecoder-core-win32-x64-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -108,7 +108,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-win32-ia32-msvc')
+        return require('codecoder-core-win32-ia32-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -120,7 +120,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-win32-arm64-msvc')
+        return require('codecoder-core-win32-arm64-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -135,7 +135,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-darwin-universal')
+        return require('codecoder-core-darwin-universal')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -147,7 +147,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-darwin-x64')
+        return require('codecoder-core-darwin-x64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -159,7 +159,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-darwin-arm64')
+        return require('codecoder-core-darwin-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -175,7 +175,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-freebsd-x64')
+        return require('codecoder-core-freebsd-x64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -187,7 +187,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-freebsd-arm64')
+        return require('codecoder-core-freebsd-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -204,7 +204,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-x64-musl')
+        return require('codecoder-core-linux-x64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -216,7 +216,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-x64-gnu')
+        return require('codecoder-core-linux-x64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -230,7 +230,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-arm64-musl')
+        return require('codecoder-core-linux-arm64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -242,7 +242,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-arm64-gnu')
+        return require('codecoder-core-linux-arm64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -256,7 +256,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-arm-musleabihf')
+        return require('codecoder-core-linux-arm-musleabihf')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -268,7 +268,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-arm-gnueabihf')
+        return require('codecoder-core-linux-arm-gnueabihf')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -282,7 +282,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-riscv64-musl')
+        return require('codecoder-core-linux-riscv64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -294,7 +294,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-riscv64-gnu')
+        return require('codecoder-core-linux-riscv64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -307,7 +307,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-ppc64-gnu')
+        return require('codecoder-core-linux-ppc64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -319,7 +319,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@codecoder-ai/core-linux-s390x-gnu')
+        return require('codecoder-core-linux-s390x-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -344,7 +344,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding) {
     try {
-      nativeBinding = require('@codecoder-ai/core-wasm32-wasi')
+      nativeBinding = require('codecoder-core-wasm32-wasi')
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {
         loadErrors.push(err)
@@ -367,16 +367,21 @@ if (!nativeBinding) {
 module.exports.AutoApproveEngineHandle = nativeBinding.AutoApproveEngineHandle
 module.exports.CallGraphHandle = nativeBinding.CallGraphHandle
 module.exports.CausalGraphHandle = nativeBinding.CausalGraphHandle
+module.exports.CodeIndexerHandle = nativeBinding.CodeIndexerHandle
 module.exports.CompactorHandle = nativeBinding.CompactorHandle
 module.exports.ConfigLoaderHandle = nativeBinding.ConfigLoaderHandle
 module.exports.ContextCacheStoreHandle = nativeBinding.ContextCacheStoreHandle
+module.exports.ContextLoaderHandle = nativeBinding.ContextLoaderHandle
 module.exports.CredentialManagerHandle = nativeBinding.CredentialManagerHandle
 module.exports.EditorHandle = nativeBinding.EditorHandle
+module.exports.EmbeddingIndexHandle = nativeBinding.EmbeddingIndexHandle
 module.exports.FileWatcherHandle = nativeBinding.FileWatcherHandle
 module.exports.FingerprintEngineHandle = nativeBinding.FingerprintEngineHandle
 module.exports.GitOpsHandle = nativeBinding.GitOpsHandle
 module.exports.GraphEngineHandle = nativeBinding.GraphEngineHandle
 module.exports.HistoryStoreHandle = nativeBinding.HistoryStoreHandle
+module.exports.HookConfigHandle = nativeBinding.HookConfigHandle
+module.exports.IgnoreEngineHandle = nativeBinding.IgnoreEngineHandle
 module.exports.InjectionScannerHandle = nativeBinding.InjectionScannerHandle
 module.exports.JarAnalyzerHandle = nativeBinding.JarAnalyzerHandle
 module.exports.KeyringManagerHandle = nativeBinding.KeyringManagerHandle
@@ -385,18 +390,21 @@ module.exports.KVStoreHandle = nativeBinding.KVStoreHandle
 module.exports.LspServerManagerHandle = nativeBinding.LspServerManagerHandle
 module.exports.McpAuthStoreHandle = nativeBinding.McpAuthStoreHandle
 module.exports.McpClientManagerHandle = nativeBinding.McpClientManagerHandle
+module.exports.MemorySystemHandle = nativeBinding.MemorySystemHandle
 module.exports.MessageStoreHandle = nativeBinding.MessageStoreHandle
 module.exports.NapiAuditLog = nativeBinding.NapiAuditLog
+module.exports.ObservabilityStoreHandle = nativeBinding.ObservabilityStoreHandle
 module.exports.PatchApplicatorHandle = nativeBinding.PatchApplicatorHandle
 module.exports.PatternSetHandle = nativeBinding.PatternSetHandle
 module.exports.PermissionManagerHandle = nativeBinding.PermissionManagerHandle
-module.exports.PtyManagerHandle = nativeBinding.PtyManagerHandle
-module.exports.PtySessionHandle = nativeBinding.PtySessionHandle
+module.exports.SchemaRegistryHandle = nativeBinding.SchemaRegistryHandle
+module.exports.SchemaValidatorHandle = nativeBinding.SchemaValidatorHandle
 module.exports.SemanticGraphHandle = nativeBinding.SemanticGraphHandle
 module.exports.SessionStoreHandle = nativeBinding.SessionStoreHandle
 module.exports.ShellParserHandle = nativeBinding.ShellParserHandle
 module.exports.StateMachineHandle = nativeBinding.StateMachineHandle
 module.exports.TaskQueueHandle = nativeBinding.TaskQueueHandle
+module.exports.ToolRegistryHandle = nativeBinding.ToolRegistryHandle
 module.exports.TraceStoreHandle = nativeBinding.TraceStoreHandle
 module.exports.VaultHandle = nativeBinding.VaultHandle
 module.exports.WebFingerprintEngineHandle = nativeBinding.WebFingerprintEngineHandle
@@ -416,19 +424,27 @@ module.exports.chunkText = nativeBinding.chunkText
 module.exports.chunkTextWithConfig = nativeBinding.chunkTextWithConfig
 module.exports.cloneGitRepo = nativeBinding.cloneGitRepo
 module.exports.computeDiff = nativeBinding.computeDiff
+module.exports.computePrunePlan = nativeBinding.computePrunePlan
+module.exports.computePrunePlanWithTurns = nativeBinding.computePrunePlanWithTurns
 module.exports.containsPattern = nativeBinding.containsPattern
 module.exports.contentHash = nativeBinding.contentHash
 module.exports.cosineSimilarity = nativeBinding.cosineSimilarity
 module.exports.createAutoApproveEngine = nativeBinding.createAutoApproveEngine
+module.exports.createCodeIndexer = nativeBinding.createCodeIndexer
 module.exports.createCompactor = nativeBinding.createCompactor
 module.exports.createCompactorWithLimits = nativeBinding.createCompactorWithLimits
 module.exports.createConfigLoader = nativeBinding.createConfigLoader
+module.exports.createContextLoader = nativeBinding.createContextLoader
 module.exports.createCredentialManager = nativeBinding.createCredentialManager
+module.exports.createDefaultPruneConfig = nativeBinding.createDefaultPruneConfig
+module.exports.createEmbeddingIndex = nativeBinding.createEmbeddingIndex
 module.exports.createFileCredentialManager = nativeBinding.createFileCredentialManager
 module.exports.createFileKeyringManager = nativeBinding.createFileKeyringManager
 module.exports.createFileMcpAuthStore = nativeBinding.createFileMcpAuthStore
 module.exports.createFileWatcher = nativeBinding.createFileWatcher
 module.exports.createFileWatcherWithConfig = nativeBinding.createFileWatcherWithConfig
+module.exports.createIgnoreEngine = nativeBinding.createIgnoreEngine
+module.exports.createIgnoreEngineWithConfig = nativeBinding.createIgnoreEngineWithConfig
 module.exports.createInjectionScanner = nativeBinding.createInjectionScanner
 module.exports.createInjectionScannerWithConfig = nativeBinding.createInjectionScannerWithConfig
 module.exports.createKeyringManager = nativeBinding.createKeyringManager
@@ -438,6 +454,8 @@ module.exports.createMcpClientManager = nativeBinding.createMcpClientManager
 module.exports.createMemoryContextCacheStore = nativeBinding.createMemoryContextCacheStore
 module.exports.createMemoryHistoryStore = nativeBinding.createMemoryHistoryStore
 module.exports.createMemoryKvStore = nativeBinding.createMemoryKvStore
+module.exports.createMemoryObservabilityStore = nativeBinding.createMemoryObservabilityStore
+module.exports.createMemorySystem = nativeBinding.createMemorySystem
 module.exports.createMemoryTraceStore = nativeBinding.createMemoryTraceStore
 module.exports.createMemoryVault = nativeBinding.createMemoryVault
 module.exports.createMessageStore = nativeBinding.createMessageStore
@@ -445,12 +463,16 @@ module.exports.createPatternSet = nativeBinding.createPatternSet
 module.exports.createPermissionManager = nativeBinding.createPermissionManager
 module.exports.createPermissiveEngine = nativeBinding.createPermissiveEngine
 module.exports.createSafeOnlyEngine = nativeBinding.createSafeOnlyEngine
+module.exports.createSchemaRegistry = nativeBinding.createSchemaRegistry
+module.exports.createSchemaValidator = nativeBinding.createSchemaValidator
 module.exports.createStateMachine = nativeBinding.createStateMachine
 module.exports.createTaskQueue = nativeBinding.createTaskQueue
+module.exports.createToolRegistry = nativeBinding.createToolRegistry
 module.exports.CredentialType = nativeBinding.CredentialType
 module.exports.DecisionType = nativeBinding.DecisionType
 module.exports.describeFingerprint = nativeBinding.describeFingerprint
 module.exports.detectJavaTechnologies = nativeBinding.detectJavaTechnologies
+module.exports.detectLanguageFromPath = nativeBinding.detectLanguageFromPath
 module.exports.detectWebTechnologies = nativeBinding.detectWebTechnologies
 module.exports.editFile = nativeBinding.editFile
 module.exports.estimateChunkTokensNative = nativeBinding.estimateChunkTokensNative
@@ -459,6 +481,7 @@ module.exports.estimateTokens = nativeBinding.estimateTokens
 module.exports.estimateTokensBatch = nativeBinding.estimateTokensBatch
 module.exports.evaluateAdaptiveAutoApprove = nativeBinding.evaluateAdaptiveAutoApprove
 module.exports.evaluateAutoApprove = nativeBinding.evaluateAutoApprove
+module.exports.extractDirectoryDependencies = nativeBinding.extractDirectoryDependencies
 module.exports.extractMarkdownCodeBlocks = nativeBinding.extractMarkdownCodeBlocks
 module.exports.extractMarkdownFrontmatter = nativeBinding.extractMarkdownFrontmatter
 module.exports.extractMarkdownHeadings = nativeBinding.extractMarkdownHeadings
@@ -466,15 +489,28 @@ module.exports.extractMarkdownImages = nativeBinding.extractMarkdownImages
 module.exports.extractMarkdownLinks = nativeBinding.extractMarkdownLinks
 module.exports.extractShellDirectories = nativeBinding.extractShellDirectories
 module.exports.extractShellPermissionPatterns = nativeBinding.extractShellPermissionPatterns
+module.exports.extractSkillFrontmatter = nativeBinding.extractSkillFrontmatter
 module.exports.FileEditType = nativeBinding.FileEditType
 module.exports.FileStatusType = nativeBinding.FileStatusType
+module.exports.filterIgnoredPaths = nativeBinding.filterIgnoredPaths
+module.exports.filterPathsWithPatterns = nativeBinding.filterPathsWithPatterns
 module.exports.findBestFuzzyMatch = nativeBinding.findBestFuzzyMatch
 module.exports.findBestMatch = nativeBinding.findBestMatch
 module.exports.fingerprintSimilarity = nativeBinding.fingerprintSimilarity
 module.exports.fitsTokenBudget = nativeBinding.fitsTokenBudget
 module.exports.fuzzyFind = nativeBinding.fuzzyFind
+module.exports.generateCombinedHashEmbedding = nativeBinding.generateCombinedHashEmbedding
 module.exports.generateFingerprint = nativeBinding.generateFingerprint
+module.exports.generateHashEmbedding = nativeBinding.generateHashEmbedding
+module.exports.generateHashEmbeddingsBatch = nativeBinding.generateHashEmbeddingsBatch
+module.exports.generateHashEmbeddingWithInfo = nativeBinding.generateHashEmbeddingWithInfo
+module.exports.generatePositionalHashEmbedding = nativeBinding.generatePositionalHashEmbedding
+module.exports.getBuiltinToolSpecs = nativeBinding.getBuiltinToolSpecs
+module.exports.getIgnoreDefaultFolders = nativeBinding.getIgnoreDefaultFolders
+module.exports.getIgnoreDefaultPatterns = nativeBinding.getIgnoreDefaultPatterns
+module.exports.getNativeToolNames = nativeBinding.getNativeToolNames
 module.exports.getSdkKey = nativeBinding.getSdkKey
+module.exports.getSupportedLanguages = nativeBinding.getSupportedLanguages
 module.exports.getTemperature = nativeBinding.getTemperature
 module.exports.getToolBaseRisk = nativeBinding.getToolBaseRisk
 module.exports.getTopK = nativeBinding.getTopK
@@ -484,7 +520,10 @@ module.exports.getWebFingerprints = nativeBinding.getWebFingerprints
 module.exports.getWebFingerprintsByCategory = nativeBinding.getWebFingerprintsByCategory
 module.exports.glob = nativeBinding.glob
 module.exports.grep = nativeBinding.grep
+module.exports.hashEmbeddingSimilarity = nativeBinding.hashEmbeddingSimilarity
 module.exports.hybridMergeResults = nativeBinding.hybridMergeResults
+module.exports.indexFileContent = nativeBinding.indexFileContent
+module.exports.indexFilesBatch = nativeBinding.indexFilesBatch
 module.exports.init = nativeBinding.init
 module.exports.initGitRepo = nativeBinding.initGitRepo
 module.exports.InjectionSeverity = nativeBinding.InjectionSeverity
@@ -493,6 +532,8 @@ module.exports.isDangerousCommand = nativeBinding.isDangerousCommand
 module.exports.isFileCommand = nativeBinding.isFileCommand
 module.exports.isGitRepo = nativeBinding.isGitRepo
 module.exports.isKeyringAvailable = nativeBinding.isKeyringAvailable
+module.exports.isOverflow = nativeBinding.isOverflow
+module.exports.isValidJsonSchema = nativeBinding.isValidJsonSchema
 module.exports.jarAnalysisSummary = nativeBinding.jarAnalysisSummary
 module.exports.jaroSimilarity = nativeBinding.jaroSimilarity
 module.exports.jaroWinklerSimilarity = nativeBinding.jaroWinklerSimilarity
@@ -501,25 +542,35 @@ module.exports.levenshteinDistance = nativeBinding.levenshteinDistance
 module.exports.matchesPattern = nativeBinding.matchesPattern
 module.exports.McpTransportType = nativeBinding.McpTransportType
 module.exports.MessageRole = nativeBinding.MessageRole
+module.exports.NapiAgentLifecycleType = nativeBinding.NapiAgentLifecycleType
 module.exports.NapiAuditEntryType = nativeBinding.NapiAuditEntryType
 module.exports.NapiAuditResult = nativeBinding.NapiAuditResult
 module.exports.NapiCacheEntryType = nativeBinding.NapiCacheEntryType
 module.exports.NapiCommandRiskLevel = nativeBinding.NapiCommandRiskLevel
 module.exports.NapiCompactionStrategy = nativeBinding.NapiCompactionStrategy
 module.exports.NapiComponentType = nativeBinding.NapiComponentType
+module.exports.NapiDecisionType = nativeBinding.NapiDecisionType
+module.exports.NapiEventType = nativeBinding.NapiEventType
+module.exports.NapiFileEditType = nativeBinding.NapiFileEditType
 module.exports.NapiFrameworkType = nativeBinding.NapiFrameworkType
+module.exports.NapiHookLifecycle = nativeBinding.NapiHookLifecycle
+module.exports.NapiLanguage = nativeBinding.NapiLanguage
 module.exports.NapiPackageManager = nativeBinding.NapiPackageManager
 module.exports.NapiPatchType = nativeBinding.NapiPatchType
 module.exports.NapiProjectLanguage = nativeBinding.NapiProjectLanguage
 module.exports.NapiPtyState = nativeBinding.NapiPtyState
 module.exports.NapiRiskLevel = nativeBinding.NapiRiskLevel
 module.exports.NapiRouteType = nativeBinding.NapiRouteType
+module.exports.NapiSpanKind = nativeBinding.NapiSpanKind
+module.exports.NapiSymbolKind = nativeBinding.NapiSymbolKind
+module.exports.NapiToolStatus = nativeBinding.NapiToolStatus
 module.exports.normalizeMessages = nativeBinding.normalizeMessages
 module.exports.normalizeVector = nativeBinding.normalizeVector
 module.exports.openContextCacheStore = nativeBinding.openContextCacheStore
 module.exports.openGitRepo = nativeBinding.openGitRepo
 module.exports.openHistoryStore = nativeBinding.openHistoryStore
 module.exports.openKvStore = nativeBinding.openKvStore
+module.exports.openObservabilityStore = nativeBinding.openObservabilityStore
 module.exports.openSessionStore = nativeBinding.openSessionStore
 module.exports.openTraceStore = nativeBinding.openTraceStore
 module.exports.openVault = nativeBinding.openVault
@@ -527,6 +578,10 @@ module.exports.parseClassFileSync = nativeBinding.parseClassFileSync
 module.exports.parseMarkdown = nativeBinding.parseMarkdown
 module.exports.parseRiskLevel = nativeBinding.parseRiskLevel
 module.exports.parseShellCommand = nativeBinding.parseShellCommand
+module.exports.parseSkillContent = nativeBinding.parseSkillContent
+module.exports.parseSkillFromFile = nativeBinding.parseSkillFromFile
+module.exports.parseSkillMetadataOnly = nativeBinding.parseSkillMetadataOnly
+module.exports.parseSkillsBatch = nativeBinding.parseSkillsBatch
 module.exports.quickCheckInjection = nativeBinding.quickCheckInjection
 module.exports.readFile = nativeBinding.readFile
 module.exports.remapProviderOptions = nativeBinding.remapProviderOptions
@@ -535,21 +590,26 @@ module.exports.replaceWithFuzzyMatch = nativeBinding.replaceWithFuzzyMatch
 module.exports.RiskLevel = nativeBinding.RiskLevel
 module.exports.sanitizeInjectionInput = nativeBinding.sanitizeInjectionInput
 module.exports.scanContentPatterns = nativeBinding.scanContentPatterns
+module.exports.scanDirectory = nativeBinding.scanDirectory
 module.exports.scanInjection = nativeBinding.scanInjection
 module.exports.scanInjectionWithConfig = nativeBinding.scanInjectionWithConfig
 module.exports.scanPatterns = nativeBinding.scanPatterns
 module.exports.scoreFiles = nativeBinding.scoreFiles
 module.exports.scoreRelevance = nativeBinding.scoreRelevance
 module.exports.scoreRelevanceWithConfig = nativeBinding.scoreRelevanceWithConfig
+module.exports.shouldIgnorePath = nativeBinding.shouldIgnorePath
 module.exports.similarityRatio = nativeBinding.similarityRatio
 module.exports.spawnPty = nativeBinding.spawnPty
 module.exports.spawnPtyCommand = nativeBinding.spawnPtyCommand
 module.exports.StateCategory = nativeBinding.StateCategory
 module.exports.stripMarkdownFrontmatter = nativeBinding.stripMarkdownFrontmatter
+module.exports.stripSkillFrontmatter = nativeBinding.stripSkillFrontmatter
 module.exports.TaskPriority = nativeBinding.TaskPriority
 module.exports.TaskStatus = nativeBinding.TaskStatus
 module.exports.transformMessages = nativeBinding.transformMessages
 module.exports.truncateToTokens = nativeBinding.truncateToTokens
+module.exports.validateJsonSchema = nativeBinding.validateJsonSchema
+module.exports.validateSkillContent = nativeBinding.validateSkillContent
 module.exports.vectorDistance = nativeBinding.vectorDistance
 module.exports.vectorToBytes = nativeBinding.vectorToBytes
 module.exports.version = nativeBinding.version

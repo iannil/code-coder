@@ -77,12 +77,26 @@ export namespace ProviderTransform {
 
     // Use native implementation for normalize + cache + remap (Rust zero-core)
     if (!transformMessagesNative) {
-      throw new Error("Native transformMessages not available - @codecoder-ai/core must be built")
+      // Fallback: return messages as-is when native bindings unavailable
+      return msgs
     }
 
-    // Native function signature: transformMessages(provider: string, messages: any[]): any[]
-    const result = transformMessagesNative(model.providerID, msgs)
-    return result as ModelMessage[]
+    // Native function signature: transformMessages(messagesJson: string, model: TransformModelInfo): TransformMessagesResult
+    const modelInfo = {
+      providerId: model.providerID,
+      apiId: model.api.id || model.id,
+      apiNpm: model.api.npm,
+      hasInterleavedField: model.capabilities.input?.interleaved ?? false,
+      interleavedField: undefined,
+    }
+
+    try {
+      const result = transformMessagesNative(JSON.stringify(msgs), modelInfo)
+      return JSON.parse(result.messages) as ModelMessage[]
+    } catch {
+      // Fallback: return messages as-is if transform fails
+      return msgs
+    }
   }
 
   // Sampling parameters - implemented in Rust (zero-core)

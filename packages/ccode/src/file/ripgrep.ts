@@ -75,10 +75,11 @@ export namespace Ripgrep {
     }
 
     const pattern = input.glob?.length ? input.glob.join(",") : "**/*"
-    // Native API: glob(pattern, options?)
-    // Cast through unknown: nativeGlob has overloaded signatures, we use the async variant
-    const globFn = nativeGlob as unknown as (pattern: string, options?: Record<string, unknown>) => Promise<GlobResult>
-    const result = await globFn(pattern, {
+    // Native API: glob(options: GlobOptions) => Promise<GlobResult>
+    // GlobOptions requires 'pattern' field per binding.d.ts
+    const globFn = nativeGlob as unknown as (options: Record<string, unknown>) => Promise<GlobResult>
+    const result = await globFn({
+      pattern,
       path: input.cwd,
       includeHidden: input.hidden !== false,
       respectGitignore: true,
@@ -87,9 +88,11 @@ export namespace Ripgrep {
       followSymlinks: input.follow !== false,
     })
 
-    // Result is string[] directly or wrapped object
+    // Result contains FileInfo objects with { path: string, ... }
     const files = isWrappedGlobResult(result) ? result.files : result
-    for (const filePath of files) {
+    for (const fileInfo of files) {
+      // FileInfo.path is the absolute path string
+      const filePath = typeof fileInfo === "string" ? fileInfo : fileInfo.path
       // Return relative path
       const relativePath = path.relative(input.cwd, filePath)
       if (relativePath && !relativePath.startsWith("..")) {

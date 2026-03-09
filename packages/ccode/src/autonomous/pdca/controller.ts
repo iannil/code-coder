@@ -74,13 +74,14 @@ export interface PDCAControllerOptions {
  * ```
  */
 export class UnifiedPDCAController<TOutput = unknown> {
-  private readonly strategy: AcceptanceStrategy<TOutput>
+  private strategy: AcceptanceStrategy<TOutput> | null = null
+  private readonly taskType: TaskType
   private readonly config: PDCAConfig
   private cycles = 0
   private readonly startTime: number
 
   constructor(options: PDCAControllerOptions) {
-    this.strategy = StrategyFactory.create(options.taskType) as AcceptanceStrategy<TOutput>
+    this.taskType = options.taskType
     this.config = {
       taskType: options.taskType,
       sessionId: options.sessionId,
@@ -95,8 +96,18 @@ export class UnifiedPDCAController<TOutput = unknown> {
     log.debug("PDCA controller initialized", {
       taskType: options.taskType,
       sessionId: options.sessionId,
-      strategy: this.strategy.name,
     })
+  }
+
+  /**
+   * Ensure strategy is initialized (lazy loading)
+   */
+  private async ensureStrategy(): Promise<AcceptanceStrategy<TOutput>> {
+    if (!this.strategy) {
+      this.strategy = (await StrategyFactory.create(this.taskType)) as AcceptanceStrategy<TOutput>
+      log.debug("Strategy loaded", { strategy: this.strategy.name })
+    }
+    return this.strategy
   }
 
   /**
@@ -110,6 +121,9 @@ export class UnifiedPDCAController<TOutput = unknown> {
     doFn: () => Promise<TaskExecutionResult<TOutput>>,
     originalRequest: string,
   ): Promise<PDCACycleResult<TOutput>> {
+    // Ensure strategy is loaded
+    const strategy = await this.ensureStrategy()
+
     // Publish PDCA cycle started event
     await this.publishPDCAStarted(originalRequest)
 
@@ -147,7 +161,7 @@ export class UnifiedPDCAController<TOutput = unknown> {
         // CHECK Phase
         // =====================================================================
         await this.publishPhaseChanged("check")
-        lastCheckResult = await this.strategy.check(
+        lastCheckResult = await strategy.check(
           lastDoResult,
           originalRequest,
           this.config,
@@ -205,7 +219,7 @@ export class UnifiedPDCAController<TOutput = unknown> {
         // =====================================================================
         if (this.config.enableFix && lastCheckResult.recommendation === "fix") {
           await this.publishPhaseChanged("act")
-          lastActResult = await this.strategy.fix(
+          lastActResult = await strategy.fix(
             lastCheckResult.issues,
             lastDoResult,
             this.config,
@@ -303,8 +317,8 @@ export class UnifiedPDCAController<TOutput = unknown> {
   /**
    * Get the strategy being used.
    */
-  getStrategy(): AcceptanceStrategy<TOutput> {
-    return this.strategy
+  async getStrategy(): Promise<AcceptanceStrategy<TOutput>> {
+    return this.ensureStrategy()
   }
 
   /**
@@ -319,6 +333,7 @@ export class UnifiedPDCAController<TOutput = unknown> {
   // ==========================================================================
 
   private async publishPDCAStarted(originalRequest: string): Promise<void> {
+    const strategy = await this.ensureStrategy()
     // Use existing session started event
     await Bus.publish(AutonomousEvent.SessionStarted, {
       sessionId: this.config.sessionId,
@@ -328,7 +343,7 @@ export class UnifiedPDCAController<TOutput = unknown> {
         taskType: this.config.taskType,
         maxCycles: this.config.maxCycles,
         passThreshold: this.config.passThreshold,
-        strategy: this.strategy.name,
+        strategy: strategy.name,
       },
     })
   }

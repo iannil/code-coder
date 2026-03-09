@@ -28,27 +28,31 @@ export { GenericStrategy, createGenericStrategy } from "./generic"
  * @param taskType - The type of task to create a strategy for
  * @returns An acceptance strategy instance
  */
-export function createStrategy(taskType: TaskType): AcceptanceStrategy {
+export async function createStrategy(taskType: TaskType): Promise<AcceptanceStrategy> {
   switch (taskType) {
-    case "implementation":
-      // Lazy import to avoid circular dependencies
-      const { createImplementationStrategy } = require("./implementation")
+    case "implementation": {
+      // Lazy import to avoid circular dependencies with top-level await
+      const { createImplementationStrategy } = await import("./implementation")
       return createImplementationStrategy()
+    }
 
-    case "research":
-      const { createResearchStrategy } = require("./research")
+    case "research": {
+      const { createResearchStrategy } = await import("./research")
       return createResearchStrategy()
+    }
 
-    case "query":
-      const { createQueryStrategy } = require("./query")
+    case "query": {
+      const { createQueryStrategy } = await import("./query")
       return createQueryStrategy()
+    }
 
     case "acceptance":
     case "fix":
     case "other":
-    default:
-      const { createGenericStrategy } = require("./generic")
+    default: {
+      const { createGenericStrategy } = await import("./generic")
       return createGenericStrategy(taskType)
+    }
   }
 }
 
@@ -66,12 +70,12 @@ export class StrategyFactory {
    * @param useCache - Whether to use cached instances (default: true)
    * @returns An acceptance strategy
    */
-  static create(taskType: TaskType, useCache = true): AcceptanceStrategy {
+  static async create(taskType: TaskType, useCache = true): Promise<AcceptanceStrategy> {
     if (useCache && this.cache.has(taskType)) {
       return this.cache.get(taskType)!
     }
 
-    const strategy = createStrategy(taskType)
+    const strategy = await createStrategy(taskType)
 
     if (useCache) {
       this.cache.set(taskType, strategy)
