@@ -1,6 +1,6 @@
 # CodeCoder
 
-> An AI agent observation system with transmission-like autonomy control — from fully automatic to fully manual.
+> An observation-centric AI agent system — observe first, control always.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bun](https://img.shields.io/badge/Bun-1.3+-black?logo=bun)](https://bun.sh/)
@@ -10,9 +10,13 @@
 
 ## Overview
 
-CodeCoder is an AI-powered observation system built on the "祝融说" (Zhu Rong Philosophy). Unlike traditional AI coding assistants that operate in binary modes (autonomous or manual), CodeCoder introduces a **transmission-like control system** that lets you dial in exactly how autonomous you want the AI to be.
+CodeCoder is an **observation-centric AI agent system** built on "祝融说" (Zhu Rong Philosophy). Unlike traditional AI assistants that wait for commands, CodeCoder:
 
-The core insight: **AI autonomy isn't binary — it's a spectrum.**
+1. **Observes continuously** — Four watchers monitor code, world, self, and meta-layer
+2. **Forms consensus** — Consensus engine determines what's happening and what matters
+3. **Responds controllably** — Gear System (P/N/D/S/M) lets you dial in exactly how autonomous the response should be
+
+The core insight: **Observation before action, control over automation.**
 
 ## Gear System: Your Autonomy Dial
 
