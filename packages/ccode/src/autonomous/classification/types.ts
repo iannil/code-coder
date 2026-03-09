@@ -8,11 +8,11 @@
 import z from "zod"
 
 /** Supported task types */
-export type TaskType = "implementation" | "research" | "query" | "acceptance" | "fix" | "other"
+export type TaskType = "implementation" | "research" | "decision" | "query" | "acceptance" | "fix" | "other"
 
 /** Classification result schema */
 export const ClassificationResultSchema = z.object({
-  type: z.enum(["implementation", "research", "query", "acceptance", "fix", "other"]),
+  type: z.enum(["implementation", "research", "decision", "query", "acceptance", "fix", "other"]),
   confidence: z.number().min(0).max(1),
   reasoning: z.string(),
   /** Research-specific: identified topic */
@@ -71,6 +71,15 @@ export const FIX_KEYWORDS = [
   // English
   "fix", "repair", "resolve", "adjust", "correct", "patch",
   "troubleshoot", "debug", "hotfix",
+] as const
+
+export const DECISION_KEYWORDS = [
+  // Chinese
+  "决定", "选择", "评估", "比较", "权衡", "抉择", "取舍",
+  "CLOSE", "决策", "方案", "利弊",
+  // English
+  "decide", "choose", "evaluate", "compare", "trade-off", "weigh",
+  "decision", "option", "pros cons", "close framework",
 ] as const
 
 /** Classifier configuration */
