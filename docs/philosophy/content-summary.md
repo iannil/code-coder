@@ -155,7 +155,7 @@
 
 | 产品 | 技术栈 | 核心功能 |
 |------|--------|----------|
-| **Code-Coder** | Bun + TypeScript + SolidJS | AI 个人工作台，23+ 专业 Agent，30+ AI 提供商支持，CLOSE 决策框架 |
+| **Code-Coder** | Bun + TypeScript + SolidJS | AI 代理观察系统，31 个专业 Agent，Observer Network + Gear System，30+ AI 提供商支持 |
 | **Ascend Docker Kit (ADK)** | Python | 华为昇腾 NPU 环境 DevOps 工具，解决 CANN/驱动/框架版本兼容性 |
 | **GPU Dead Node Detector (GDND)** | Rust + Kubernetes | GPU 健康监控与故障隔离，三级检测流水线，自动 Cordon/Taint |
 | **PII Airlock** | Python + FastAPI | LLM 调用中的 PII 脱敏中间件，支持流式响应和模糊匹配恢复 |
