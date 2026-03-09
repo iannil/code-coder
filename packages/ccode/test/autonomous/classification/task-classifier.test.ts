@@ -21,6 +21,24 @@ describe("TaskClassifier", () => {
       expect(result.confidence).toBeGreaterThan(0.5)
     })
 
+    test("classifies decision keywords as decision (Chinese)", async () => {
+      const result = await classifyTask("用CLOSE框架评估这个职业选择")
+      expect(result.type).toBe("decision")
+      expect(result.confidence).toBeGreaterThan(0.5)
+    })
+
+    test("classifies decision keywords as decision (English)", async () => {
+      const result = await classifyTask("Evaluate the trade-offs between these options using CLOSE framework")
+      expect(result.type).toBe("decision")
+      expect(result.confidence).toBeGreaterThan(0.5)
+    })
+
+    test("classifies pros cons analysis as decision", async () => {
+      const result = await classifyTask("Compare and weigh the options for the career decision")
+      expect(result.type).toBe("decision")
+      expect(result.confidence).toBeGreaterThan(0.5)
+    })
+
     test("extracts research topic", async () => {
       const result = await classifyTask("分析今年的比特币走势")
       expect(result.type).toBe("research")
