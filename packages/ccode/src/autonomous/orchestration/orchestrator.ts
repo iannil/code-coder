@@ -15,13 +15,21 @@ import { RequirementTracker, createRequirementTracker } from "../planning/requir
 import { NextStepPlanner, createNextStepPlanner, type CompletionCriteria, type NextStepPlan } from "../planning/next-step-planner"
 import { WebSearcher, createWebSearcher, type WebSolution } from "../execution/web-search"
 import { createEvolutionLoop, type EvolutionLoop, type EvolutionResult } from "../execution/evolution-loop"
+import { createResearchLoop, type ResearchResult } from "../execution/research-loop"
+import { classifyTask } from "../classification"
 
 const log = Log.create({ service: "autonomous.orchestrator" })
+
+/**
+ * Task mode for routing
+ */
+export type TaskMode = "code" | "research" | "decision" | "auto"
 
 /**
  * Orchestrator configuration
  */
 export interface OrchestratorConfig {
+  mode?: TaskMode
   autonomyLevel: "lunatic" | "insane" | "crazy" | "wild" | "bold" | "timid"
   resourceBudget: ResourceBudget
   executionConfig?: ExecutionConfig
