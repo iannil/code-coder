@@ -992,9 +992,9 @@ export declare class SemanticGraphHandle {
   /** Add a function */
   addFunction(name: string, file: string, signature: string | undefined | null, exported: boolean): NapiSemanticNode
   /** Add a class */
-  addClass(name: string, file: string, extends: string | undefined | null, methods: Array<string>): NapiSemanticNode
+  addClass(name: string, file: string, extendsFrom: string | undefined | null, methods: Array<string>): NapiSemanticNode
   /** Add an interface */
-  addInterface(name: string, file: string, extends?: string | undefined | null): NapiSemanticNode
+  addInterface(name: string, file: string, extendsFrom?: string | undefined | null): NapiSemanticNode
   /** Add a file */
   addFile(path: string): NapiSemanticNode
   /** Add an import relationship */
@@ -1002,7 +1002,7 @@ export declare class SemanticGraphHandle {
   /** Add an extends relationship */
   addExtends(child: string, parent: string): string | null
   /** Add an implements relationship */
-  addImplements(implementor: string, interface: string): string | null
+  addImplements(implementor: string, interfaceName: string): string | null
   /** Add a contains relationship */
   addContains(container: string, contained: string): string | null
   /** Get a node by ID */
