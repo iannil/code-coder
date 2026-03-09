@@ -33,8 +33,7 @@ import PROMPT_VALUE_ANALYST from "./prompt/value-analyst.txt"
 import PROMPT_AUTONOMOUS from "./prompt/autonomous.txt"
 import PROMPT_VERIFIER from "./prompt/verifier.txt"
 import PROMPT_EXPANDER from "./prompt/expander.txt"
-import PROMPT_EXPANDER_FICTION from "./prompt/expander-fiction.txt"
-import PROMPT_EXPANDER_NONFICTION from "./prompt/expander-nonfiction.txt"
+// expander-fiction.txt and expander-nonfiction.txt merged into expander.txt (2026-03-09)
 import PROMPT_GENERAL from "./prompt/general.txt"
 import PROMPT_PRD_GENERATOR from "./prompt/prd-generator.txt"
 import PROMPT_FEASIBILITY_ASSESS from "./prompt/feasibility-assess.txt"
@@ -313,6 +312,12 @@ export namespace Agent {
         prompt: PROMPT_TDD_GUIDE,
         permission: PermissionNext.merge(defaults, user),
         options: {},
+        // Observer capability: SelfWatch - test quality monitoring
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       architect: {
         name: "architect",
@@ -322,6 +327,12 @@ export namespace Agent {
         prompt: PROMPT_ARCHITECT,
         permission: PermissionNext.merge(defaults, user),
         options: {},
+        // Observer capability: CodeWatch - architecture change detection
+        observerCapability: {
+          canWatch: ["code"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       writer: {
         name: "writer",
@@ -349,7 +360,7 @@ export namespace Agent {
       expander: {
         name: "expander",
         description:
-          "Content expansion specialist for developing ideas into full-length books through systematic framework building, knowledge-aware writing, and consistency validation.",
+          "Unified content expansion specialist supporting fiction, non-fiction, and general content. Auto-detects domain or accepts explicit [DOMAIN:fiction|nonfiction] tag. Transforms ideas into comprehensive books through systematic framework building, knowledge-aware writing, and consistency validation.",
         mode: "subagent",
         native: true,
         prompt: PROMPT_EXPANDER,
@@ -359,34 +370,6 @@ export namespace Agent {
           thinking: { type: "disabled" },
         },
         temperature: 0.7,
-      },
-      "expander-fiction": {
-        name: "expander-fiction",
-        description:
-          "Fiction expansion specialist for transforming story ideas into coherent novels with consistent worldbuilding, character arcs, and narrative structure.",
-        mode: "subagent",
-        native: true,
-        prompt: PROMPT_EXPANDER_FICTION,
-        permission: PermissionNext.merge(defaults, user),
-        options: {
-          maxOutputTokens: 128_000,
-          thinking: { type: "disabled" },
-        },
-        temperature: 0.8,
-      },
-      "expander-nonfiction": {
-        name: "expander-nonfiction",
-        description:
-          "Non-fiction expansion specialist for transforming ideas into comprehensive books through logical argumentation, evidence frameworks, and systematic reasoning.",
-        mode: "subagent",
-        native: true,
-        prompt: PROMPT_EXPANDER_NONFICTION,
-        permission: PermissionNext.merge(defaults, user),
-        options: {
-          maxOutputTokens: 128_000,
-          thinking: { type: "disabled" },
-        },
-        temperature: 0.6,
       },
       proofreader: {
         name: "proofreader",
@@ -520,6 +503,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.6,
+        // Observer capability: WorldWatch - market opportunity analysis
+        observerCapability: {
+          canWatch: ["world"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       miniproduct: {
         name: "miniproduct",
@@ -561,6 +550,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.5,
+        // Observer capability: WorldWatch - market value analysis
+        observerCapability: {
+          canWatch: ["world"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       verifier: {
         name: "verifier",
@@ -572,6 +567,12 @@ export namespace Agent {
         permission: PermissionNext.merge(defaults, user),
         options: {},
         temperature: 0.1,
+        // Observer capability: SelfWatch - verification results
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       autonomous: {
         name: "autonomous",
@@ -602,6 +603,12 @@ export namespace Agent {
         },
         temperature: 0.6,
         color: "magenta",
+        // Observer capability: SelfWatch - autonomous execution monitoring
+        observerCapability: {
+          canWatch: ["self"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
       "prd-generator": {
         name: "prd-generator",
@@ -628,6 +635,12 @@ export namespace Agent {
         options: {},
         temperature: 0.3,
         color: "yellow",
+        // Observer capability: CodeWatch - codebase feasibility analysis
+        observerCapability: {
+          canWatch: ["code"],
+          contributeToConsensus: true,
+          reportToMeta: true,
+        },
       },
     }
 
