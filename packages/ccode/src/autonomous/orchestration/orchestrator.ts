@@ -409,6 +409,77 @@ export class Orchestrator {
   }
 
   /**
+   * Process a research task using the research loop
+   */
+  private async processResearchTask(request: string): Promise<{
+    success: boolean
+    result: {
+      success: boolean
+      mode: "research"
+      topic: string
+      report: string
+      sources: Array<{ url: string; title: string; relevance: number }>
+      insights: string[]
+      duration: number
+      tokensUsed: number
+      costUSD: number
+    } | null
+  }> {
+    log.info("Processing research task", {
+      sessionId: this.context.sessionId,
+      topic: request.slice(0, 100),
+    })
+
+    await this.stateMachine.transition(AutonomousState.EXECUTING, {
+      reason: "Starting research loop",
+    })
+
+    const researchLoop = createResearchLoop({
+      maxSources: 10,
+      enableLearning: true,
+    })
+
+    try {
+      const result = await researchLoop.research({
+        sessionId: this.context.sessionId,
+        topic: request,
+      })
+
+      const usage = this.safetyGuard.getCurrentUsage()
+
+      await this.stateMachine.transition(AutonomousState.COMPLETED, {
+        reason: "Research completed",
+      })
+
+      return {
+        success: result.success,
+        result: {
+          success: result.success,
+          mode: "research",
+          topic: request,
+          report: result.report ?? "",
+          sources: result.sources ?? [],
+          insights: result.insights ?? [],
+          duration: Date.now() - this.context.startTime,
+          tokensUsed: usage.tokensUsed,
+          costUSD: usage.costUSD,
+        },
+      }
+    } catch (error) {
+      log.error("Research task failed", {
+        sessionId: this.context.sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
+
+      await this.stateMachine.transition(AutonomousState.FAILED, {
+        reason: error instanceof Error ? error.message : String(error),
+      })
+
+      return { success: false, result: null }
+    }
+  }
+
+  /**
    * Execute a single cycle (understand -> plan -> decide -> execute -> test -> verify)
    */
   private async executeCycle(request: string): Promise<{ success: boolean }> {
