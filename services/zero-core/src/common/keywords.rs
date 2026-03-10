@@ -26,7 +26,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zero_common::keywords::{detect_alias, load_keywords};
+//! use zero_core::common::keywords::{detect_alias, load_keywords};
 //!
 //! let keywords = load_keywords();
 //! if let Some(agent) = detect_alias("@macro 分析PMI", &keywords) {

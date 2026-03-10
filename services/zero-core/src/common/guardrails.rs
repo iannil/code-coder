@@ -23,7 +23,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use zero_common::guardrails::{Guardrails, Action, RiskLevel, Decision};
+//! use zero_core::common::guardrails::{Guardrails, Action, RiskLevel, Decision};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let guardrails = Guardrails::new()

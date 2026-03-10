@@ -475,7 +475,7 @@ bun run script/migrate-config.ts
 
 混合模式参考实现：`services/zero-trading/src/macro_agent/orchestrator.rs` (MacroOrchestrator)
 
-通用 trait：`services/zero-common/src/hybrid.rs` (HybridDecisionMaker)
+通用 trait：`services/zero-core/src/common/hybrid.rs` (HybridDecisionMaker)
 
 ### Monorepo 结构
 
@@ -487,16 +487,15 @@ bun run script/migrate-config.ts
 - `packages/util/` - 共享工具
 - `script/` - 项目级构建和生成脚本
 
-**Rust Services (services/) - 5 Crates:**
+**Rust Services (services/) - 4 Crates:**
 
 - `services/zero-cli/` - CLI + Daemon (统一入口)，依赖 zero-core, zero-hub
-- `services/zero-core/` - 核心工具库 (grep/glob/edit, NAPI 绑定, MCP/LSP 协议)
+- `services/zero-core/` - 核心工具库 (grep/glob/edit, NAPI 绑定, MCP/LSP 协议) + 共享模块 (原 zero-common)
 - `services/zero-hub/` - 统一服务中枢，包含:
   - `src/gateway/` - 认证、路由、配额、RBAC、审计
   - `src/channels/` - IM 渠道 (Telegram/Discord/Slack/飞书/Email)
   - `src/workflow/` - 调度、Webhook、Git、Hands 自主执行
 - `services/zero-trading/` - PO3+SMT 交易系统
-- `services/zero-common/` - 共享配置、日志、事件总线
 
 ### 核心技术
 

@@ -262,16 +262,16 @@ Telegram
 │                         │  ├─ channels/ (IM渠道适配)      │                         │
 │                         │  └─ workflow/ (调度/Webhook)    │                         │
 │                         └───────────────┬─────────────────┘                         │
-│                                         │                                            │
+│                                         │ 依赖                                       │
 │                                         ▼                                            │
 │                         ┌─────────────────────────────────┐                         │
-│                         │        zero-common              │                         │
-│                         │       (共享基础库)               │                         │
+│                         │         zero-core               │                         │
+│                         │   (核心库 + 共享模块)            │                         │
 │                         │                                 │                         │
-│                         │  • config (统一配置)            │                         │
-│                         │  • logging (结构化日志)         │                         │
-│                         │  • bus (事件总线)               │                         │
-│                         │  • security (安全模块)          │                         │
+│                         │  ├─ tools/ (grep/glob/edit)     │                         │
+│                         │  └─ common/ (原 zero-common)    │                         │
+│                         │     • config (统一配置)         │                         │
+│                         │     • logging, bus, security    │                         │
 │                         └─────────────────────────────────┘                         │
 │                                                                                      │
 │   ┌────────────────────────────────────────────────────────────────────────────┐   │
@@ -440,7 +440,7 @@ Telegram
 │                              关系总结                                                │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                      │
-│   packages/ccode                       services/zero-* (5 crates)                   │
+│   packages/ccode                       services/zero-* (4 crates)                   │
 │   ─────────────                        ─────────────────────────                    │
 │                                                                                      │
 │   • 语言: TypeScript/Bun               • 语言: Rust                                 │
@@ -450,10 +450,9 @@ Telegram
 │                                                                                      │
 │   架构简化:                                                                         │
 │   • zero-cli: 统一入口 + Daemon                                                     │
-│   • zero-core: 核心工具库 + NAPI                                                    │
+│   • zero-core: 核心工具库 + NAPI + 共享模块 (原 zero-common)                        │
 │   • zero-hub: gateway + channels + workflow (整合)                                  │
 │   • zero-trading: 交易系统                                                          │
-│   • zero-common: 共享基础库                                                         │
 │                                                                                      │
 │   通信方式:                                                                         │
 │   • HTTP API (主要)                                                                 │

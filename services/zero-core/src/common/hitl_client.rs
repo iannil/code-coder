@@ -6,7 +6,7 @@
 //! # Example
 //!
 //! ```rust,ignore
-//! use zero_common::hitl_client::{HitLClient, CreateApprovalRequest, ApprovalType};
+//! use zero_core::common::hitl_client::{HitLClient, CreateApprovalRequest, ApprovalType};
 //! use std::time::Duration;
 //!
 //! #[tokio::main]

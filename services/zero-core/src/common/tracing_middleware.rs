@@ -6,7 +6,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use zero_common::tracing_middleware::TracingLayer;
+//! use zero_core::common::tracing_middleware::TracingLayer;
 //!
 //! let app = Router::new()
 //!     .route("/api/health", get(health))

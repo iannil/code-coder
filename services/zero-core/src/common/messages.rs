@@ -25,7 +25,7 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use zero_common::messages::{messages, t};
+//! use zero_core::common::messages::{messages, t};
 //!
 //! // Simple message
 //! let msg = messages().task.acknowledged.clone();
@@ -891,7 +891,7 @@ pub fn load_messages() -> &'static MessagesConfig {
 /// # Examples
 ///
 /// ```rust,ignore
-/// use zero_common::messages::t;
+/// use zero_core::common::messages::t;
 ///
 /// // Simple message
 /// let msg = t("task.acknowledged", &[]);

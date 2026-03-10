@@ -21,7 +21,7 @@ use async_trait::async_trait;
 /// # Example
 ///
 /// ```ignore
-/// use zero_common::NotificationSink;
+/// use zero_core::common::NotificationSink;
 /// use async_trait::async_trait;
 ///
 /// struct MyNotificationSink;

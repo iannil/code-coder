@@ -14,7 +14,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use zero_common::metrics::{Metrics, MetricsRegistry};
+//! use zero_core::common::metrics::{Metrics, MetricsRegistry};
 //!
 //! // Create a metrics registry for a service
 //! let registry = MetricsRegistry::new("zero-gateway");

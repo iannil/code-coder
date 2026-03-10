@@ -14,8 +14,8 @@
 //! Use `build_client()` with a `ClientCategory` to get a properly configured client:
 //!
 //! ```rust,ignore
-//! use zero_common::http_client::{build_client, ClientCategory};
-//! use zero_common::Config;
+//! use zero_core::common::http_client::{build_client, ClientCategory};
+//! use zero_core::common::Config;
 //!
 //! let config = Config::default();
 //! let client = build_client(&config.timeout, ClientCategory::Llm);

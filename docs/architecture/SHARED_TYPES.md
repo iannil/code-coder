@@ -41,47 +41,47 @@ import {
 
 | Rust 类型 | TypeScript 文件 | 源文件 |
 |-----------|-----------------|--------|
-| `RiskLevel` | `generated/guardrails/RiskLevel.ts` | `services/zero-common/src/guardrails.rs` |
-| `ActionCategory` | `generated/guardrails/ActionCategory.ts` | `services/zero-common/src/guardrails.rs` |
-| `Action` | `generated/guardrails/Action.ts` | `services/zero-common/src/guardrails.rs` |
-| `Decision` | `generated/guardrails/Decision.ts` | `services/zero-common/src/guardrails.rs` |
-| `ApprovalRequest` | `generated/guardrails/ApprovalRequest.ts` | `services/zero-common/src/guardrails.rs` |
-| `ApprovalStatus` | `generated/guardrails/ApprovalStatus.ts` | `services/zero-common/src/guardrails.rs` |
+| `RiskLevel` | `generated/guardrails/RiskLevel.ts` | `services/zero-core/src/common/guardrails.rs` |
+| `ActionCategory` | `generated/guardrails/ActionCategory.ts` | `services/zero-core/src/common/guardrails.rs` |
+| `Action` | `generated/guardrails/Action.ts` | `services/zero-core/src/common/guardrails.rs` |
+| `Decision` | `generated/guardrails/Decision.ts` | `services/zero-core/src/common/guardrails.rs` |
+| `ApprovalRequest` | `generated/guardrails/ApprovalRequest.ts` | `services/zero-core/src/common/guardrails.rs` |
+| `ApprovalStatus` | `generated/guardrails/ApprovalStatus.ts` | `services/zero-core/src/common/guardrails.rs` |
 
 ### 2.2 HitL (Human-in-the-Loop) 系统
 
 | Rust 类型 | TypeScript 文件 | 源文件 |
 |-----------|-----------------|--------|
-| `RiskLevel` | `generated/hitl/RiskLevel.ts` | `services/zero-common/src/hitl_client.rs` |
-| `ApprovalType` | `generated/hitl/ApprovalType.ts` | `services/zero-common/src/hitl_client.rs` |
-| `ApprovalStatus` | `generated/hitl/ApprovalStatus.ts` | `services/zero-common/src/hitl_client.rs` |
-| `ApprovalRequest` | `generated/hitl/ApprovalRequest.ts` | `services/zero-common/src/hitl_client.rs` |
-| `CreateApprovalRequest` | `generated/hitl/CreateApprovalRequest.ts` | `services/zero-common/src/hitl_client.rs` |
-| `ApprovalResponse` | `generated/hitl/ApprovalResponse.ts` | `services/zero-common/src/hitl_client.rs` |
+| `RiskLevel` | `generated/hitl/RiskLevel.ts` | `services/zero-core/src/common/hitl_client.rs` |
+| `ApprovalType` | `generated/hitl/ApprovalType.ts` | `services/zero-core/src/common/hitl_client.rs` |
+| `ApprovalStatus` | `generated/hitl/ApprovalStatus.ts` | `services/zero-core/src/common/hitl_client.rs` |
+| `ApprovalRequest` | `generated/hitl/ApprovalRequest.ts` | `services/zero-core/src/common/hitl_client.rs` |
+| `CreateApprovalRequest` | `generated/hitl/CreateApprovalRequest.ts` | `services/zero-core/src/common/hitl_client.rs` |
+| `ApprovalResponse` | `generated/hitl/ApprovalResponse.ts` | `services/zero-core/src/common/hitl_client.rs` |
 
 ### 2.3 Task 事件系统
 
 | Rust 类型 | TypeScript 文件 | 源文件 |
 |-----------|-----------------|--------|
-| `TaskEvent` | `generated/events/TaskEvent.ts` | `services/zero-common/src/events.rs` |
-| `TaskStatus` | `generated/events/TaskStatus.ts` | `services/zero-common/src/events.rs` |
-| `TaskState` | `generated/events/TaskState.ts` | `services/zero-common/src/events.rs` |
-| `StreamEvent` | `generated/events/StreamEvent.ts` | `services/zero-common/src/events.rs` |
-| `TaskCreatedData` | `generated/events/TaskCreatedData.ts` | `services/zero-common/src/events.rs` |
-| `TaskStartedData` | `generated/events/TaskStartedData.ts` | `services/zero-common/src/events.rs` |
-| `ThoughtData` | `generated/events/ThoughtData.ts` | `services/zero-common/src/events.rs` |
-| `ToolUseData` | `generated/events/ToolUseData.ts` | `services/zero-common/src/events.rs` |
-| `ProgressData` | `generated/events/ProgressData.ts` | `services/zero-common/src/events.rs` |
-| `OutputData` | `generated/events/OutputData.ts` | `services/zero-common/src/events.rs` |
-| `ConfirmationData` | `generated/events/ConfirmationData.ts` | `services/zero-common/src/events.rs` |
-| `AgentSwitchData` | `generated/events/AgentSwitchData.ts` | `services/zero-common/src/events.rs` |
-| `HeartbeatData` | `generated/events/HeartbeatData.ts` | `services/zero-common/src/events.rs` |
-| `DebugInfoData` | `generated/events/DebugInfoData.ts` | `services/zero-common/src/events.rs` |
-| `AgentInfoData` | `generated/events/AgentInfoData.ts` | `services/zero-common/src/events.rs` |
-| `SkillUseData` | `generated/events/SkillUseData.ts` | `services/zero-common/src/events.rs` |
-| `TaskCompletedData` | `generated/events/TaskCompletedData.ts` | `services/zero-common/src/events.rs` |
-| `TaskFailedData` | `generated/events/TaskFailedData.ts` | `services/zero-common/src/events.rs` |
-| `TaskUsage` | `generated/events/TaskUsage.ts` | `services/zero-common/src/events.rs` |
+| `TaskEvent` | `generated/events/TaskEvent.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskStatus` | `generated/events/TaskStatus.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskState` | `generated/events/TaskState.ts` | `services/zero-core/src/common/events.rs` |
+| `StreamEvent` | `generated/events/StreamEvent.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskCreatedData` | `generated/events/TaskCreatedData.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskStartedData` | `generated/events/TaskStartedData.ts` | `services/zero-core/src/common/events.rs` |
+| `ThoughtData` | `generated/events/ThoughtData.ts` | `services/zero-core/src/common/events.rs` |
+| `ToolUseData` | `generated/events/ToolUseData.ts` | `services/zero-core/src/common/events.rs` |
+| `ProgressData` | `generated/events/ProgressData.ts` | `services/zero-core/src/common/events.rs` |
+| `OutputData` | `generated/events/OutputData.ts` | `services/zero-core/src/common/events.rs` |
+| `ConfirmationData` | `generated/events/ConfirmationData.ts` | `services/zero-core/src/common/events.rs` |
+| `AgentSwitchData` | `generated/events/AgentSwitchData.ts` | `services/zero-core/src/common/events.rs` |
+| `HeartbeatData` | `generated/events/HeartbeatData.ts` | `services/zero-core/src/common/events.rs` |
+| `DebugInfoData` | `generated/events/DebugInfoData.ts` | `services/zero-core/src/common/events.rs` |
+| `AgentInfoData` | `generated/events/AgentInfoData.ts` | `services/zero-core/src/common/events.rs` |
+| `SkillUseData` | `generated/events/SkillUseData.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskCompletedData` | `generated/events/TaskCompletedData.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskFailedData` | `generated/events/TaskFailedData.ts` | `services/zero-core/src/common/events.rs` |
+| `TaskUsage` | `generated/events/TaskUsage.ts` | `services/zero-core/src/common/events.rs` |
 
 ---
 
@@ -105,7 +105,7 @@ pub struct MyType {
 
 ### 3.2 在导出测试中注册
 
-编辑 `services/zero-common/tests/export_bindings.rs`:
+编辑 `services/zero-core/tests/export_bindings.rs`:
 
 ```rust
 use zero_common::my_module::MyType;
@@ -142,7 +142,7 @@ export * from "./module_name/MyType"
 | `MemoryCategory` | `MemoryCategory` | `packages/ccode/src/memory-zerobot/types.ts` |
 | `MemoryEntry` | `MemoryEntry` | `packages/ccode/src/memory-zerobot/types.ts` |
 
-这些类型目前手动同步，位于 `services/zero-bot/` 而非 `zero-common`。
+这些类型目前手动同步，位于 `services/zero-bot/` 而非 `zero-core::common`。
 
 ---
 
