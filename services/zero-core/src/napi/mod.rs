@@ -13,6 +13,9 @@ mod autonomous;
 mod bindings;
 
 #[cfg(feature = "napi-bindings")]
+mod common;
+
+#[cfg(feature = "napi-bindings")]
 mod config;
 
 #[cfg(feature = "napi-bindings")]
@@ -64,6 +67,9 @@ mod provider;
 mod pty;
 
 #[cfg(feature = "napi-bindings")]
+mod read;
+
+#[cfg(feature = "napi-bindings")]
 mod schema;
 
 #[cfg(feature = "napi-bindings")]
@@ -88,6 +94,9 @@ mod tool_registry;
 mod trace;
 
 #[cfg(feature = "napi-bindings")]
+mod truncation;
+
+#[cfg(feature = "napi-bindings")]
 mod watcher;
 
 #[cfg(feature = "napi-bindings")]
@@ -101,6 +110,9 @@ pub use autonomous::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use bindings::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use common::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use config::*;
@@ -154,6 +166,9 @@ pub use provider::*;
 pub use pty::*;
 
 #[cfg(feature = "napi-bindings")]
+pub use read::*;
+
+#[cfg(feature = "napi-bindings")]
 pub use schema::*;
 
 #[cfg(feature = "napi-bindings")]
@@ -176,6 +191,9 @@ pub use tool_registry::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use trace::*;
+
+#[cfg(feature = "napi-bindings")]
+pub use truncation::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use watcher::*;

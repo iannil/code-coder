@@ -18,7 +18,7 @@ full = []
 
 [dependencies]
 # Internal
-zero-common = { workspace = true, features = ["axum", "http-client", "redis-backend", "hitl-client"] }
+zero-core = { workspace = true, features = ["axum", "http-client", "redis-backend", "hitl-client"] }
 
 # Async runtime
 tokio = { workspace = true }

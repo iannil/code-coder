@@ -24,7 +24,7 @@ use super::monitor_bridge::{MonitorBridge, MonitorReport, MonitorRunResult};
 use super::scheduler::{Scheduler, TaskInfo};
 use super::workflow::{ExecutionStatus, Workflow, WorkflowExecutor, WorkflowResult};
 use std::collections::HashMap;
-use zero_common::config::{CronTask, MonitorTask};
+use zero_core::common::config::{CronTask, MonitorTask};
 
 // ============================================================================
 // State
@@ -758,8 +758,8 @@ struct CreateMonitorTaskRequest {
     id: String,
     name: String,
     schedule: String,
-    sources: Vec<zero_common::config::MonitorSourceConfig>,
-    notification: zero_common::config::MonitorNotificationConfig,
+    sources: Vec<zero_core::common::config::MonitorSourceConfig>,
+    notification: zero_core::common::config::MonitorNotificationConfig,
 }
 
 /// Create a new monitor task.

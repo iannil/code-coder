@@ -49,4 +49,4 @@ pub use risk::{RiskEvaluation, RiskEvaluator, RiskLevel};
 pub use scheduler::HandsScheduler;
 pub use state::{ExecutionStatus, HandExecution, HandState, StateStore};
 // Re-export notification config from zero-common
-pub use zero_common::config::HandNotificationConfig;
+pub use zero_core::common::config::HandNotificationConfig;

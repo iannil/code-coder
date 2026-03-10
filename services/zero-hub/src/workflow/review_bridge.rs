@@ -19,8 +19,8 @@ use std::sync::Arc;
 
 use super::github::{self, GitHubClient};
 use super::gitlab::{self, GitLabClient};
-use zero_common::hitl_client::{ApprovalType, CreateApprovalRequest, HitLClient};
-use zero_common::{build_client, ClientCategory, TimeoutConfig};
+use zero_core::common::hitl_client::{ApprovalType, CreateApprovalRequest, HitLClient};
+use zero_core::common::{build_client, ClientCategory, TimeoutConfig};
 
 // ============================================================================
 // IM Notification Configuration

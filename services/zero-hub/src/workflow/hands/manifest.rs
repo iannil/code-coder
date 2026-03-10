@@ -33,7 +33,7 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use zero_common::config::{config_dir, workspace_hands_dir, HandNotificationConfig};
+use zero_core::common::config::{config_dir, workspace_hands_dir, HandNotificationConfig};
 
 /// Autonomy level for CLOSE decision framework thresholds.
 ///
@@ -547,7 +547,7 @@ fn extract_description(markdown: &str) -> String {
 /// Priority: workspace.subdirs.hands > ~/.codecoder/hands (legacy)
 pub fn hands_dir() -> PathBuf {
     // Try to load workspace configuration
-    if let Ok(config) = zero_common::config::load_config() {
+    if let Ok(config) = zero_core::common::config::load_config() {
         if let Some(ref workspace) = config.workspace {
             return workspace_hands_dir(&Some(workspace.clone()));
         }

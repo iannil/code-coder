@@ -74,7 +74,7 @@ impl Default for ReportGeneratorConfig {
 
 /// Get the path to the persistent state file.
 fn state_file_path() -> PathBuf {
-    zero_common::config::config_dir()
+    zero_core::common::config::config_dir()
         .join("workflow")
         .join("report_state.json")
 }
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_extract_highlights() {
-        let notification = Arc::new(NotificationClient::new(&zero_common::config::Config::default()));
+        let notification = Arc::new(NotificationClient::new(&zero_core::common::config::Config::default()));
         let generator = MacroReportGenerator::new(
             AgentBridgeConfig::default(),
             notification,
@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn test_period_description() {
-        let notification = Arc::new(NotificationClient::new(&zero_common::config::Config::default()));
+        let notification = Arc::new(NotificationClient::new(&zero_core::common::config::Config::default()));
         let generator = MacroReportGenerator::new(
             AgentBridgeConfig::default(),
             notification,
@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     fn test_format_telegram_message() {
-        let notification = Arc::new(NotificationClient::new(&zero_common::config::Config::default()));
+        let notification = Arc::new(NotificationClient::new(&zero_core::common::config::Config::default()));
         let generator = MacroReportGenerator::new(
             AgentBridgeConfig::default(),
             notification,
@@ -722,7 +722,7 @@ mod tests {
     #[test]
     fn test_format_telegram_message_no_truncation() {
         // Verifies that long messages are NOT truncated - zero-channels handles this
-        let notification = Arc::new(NotificationClient::new(&zero_common::config::Config::default()));
+        let notification = Arc::new(NotificationClient::new(&zero_core::common::config::Config::default()));
         let generator = MacroReportGenerator::new(
             AgentBridgeConfig::default(),
             notification,

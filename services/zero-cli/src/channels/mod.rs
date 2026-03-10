@@ -27,7 +27,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 // Import NotificationSink from zero-common (unified trait)
-pub use zero_common::NotificationSink;
+pub use zero_core::common::NotificationSink;
 
 /// Notification sink that routes notifications to the appropriate channel
 struct ChannelNotificationSink {
@@ -527,8 +527,8 @@ pub async fn doctor_channels(config: Config) -> Result<()> {
 }
 
 /// Convert zero-cli Config to zero-common Config for use with zero-channels.
-fn to_common_config(config: &Config) -> zero_common::config::Config {
-    use zero_common::config as common;
+fn to_common_config(config: &Config) -> zero_core::common::config::Config {
+    use zero_core::common::config as common;
 
     let mut common_cfg = common::Config::default();
 

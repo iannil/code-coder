@@ -23,10 +23,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use zero_common::config::CaptureConfig;
-use zero_common::logging::{generate_span_id, LifecycleEventType, RequestContext};
-use zero_common::{build_client_with_timeout, TimeoutConfig};
-use zero_common::{stream_keys, RedisStreamClient, StreamEvent, TaskEvent as StreamTaskEvent};
+use zero_core::common::config::CaptureConfig;
+use zero_core::common::logging::{generate_span_id, LifecycleEventType, RequestContext};
+use zero_core::common::{build_client_with_timeout, TimeoutConfig};
+use zero_core::common::{stream_keys, RedisStreamClient, StreamEvent, TaskEvent as StreamTaskEvent};
 
 // ============================================================================
 // CodeCoder API Types
@@ -2092,7 +2092,7 @@ impl CodeCoderBridge {
 
     /// Handle the /bind_trading command - save chat_id to config.
     async fn handle_bind_trading(&self, message: &ChannelMessage) -> Result<()> {
-        use zero_common::config::Config;
+        use zero_core::common::config::Config;
 
         let chat_id = &message.channel_id;
         let user_id = &message.user_id;

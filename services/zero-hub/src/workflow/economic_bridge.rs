@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::{build_client, ClientCategory};
 
 // ============================================================================
 // Types
@@ -213,7 +213,7 @@ impl EconomicDataBridge {
     /// Create a new economic data bridge.
     pub fn new(codecoder_endpoint: impl Into<String>) -> Self {
         // Use API category for external economic data APIs
-        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Api);
+        let client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Api);
 
         Self {
             client,

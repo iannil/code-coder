@@ -9,7 +9,7 @@ use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::interval;
 use tracing::{info, warn};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use super::{PaperTrade, PaperTradeStatus, SessionState, TradeDirection};
 use super::validator::{SignalValidator, ValidationResult};

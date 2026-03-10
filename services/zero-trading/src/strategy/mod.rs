@@ -14,7 +14,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::data::{MarketDataAggregator, SmtPair, Timeframe};
 

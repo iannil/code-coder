@@ -61,7 +61,7 @@ use axum::{routing::get, Router};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::data::{LixinAdapter, MarketDataAggregator};
 use crate::execution::ExecutionEngine;

@@ -4,8 +4,8 @@
 //! strategy for A-shares market with T+1 adaptation.
 
 use anyhow::Result;
-use zero_common::config::Config;
-use zero_common::logging::init_logging;
+use zero_core::common::config::Config;
+use zero_core::common::logging::init_logging;
 use zero_trading::TradingService;
 
 #[tokio::main]

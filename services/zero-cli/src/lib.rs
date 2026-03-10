@@ -15,7 +15,6 @@ use serde::{Deserialize, Serialize};
 
 // Re-export Zero Service crates for convenience
 pub use zero_hub;
-pub use zero_common;
 pub use zero_core;
 
 pub mod agent;

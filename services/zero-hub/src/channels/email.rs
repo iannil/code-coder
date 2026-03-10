@@ -25,7 +25,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::{interval, sleep};
 use tracing::{error, info, warn};
 use uuid::Uuid;
-use zero_common::config::EmailConfig;
+use zero_core::common::config::EmailConfig;
 
 use super::message::{ChannelMessage, ChannelType, MessageContent, OutgoingContent, OutgoingMessage};
 use super::traits::{Channel, ChannelError, ChannelResult};
@@ -345,8 +345,8 @@ impl EmailChannel {
                             attachments: vec![],
                             metadata: std::collections::HashMap::new(),
                             timestamp: ts,
-                            trace_id: zero_common::logging::generate_trace_id(),
-                            span_id: zero_common::logging::generate_span_id(),
+                            trace_id: zero_core::common::logging::generate_trace_id(),
+                            span_id: zero_core::common::logging::generate_span_id(),
                             parent_span_id: None,
                         };
                         if tx.send(msg).await.is_err() {
@@ -471,8 +471,8 @@ impl Channel for EmailChannel {
                             attachments: vec![],
                             metadata: std::collections::HashMap::new(),
                             timestamp: ts,
-                            trace_id: zero_common::logging::generate_trace_id(),
-                            span_id: zero_common::logging::generate_span_id(),
+                            trace_id: zero_core::common::logging::generate_trace_id(),
+                            span_id: zero_core::common::logging::generate_span_id(),
                             parent_span_id: None,
                         };
                         callback(msg);

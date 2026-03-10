@@ -24,7 +24,7 @@
 //!
 //! # Event Conversion
 //!
-//! Redis Streams events (from `zero_common::events`) are converted to
+//! Redis Streams events (from `zero_core::common::events`) are converted to
 //! SSE-compatible events (from `crate::sse`) for the progress handler.
 
 use super::checkpoint::CheckpointManager;
@@ -37,7 +37,7 @@ use super::sse::{
 };
 use anyhow::Result;
 use std::sync::Arc;
-use zero_common::{
+use zero_core::common::{
     stream_keys, RedisStreamClient, StreamEvent, TaskEvent as CommonTaskEvent,
 };
 
@@ -325,7 +325,7 @@ impl SubscriptionHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zero_common::{
+    use zero_core::common::{
         OutputData, ProgressData as CommonProgressData, TaskCompletedData, TaskFailedData,
         ThoughtData, ToolUseData as CommonToolUseData,
     };
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn test_convert_heartbeat_returns_none() {
-        let event = CommonTaskEvent::Heartbeat(zero_common::HeartbeatData {
+        let event = CommonTaskEvent::Heartbeat(zero_core::common::HeartbeatData {
             stage: Some("running".to_string()),
             elapsed_ms: 5000,
         });

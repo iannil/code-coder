@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration as StdDuration, SystemTime};
 use serde::{Deserialize, Serialize};
-use zero_common::memory::{MemoryCategory, SqliteMemory};
+use zero_core::common::memory::{MemoryCategory, SqliteMemory};
 
 const HYGIENE_INTERVAL_HOURS: i64 = 12;
 const STATE_FILE: &str = "memory_hygiene_state.json";

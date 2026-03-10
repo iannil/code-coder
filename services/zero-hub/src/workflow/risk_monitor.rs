@@ -14,7 +14,7 @@ use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::{build_client, ClientCategory};
 
 // ============================================================================
 // Types
@@ -322,7 +322,7 @@ impl RiskMonitor {
     /// Create a new risk monitor.
     pub fn new(config: RiskMonitorConfig) -> Self {
         // Use Notification category for sending alerts to IM channels
-        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Notification);
+        let client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Notification);
 
         Self {
             client,

@@ -149,7 +149,7 @@ pub async fn run_orchestrator(
     tracing::info!("Using Rust binaries from: {}", bin_dir.display());
 
     // Compute log directory (default: ~/.codecoder/logs)
-    let resolved_log_dir = log_dir.unwrap_or_else(|| zero_common::config::config_dir().join("logs"));
+    let resolved_log_dir = log_dir.unwrap_or_else(|| zero_core::common::config::config_dir().join("logs"));
     tracing::info!("Service logs directory: {}", resolved_log_dir.display());
 
     // Create service manager
@@ -172,10 +172,12 @@ pub async fn run_orchestrator(
     // Wrap manager for sharing between tasks
     let manager_shared = Arc::new(Mutex::new(manager));
 
-    // ── Start management API server ─────────────────────────────
+    // ── Start management API server (unified service hub) ─────────────────────
+    let common_config = zero_core::common::config::Config::load().ok();
     let api_state = api::ApiState {
         manager: manager_shared.clone(),
         started_at: Utc::now(),
+        config: common_config,
     };
     let api_host = host.clone();
     let api_handle = tokio::spawn(async move {

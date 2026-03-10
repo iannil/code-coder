@@ -12,7 +12,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use zero_common::memory::{HybridSearchEngine, MemoryCategory, MemoryEntry};
+use zero_core::common::memory::{HybridSearchEngine, MemoryCategory, MemoryEntry};
 
 /// State for context API endpoints.
 #[derive(Clone)]

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::macro_filter::{EconomicCyclePhase, TradingBias};
 
 // Re-export DecisionSource from zero_common for unified usage
-pub use zero_common::hybrid::DecisionSource;
+pub use zero_core::common::hybrid::DecisionSource;
 
 /// Request to the CodeCoder API chat endpoint.
 #[derive(Debug, Clone, Serialize)]
@@ -176,7 +176,7 @@ pub struct MacroDecision {
 // ============================================================================
 
 /// Implement AnalysisTrigger trait from zero_common
-impl zero_common::hybrid::AnalysisTrigger for AnalysisTrigger {
+impl zero_core::common::hybrid::AnalysisTrigger for AnalysisTrigger {
     fn description(&self) -> &str {
         match self {
             AnalysisTrigger::ExtremeRiskAppetite => "极端风险偏好",
@@ -191,14 +191,14 @@ impl zero_common::hybrid::AnalysisTrigger for AnalysisTrigger {
 }
 
 /// Implement AgentResult trait from zero_common
-impl zero_common::hybrid::AgentResult for AgentAnalysis {
+impl zero_core::common::hybrid::AgentResult for AgentAnalysis {
     fn confidence(&self) -> f64 {
         self.confidence
     }
 }
 
 /// Implement HybridDecision trait from zero_common
-impl zero_common::hybrid::HybridDecision for MacroDecision {
+impl zero_core::common::hybrid::HybridDecision for MacroDecision {
     fn source(&self) -> DecisionSource {
         self.source
     }

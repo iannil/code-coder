@@ -380,6 +380,138 @@ pub fn compute_diff(old_content: String, new_content: String, file_path: String)
     editor.generate_diff(&old_content, &new_content, path)
 }
 
+// ============================================================================
+// DiffLines Types and Functions
+// ============================================================================
+
+/// A single change from diffLines
+#[napi(object)]
+pub struct NapiDiffChange {
+    /// The text content of this change
+    pub value: String,
+
+    /// Number of lines in this change
+    pub count: u32,
+
+    /// True if this is an addition
+    pub added: bool,
+
+    /// True if this is a removal
+    pub removed: bool,
+}
+
+/// Compute line-by-line diff between two strings
+///
+/// Returns an array of changes compatible with npm 'diff' package format.
+/// Each change has: value (content), count (line count), added, removed
+#[napi]
+pub fn diff_lines(old_content: String, new_content: String) -> Vec<NapiDiffChange> {
+    use similar::{ChangeTag, TextDiff};
+
+    let diff = TextDiff::from_lines(&old_content, &new_content);
+    let mut changes = Vec::new();
+
+    // Group consecutive operations of the same type
+    let mut current_tag: Option<ChangeTag> = None;
+    let mut current_lines: Vec<&str> = Vec::new();
+
+    for change in diff.iter_all_changes() {
+        let tag = change.tag();
+
+        if Some(tag) != current_tag && !current_lines.is_empty() {
+            // Flush the current group
+            if let Some(prev_tag) = current_tag {
+                changes.push(create_diff_change(&current_lines, prev_tag));
+            }
+            current_lines.clear();
+        }
+
+        current_tag = Some(tag);
+        current_lines.push(change.value());
+    }
+
+    // Flush remaining
+    if !current_lines.is_empty() {
+        if let Some(tag) = current_tag {
+            changes.push(create_diff_change(&current_lines, tag));
+        }
+    }
+
+    changes
+}
+
+fn create_diff_change(lines: &[&str], tag: similar::ChangeTag) -> NapiDiffChange {
+    let value = lines.join("");
+    let count = lines.len() as u32;
+
+    match tag {
+        similar::ChangeTag::Insert => NapiDiffChange {
+            value,
+            count,
+            added: true,
+            removed: false,
+        },
+        similar::ChangeTag::Delete => NapiDiffChange {
+            value,
+            count,
+            added: false,
+            removed: true,
+        },
+        similar::ChangeTag::Equal => NapiDiffChange {
+            value,
+            count,
+            added: false,
+            removed: false,
+        },
+    }
+}
+
+/// Create a unified diff patch string (equivalent to createTwoFilesPatch from npm 'diff')
+///
+/// Returns a unified diff format string suitable for displaying or applying
+#[napi]
+pub fn create_two_files_patch(
+    old_path: String,
+    new_path: String,
+    old_content: String,
+    new_content: String,
+) -> String {
+    use similar::{ChangeTag, TextDiff};
+
+    let diff = TextDiff::from_lines(&old_content, &new_content);
+
+    let mut output = String::new();
+    output.push_str(&format!("--- {}\n", old_path));
+    output.push_str(&format!("+++ {}\n", new_path));
+
+    for (idx, group) in diff.grouped_ops(3).iter().enumerate() {
+        if idx > 0 {
+            output.push('\n');
+        }
+
+        for op in group {
+            for change in diff.iter_changes(op) {
+                let sign = match change.tag() {
+                    ChangeTag::Delete => '-',
+                    ChangeTag::Insert => '+',
+                    ChangeTag::Equal => ' ',
+                };
+
+                output.push(sign);
+                output.push_str(change.value());
+                if !change.missing_newline() {
+                    // Ensure each line ends with newline in the output
+                    if !change.value().ends_with('\n') {
+                        output.push('\n');
+                    }
+                }
+            }
+        }
+    }
+
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -426,5 +558,51 @@ mod tests {
         let diff = compute_diff(old.to_string(), new.to_string(), "test.txt".to_string());
         assert!(diff.contains("-line 2"));
         assert!(diff.contains("+line 3"));
+    }
+
+    #[test]
+    fn test_diff_lines() {
+        let old = "line 1\nline 2\nline 3\n";
+        let new = "line 1\nline 4\nline 3\n";
+        let changes = diff_lines(old.to_string(), new.to_string());
+
+        // Should have at least one change
+        assert!(!changes.is_empty());
+
+        // Find the additions and deletions
+        let additions: u32 = changes.iter().filter(|c| c.added).map(|c| c.count).sum();
+        let deletions: u32 = changes.iter().filter(|c| c.removed).map(|c| c.count).sum();
+
+        assert!(additions > 0, "Should have additions");
+        assert!(deletions > 0, "Should have deletions");
+    }
+
+    #[test]
+    fn test_diff_lines_no_change() {
+        let content = "line 1\nline 2\n";
+        let changes = diff_lines(content.to_string(), content.to_string());
+
+        // All changes should be equal (not added or removed)
+        for change in &changes {
+            assert!(!change.added);
+            assert!(!change.removed);
+        }
+    }
+
+    #[test]
+    fn test_create_two_files_patch() {
+        let old = "line 1\nline 2\n";
+        let new = "line 1\nline 3\n";
+        let patch = create_two_files_patch(
+            "old.txt".to_string(),
+            "new.txt".to_string(),
+            old.to_string(),
+            new.to_string(),
+        );
+
+        assert!(patch.contains("--- old.txt"));
+        assert!(patch.contains("+++ new.txt"));
+        assert!(patch.contains("-line 2"));
+        assert!(patch.contains("+line 3"));
     }
 }

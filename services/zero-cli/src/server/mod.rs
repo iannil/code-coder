@@ -20,13 +20,17 @@ use anyhow::Result;
 use axum::Router;
 use tokio::signal;
 use tower_http::cors::{Any, CorsLayer};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
-/// Default ports for each service
+/// Default ports for each service (legacy, for backward compatibility)
+/// Note: Unified mode uses DAEMON_PORT (4402) with path prefixes
 pub const DEFAULT_GATEWAY_PORT: u16 = 4430;
 pub const DEFAULT_CHANNELS_PORT: u16 = 4431;
 pub const DEFAULT_WORKFLOW_PORT: u16 = 4432;
 pub const DEFAULT_API_PORT: u16 = 4435;
+
+/// Unified daemon port (preferred)
+pub const DAEMON_PORT: u16 = 4402;
 
 /// Start the unified Zero Server
 pub async fn start_server(config: &Config, unified: bool) -> Result<()> {

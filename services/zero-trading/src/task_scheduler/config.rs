@@ -6,7 +6,7 @@
 //! This module re-exports `PreparationTaskConfig` from `zero_common`
 //! to maintain a single source of truth for configuration.
 
-pub use zero_common::config::PreparationTaskConfig;
+pub use zero_core::common::config::PreparationTaskConfig;
 
 #[cfg(test)]
 mod tests {

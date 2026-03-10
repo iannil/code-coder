@@ -26,10 +26,10 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
-use zero_common::logging::RequestContext;
-use zero_common::keywords::{detect_alias, keywords};
-use zero_common::messages::messages;
-use zero_common::{
+use zero_core::common::logging::RequestContext;
+use zero_core::common::keywords::{detect_alias, keywords};
+use zero_core::common::messages::messages;
+use zero_core::common::{
     stream_keys, RedisStreamClient, RedisStreamConfig, TaskCreatedData, TaskEvent,
 };
 
@@ -221,7 +221,7 @@ impl TaskDispatcher {
                 .await?;
 
             // Also publish the TaskCreated event to the task's event stream
-            let event = zero_common::StreamEvent::new(0, task_request.to_task_created_event())
+            let event = zero_core::common::StreamEvent::new(0, task_request.to_task_created_event())
                 .with_trace_context(ctx.trace_id.clone(), ctx.span_id.clone());
 
             client

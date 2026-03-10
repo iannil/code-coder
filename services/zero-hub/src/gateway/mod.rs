@@ -59,8 +59,8 @@ pub use webhook::{WebhookState, webhook_routes};
 use axum::Router;
 use std::net::SocketAddr;
 use tower_http::cors::{Any, CorsLayer};
-use zero_common::config::Config;
-use zero_common::TracingExt;
+use zero_core::common::config::Config;
+use zero_core::common::TracingExt;
 
 /// Build the gateway router with all routes and middleware.
 pub fn build_router(config: &Config) -> Router {

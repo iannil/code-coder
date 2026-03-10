@@ -14,7 +14,7 @@ use super::manifest::{AutoApproveConfig, AutonomyLevel, RiskThreshold};
 use super::risk::{RiskEvaluator, RiskEvaluation, RiskLevel};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use zero_common::messages::messages;
+use zero_core::common::messages::messages;
 
 /// Decision for a tool call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

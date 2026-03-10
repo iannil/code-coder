@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use serde_json::json;
 use std::fmt::Write;
 use std::sync::Arc;
-use zero_common::memory::Memory;
+use crate::common::memory::Memory;
 
 /// Memory recall tool.
 pub struct MemoryRecallTool {
@@ -90,7 +90,7 @@ impl Tool for MemoryRecallTool {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use zero_common::memory::{MemoryCategory, SqliteMemory};
+    use crate::common::memory::{MemoryCategory, SqliteMemory};
 
     fn seeded_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();

@@ -149,7 +149,7 @@ pub struct PaperSessionStatus {
 /// access. State transitions are managed exclusively by the background task to
 /// avoid race conditions.
 pub struct PaperTradingManager {
-    config: zero_common::config::Config,
+    config: zero_core::common::config::Config,
     runner: Arc<RwLock<Option<Arc<PaperTradingRunner>>>>,
     state: Arc<RwLock<SessionState>>,
     last_result: Arc<RwLock<Option<SessionResult>>>,
@@ -158,7 +158,7 @@ pub struct PaperTradingManager {
 
 impl PaperTradingManager {
     /// Create a new paper trading manager
-    pub fn new(config: &zero_common::config::Config) -> Self {
+    pub fn new(config: &zero_core::common::config::Config) -> Self {
         Self {
             config: config.clone(),
             runner: Arc::new(RwLock::new(None)),
@@ -408,7 +408,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_trading_manager_new() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let manager = PaperTradingManager::new(&config);
 
         // Initial state should be Idle
@@ -423,7 +423,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_trading_manager_initial_state() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let manager = PaperTradingManager::new(&config);
 
         // get_trades should return empty vec when no session
@@ -441,7 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_trading_manager_stop_without_running() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let manager = PaperTradingManager::new(&config);
 
         // Stopping when not running should fail
@@ -451,7 +451,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_trading_manager_start_session_state_transition() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let manager = PaperTradingManager::new(&config);
 
         // Initial state should be Idle

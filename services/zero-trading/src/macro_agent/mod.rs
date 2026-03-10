@@ -81,7 +81,7 @@ pub use types::{
 };
 
 use std::sync::Arc;
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::macro_filter::MacroFilter;
 use crate::notification::NotificationClient;

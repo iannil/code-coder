@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use totp_rs::{Algorithm, TOTP};
-use zero_common::hitl_client::{
+use zero_core::common::hitl_client::{
     ApprovalType, CreateApprovalRequest, HitLClient, HitLClientError, RiskLevel,
 };
 

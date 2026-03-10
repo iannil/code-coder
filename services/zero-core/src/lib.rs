@@ -1,6 +1,7 @@
 //! zero-core: Unified core library for CodeCoder
 //!
 //! This crate provides high-performance implementations of core functionality:
+//! - **common**: Shared types, utilities, and configuration (merged from zero-common)
 //! - **tools**: File operations (grep, glob, read, write, edit), shell execution
 //! - **session**: Message storage, compaction, prompt templates
 //! - **protocol**: MCP, LSP, JSON-RPC implementations
@@ -46,6 +47,7 @@ pub mod audit;
 pub mod autonomous;
 #[cfg(feature = "browser")]
 pub mod browser;
+pub mod common;  // Merged from zero-common crate
 pub mod context;
 pub mod foundation;
 pub mod git;

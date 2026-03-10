@@ -261,7 +261,7 @@ impl LixinAdapter {
     }
 
     /// Create from config
-    pub fn from_config(config: &zero_common::config::Config) -> Option<Self> {
+    pub fn from_config(config: &zero_core::common::config::Config) -> Option<Self> {
         let token = config.lixin_token()?;
 
         // Check if lixin is enabled in data_sources config

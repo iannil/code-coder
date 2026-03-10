@@ -11,9 +11,6 @@ readme = "README.md"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Internal crates
-zero-common = { workspace = true }
-
 # Async runtime
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -35,6 +32,7 @@ uuid = { workspace = true }
 
 # Time
 chrono = { workspace = true }
+cron = { workspace = true }
 
 # File operations
 ignore = "0.4"
@@ -48,6 +46,10 @@ globset = "0.4"
 num_cpus = "1.16"
 dirs = "5.0"
 hex = "0.4"
+
+# Config
+directories = { workspace = true }
+shellexpand = { workspace = true }
 
 # Config parsing (JSONC/JSON5)
 json5 = "0.4"
@@ -63,9 +65,19 @@ reqwest = { workspace = true }
 
 # Cryptography (for vault and OAuth PKCE)
 chacha20poly1305 = { workspace = true }
+hmac = { workspace = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
 base64 = { workspace = true }
+
+# Secure memory
+zeroize = { workspace = true }
+
+# File locking
+fs4 = { workspace = true }
+
+# HTTP types
+http = { workspace = true }
 
 # URL handling (for OAuth)
 url = "2.5"
@@ -75,6 +87,12 @@ tracing-subscriber = { workspace = true }
 
 # Database
 rusqlite = { workspace = true }
+
+# Vector database (for memory module)
+qdrant-client = { workspace = true }
+
+# Redis (optional, for event bus backend)
+redis = { workspace = true, optional = true }
 
 # Template engine
 handlebars = "6.2"
@@ -140,6 +158,9 @@ tiktoken-rs = { workspace = true, optional = true }
 # LRU cache for tokenizer
 lru = { workspace = true }
 
+# TypeScript bindings generation (optional)
+ts-rs = { workspace = true, optional = true }
+
 # SIMD operations (optional, controlled by feature flag)
 wide = { workspace = true, optional = true }
 
@@ -160,13 +181,24 @@ keyring-support = ["keyring"]
 napi-bindings = ["napi", "napi-derive", "napi-build"]
 lsp = ["tower-lsp", "async-process"]
 pty = ["portable-pty"]
-browser = ["chromiumoxide", "futures", "axum", "tower", "tower-http"]
+browser = ["chromiumoxide", "futures", "dep:axum", "dep:tower", "dep:tower-http"]
+# Features from merged zero-common
+ts-bindings = ["ts-rs"]
+redis-backend = ["redis"]
+hitl-client = []
+guardrails = []
+http-client = []
+blocking = ["reqwest/blocking"]
+axum = ["dep:axum", "dep:tower"]
+testing = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio-test = { workspace = true }
 criterion = { workspace = true }
 proptest = { workspace = true }
+mockall = { workspace = true }
+test-case = { workspace = true }
 
 [[bench]]
 name = "performance"

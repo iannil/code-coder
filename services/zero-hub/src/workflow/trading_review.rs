@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::{build_client, ClientCategory};
 
 // ============================================================================
 // Types
@@ -527,7 +527,7 @@ impl TradingReviewSystem {
     /// Create a new trading review system.
     pub fn new(codecoder_endpoint: impl Into<String>, storage_path: impl Into<PathBuf>) -> Self {
         // Use LLM category for pattern analysis via CodeCoder
-        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Llm);
+        let client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Llm);
 
         Self {
             client,
@@ -570,11 +570,11 @@ impl TradingReviewSystem {
     }
 
     /// Get cron tasks for scheduler registration.
-    pub fn get_cron_tasks(&self) -> Vec<zero_common::config::CronTask> {
+    pub fn get_cron_tasks(&self) -> Vec<zero_core::common::config::CronTask> {
         self.reminder_schedule
             .to_cron_expressions()
             .into_iter()
-            .map(|(expr, _period, id)| zero_common::config::CronTask {
+            .map(|(expr, _period, id)| zero_core::common::config::CronTask {
                 id,
                 expression: expr,
                 command: "trading-review".to_string(),

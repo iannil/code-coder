@@ -20,7 +20,7 @@ use super::local_storage::{LocalStorage, LocalStorageConfig};
 use super::router::{DataProviderRouter, RouterConfig};
 use super::{Candle, DataCache, IndexData, IndexOverview, ProviderInfo, SmtPair, Timeframe};
 use super::default_tracked_symbols;
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 use chrono::NaiveDate;
 
 /// Market data aggregator with multi-provider support.
@@ -1172,7 +1172,7 @@ mod tests {
         let api_key = std::env::var("ITICK_API_KEY").expect("ITICK_API_KEY not set");
 
         let mut config = Config::default();
-        let mut trading_config = zero_common::config::TradingConfig::default();
+        let mut trading_config = zero_core::common::config::TradingConfig::default();
         trading_config.itick_api_key = Some(api_key);
         config.trading = Some(trading_config);
 

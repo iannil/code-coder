@@ -19,7 +19,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use zero_common::security::pairing::PairingGuard;
+use zero_core::common::security::pairing::PairingGuard;
 
 /// Pairing state shared across requests.
 #[derive(Clone)]

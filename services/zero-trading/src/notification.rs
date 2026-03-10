@@ -15,8 +15,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
-use zero_common::config::Config;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::config::Config;
+use zero_core::common::{build_client, ClientCategory};
 
 use crate::macro_filter::{MacroEnvironment, TradingBias};
 use crate::strategy::{SignalStrength, TradingSignal};

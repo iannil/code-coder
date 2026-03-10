@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
-use zero_common::security::rbac::{check_permission, Permission};
+use zero_core::common::security::rbac::{check_permission, Permission};
 
 /// User record.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use zero_common::config::CronTask;
+use zero_core::common::config::CronTask;
 
 /// Cron scheduler with SQLite persistence.
 pub struct Scheduler {
@@ -50,7 +50,7 @@ pub struct TaskInfo {
 impl Scheduler {
     /// Create a new scheduler with default data directory.
     pub fn new() -> Self {
-        let data_dir = zero_common::config::config_dir().join("workflow");
+        let data_dir = zero_core::common::config::config_dir().join("workflow");
         Self::with_data_dir(data_dir)
     }
 

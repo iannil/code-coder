@@ -6,7 +6,7 @@ use super::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
-use zero_common::memory::Memory;
+use crate::common::memory::Memory;
 
 /// Let the agent forget/delete a memory entry
 pub struct MemoryForgetTool {
@@ -72,7 +72,7 @@ impl Tool for MemoryForgetTool {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use zero_common::memory::{MemoryCategory, SqliteMemory};
+    use crate::common::memory::{MemoryCategory, SqliteMemory};
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();

@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use zero_common::security::{
+use zero_core::common::security::{
     resource_rbac::{Action, ResourceRoleStore, ResourceType},
 };
 

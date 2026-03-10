@@ -20,8 +20,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use zero_common::messages::{messages, t};
-use zero_common::metrics::MetricsRegistry;
+use zero_core::common::messages::{messages, t};
+use zero_core::common::metrics::MetricsRegistry;
 
 use super::capture_bridge::CaptureBridge;
 use super::dingtalk::{self, DingTalkChannel};
@@ -156,7 +156,7 @@ async fn metrics_json_handler(State(state): State<Arc<ChannelsState>>) -> impl I
         Json(snapshot)
     } else {
         // Return basic JSON response if no registry configured
-        Json(zero_common::metrics::MetricsSnapshot {
+        Json(zero_core::common::metrics::MetricsSnapshot {
             service: "zero-channels".to_string(),
             total_requests: 0,
             error_requests: 0,
@@ -336,8 +336,8 @@ async fn telegram_webhook(
                     .duration_since(std::time::UNIX_EPOCH)
                     .unwrap_or_default()
                     .as_millis() as i64,
-                trace_id: zero_common::logging::generate_trace_id(),
-                span_id: zero_common::logging::generate_span_id(),
+                trace_id: zero_core::common::logging::generate_trace_id(),
+                span_id: zero_core::common::logging::generate_span_id(),
                 parent_span_id: None,
             };
 
@@ -1002,8 +1002,8 @@ async fn generic_webhook(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64,
-        trace_id: zero_common::logging::generate_trace_id(),
-        span_id: zero_common::logging::generate_span_id(),
+        trace_id: zero_core::common::logging::generate_trace_id(),
+        span_id: zero_core::common::logging::generate_span_id(),
         parent_span_id: None,
     };
 

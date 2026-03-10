@@ -81,7 +81,7 @@ impl MeteringState {
     }
 
     fn default_db_path() -> PathBuf {
-        let config_dir = zero_common::config::config_dir();
+        let config_dir = zero_core::common::config::config_dir();
         config_dir.join("metering.db")
     }
 }

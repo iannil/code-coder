@@ -4,7 +4,7 @@
 # 用于管理项目所有服务的启动、停止、状态查看
 #
 # 架构说明:
-#   - redis:         Redis Server (Docker) - 会话存储，IM 渠道依赖
+#   - redis:         Redis Server (Docker) - 可选，IM 渠道持久化 (REDIS_ENABLED=1 启用)
 #   - api:           CodeCoder API Server (Bun/TypeScript)
 #   - web:           Web Frontend (Vite/React)
 #   - zero-daemon:   Zero CLI Daemon (Rust) - 进程编排器 + 服务中枢
@@ -12,12 +12,11 @@
 #                      管理: zero-trading (4434) 子进程
 #   - whisper:       Whisper STT Server (Docker)
 #
-# Rust Crates 结构:
+# Rust Crates 结构 (4 crates):
 #   - zero-cli:      主入口 (binary) - daemon + server 功能
 #   - zero-trading:  交易服务 (binary) - PO3+SMT 自动化交易
 #   - zero-hub:      服务库 (library) - gateway/channels/workflow/observer
-#   - zero-core:     工具库 (library) - grep/glob/edit, browser 功能
-#   - zero-common:   共享库 (library) - 配置、日志、事件总线
+#   - zero-core:     工具库 (library) - grep/glob/edit, browser + common (配置、日志、事件总线)
 #
 # 用法:
 #   ./ops.sh start [service]   - 启动服务 (all|redis|api|web|zero-daemon|zero-trading|whisper)
@@ -56,12 +55,14 @@ REDIS_IMAGE="${REDIS_IMAGE:-redis:7-alpine}"
 REDIS_PORT="${REDIS_PORT:-4410}"
 
 # 服务列表 (按启动顺序)
-# 基础设施服务 (Redis 需要先于依赖它的服务启动)
-INFRA_SERVICES="redis"
+# 可选基础设施服务 (设置 REDIS_ENABLED=1 启用)
+OPTIONAL_SERVICES="redis"
 # 核心服务
 CORE_SERVICES="api web zero-daemon whisper"
-# 所有服务 (基础设施 + 核心服务)
-ALL_SERVICES="${INFRA_SERVICES} ${CORE_SERVICES}"
+# 默认服务 (不含可选服务)
+DEFAULT_SERVICES="${CORE_SERVICES}"
+# 所有服务 (可选 + 核心服务)
+ALL_SERVICES="${OPTIONAL_SERVICES} ${CORE_SERVICES}"
 # Rust 微服务 (由 daemon spawn，日志文件独立)
 # 注意: gateway, channels, workflow, observer 已合并到 zero-hub library
 # zero-cli daemon 内置这些功能，只需 spawn zero-trading
@@ -119,11 +120,15 @@ is_core_service() {
     esac
 }
 
-is_infra_service() {
+is_optional_service() {
     case "$1" in
         redis) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+is_redis_enabled() {
+    [ "${REDIS_ENABLED:-0}" = "1" ] || [ "${REDIS_ENABLED:-0}" = "true" ]
 }
 
 # 初始化目录
@@ -599,10 +604,10 @@ start_core() {
     log_info "启动核心服务..."
     echo ""
 
-    # 检查 Redis 是否在运行（IM 渠道依赖）
+    # 检查 Redis 是否在运行（IM 渠道可选依赖）
     if ! is_running "redis"; then
-        log_warn "Redis 未运行，IM 渠道功能可能受限"
-        echo "  提示: 运行 './ops.sh start redis' 或 './ops.sh start all' 启动 Redis"
+        log_warn "Redis 未运行，IM 渠道将使用内存模式 (不持久化)"
+        echo "  提示: 设置 REDIS_ENABLED=1 ./ops.sh start 启用 Redis"
         echo ""
     fi
 
@@ -674,9 +679,9 @@ show_status() {
     printf "║ %-25s │ %-10s │ %-8s │ %-6s │ %-6s ║\n" "服务" "状态" "PID" "端口" "类型"
     echo "╠════════════════════════════════════════════════════════════════════════╣"
 
-    echo -e "║ ${CYAN}基础设施服务${NC}                                                          ║"
+    echo -e "║ ${CYAN}可选服务 (REDIS_ENABLED=1 启用)${NC}                                       ║"
 
-    for service in ${INFRA_SERVICES}; do
+    for service in ${OPTIONAL_SERVICES}; do
         local service_name
         service_name=$(get_service_name "${service}")
         local port
@@ -736,8 +741,8 @@ show_status() {
 
     # 显示端口占用情况
     echo "端口占用检查:"
-    # 基础设施服务端口
-    for service in ${INFRA_SERVICES}; do
+    # 可选服务端口
+    for service in ${OPTIONAL_SERVICES}; do
         local port
         port=$(get_service_port "${service}")
         local service_name
@@ -1988,8 +1993,8 @@ show_help() {
     echo "  --raw              显示全部日志 (不过滤 hyper/h2/rustls 等底层库噪音)"
     echo "                     默认行为: 过滤连接池、HTTP/2 帧等底层日志"
     echo ""
-    echo "基础设施服务 (所有服务的依赖):"
-    echo "  redis              Redis Server (端口 ${REDIS_PORT}, Docker) - 会话存储"
+    echo "可选服务 (设置 REDIS_ENABLED=1 启用):"
+    echo "  redis              Redis Server (端口 ${REDIS_PORT}, Docker) - IM 渠道持久化"
     echo ""
     echo "核心服务 (./ops.sh start 默认启动这些):"
     echo "  api                CodeCoder API Server (端口 4400, Bun)"
@@ -2002,11 +2007,12 @@ show_help() {
     echo "  (gateway/channels/workflow/observer 已内置于 daemon)"
     echo ""
     echo "服务组:"
-    echo "  all                所有服务 (基础设施 + 核心服务)"
-    echo "  core               仅核心服务"
+    echo "  all                所有服务 (可选 + 核心服务)"
+    echo "  core               仅核心服务 (默认)"
     echo "  running            仅运行中的服务 (用于 tail 命令)"
     echo ""
     echo "环境变量:"
+    echo "  REDIS_ENABLED      启用 Redis (设置为 1 或 true 启用, 默认禁用)"
     echo "  REDIS_PORT         Redis 端口 (默认: 4410)"
     echo "  REDIS_IMAGE        Redis Docker 镜像 (默认: redis:7-alpine)"
     echo "  WHISPER_MODEL      Whisper 模型: tiny|base|small|medium|large (默认: base)"
@@ -2014,7 +2020,9 @@ show_help() {
     echo "  DEBUG=1            显示调试信息"
     echo ""
     echo "示例:"
-    echo "  ./ops.sh start                  # 启动所有服务 (含 Redis)"
+    echo "  ./ops.sh start                  # 启动核心服务 (默认不含 Redis)"
+    echo "  ./ops.sh start all              # 启动所有服务 (含 Redis)"
+    echo "  REDIS_ENABLED=1 ./ops.sh start  # 启动核心服务 + Redis"
     echo "  ./ops.sh start redis            # 只启动 Redis"
     echo "  ./ops.sh start api              # 只启动 API 服务"
     echo "  ./ops.sh stop web               # 只停止 Web 服务"

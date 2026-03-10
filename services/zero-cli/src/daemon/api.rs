@@ -1,7 +1,8 @@
 //! Daemon management HTTP API.
 //!
-//! Provides REST endpoints for managing the daemon and its child services.
-//! Runs on port 4402 alongside the process orchestrator.
+//! Provides REST endpoints for managing the daemon and its child services,
+//! plus the unified service hub (gateway, channels, workflow).
+//! Runs on port 4402 as the single entry point.
 
 use crate::process::{ServiceManager, ServiceStatus};
 use axum::{
@@ -15,6 +16,8 @@ use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tower_http::cors::{Any, CorsLayer};
+use zero_core::common::config::Config;
 
 /// Shared state for the management API.
 #[derive(Clone)]
@@ -23,6 +26,8 @@ pub struct ApiState {
     pub manager: Arc<Mutex<ServiceManager>>,
     /// Daemon start time
     pub started_at: chrono::DateTime<chrono::Utc>,
+    /// Config (needed for service routers)
+    pub config: Option<Config>,
 }
 
 /// Health response.
@@ -95,13 +100,46 @@ pub fn router(state: ApiState) -> Router {
         .with_state(state)
 }
 
-/// Start the management API server.
+/// Start the management API server with unified service hub.
 pub async fn serve(state: ApiState, host: &str, port: u16) -> anyhow::Result<()> {
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    let app = router(state);
 
-    tracing::info!("Management API listening on http://{}", addr);
+    // Build management routes
+    let management_router = router(state.clone());
+
+    // Build unified app with service routes if config is available
+    let app = if let Some(ref config) = state.config {
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
+        // Build channels router
+        let (channels_router, _rx, _outbound, _email, _telegram, _tx) =
+            zero_hub::channels::build_channels_router(config);
+
+        // Build workflow router
+        let workflow_service = zero_hub::workflow::WorkflowService::new(config.clone());
+        let workflow_router = workflow_service.build_router();
+
+        Router::new()
+            // Management routes at root
+            .merge(management_router)
+            // Service routes with prefixes
+            .nest("/gateway", zero_hub::gateway::build_router(config))
+            .nest("/channels", channels_router)
+            .nest("/workflow", workflow_router)
+            .layer(cors)
+    } else {
+        // Fallback to management-only mode
+        management_router
+    };
+
+    tracing::info!("Unified service hub listening on http://{}", addr);
+    if state.config.is_some() {
+        tracing::info!("  Routes: /health, /status, /gateway/*, /channels/*, /workflow/*");
+    }
     axum::serve(listener, app).await?;
     Ok(())
 }

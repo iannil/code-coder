@@ -12,8 +12,7 @@ categories = ["command-line-utilities", "api-bindings"]
 
 [dependencies]
 # Internal crates (Zero Services)
-zero-common = { workspace = true, features = ["hitl-client"] }
-zero-core = { workspace = true }
+zero-core = { workspace = true, features = ["hitl-client"] }
 zero-hub = { workspace = true }
 
 # CLI - minimal and fast

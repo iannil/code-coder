@@ -8,7 +8,6 @@ import z from "zod"
 import * as path from "path"
 import { Tool } from "./tool"
 import { LSP } from "../lsp"
-import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "@/file"
 import { Bus } from "@/bus"
@@ -19,6 +18,58 @@ import { Snapshot } from "@/session/snapshot"
 import { assertExternalDirectory } from "./external-directory"
 import { point, runWithChildSpanAsync, functionStart, functionEnd } from "@/observability"
 import { replaceWithFuzzyMatch as replaceWithFuzzyMatchNative } from "@codecoder-ai/core"
+
+// Try to import native diff functions
+let nativeDiffLines: typeof import("@codecoder-ai/core").diffLines | undefined
+let nativeCreateTwoFilesPatch: typeof import("@codecoder-ai/core").createTwoFilesPatch | undefined
+let nativeDiffAvailable = false
+
+// Fallback to npm 'diff' package
+let npmDiff: typeof import("diff") | undefined
+
+try {
+  const core = await import("@codecoder-ai/core")
+  nativeDiffLines = core.diffLines
+  nativeCreateTwoFilesPatch = core.createTwoFilesPatch
+  nativeDiffAvailable = typeof nativeDiffLines === "function" && typeof nativeCreateTwoFilesPatch === "function"
+} catch {
+  // Native not available
+}
+
+if (!nativeDiffAvailable) {
+  try {
+    npmDiff = await import("diff")
+  } catch {
+    // Neither available - will throw at runtime
+  }
+}
+
+/** Create unified diff patch between two file contents */
+export function createTwoFilesPatch(oldPath: string, newPath: string, oldContent: string, newContent: string): string {
+  if (nativeDiffAvailable && nativeCreateTwoFilesPatch) {
+    return nativeCreateTwoFilesPatch(oldPath, newPath, oldContent, newContent)
+  }
+  if (npmDiff) {
+    return npmDiff.createTwoFilesPatch(oldPath, newPath, oldContent, newContent)
+  }
+  throw new Error("No diff implementation available - install 'diff' package or rebuild native bindings")
+}
+
+/** Compute line-by-line diff changes */
+export function diffLines(oldContent: string, newContent: string): Array<{ added?: boolean; removed?: boolean; count?: number; value?: string }> {
+  if (nativeDiffAvailable && nativeDiffLines) {
+    return nativeDiffLines(oldContent, newContent).map((c: { added: boolean; removed: boolean; count: number; value: string }) => ({
+      added: c.added,
+      removed: c.removed,
+      count: c.count,
+      value: c.value,
+    }))
+  }
+  if (npmDiff) {
+    return npmDiff.diffLines(oldContent, newContent)
+  }
+  throw new Error("No diff implementation available - install 'diff' package or rebuild native bindings")
+}
 
 const MAX_DIAGNOSTICS_PER_FILE = 20
 

@@ -40,7 +40,7 @@ use tracing::{debug, error, info};
 
 use crate::session::{SessionConfig, TradingSessionManager};
 use crate::r#loop::TradingMode;
-use zero_common::config::TradingScheduleConfig;
+use zero_core::common::config::TradingScheduleConfig;
 
 /// Scheduled task type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

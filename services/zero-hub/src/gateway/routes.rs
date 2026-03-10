@@ -21,9 +21,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
-use zero_common::config::Config;
-use zero_common::metrics::MetricsRegistry;
-use zero_common::security::rbac::{check_permission, Permission};
+use zero_core::common::config::Config;
+use zero_core::common::metrics::MetricsRegistry;
+use zero_core::common::security::rbac::{check_permission, Permission};
 
 /// Shared application state.
 #[derive(Clone)]
@@ -123,7 +123,7 @@ pub struct PaginationQuery {
 
 /// Get the database path for user storage.
 fn get_db_path() -> PathBuf {
-    let config_dir = zero_common::config::config_dir();
+    let config_dir = zero_core::common::config::config_dir();
     config_dir.join("gateway.db")
 }
 
@@ -1255,7 +1255,7 @@ async fn metrics_handler(
 /// Metrics response in JSON format.
 async fn metrics_json_handler(
     State(registry): State<Arc<MetricsRegistry>>,
-) -> Json<zero_common::metrics::MetricsSnapshot> {
+) -> Json<zero_core::common::metrics::MetricsSnapshot> {
     registry.update_memory().await;
     Json(registry.snapshot().await)
 }

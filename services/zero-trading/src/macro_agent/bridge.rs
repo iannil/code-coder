@@ -6,7 +6,7 @@
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tracing::{debug, info, warn};
-use zero_common::{build_client_with_timeout, TimeoutConfig};
+use zero_core::common::{build_client_with_timeout, TimeoutConfig};
 
 use super::types::{AgentAnalysis, AgentRequest, AgentResponse, ChatResponseData, MacroContext, ReportType};
 use crate::macro_filter::{EconomicCyclePhase, TradingBias};

@@ -10,7 +10,7 @@ use std::time::Duration;
 use tokio::sync::{oneshot, Mutex, RwLock};
 
 // Import NotificationSink from zero-common (unified trait)
-pub use zero_common::NotificationSink;
+pub use crate::common::NotificationSink;
 
 /// Confirmation response type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

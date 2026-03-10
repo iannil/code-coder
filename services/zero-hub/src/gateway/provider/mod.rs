@@ -214,7 +214,7 @@ pub fn create_registry(
 /// Create a registry with all configured providers from config.
 ///
 /// Uses config.get_api_key() which reads from secrets.llm with env fallback.
-pub fn create_full_registry(config: &zero_common::config::Config) -> ProviderRegistry {
+pub fn create_full_registry(config: &zero_core::common::config::Config) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
     // Primary providers

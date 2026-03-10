@@ -98,8 +98,8 @@ pub use event_consumer::{convert_to_sse_event, EventConsumer, EventConsumerConfi
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
-use zero_common::config::Config;
-use zero_common::TracingExt;
+use zero_core::common::config::Config;
+use zero_core::common::TracingExt;
 
 // ============================================================================
 // Message Size Constants
@@ -277,7 +277,7 @@ pub fn build_channels_router(
     let codecoder_endpoint = config.codecoder_endpoint();
 
     // Initialize metrics registry
-    let metrics = Arc::new(zero_common::MetricsRegistry::new("zero-channels"));
+    let metrics = Arc::new(zero_core::common::MetricsRegistry::new("zero-channels"));
 
     // Create state with all channels including WhatsApp
     let (tx, rx) = tokio::sync::mpsc::channel(100);

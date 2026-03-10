@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use zero_common::{build_client_with_timeout, TimeoutConfig};
+use zero_core::common::{build_client_with_timeout, TimeoutConfig};
 
-use zero_common::config::{MonitorNotificationConfig, MonitorSourceConfig, MonitorTask};
+use zero_core::common::config::{MonitorNotificationConfig, MonitorSourceConfig, MonitorTask};
 
 // ============================================================================
 // Types

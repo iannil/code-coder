@@ -23,7 +23,7 @@ use anyhow::Result;
 use chrono::{Local, NaiveDate, NaiveTime};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::strategy::TradingSignal;
 use crate::data::AuctionData;
@@ -97,7 +97,7 @@ impl ExecutionEngine {
             .unwrap_or_default();
 
         // Load risk config from trading.risk_params, falling back to defaults
-        // The zero_common::config::T1RiskConfig is converted to t1_risk::T1RiskConfig
+        // The zero_core::common::config::T1RiskConfig is converted to t1_risk::T1RiskConfig
         let common_risk_config = config
             .trading
             .as_ref()

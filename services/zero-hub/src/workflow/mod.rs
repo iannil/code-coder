@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use tower_http::cors::{Any, CorsLayer};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 pub use routes::{build_router, create_state, create_state_with_channels, create_isolated_test_state, WorkflowState};
 pub use scheduler::{Scheduler, TaskInfo};
@@ -390,7 +390,7 @@ impl WorkflowService {
 
     /// Run the monitor scheduler.
     async fn run_monitor_scheduler(
-        monitor_tasks: Arc<tokio::sync::RwLock<std::collections::HashMap<String, zero_common::config::MonitorTask>>>,
+        monitor_tasks: Arc<tokio::sync::RwLock<std::collections::HashMap<String, zero_core::common::config::MonitorTask>>>,
         monitor_bridge: Arc<MonitorBridge>,
     ) {
         use std::collections::HashMap;

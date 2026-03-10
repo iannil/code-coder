@@ -6,7 +6,7 @@ use super::traits::{Tool, ToolResult};
 use async_trait::async_trait;
 use serde_json::json;
 use std::sync::Arc;
-use zero_common::memory::{Memory, MemoryCategory};
+use crate::common::memory::{Memory, MemoryCategory};
 
 /// Memory store tool.
 pub struct MemoryStoreTool {
@@ -82,7 +82,7 @@ impl Tool for MemoryStoreTool {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use zero_common::memory::SqliteMemory;
+    use crate::common::memory::SqliteMemory;
 
     fn test_mem() -> (TempDir, Arc<dyn Memory>) {
         let tmp = TempDir::new().unwrap();

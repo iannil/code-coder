@@ -121,6 +121,8 @@ export const EditorHandle = nativeBindings?.EditorHandle
 export const similarityRatio = nativeBindings?.similarityRatio
 export const findBestMatch = nativeBindings?.findBestMatch
 export const computeDiff = nativeBindings?.computeDiff
+export const diffLines = nativeBindings?.diffLines
+export const createTwoFilesPatch = nativeBindings?.createTwoFilesPatch
 
 // Phase 2.1: Fuzzy Replace (Edit Tool Replacers)
 export const replaceWithFuzzyMatch = nativeBindings?.replaceWithFuzzyMatch
@@ -341,6 +343,18 @@ export const parseSkillsBatch = nativeBindings?.parseSkillsBatch
 export const extractSkillFrontmatter = nativeBindings?.extractSkillFrontmatter
 export const stripSkillFrontmatter = nativeBindings?.stripSkillFrontmatter
 
+// Phase: Truncation (output truncation for large results)
+export const TruncatorHandle = nativeBindings?.TruncatorHandle
+export const truncateOutput = nativeBindings?.truncateOutput
+export const truncatePreview = nativeBindings?.truncatePreview
+
+// Phase: Read (native file reading with mmap support)
+export const ReaderHandle = nativeBindings?.ReaderHandle
+export const readFileWithLines = nativeBindings?.readFileWithLines
+export const readFileRange = nativeBindings?.readFileRange
+export const isBinaryFile = nativeBindings?.isBinaryFile
+export const countFileLines = nativeBindings?.countFileLines
+
 // Re-export types from binding.d.ts
 export type {
   NapiGitStatus,
@@ -460,6 +474,14 @@ export type {
   IgnoreEngineHandle as IgnoreEngineHandleType,
   // Hash Embedding types (Phase 12)
   NapiHashEmbeddingResult,
+  // Truncation types
+  NapiTruncateOptions,
+  NapiTruncateResult,
+  TruncatorHandle as TruncatorHandleType,
+  // Read types
+  NapiReadOptions,
+  NapiReadResult,
+  ReaderHandle as ReaderHandleType,
   // Context and Fingerprint types (Phase 16)
   NapiProjectLanguage,
   NapiProjectLanguage as ProjectLanguage,  // Alias for backward compatibility

@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use zero_common::{build_client, ClientCategory, TimeoutConfig};
+use zero_core::common::{build_client, ClientCategory, TimeoutConfig};
 
 use super::github::GitHubClient;
 

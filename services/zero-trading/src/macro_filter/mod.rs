@@ -18,8 +18,8 @@ use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use zero_common::config::Config;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::config::Config;
+use zero_core::common::{build_client, ClientCategory};
 
 use crate::data::LocalStorage;
 

@@ -49,7 +49,7 @@ pub mod channels;
 pub mod workflow;
 pub mod observer;
 
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 // Re-export commonly used types from gateway
 pub use gateway::{

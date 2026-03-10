@@ -33,7 +33,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use zero_common::config::CaptureConfig;
+use zero_core::common::config::CaptureConfig;
 
 // ============================================================================
 // Constants
@@ -1243,7 +1243,7 @@ mod tests {
             enabled: true,
             feishu_docs: None,
             notion: None,
-            auto_capture: zero_common::config::AutoCaptureConfig {
+            auto_capture: zero_core::common::config::AutoCaptureConfig {
                 capture_forwarded: true,
                 capture_links: true,
                 trigger_prefixes: vec!["#收藏".to_string(), "#save".to_string()],

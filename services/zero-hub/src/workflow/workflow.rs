@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::process::Stdio;
 use tokio::process::Command;
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::{build_client, ClientCategory};
 
 use super::dsl::{evaluate_expression, EvalContext};
 
@@ -174,7 +174,7 @@ impl WorkflowExecutor {
     /// Create a new workflow executor.
     pub fn new() -> Self {
         // Use API category for workflow HTTP actions
-        let http_client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Api);
+        let http_client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Api);
         Self {
             http_client,
             codecoder_endpoint: None,
@@ -184,7 +184,7 @@ impl WorkflowExecutor {
     /// Create a workflow executor with CodeCoder endpoint.
     pub fn with_codecoder(endpoint: String) -> Self {
         // Use LLM category when CodeCoder is configured
-        let http_client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Llm);
+        let http_client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Llm);
         Self {
             http_client,
             codecoder_endpoint: Some(endpoint),

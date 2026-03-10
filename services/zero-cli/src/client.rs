@@ -1,33 +1,39 @@
 //! HTTP client for Zero Services.
 //!
 //! This module provides HTTP clients for calling deployed Zero Services:
-//! - zero-gateway: LLM provider routing, authentication, quota management
-//! - zero-channels: Message channel management
-//! - zero-workflow: Cron scheduling, git webhooks
+//! - gateway: LLM provider routing, authentication, quota management
+//! - channels: Message channel management
+//! - workflow: Cron scheduling, git webhooks
 //!
-//! When services are running locally or remotely, this client handles:
-//! - Authentication via JWT or API key
-//! - Request routing to the correct service
-//! - Error handling and retries
+//! All services are accessed through the unified daemon port (4402) with path prefixes:
+//! - /gateway/* - Authentication, routing, quotas
+//! - /channels/* - IM channel adapters
+//! - /workflow/* - Webhooks, cron, workflows
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-/// Default endpoints for Zero Services.
+/// Unified daemon port for all services.
+pub const DAEMON_PORT: u16 = 4402;
+
+/// Default endpoints for Zero Services (unified port with path prefixes).
 pub mod endpoints {
-    pub const GATEWAY: &str = "http://localhost:4430";
-    pub const CHANNELS: &str = "http://localhost:4431";
-    pub const WORKFLOW: &str = "http://localhost:4432";
+    /// Gateway endpoint with path prefix
+    pub const GATEWAY: &str = "http://localhost:4402/gateway";
+    /// Channels endpoint with path prefix
+    pub const CHANNELS: &str = "http://localhost:4402/channels";
+    /// Workflow endpoint with path prefix
+    pub const WORKFLOW: &str = "http://localhost:4402/workflow";
 }
 
 /// Client configuration.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    /// Gateway service endpoint (default: localhost:4410)
+    /// Gateway service endpoint (default: localhost:4402/gateway)
     pub gateway_endpoint: String,
-    /// Channels service endpoint (default: localhost:4411)
+    /// Channels service endpoint (default: localhost:4402/channels)
     pub channels_endpoint: String,
-    /// Workflow service endpoint (default: localhost:4412)
+    /// Workflow service endpoint (default: localhost:4402/workflow)
     pub workflow_endpoint: String,
     /// API key for authentication
     pub api_key: Option<String>,
@@ -351,9 +357,9 @@ mod tests {
     #[test]
     fn client_config_defaults() {
         let config = ClientConfig::default();
-        assert_eq!(config.gateway_endpoint, "http://localhost:4430");
-        assert_eq!(config.channels_endpoint, "http://localhost:4431");
-        assert_eq!(config.workflow_endpoint, "http://localhost:4432");
+        assert_eq!(config.gateway_endpoint, "http://localhost:4402/gateway");
+        assert_eq!(config.channels_endpoint, "http://localhost:4402/channels");
+        assert_eq!(config.workflow_endpoint, "http://localhost:4402/workflow");
         assert_eq!(config.timeout_secs, 30);
         assert!(config.api_key.is_none());
     }

@@ -11,7 +11,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-use zero_common::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
+use zero_core::common::hybrid::{DecisionSource, HybridConfig, HybridDecisionMaker};
 
 use super::bridge::{AgentBridge, AgentBridgeConfig};
 use super::types::{AnalysisTrigger, MacroContext, MacroDecision};
@@ -523,7 +523,7 @@ mod tests {
 
     #[test]
     fn test_more_conservative_bias() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_check_triggers_extreme_risk() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn test_check_triggers_avoid_trading() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -604,7 +604,7 @@ mod tests {
 
     #[test]
     fn test_check_triggers_position_reduction() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -630,7 +630,7 @@ mod tests {
 
     #[test]
     fn test_check_triggers_extreme_pmi() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -666,7 +666,7 @@ mod tests {
 
     #[test]
     fn test_indicator_divergence() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),
@@ -701,7 +701,7 @@ mod tests {
 
     #[test]
     fn test_rule_to_decision() {
-        let rule_engine = Arc::new(MacroFilter::new(&zero_common::config::Config::default()));
+        let rule_engine = Arc::new(MacroFilter::new(&zero_core::common::config::Config::default()));
         let orchestrator = MacroOrchestrator::new(
             rule_engine,
             AgentBridgeConfig::default(),

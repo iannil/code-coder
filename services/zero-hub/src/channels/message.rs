@@ -209,8 +209,8 @@ impl ChannelMessage {
     }
 
     /// Create a RequestContext from this message for distributed tracing.
-    pub fn to_request_context(&self, service: impl Into<String>) -> zero_common::logging::RequestContext {
-        zero_common::logging::RequestContext {
+    pub fn to_request_context(&self, service: impl Into<String>) -> zero_core::common::logging::RequestContext {
+        zero_core::common::logging::RequestContext {
             trace_id: self.trace_id.clone(),
             span_id: self.span_id.clone(),
             parent_span_id: self.parent_span_id.clone(),

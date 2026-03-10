@@ -212,11 +212,11 @@ impl Default for TaskScheduler {
     fn default() -> Self {
         Self {
             prep_config: PreparationTaskConfig::default(),
-            data: Arc::new(MarketDataAggregator::new(&zero_common::config::Config::default())),
-            strategy: Arc::new(StrategyEngine::new(&zero_common::config::Config::default())),
+            data: Arc::new(MarketDataAggregator::new(&zero_core::common::config::Config::default())),
+            strategy: Arc::new(StrategyEngine::new(&zero_core::common::config::Config::default())),
             signal_detector: SignalDetector::new(
-                Arc::new(StrategyEngine::new(&zero_common::config::Config::default())),
-                Arc::new(MarketDataAggregator::new(&zero_common::config::Config::default())),
+                Arc::new(StrategyEngine::new(&zero_core::common::config::Config::default())),
+                Arc::new(MarketDataAggregator::new(&zero_core::common::config::Config::default())),
             ),
             task_last_run: Arc::new(RwLock::new(HashMap::new())),
         }

@@ -364,25 +364,30 @@ bun run --cwd packages/ccode build
 - CodeCoder API Server: 4400 (Bun/TypeScript)
 - Web Frontend (Vite): 4401 (React)
 - Zero CLI Daemon: 4402 (Rust, 统一服务入口)
+  - `/health` - 健康检查
+  - `/gateway/*` - 认证、路由、配额
+  - `/channels/*` - IM 渠道适配
+  - `/workflow/*` - 调度、Webhook、自动化
 - Faster Whisper Server: 4403 (Docker)
 
 **基础设施服务 (4410-4419):**
 
-- Redis Server: 4410 (Docker, 会话存储)
+- Redis Server: 4410 (Docker, 会话存储, 可选)
 
 **协议服务 (4420-4429):**
 
 - MCP Server (HTTP): 4420 (Model Context Protocol)
 
-> **注**: 原独立端口 (4430-4439) 已整合到 zero-hub，通过 zero-cli daemon (:4402) 统一管理。
+> **注**: 所有服务通过 zero-cli daemon (:4402) 的路径前缀统一访问，无需记忆多个端口。
 
-#### 服务架构 (5 Crates)
+#### 服务架构 (4 Crates)
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────┐
 │                              zero-cli daemon :4402                                     │
 │                          (统一入口 + 进程编排)                                          │
 │       职责: HTTP 服务、健康检查、自动重启、日志聚合                                       │
+│       路由: /gateway/*, /channels/*, /workflow/*                                       │
 │                                   │                                                    │
 │          ┌────────────────────────┼────────────────────────┐                          │
 │          │                        │                        │                          │
@@ -394,16 +399,12 @@ bun run --cwd packages/ccode build
 │    │tools/    │            │gateway/  │            │          │                       │
 │    │session/  │            │channels/ │            │          │                       │
 │    │security/ │            │workflow/ │            │          │                       │
+│    │common/   │            │          │            │          │                       │
 │    └──────────┘            └──────────┘            └──────────┘                       │
-│                                   │                                                    │
-│                                   ▼                                                    │
-│                            ┌──────────┐                                               │
-│                            │zero-     │                                               │
-│                            │common    │                                               │
-│                            │(共享库)  │                                               │
-│                            └──────────┘                                               │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+> **注**: zero-common 已合并到 zero-core/src/common/，作为共享类型、配置和工具库。
 
 **zero-hub 内部模块:**
 

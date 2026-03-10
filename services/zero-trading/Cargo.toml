@@ -13,7 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Internal
-zero-common = { workspace = true, features = ["hitl-client", "http-client"] }
+zero-core = { workspace = true, features = ["hitl-client", "http-client"] }
 
 # Async runtime
 tokio = { workspace = true }

@@ -6,10 +6,10 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use zero_common::{build_client, ClientCategory};
+use zero_core::common::{build_client, ClientCategory};
 
 use super::state::ExecutionStatus;
-use zero_common::config::HandNotificationConfig;
+use zero_core::common::config::HandNotificationConfig;
 
 use super::{HandExecution, HandManifest};
 
@@ -50,7 +50,7 @@ impl NotificationBridge {
     /// Create a new notification bridge.
     pub fn new(channels_endpoint: String) -> Self {
         // Use Notification category for IM channel calls
-        let client = build_client(&zero_common::TimeoutConfig::default(), ClientCategory::Notification);
+        let client = build_client(&zero_core::common::TimeoutConfig::default(), ClientCategory::Notification);
 
         Self {
             client,

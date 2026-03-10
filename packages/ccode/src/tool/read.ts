@@ -15,9 +15,24 @@ import {
   functionEnd,
 } from "@/observability"
 
+// Try to import native binary detection
+let nativeIsBinaryFile: typeof import("@codecoder-ai/core").isBinaryFile | undefined
+let nativeAvailable = false
+
+try {
+  const core = await import("@codecoder-ai/core")
+  nativeIsBinaryFile = core.isBinaryFile
+  nativeAvailable = typeof nativeIsBinaryFile === "function"
+} catch {
+  // Native not available
+}
+
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
 const MAX_BYTES = 50 * 1024
+
+/** Whether native read optimizations are available */
+export const isNativeReadAvailable = nativeAvailable
 
 export const ReadTool = Tool.define("read", {
   description: DESCRIPTION,
@@ -207,6 +222,16 @@ async function isBinaryFile(filepath: string, file: Bun.BunFile): Promise<boolea
       break
   }
 
+  // Use native binary detection when available
+  if (nativeAvailable && nativeIsBinaryFile) {
+    try {
+      return nativeIsBinaryFile(filepath)
+    } catch {
+      // Fall through to TS implementation
+    }
+  }
+
+  // TypeScript fallback implementation
   const stat = await file.stat()
   const fileSize = stat.size
   if (fileSize === 0) return false

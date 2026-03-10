@@ -99,7 +99,7 @@ pub struct StateStore {
 impl StateStore {
     /// Create a new state store with default data directory.
     pub fn new() -> Result<Self> {
-        let data_dir = zero_common::config::config_dir().join("workflow");
+        let data_dir = zero_core::common::config::config_dir().join("workflow");
         Self::with_data_dir(data_dir)
     }
 

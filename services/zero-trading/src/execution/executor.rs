@@ -503,7 +503,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_executor_creation() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let engine = Arc::new(RwLock::new(ExecutionEngine::new(&config)));
         let executor = PaperExecutor::new(engine, 100_000.0);
 
@@ -513,7 +513,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_paper_executor_account() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let engine = Arc::new(RwLock::new(ExecutionEngine::new(&config)));
         let executor = PaperExecutor::new(engine, 100_000.0);
 

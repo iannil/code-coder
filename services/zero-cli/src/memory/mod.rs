@@ -8,7 +8,7 @@ pub mod hygiene;
 
 
 // Re-export memory types from zero-common::memory
-pub use zero_common::memory::{MarkdownMemory, Memory, MemoryCategory, SqliteMemory};
+pub use zero_core::common::memory::{MarkdownMemory, Memory, MemoryCategory, SqliteMemory};
 
 use crate::config::MemoryConfig;
 use std::path::Path;

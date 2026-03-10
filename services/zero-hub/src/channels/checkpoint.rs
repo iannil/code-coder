@@ -13,7 +13,7 @@
 
 use anyhow::Result;
 use std::sync::Arc;
-use zero_common::RedisStreamClient;
+use zero_core::common::RedisStreamClient;
 
 // ============================================================================
 // Checkpoint Keys

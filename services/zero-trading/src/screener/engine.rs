@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::data::{DataProvider, LocalStorage, FinancialStatementData, StockInfo};
 use crate::value::ValueAnalyzer;

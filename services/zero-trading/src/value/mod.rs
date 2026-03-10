@@ -70,7 +70,7 @@ pub use report::{
 use anyhow::Result;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::data::LocalStorage;
 

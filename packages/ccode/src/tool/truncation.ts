@@ -6,6 +6,18 @@ import { PermissionNext } from "@/security/permission/next"
 import type { Agent } from "../agent/agent"
 import { Scheduler } from "@/infrastructure/scheduler"
 
+// Try to import native bindings
+let nativeTruncate: typeof import("@codecoder-ai/core").truncatePreview | undefined
+let nativeAvailable = false
+
+try {
+  const core = await import("@codecoder-ai/core")
+  nativeTruncate = core.truncatePreview
+  nativeAvailable = typeof nativeTruncate === "function"
+} catch {
+  // Native bindings not available
+}
+
 export namespace Truncate {
   export const MAX_LINES = 2000
   export const MAX_BYTES = 50 * 1024
@@ -21,6 +33,9 @@ export namespace Truncate {
     maxBytes?: number
     direction?: "head" | "tail"
   }
+
+  /** Whether native truncation is available */
+  export const isNative = nativeAvailable
 
   export function init() {
     Scheduler.register({
@@ -47,10 +62,16 @@ export namespace Truncate {
     return rule.action !== "deny"
   }
 
+  /**
+   * Truncate output using native Rust implementation when available.
+   * Falls back to TypeScript implementation if native bindings are not loaded.
+   */
   export async function output(text: string, options: Options = {}, agent?: Agent.Info): Promise<Result> {
     const maxLines = options.maxLines ?? MAX_LINES
     const maxBytes = options.maxBytes ?? MAX_BYTES
     const direction = options.direction ?? "head"
+
+    // Quick check if truncation is needed
     const lines = text.split("\n")
     const totalBytes = Buffer.byteLength(text, "utf-8")
 
@@ -58,13 +79,65 @@ export namespace Truncate {
       return { content: text, truncated: false }
     }
 
+    // Use native truncation for the core logic when available
+    let preview: string
+    let removed: number
+    let unit: string
+
+    if (nativeAvailable && nativeTruncate) {
+      const result = nativeTruncate(text, maxLines, maxBytes, direction)
+      preview = result.content
+      // Extract the preview content (before the truncation message)
+      const truncatedMatch = result.content.match(/\n\n\.\.\.\d+ (bytes|lines) truncated/)
+      if (truncatedMatch) {
+        preview = result.content.substring(0, truncatedMatch.index)
+      }
+      removed = result.bytesRemoved > 0 ? result.bytesRemoved : result.linesRemoved
+      unit = result.bytesRemoved > 0 ? "bytes" : "lines"
+    } else {
+      // Fallback to TypeScript implementation
+      const { content, removedCount, hitBytes } = truncateTs(text, maxLines, maxBytes, direction)
+      preview = content
+      removed = removedCount
+      unit = hitBytes ? "bytes" : "lines"
+    }
+
+    // Save full output to file
+    const id = Identifier.ascending("tool")
+    const filepath = path.join(DIR, id)
+    await Bun.write(Bun.file(filepath), text)
+
+    // Generate context-aware hint
+    const hint = hasTaskTool(agent)
+      ? `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
+      : `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
+
+    const message =
+      direction === "head"
+        ? `${preview}\n\n...${removed} ${unit} truncated...\n\n${hint}`
+        : `...${removed} ${unit} truncated...\n\n${hint}\n\n${preview}`
+
+    return { content: message, truncated: true, outputPath: filepath }
+  }
+
+  /**
+   * TypeScript fallback implementation for truncation.
+   * Used when native bindings are not available.
+   */
+  function truncateTs(
+    text: string,
+    maxLines: number,
+    maxBytes: number,
+    direction: "head" | "tail",
+  ): { content: string; removedCount: number; hitBytes: boolean } {
+    const lines = text.split("\n")
+    const totalBytes = Buffer.byteLength(text, "utf-8")
     const out: string[] = []
-    let i = 0
     let bytes = 0
     let hitBytes = false
 
     if (direction === "head") {
-      for (i = 0; i < lines.length && i < maxLines; i++) {
+      for (let i = 0; i < lines.length && i < maxLines; i++) {
         const size = Buffer.byteLength(lines[i], "utf-8") + (i > 0 ? 1 : 0)
         if (bytes + size > maxBytes) {
           hitBytes = true
@@ -74,7 +147,7 @@ export namespace Truncate {
         bytes += size
       }
     } else {
-      for (i = lines.length - 1; i >= 0 && out.length < maxLines; i--) {
+      for (let i = lines.length - 1; i >= 0 && out.length < maxLines; i--) {
         const size = Buffer.byteLength(lines[i], "utf-8") + (out.length > 0 ? 1 : 0)
         if (bytes + size > maxBytes) {
           hitBytes = true
@@ -85,22 +158,12 @@ export namespace Truncate {
       }
     }
 
-    const removed = hitBytes ? totalBytes - bytes : lines.length - out.length
-    const unit = hitBytes ? "bytes" : "lines"
-    const preview = out.join("\n")
+    const removedCount = hitBytes ? totalBytes - bytes : lines.length - out.length
 
-    const id = Identifier.ascending("tool")
-    const filepath = path.join(DIR, id)
-    await Bun.write(Bun.file(filepath), text)
-
-    const hint = hasTaskTool(agent)
-      ? `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse the Task tool to have explore agent process this file with Grep and Read (with offset/limit). Do NOT read the full file yourself - delegate to save context.`
-      : `The tool call succeeded but the output was truncated. Full output saved to: ${filepath}\nUse Grep to search the full content or Read with offset/limit to view specific sections.`
-    const message =
-      direction === "head"
-        ? `${preview}\n\n...${removed} ${unit} truncated...\n\n${hint}`
-        : `...${removed} ${unit} truncated...\n\n${hint}\n\n${preview}`
-
-    return { content: message, truncated: true, outputPath: filepath }
+    return {
+      content: out.join("\n"),
+      removedCount,
+      hitBytes,
+    }
   }
 }

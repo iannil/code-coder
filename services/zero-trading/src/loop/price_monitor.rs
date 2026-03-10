@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn test_trailing_stop_calculation() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let data = Arc::new(MarketDataAggregator::new(&config));
         let mut monitor = PriceMonitor::new(data);
 
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_take_profit_levels() {
-        let config = zero_common::config::Config::default();
+        let config = zero_core::common::config::Config::default();
         let data = Arc::new(MarketDataAggregator::new(&config));
         let monitor = PriceMonitor::new(data);
 

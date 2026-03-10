@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "zero-cli",
-    "zero-common",
     "zero-core",
     "zero-hub",
     "zero-trading",
@@ -141,7 +140,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 qdrant-client = "1.8"
 
 # Internal crates
-zero-common = { path = "zero-common" }
 zero-core = { path = "zero-core" }
 zero-hub = { path = "zero-hub", features = ["full"] }
 

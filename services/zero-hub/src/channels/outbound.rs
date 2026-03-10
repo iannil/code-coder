@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
-use zero_common::logging::{generate_span_id, LifecycleEventType, RequestContext};
+use zero_core::common::logging::{generate_span_id, LifecycleEventType, RequestContext};
 
 // ============================================================================
 // OutboundRouter

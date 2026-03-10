@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
-use zero_common::config::Config;
+use zero_core::common::config::Config;
 
 use crate::data::{DataProvider, LocalStorage};
 use super::config::ScreenerConfig;
