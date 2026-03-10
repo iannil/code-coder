@@ -2,8 +2,16 @@ mod api;
 
 use crate::alerts;
 use crate::config::Config;
+use crate::observer::network::{ObserverNetwork, ObserverNetworkConfig};
+use crate::observer::watchers::{
+    CodeWatch, CodeWatchConfig, MetaWatch, MetaWatchConfig, SelfWatch, SelfWatchConfig,
+    WorldWatch, WorldWatchConfig,
+};
 use crate::process::{HealthChecker, ServiceConfig, ServiceManager};
+use crate::session::store::SessionStore;
 use crate::tools::ToolRegistry;
+use crate::unified_api::state::AnthropicProvider;
+use crate::unified_api::UnifiedApiState;
 use anyhow::Result;
 use chrono::Utc;
 use std::future::Future;
@@ -172,12 +180,118 @@ pub async fn run_orchestrator(
     // Wrap manager for sharing between tasks
     let manager_shared = Arc::new(Mutex::new(manager));
 
+    // ── Initialize Unified API State (Phase 1: API Server merge) ───────────────
+    let unified_state = {
+        // Initialize session store
+        let db_path = config.workspace_dir.join("sessions.db");
+        let sessions = match SessionStore::new(&db_path) {
+            Ok(store) => Arc::new(store),
+            Err(e) => {
+                tracing::warn!("Failed to open session store: {e}, using temp location");
+                // Fallback to temp directory
+                let temp_db = std::env::temp_dir().join("codecoder_sessions.db");
+                Arc::new(SessionStore::new(&temp_db).expect("Temp store should work"))
+            }
+        };
+
+        // Get tool registry for unified API
+        let tools = get_tool_registry()
+            .map(Arc::clone)
+            .unwrap_or_else(|| Arc::new(RwLock::new(ToolRegistry::new())));
+
+        // Determine prompts directory (TS source)
+        // Look for packages/ccode/src/agent/prompt/ relative to workspace
+        let prompts_dir = find_prompts_dir(&config.workspace_dir);
+        tracing::info!("Prompts directory: {}", prompts_dir.display());
+
+        // Create unified API state with LLM provider if API key is available
+        let state = if let Some(ref api_key) = config.api_key {
+            // Create Anthropic provider
+            let provider = Arc::new(AnthropicProvider::new(api_key));
+            tracing::info!("LLM provider: Anthropic (streaming enabled)");
+
+            Arc::new(UnifiedApiState::with_provider(
+                sessions,
+                tools,
+                prompts_dir,
+                config.workspace_dir.clone(),
+                provider,
+            ))
+        } else {
+            tracing::warn!("No API key configured, agent dispatch will be unavailable");
+            Arc::new(UnifiedApiState::new(
+                sessions,
+                tools,
+                prompts_dir,
+                config.workspace_dir.clone(),
+            ))
+        };
+
+        // Load agents on startup
+        if let Err(e) = state.load_agents().await {
+            tracing::warn!("Failed to load agents: {e}");
+        }
+
+        // Initialize Observer Network (Phase 5: Observer API integration)
+        let observer_config = ObserverNetworkConfig::default();
+        let observer_network = ObserverNetwork::with_gear(observer_config.clone(), state.gear.clone());
+        let observer_state = observer_network.state();
+
+        // Register the four watchers (Phase 7: Watcher integration)
+        {
+            let mut watcher_manager = observer_state.get_watcher_manager_mut().await;
+
+            // CodeWatch: observes codebase changes (Git, builds, tests)
+            let code_watch_config = CodeWatchConfig {
+                git_root: Some(config.workspace_dir.clone()),
+                track_build: true,
+                enable_typecheck: false, // Can be enabled based on config
+                ..Default::default()
+            };
+            watcher_manager.register(Box::new(CodeWatch::new(code_watch_config)));
+
+            // WorldWatch: observes external world (market, news, APIs)
+            let world_watch_config = WorldWatchConfig {
+                enable_agent_polling: false, // Disabled for now
+                ..Default::default()
+            };
+            watcher_manager.register(Box::new(WorldWatch::new(world_watch_config)));
+
+            // SelfWatch: observes system behavior (agent actions, resources)
+            let self_watch_config = SelfWatchConfig::default();
+            watcher_manager.register(Box::new(SelfWatch::new(self_watch_config)));
+
+            // MetaWatch: observes the observer network itself
+            let meta_watch_config = MetaWatchConfig::default();
+            watcher_manager.register(Box::new(MetaWatch::new(meta_watch_config)));
+
+            tracing::info!(
+                watcher_count = watcher_manager.watcher_count(),
+                "Registered four watchers: CodeWatch, WorldWatch, SelfWatch, MetaWatch"
+            );
+        }
+
+        // Start the observer network (starts watchers and observation loop)
+        observer_network.start().await;
+        tracing::info!("Observer network initialized and started");
+
+        // Create new state with observer - need to reconstruct Arc
+        let mut state_inner = Arc::try_unwrap(state).unwrap_or_else(|arc| (*arc).clone());
+        state_inner.set_observer(observer_state);
+        let state = Arc::new(state_inner);
+
+        state
+    };
+    crate::health::mark_component_ok("unified_api");
+    crate::health::mark_component_ok("observer");
+
     // ── Start management API server (unified service hub) ─────────────────────
     let common_config = zero_core::common::config::Config::load().ok();
     let api_state = api::ApiState {
         manager: manager_shared.clone(),
         started_at: Utc::now(),
         config: common_config,
+        unified: Some(unified_state),
     };
     let api_host = host.clone();
     let api_handle = tokio::spawn(async move {
@@ -454,6 +568,42 @@ async fn run_mcp_refresh_worker(_config: Config) -> Result<()> {
             }
         }
     }
+}
+
+/// Find the prompts directory for agent prompt files
+///
+/// Searches for packages/ccode/src/agent/prompt/ relative to:
+/// 1. Current working directory
+/// 2. Workspace directory
+/// 3. Parent directories (up to 5 levels)
+fn find_prompts_dir(workspace: &std::path::Path) -> PathBuf {
+    let relative_path = std::path::Path::new("packages/ccode/src/agent/prompt");
+
+    // Check current directory
+    if relative_path.exists() {
+        return relative_path.to_path_buf();
+    }
+
+    // Check workspace directory
+    let workspace_prompts = workspace.join(relative_path);
+    if workspace_prompts.exists() {
+        return workspace_prompts;
+    }
+
+    // Search parent directories
+    let mut current = std::env::current_dir().unwrap_or_default();
+    for _ in 0..5 {
+        let candidate = current.join(relative_path);
+        if candidate.exists() {
+            return candidate;
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+
+    // Fallback to workspace/prompts
+    workspace.join("prompts")
 }
 
 #[cfg(test)]

@@ -468,7 +468,7 @@ impl IpcServer {
 
     async fn handle_tool_call(
         &self,
-        client_id: &str,
+        _client_id: &str,
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, IpcError> {
         let params: ToolCallParams = params

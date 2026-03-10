@@ -25,6 +25,7 @@ pub mod config;
 pub mod cron;
 pub mod daemon;
 pub mod doctor;
+pub mod gear;
 pub mod health;
 pub mod heartbeat;
 pub mod integrations;
@@ -33,6 +34,7 @@ pub mod mcp;
 pub mod memory;
 pub mod migration;
 pub mod observability;
+pub mod observer;
 pub mod onboard;
 pub mod process;
 pub mod providers;
@@ -45,6 +47,7 @@ pub mod session;
 pub mod skills;
 pub mod tools;
 pub mod tunnel;
+pub mod unified_api;
 pub mod util;
 
 // Re-export STT/TTS from zero-hub::channels for backwards compatibility

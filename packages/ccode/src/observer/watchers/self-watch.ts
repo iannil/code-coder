@@ -11,6 +11,11 @@
  * This implements the "观察自己" (self-observation) aspect of
  * the Observer Network, enabling meta-cognitive awareness.
  *
+ * @deprecated This TypeScript implementation is deprecated in favor of the Rust
+ * implementation in services/zero-cli/src/observer/watchers/self_watch.rs. The Rust
+ * implementation provides better integration with the daemon lifecycle.
+ * Migration was completed in Phase 6-7 of the architecture refactoring.
+ *
  * @module observer/watchers/self-watch
  */
 

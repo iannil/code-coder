@@ -39,6 +39,7 @@ impl SessionStore {
 
     /// Initialize database schema.
     fn init_schema(conn: &Connection) -> Result<()> {
+        // Core sessions table
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS sessions (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,6 +52,20 @@ impl SessionStore {
             CREATE INDEX IF NOT EXISTS idx_session_key ON sessions(session_key);
             CREATE INDEX IF NOT EXISTS idx_session_created ON sessions(session_key, created_at);",
         )?;
+
+        // Session metadata table (Phase 4 extension)
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS session_metadata (
+                session_key     TEXT PRIMARY KEY,
+                title           TEXT,
+                project_id      TEXT,
+                agent           TEXT,
+                created_at      INTEGER NOT NULL,
+                updated_at      INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_metadata_project ON session_metadata(project_id);",
+        )?;
+
         Ok(())
     }
 
@@ -298,6 +313,163 @@ impl SessionStore {
             Err(e) => Err(e.into()),
         }
     }
+
+    // ══════════════════════════════════════════════════════════════════════════════
+    // Session Metadata Methods (Phase 4)
+    // ══════════════════════════════════════════════════════════════════════════════
+
+    /// Get session metadata.
+    pub fn get_metadata(&self, session_key: &str) -> Result<Option<SessionMetadata>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        let result = conn.query_row(
+            "SELECT title, project_id, agent, created_at, updated_at
+             FROM session_metadata
+             WHERE session_key = ?1",
+            params![session_key],
+            |row| {
+                Ok(SessionMetadata {
+                    session_key: session_key.to_string(),
+                    title: row.get(0)?,
+                    project_id: row.get(1)?,
+                    agent: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                })
+            },
+        );
+
+        match result {
+            Ok(meta) => Ok(Some(meta)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Set session metadata (creates or updates).
+    pub fn set_metadata(
+        &self,
+        session_key: &str,
+        title: Option<&str>,
+        project_id: Option<&str>,
+        agent: Option<&str>,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        let now = Local::now().timestamp();
+
+        conn.execute(
+            "INSERT INTO session_metadata (session_key, title, project_id, agent, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+             ON CONFLICT(session_key) DO UPDATE SET
+                title = COALESCE(?2, title),
+                project_id = COALESCE(?3, project_id),
+                agent = COALESCE(?4, agent),
+                updated_at = ?5",
+            params![session_key, title, project_id, agent, now],
+        )?;
+
+        Ok(())
+    }
+
+    /// Update session title.
+    pub fn set_title(&self, session_key: &str, title: &str) -> Result<()> {
+        self.set_metadata(session_key, Some(title), None, None)
+    }
+
+    /// Update session project ID.
+    pub fn set_project_id(&self, session_key: &str, project_id: &str) -> Result<()> {
+        self.set_metadata(session_key, None, Some(project_id), None)
+    }
+
+    /// Update session agent.
+    pub fn set_agent(&self, session_key: &str, agent: &str) -> Result<()> {
+        self.set_metadata(session_key, None, None, Some(agent))
+    }
+
+    /// List sessions with metadata.
+    /// Returns tuples of (session_key, message_count, last_message_timestamp, metadata).
+    pub fn list_sessions_with_metadata(&self) -> Result<Vec<(String, usize, i64, Option<SessionMetadata>)>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT s.session_key, COUNT(*) as msg_count, MAX(s.created_at) as last_active,
+                    m.title, m.project_id, m.agent, m.created_at as meta_created, m.updated_at
+             FROM sessions s
+             LEFT JOIN session_metadata m ON s.session_key = m.session_key
+             GROUP BY s.session_key
+             ORDER BY last_active DESC",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let session_key: String = row.get(0)?;
+            let msg_count: i64 = row.get(1)?;
+            let last_active: i64 = row.get(2)?;
+
+            // Build metadata if any fields are present
+            let title: Option<String> = row.get(3)?;
+            let project_id: Option<String> = row.get(4)?;
+            let agent: Option<String> = row.get(5)?;
+            let meta_created: Option<i64> = row.get(6)?;
+            let meta_updated: Option<i64> = row.get(7)?;
+
+            let metadata = if title.is_some() || project_id.is_some() || agent.is_some() {
+                Some(SessionMetadata {
+                    session_key: session_key.clone(),
+                    title,
+                    project_id,
+                    agent,
+                    created_at: meta_created.unwrap_or(0),
+                    updated_at: meta_updated.unwrap_or(0),
+                })
+            } else {
+                None
+            };
+
+            Ok((session_key, msg_count as usize, last_active, metadata))
+        })?;
+
+        let mut sessions = Vec::new();
+        for row in rows {
+            sessions.push(row?);
+        }
+        Ok(sessions)
+    }
+
+    /// Delete session metadata (called when session is deleted).
+    pub fn delete_metadata(&self, session_key: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        conn.execute(
+            "DELETE FROM session_metadata WHERE session_key = ?1",
+            params![session_key],
+        )?;
+
+        Ok(())
+    }
+}
+
+/// Session metadata (Phase 4 extension)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionMetadata {
+    pub session_key: String,
+    pub title: Option<String>,
+    pub project_id: Option<String>,
+    pub agent: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[cfg(test)]

@@ -8,6 +8,11 @@
  * - Technical debt indicators
  * - File changes
  *
+ * @deprecated This TypeScript implementation is deprecated in favor of the Rust
+ * implementation in services/zero-cli/src/observer/watchers/code_watch.rs. The Rust
+ * implementation provides better performance with native git2 integration.
+ * Migration was completed in Phase 6-7 of the architecture refactoring.
+ *
  * @module observer/watchers/code-watch
  */
 

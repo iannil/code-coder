@@ -5,6 +5,11 @@
  * Provides common functionality for lifecycle management, observation
  * emission, and status tracking.
  *
+ * @deprecated This TypeScript implementation is deprecated in favor of the Rust
+ * implementation in services/zero-cli/src/observer/watchers/. The Rust implementation
+ * provides better performance and is integrated with the zero-cli daemon.
+ * Migration was completed in Phase 6-7 of the architecture refactoring.
+ *
  * @module observer/watchers/base-watcher
  */
 

@@ -1,6 +1,10 @@
 /**
  * Attention Calculation
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Attention weights are now calculated by `ConsensusEngine` in Rust.
+ * See `services/zero-cli/src/observer/consensus/engine.rs`.
+ *
  * Calculates attention weights for prioritizing observations.
  * Implements the core attention mechanism that determines which
  * observations receive focus in the consensus process.

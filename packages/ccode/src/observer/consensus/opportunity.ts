@@ -1,6 +1,10 @@
 /**
  * Opportunity Identification
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Opportunity identification is now handled by `ConsensusEngine` in Rust.
+ * See `services/zero-cli/src/observer/consensus/engine.rs`.
+ *
  * Identifies opportunities from observation streams including:
  * - Optimization opportunities
  * - Automation possibilities

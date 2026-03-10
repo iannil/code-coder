@@ -1,6 +1,10 @@
 /**
  * World Model
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Use `ObserverApiClient` from `@/observer/client` to call the Rust API.
+ * See `services/zero-cli/src/observer/consensus/world_model.rs` for the new implementation.
+ *
  * Creates and maintains the World Model - a convergent snapshot
  * of reality formed from multiple observation sources.
  *

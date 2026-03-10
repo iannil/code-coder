@@ -11,6 +11,11 @@
  * This implements the "元观察" (meta-observation) aspect,
  * enabling the system to observe its own observation process.
  *
+ * @deprecated This TypeScript implementation is deprecated in favor of the Rust
+ * implementation in services/zero-cli/src/observer/watchers/meta_watch.rs. The Rust
+ * implementation provides comprehensive system health monitoring.
+ * Migration was completed in Phase 6-7 of the architecture refactoring.
+ *
  * @module observer/watchers/meta-watch
  */
 

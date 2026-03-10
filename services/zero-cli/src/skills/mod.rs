@@ -10,7 +10,6 @@ use std::process::Command;
 use std::time::{Duration, SystemTime};
 
 pub use hub::SkillHub;
-pub use loader::{LoadedSkill, SkillLoader, SkillLoaderConfig, SkillLoaderStats};
 
 const OPEN_SKILLS_REPO_URL: &str = "https://github.com/besoeasy/open-skills";
 const OPEN_SKILLS_SYNC_MARKER: &str = ".zero-bot-open-skills-sync";

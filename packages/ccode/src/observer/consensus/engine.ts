@@ -1,6 +1,10 @@
 /**
  * Consensus Engine
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Use `ObserverApiClient` from `@/observer/client` to call the Rust API.
+ * See `services/zero-cli/src/observer/consensus/engine.rs` for the new implementation.
+ *
  * The core of the Observer Network that aggregates observations from
  * multiple watchers and forms a unified understanding of the world.
  *

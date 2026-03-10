@@ -517,6 +517,7 @@ enum CronCommand {
     },
     /// Execute a shell command (not explicitly tagged, fallback)
     #[serde(skip)]
+    #[allow(dead_code)]
     Shell {
         command: String,
     },

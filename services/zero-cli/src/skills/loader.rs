@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use lru::LruCache;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 

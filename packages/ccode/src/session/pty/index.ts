@@ -157,7 +157,7 @@ export namespace Pty {
       try {
         const data = session.handle.read()
         if (data && data.length > 0) {
-          const dataStr = data.toString("utf-8")
+          // read() returns string from native binding
           let open = false
           for (const ws of session.subscribers) {
             if (ws.readyState !== 1) {
@@ -165,10 +165,10 @@ export namespace Pty {
               continue
             }
             open = true
-            ws.send(dataStr)
+            ws.send(data)
           }
           if (!open) {
-            session.buffer += dataStr
+            session.buffer += data
             if (session.buffer.length > BUFFER_LIMIT) {
               session.buffer = session.buffer.slice(-BUFFER_LIMIT)
             }
@@ -181,8 +181,8 @@ export namespace Pty {
 
     // Start checking for exit
     session.exitCheckTimer = setInterval(() => {
-      if (!session.handle.isRunning()) {
-        const exitCode = session.handle.exitCode() ?? 0
+      if (!session.handle.isAlive()) {
+        const exitCode = session.handle.info().exitCode ?? 0
         log.info("session exited", { id, exitCode })
         session.info.status = "exited"
 
@@ -250,7 +250,8 @@ export namespace Pty {
   export function write(id: string, data: string) {
     const session = state().get(id)
     if (session && session.info.status === "running") {
-      session.handle.write(Buffer.from(data))
+      // write() takes string directly
+      session.handle.write(data)
     }
   }
 
@@ -278,7 +279,8 @@ export namespace Pty {
     }
     return {
       onMessage: (message: string | ArrayBuffer) => {
-        session.handle.write(Buffer.from(String(message)))
+        // write() takes string directly
+        session.handle.write(String(message))
       },
       onClose: () => {
         log.info("client disconnected from session", { id })

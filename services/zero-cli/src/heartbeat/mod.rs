@@ -16,6 +16,3 @@ pub mod engine;
 pub mod health;
 pub mod monitor;
 
-pub use engine::HeartbeatEngine;
-pub use health::{HealthStatus, ServiceHealth, SystemHealth};
-pub use monitor::{HeartbeatMonitor, MonitorConfig, ServiceRegistration, StaleAction};

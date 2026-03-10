@@ -1,6 +1,10 @@
 /**
  * Event Stream Management
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Use `ObserverApiClient.subscribeToEvents()` from `@/observer/client` for SSE streaming.
+ * See `services/zero-cli/src/observer/network.rs` for the new implementation.
+ *
  * Manages the flow of observation events through the Observer Network.
  * Provides buffering, routing, and aggregation of observations.
  *

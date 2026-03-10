@@ -141,7 +141,7 @@ async fn execute_grep(state: &AppState, params: Value) -> Result<Value, String> 
         .map_err(|e| format!("Failed to serialize result: {}", e))
 }
 
-async fn execute_glob(state: &AppState, params: Value) -> Result<Value, String> {
+async fn execute_glob(_state: &AppState, params: Value) -> Result<Value, String> {
     let options: GlobOptions = serde_json::from_value(params)
         .map_err(|e| format!("Invalid glob params: {}", e))?;
 

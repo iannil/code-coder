@@ -9,7 +9,6 @@
 pub mod routes;
 pub mod state;
 
-pub use routes::{health, mcp, session, tools, ws};
 pub use state::AppState;
 
 use std::sync::Arc;

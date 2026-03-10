@@ -82,6 +82,7 @@ impl Default for HealthConfig {
 }
 
 /// Health checker for the Observer Network.
+#[allow(dead_code)]
 pub struct HealthCheck {
     config: HealthConfig,
     start_time: DateTime<Utc>,

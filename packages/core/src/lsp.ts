@@ -118,7 +118,8 @@ let nativeDetectLanguageId: ((extension: string) => string) | null = null
 try {
   const bindings = await import('./binding.js')
   createNativeLspServerManager = bindings.createLspServerManager
-  nativeDetectLanguageId = bindings.detectLanguageId
+  // detectLanguageId is a static method on LspServerManagerHandle
+  nativeDetectLanguageId = bindings.LspServerManagerHandle?.detectLanguageId ?? null
 } catch {
   // Native bindings not available
 }
@@ -572,7 +573,7 @@ export class LspServerManager {
       label: item.label,
       kind: item.kind ? this.completionKindToNumber(item.kind) : undefined,
       detail: item.detail,
-      documentation: item.documentation,
+      // documentation not available from native API (Rust LSP binding doesn't return it)
       insertText: item.insertText,
     }
   }

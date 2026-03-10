@@ -5,7 +5,6 @@ pub mod noop;
 pub mod traits;
 
 pub use self::log::LogObserver;
-pub use emitter::{emit, init_global_emitter, Emitter, EmitEvent, EmitterConfig, SpanId};
 pub use noop::NoopObserver;
 pub use traits::{Observer, ObserverEvent};
 

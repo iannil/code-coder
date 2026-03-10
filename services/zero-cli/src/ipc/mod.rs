@@ -61,39 +61,6 @@
 pub mod protocol;
 pub mod server;
 
-pub use protocol::{
-    // Types
-    ClientInfo,
-    CompactParams,
-    CompactResult,
-    ErrorNotification,
-    GetSessionParams,
-    InitializeParams,
-    InitializeResult,
-    IpcError,
-    IpcId,
-    IpcRequest,
-    IpcResponse,
-    ListSessionsResult,
-    LlmMessage,
-    LlmOptions,
-    LlmRequestNotification,
-    ServerInfo,
-    SessionInfo,
-    SessionSummary,
-    SessionUpdateNotification,
-    StreamTokenNotification,
-    ToolCallParams,
-    ToolCallResult,
-    ToolContent,
-    ToolInfo,
-    ToolRequestNotification,
-    ToolResultParams,
-    // Functions
-    create_notification,
-    default_socket_path,
-    // Method constants
-    methods,
-};
+pub use protocol::default_socket_path;
 
-pub use server::{serve, IpcServer};
+pub use server::serve;

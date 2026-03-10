@@ -10,8 +10,7 @@
 
 pub mod api;
 
-pub use api::{create_router, AppState, DEFAULT_PORT};
-pub use api::routes::{health, mcp, session, tools, ws};
+pub use api::{create_router, AppState};
 
 use std::net::SocketAddr;
 use std::sync::Arc;

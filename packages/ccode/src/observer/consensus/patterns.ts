@@ -1,6 +1,10 @@
 /**
  * Pattern Recognition
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Pattern detection is now handled by `ConsensusEngine` in Rust.
+ * See `services/zero-cli/src/observer/consensus/engine.rs`.
+ *
  * Detects emergent patterns from observation streams.
  * Identifies trends, correlations, cycles, and sequences.
  *

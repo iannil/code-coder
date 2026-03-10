@@ -1,6 +1,10 @@
 /**
  * Anomaly Detection
  *
+ * @deprecated This TypeScript implementation has been migrated to Rust.
+ * Anomaly detection is now handled by `ConsensusEngine` in Rust.
+ * See `services/zero-cli/src/observer/consensus/engine.rs`.
+ *
  * Detects anomalies in observation streams including:
  * - Outliers (values outside normal range)
  * - Sudden changes (rapid shifts in patterns)

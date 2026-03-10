@@ -78,8 +78,8 @@ export interface TechnologyDetection {
  * Find technologies matching a given content string
  */
 export function findFingerprints(content: string): Map<string, { tech: TechnologyFingerprint; matches: string[] }> {
-  // Native function takes string (html content), not object
-  const detections = nativeDetect!(content) as NapiWebDetection[]
+  // Native function takes NapiWebFingerprintInput object
+  const detections = nativeDetect!({ content }) as NapiWebDetection[]
 
   const results = new Map<string, { tech: TechnologyFingerprint; matches: string[] }>()
   for (const d of detections) {
@@ -106,9 +106,8 @@ export function detectTechnologies(input: {
   url?: string
   cookies?: string[]
 }): TechnologyDetection[] {
-  // Native function only supports string content
-  const content = input.content ?? ""
-  const detections = nativeDetect!(content) as NapiWebDetection[]
+  // Pass the full input object to native function
+  const detections = nativeDetect!(input as NapiWebFingerprintInput) as NapiWebDetection[]
   return detections.map((d: NapiWebDetection) => ({
     name: d.name,
     category: d.category,

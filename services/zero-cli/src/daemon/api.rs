@@ -3,8 +3,20 @@
 //! Provides REST endpoints for managing the daemon and its child services,
 //! plus the unified service hub (gateway, channels, workflow).
 //! Runs on port 4402 as the single entry point.
+//!
+//! # Unified API (Phase 1)
+//!
+//! This module now includes the unified API routes that merge the TypeScript
+//! API Server functionality:
+//! - `/api/v1/sessions/*` - Session management
+//! - `/api/v1/agents/*` - Agent dispatching
+//! - `/api/v1/memory/*` - Memory system
+//! - `/api/v1/tasks/*` - Task management
+//! - `/api/v1/config/*` - Configuration
+//! - `/api/v1/prompts/*` - Prompt hot-loading
 
 use crate::process::{ServiceManager, ServiceStatus};
+use crate::unified_api::{self, UnifiedApiState};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -28,6 +40,8 @@ pub struct ApiState {
     pub started_at: chrono::DateTime<chrono::Utc>,
     /// Config (needed for service routers)
     pub config: Option<Config>,
+    /// Unified API state (for sessions, agents, memory, etc.)
+    pub unified: Option<Arc<UnifiedApiState>>,
 }
 
 /// Health response.
@@ -123,17 +137,30 @@ pub async fn serve(state: ApiState, host: &str, port: u16) -> anyhow::Result<()>
         let workflow_service = zero_hub::workflow::WorkflowService::new(config.clone());
         let workflow_router = workflow_service.build_router();
 
-        Router::new()
+        let mut app = Router::new()
             // Management routes at root
             .merge(management_router)
             // Service routes with prefixes
             .nest("/gateway", zero_hub::gateway::build_router(config))
             .nest("/channels", channels_router)
-            .nest("/workflow", workflow_router)
-            .layer(cors)
+            .nest("/workflow", workflow_router);
+
+        // Add unified API routes if available (Phase 1 API Server merge)
+        if let Some(ref unified_state) = state.unified {
+            let unified_router = unified_api::build_router(Arc::clone(unified_state));
+            app = app.merge(unified_router);
+            tracing::info!("  Unified API routes: /api/v1/sessions/*, /api/v1/agents/*, /api/v1/memory/*, /api/v1/tasks/*, /api/v1/config/*, /api/v1/prompts/*");
+        }
+
+        app.layer(cors)
     } else {
-        // Fallback to management-only mode
-        management_router
+        // Fallback to management-only mode (still add unified API if available)
+        if let Some(ref unified_state) = state.unified {
+            let unified_router = unified_api::build_router(Arc::clone(unified_state));
+            management_router.merge(unified_router)
+        } else {
+            management_router
+        }
     };
 
     tracing::info!("Unified service hub listening on http://{}", addr);

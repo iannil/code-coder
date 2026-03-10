@@ -82,12 +82,13 @@ export namespace ProviderTransform {
     }
 
     // Native function signature: transformMessages(messagesJson: string, model: TransformModelInfo): TransformMessagesResult
+    const interleavedCap = model.capabilities.interleaved
     const modelInfo = {
       providerId: model.providerID,
       apiId: model.api.id || model.id,
       apiNpm: model.api.npm,
-      hasInterleavedField: model.capabilities.input?.interleaved ?? false,
-      interleavedField: undefined,
+      hasInterleavedField: typeof interleavedCap === "object" ? true : Boolean(interleavedCap),
+      interleavedField: typeof interleavedCap === "object" ? interleavedCap.field : undefined,
     }
 
     try {

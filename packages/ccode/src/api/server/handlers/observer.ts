@@ -1,18 +1,34 @@
 /**
  * Observer API Handlers
  *
- * HTTP API handlers for Observer Network integration.
- * Provides endpoints for:
- * - Escalation callbacks from IM channels
- * - Observer Network status and control
- * - Pending escalation management
+ * HTTP API handlers that proxy requests to the Rust Observer Network API.
+ *
+ * ## Architecture (Phase 5)
+ *
+ * These handlers are now thin proxies that forward requests to the Rust daemon:
+ *
+ * ```
+ * Client Request → TS API Handler → ObserverApiClient → Rust Daemon :4402
+ * ```
+ *
+ * The Rust daemon (zero-cli) manages all Observer state including:
+ * - Observer Network lifecycle (start/stop)
+ * - Consensus Engine
+ * - World Model
+ * - SSE Event Stream
  *
  * @module api/server/handlers/observer
  */
 
 import type { HttpRequest, HttpResponse, RouteParams } from "../types"
 import { Log } from "@/util/log"
-import { ObserverNetwork, type HumanDecision, type OperatingMode } from "@/observer"
+import {
+  getObserverClient,
+  type ApiResponse,
+  type ObserverStatus,
+  type GearStatus,
+} from "@/observer/client"
+import type { OperatingMode, HumanDecision } from "@/observer"
 
 const log = Log.create({ service: "api.observer" })
 
@@ -84,6 +100,27 @@ async function parseJsonBody<T>(req: HttpRequest): Promise<T | null> {
   }
 }
 
+/**
+ * Get the Observer API client.
+ * The client connects to the Rust daemon for all operations.
+ */
+function getClient() {
+  return getObserverClient()
+}
+
+/**
+ * Convert API response to HTTP response.
+ * Ensures consistent response format between TS and Rust layers.
+ */
+function apiToHttpResponse<T>(response: ApiResponse<T>, successStatus = 200): HttpResponse {
+  if (response.success) {
+    return jsonResponse(successStatus, response)
+  }
+  // Determine appropriate error status
+  const errorStatus = response.error?.includes("not running") ? 503 : 500
+  return jsonResponse(errorStatus, response)
+}
+
 // ============================================================================
 // Handlers
 // ============================================================================
@@ -91,6 +128,9 @@ async function parseJsonBody<T>(req: HttpRequest): Promise<T | null> {
 /**
  * POST /api/v1/observer/escalations/:id/callback
  * Handle escalation decision callback from IM or webhook.
+ *
+ * Note: Escalations are managed by the Rust daemon but this endpoint
+ * provides a TS-layer interface for legacy compatibility.
  */
 export async function handleEscalationCallback(
   req: HttpRequest,
@@ -108,45 +148,17 @@ export async function handleEscalationCallback(
     return jsonResponse(400, { success: false, error: "Missing action in request body" })
   }
 
-  const network = ObserverNetwork.getInstance()
+  // Note: Escalation handling is still managed by the local ModeController
+  // until full migration. For now, return not implemented.
+  log.warn("Escalation callback received but not yet proxied to Rust", {
+    escalationId,
+    action: body.action,
+  })
 
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
-  }
-
-  // Convert action to HumanDecision
-  const decision: HumanDecision = {
-    action: body.action === "manual" ? "modify" : body.action,
-    chosenMode: body.action === "manual" ? "MANUAL" : undefined,
-    reason: body.reason ?? `Via ${body.source ?? "API"} by ${body.userId ?? "unknown"}`,
-    timestamp: new Date(),
-  }
-
-  try {
-    await network.handleHumanDecision(escalationId, decision)
-
-    log.info("Escalation callback processed", {
-      escalationId,
-      action: body.action,
-      source: body.source,
-    })
-
-    return jsonResponse(200, {
-      success: true,
-      escalationId,
-      action: body.action,
-    })
-  } catch (error) {
-    log.error("Escalation callback failed", {
-      escalationId,
-      error: error instanceof Error ? error.message : String(error),
-    })
-
-    return jsonResponse(500, {
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    })
-  }
+  return jsonResponse(501, {
+    success: false,
+    error: "Escalation handling migration pending. Use Rust API directly.",
+  })
 }
 
 /**
@@ -163,22 +175,10 @@ export async function getEscalation(
     return jsonResponse(400, { success: false, error: "Missing escalation ID" })
   }
 
-  const network = ObserverNetwork.getInstance()
-
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
-  }
-
-  const escalations = network.getPendingEscalations()
-  const escalation = escalations.find((e) => e.id === escalationId)
-
-  if (!escalation) {
-    return jsonResponse(404, { success: false, error: "Escalation not found" })
-  }
-
-  return jsonResponse(200, {
-    success: true,
-    escalation,
+  // Escalation management migration pending
+  return jsonResponse(501, {
+    success: false,
+    error: "Escalation retrieval migration pending. Use Rust API directly.",
   })
 }
 
@@ -190,96 +190,86 @@ export async function listEscalations(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
-
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
-  }
-
-  const escalations = network.getPendingEscalations()
-
-  return jsonResponse(200, {
-    success: true,
-    escalations,
-    count: escalations.length,
+  // Escalation management migration pending
+  return jsonResponse(501, {
+    success: false,
+    error: "Escalation listing migration pending. Use Rust API directly.",
   })
 }
 
 /**
  * GET /api/v1/observer/status
  * Get Observer Network status.
+ *
+ * Proxies to Rust: GET /api/v1/observer/status
  */
 export async function getObserverStatus(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
+  const client = getClient()
 
-  if (!network) {
-    return jsonResponse(200, {
-      running: false,
+  try {
+    const response = await client.getStatus()
+
+    if (response.success && response.data) {
+      // Transform to match legacy format expected by TUI
+      return jsonResponse(200, {
+        running: response.data.running,
+        mode: "HYBRID", // Mode is managed by Gear system now
+        watchers: [], // Watcher details are internal to Rust now
+        stats: {
+          observations: response.data.streamStats.received,
+          patterns: response.data.activePatterns,
+          anomalies: response.data.activeAnomalies,
+        },
+        controller: {
+          opportunities: response.data.activeOpportunities,
+        },
+      })
+    }
+
+    return apiToHttpResponse(response)
+  } catch (error) {
+    log.error("Failed to get observer status from Rust API", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+
+    return jsonResponse(503, {
+      success: false,
+      error: "Observer daemon not available",
     })
   }
-
-  const stats = network.getStats()
-  const watchers = network.getWatcherStatuses()
-  const mode = network.getMode()
-  const controllerStats = network.getModeControllerStats()
-
-  return jsonResponse(200, {
-    running: true,
-    mode,
-    watchers: watchers.map((w) => ({
-      id: w.id,
-      type: w.type,
-      running: w.running,
-      health: w.health,
-      observationCount: w.observationCount,
-      avgLatency: w.avgLatency,
-    })),
-    stats,
-    controller: controllerStats,
-  })
 }
 
 /**
  * POST /api/v1/observer/start
  * Start the Observer Network.
+ *
+ * Proxies to Rust: POST /api/v1/observer/start
  */
 export async function startObserver(
   req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
   const body = await parseJsonBody<StartObserverBody>(req)
-
-  // Check if already running
-  const existing = ObserverNetwork.getInstance()
-  if (existing?.isRunning()) {
-    return jsonResponse(200, {
-      success: true,
-      message: "Observer Network already running",
-      mode: existing.getMode(),
-    })
-  }
+  const client = getClient()
 
   try {
-    const network = await ObserverNetwork.start({
-      mode: body?.mode ?? "HYBRID",
-      riskTolerance: body?.riskTolerance ?? "balanced",
-      autoModeSwitch: body?.autoModeSwitch ?? true,
-      watchers: body?.watchers,
-    })
+    const response = await client.start()
 
-    log.info("Observer Network started via API", {
-      mode: network.getMode(),
-    })
+    if (response.success) {
+      log.info("Observer Network started via Rust API")
 
-    return jsonResponse(200, {
-      success: true,
-      mode: network.getMode(),
-    })
+      return jsonResponse(200, {
+        success: true,
+        mode: body?.mode ?? "HYBRID",
+      })
+    }
+
+    return apiToHttpResponse(response)
   } catch (error) {
-    log.error("Failed to start Observer Network", {
+    log.error("Failed to start Observer Network via Rust API", {
       error: error instanceof Error ? error.message : String(error),
     })
 
@@ -293,30 +283,29 @@ export async function startObserver(
 /**
  * POST /api/v1/observer/stop
  * Stop the Observer Network.
+ *
+ * Proxies to Rust: POST /api/v1/observer/stop
  */
 export async function stopObserver(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
-
-  if (!network || !network.isRunning()) {
-    return jsonResponse(200, {
-      success: true,
-      message: "Observer Network not running",
-    })
-  }
+  const client = getClient()
 
   try {
-    await network.stop()
+    const response = await client.stop()
 
-    log.info("Observer Network stopped via API")
+    if (response.success) {
+      log.info("Observer Network stopped via Rust API")
 
-    return jsonResponse(200, {
-      success: true,
-    })
+      return jsonResponse(200, {
+        success: true,
+      })
+    }
+
+    return apiToHttpResponse(response)
   } catch (error) {
-    log.error("Failed to stop Observer Network", {
+    log.error("Failed to stop Observer Network via Rust API", {
       error: error instanceof Error ? error.message : String(error),
     })
 
@@ -330,6 +319,9 @@ export async function stopObserver(
 /**
  * POST /api/v1/observer/mode
  * Switch Observer Network operating mode.
+ *
+ * Note: Mode is now controlled via Gear system.
+ * Proxies to Rust: POST /api/v1/gear/switch
  */
 export async function switchObserverMode(
   req: HttpRequest,
@@ -341,12 +333,6 @@ export async function switchObserverMode(
     return jsonResponse(400, { success: false, error: "Missing mode in request body" })
   }
 
-  const network = ObserverNetwork.getInstance()
-
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
-  }
-
   const validModes: OperatingMode[] = ["AUTO", "MANUAL", "HYBRID"]
   if (!validModes.includes(body.mode)) {
     return jsonResponse(400, {
@@ -355,20 +341,35 @@ export async function switchObserverMode(
     })
   }
 
+  // Map mode to gear
+  const modeToGear: Record<OperatingMode, string> = {
+    AUTO: "S",
+    MANUAL: "N",
+    HYBRID: "D",
+  }
+
+  const client = getClient()
+
   try {
-    await network.switchMode(body.mode, body.reason ?? "API request")
+    const gear = modeToGear[body.mode]
+    const response = await client.switchGear(gear as any, body.reason ?? "Mode switch via API")
 
-    log.info("Observer mode switched via API", {
-      mode: body.mode,
-      reason: body.reason,
-    })
+    if (response.success) {
+      log.info("Observer mode switched via Rust API", {
+        mode: body.mode,
+        gear,
+        reason: body.reason,
+      })
 
-    return jsonResponse(200, {
-      success: true,
-      mode: body.mode,
-    })
+      return jsonResponse(200, {
+        success: true,
+        mode: body.mode,
+      })
+    }
+
+    return apiToHttpResponse(response)
   } catch (error) {
-    log.error("Failed to switch Observer mode", {
+    log.error("Failed to switch Observer mode via Rust API", {
       error: error instanceof Error ? error.message : String(error),
     })
 
@@ -382,75 +383,95 @@ export async function switchObserverMode(
 /**
  * GET /api/v1/observer/world-model
  * Get the current world model.
+ *
+ * Proxies to Rust: GET /api/v1/observer/world-model
  */
 export async function getWorldModel(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
+  const client = getClient()
 
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
-  }
+  try {
+    const response = await client.getWorldModel()
 
-  const worldModel = await network.getWorldModel()
-
-  if (!worldModel) {
     return jsonResponse(200, {
       success: true,
-      worldModel: null,
+      worldModel: response.data ?? null,
+    })
+  } catch (error) {
+    log.error("Failed to get world model from Rust API", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+
+    return jsonResponse(503, {
+      success: false,
+      error: "Observer daemon not available",
     })
   }
-
-  return jsonResponse(200, {
-    success: true,
-    worldModel,
-  })
 }
 
 /**
  * GET /api/v1/observer/snapshot
  * Get the consensus snapshot.
+ *
+ * Proxies to Rust: GET /api/v1/observer/consensus
  */
 export async function getConsensusSnapshot(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
+  const client = getClient()
 
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
+  try {
+    const response = await client.getConsensus()
+
+    return jsonResponse(200, {
+      success: true,
+      snapshot: response.data ?? null,
+    })
+  } catch (error) {
+    log.error("Failed to get consensus snapshot from Rust API", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+
+    return jsonResponse(503, {
+      success: false,
+      error: "Observer daemon not available",
+    })
   }
-
-  const snapshot = network.getSnapshot()
-
-  return jsonResponse(200, {
-    success: true,
-    snapshot,
-  })
 }
 
 /**
  * GET /api/v1/observer/opportunities
  * Get active opportunities.
+ *
+ * Proxies to Rust: GET /api/v1/observer/opportunities
  */
 export async function getOpportunities(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
+  const client = getClient()
 
-  if (!network) {
-    return jsonResponse(503, { success: false, error: "Observer Network not running" })
+  try {
+    const response = await client.getOpportunities()
+
+    return jsonResponse(200, {
+      success: true,
+      opportunities: response.data ?? [],
+      count: response.data?.length ?? 0,
+    })
+  } catch (error) {
+    log.error("Failed to get opportunities from Rust API", {
+      error: error instanceof Error ? error.message : String(error),
+    })
+
+    return jsonResponse(503, {
+      success: false,
+      error: "Observer daemon not available",
+    })
   }
-
-  const opportunities = network.getOpportunities()
-
-  return jsonResponse(200, {
-    success: true,
-    opportunities,
-    count: opportunities.length,
-  })
 }
 
 /**
@@ -461,12 +482,23 @@ export async function observerHealth(
   _req: HttpRequest,
   _params: RouteParams,
 ): Promise<HttpResponse> {
-  const network = ObserverNetwork.getInstance()
+  const client = getClient()
 
-  return jsonResponse(200, {
-    healthy: true,
-    observerRunning: network?.isRunning() ?? false,
-    mode: network?.getMode() ?? null,
-    timestamp: new Date().toISOString(),
-  })
+  try {
+    const response = await client.getStatus()
+
+    return jsonResponse(200, {
+      healthy: true,
+      observerRunning: response.success && response.data?.running === true,
+      mode: response.success ? "HYBRID" : null,
+      timestamp: new Date().toISOString(),
+    })
+  } catch {
+    return jsonResponse(200, {
+      healthy: true,
+      observerRunning: false,
+      mode: null,
+      timestamp: new Date().toISOString(),
+    })
+  }
 }

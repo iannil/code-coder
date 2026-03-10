@@ -8,7 +8,7 @@
 //! Scheduling is **deterministic** - it follows fixed rules for turn order
 //! and timeout handling. No LLM reasoning is required.
 
-use super::session::{ForumSession, ForumTurn, SessionError, SessionStatus};
+use super::session::{ForumSession, SessionError, SessionStatus};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

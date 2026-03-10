@@ -111,6 +111,7 @@ pub enum EmitEvent {
 }
 
 impl EmitEvent {
+    #[allow(dead_code)]
     fn timestamp(&self) -> u64 {
         match self {
             EmitEvent::ToolStart { timestamp, .. } => *timestamp,
@@ -125,6 +126,7 @@ impl EmitEvent {
 
 /// Active span tracking
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ActiveSpan {
     tool: String,
     started_at: Instant,

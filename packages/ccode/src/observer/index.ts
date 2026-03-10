@@ -9,45 +9,48 @@
  * - 可用余量 (Available Margin): Mode switching freedom
  * - 评估权 (Evaluation Authority): Human intervention points
  *
- * ## Architecture
+ * ## Architecture Migration (Phase 4)
  *
- * ```
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │                    Observer Layer (Watchers)                        │
- * │   CodeWatch │ WorldWatch │ SelfWatch │ MetaWatch                   │
- * └──────────────────────────────┬──────────────────────────────────────┘
- *                                │
- *                                ▼
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │                    Event Stream                                     │
- * │   Buffering │ Routing │ Aggregation                                │
- * └──────────────────────────────┬──────────────────────────────────────┘
- *                                │
- *                                ▼
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │                    Consensus Layer                                  │
- * │   Attention │ Patterns │ Anomalies │ World Model                   │
- * └──────────────────────────────┬──────────────────────────────────────┘
- *                                │
- *                                ▼
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │                    Mode Controller                                  │
- * │   AUTO │ MANUAL │ HYBRID │ CLOSE Evaluation                        │
- * └──────────────────────────────┬──────────────────────────────────────┘
- *                                │
- *                                ▼
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │                    Response Layer                                   │
- * │   Notifier │ Analyzer │ Executor │ Historian                       │
- * └─────────────────────────────────────────────────────────────────────┘
+ * The Observer Network core logic has been migrated to Rust (services/zero-cli/src/observer/).
+ * This TypeScript module now provides:
+ *
+ * 1. **Types** - Shared type definitions for TUI display and serialization
+ * 2. **API Client** - `ObserverApiClient` to call the Rust HTTP API
+ * 3. **Legacy Support** - Local implementation for backwards compatibility (deprecated)
+ *
+ * ### Recommended Usage (New)
+ *
+ * ```typescript
+ * import { getObserverClient, isObserverRunning } from "@/observer"
+ *
+ * // Get the API client
+ * const client = getObserverClient({ baseUrl: "http://127.0.0.1:4402" })
+ *
+ * // Start via API
+ * await client.start()
+ *
+ * // Subscribe to SSE events
+ * const eventSource = client.subscribeToEvents((event) => {
+ *   console.log(`[${event.type}] ${JSON.stringify(event.data)}`)
+ * })
+ *
+ * // Get world model
+ * const response = await client.getWorldModel()
+ * if (response.success && response.data) {
+ *   console.log("World model:", response.data)
+ * }
+ *
+ * // Stop
+ * await client.stop()
+ * eventSource.close()
  * ```
  *
- * ## Usage
+ * ### Legacy Usage (Deprecated)
  *
  * ```typescript
  * import { ObserverNetwork } from "@/observer"
  *
- * // Start the network
+ * // Start the network (local TypeScript implementation)
  * const network = await ObserverNetwork.start({
  *   mode: "HYBRID",
  *   watchers: {
@@ -57,17 +60,6 @@
  *     meta: { enabled: true },
  *   },
  * })
- *
- * // Subscribe to observations
- * network.onObservation((obs) => {
- *   console.log(`[${obs.watcherType}] ${obs.type}`)
- * })
- *
- * // Get current world model
- * const model = await network.getWorldModel()
- *
- * // Stop the network
- * await network.stop()
  * ```
  *
  * @module observer
@@ -351,6 +343,26 @@ export {
   logObserverAgentSummary,
   type ObserverAgentInfo,
 } from "./agent-registry"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API Client Exports (New - calls Rust Observer API)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export {
+  ObserverApiClient,
+  getObserverClient,
+  resetObserverClient,
+  isObserverRunning,
+  getCurrentGear,
+  getCurrentDials,
+  type ObserverClientConfig,
+  type ApiResponse,
+  type ObserverStatus,
+  type GearStatus,
+  type ApiGearPresetDetail,
+  type ApiObserverEventType,
+  type ApiObserverEvent,
+} from "./client"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Observer Network (Main Entry Point)

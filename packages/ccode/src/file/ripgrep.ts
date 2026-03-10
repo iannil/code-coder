@@ -7,12 +7,22 @@ import { grep as nativeGrep, glob as nativeGlob } from "@codecoder-ai/core"
 
 import { Log } from "@/util/log"
 
-/** Native glob result - can be array directly or wrapped object */
-type GlobResult = string[] | { files: string[] }
+/** FileInfo from native glob result */
+interface FileInfo {
+  path: string
+  size: number
+  isDir: boolean
+  isSymlink: boolean
+  modified?: number
+  extension?: string
+}
 
-/** Check if glob result is wrapped object */
-function isWrappedGlobResult(result: GlobResult): result is { files: string[] } {
-  return !Array.isArray(result) && typeof result === "object" && "files" in result
+/** Native glob result structure matching binding.d.ts */
+interface NativeGlobResult {
+  files: FileInfo[]
+  totalMatches: number
+  truncated: boolean
+  durationMs: number
 }
 
 /** Native grep match entry */
@@ -76,8 +86,7 @@ export namespace Ripgrep {
 
     const pattern = input.glob?.length ? input.glob.join(",") : "**/*"
     // Native API: glob(options: GlobOptions) => Promise<GlobResult>
-    // GlobOptions requires 'pattern' field per binding.d.ts
-    const globFn = nativeGlob as unknown as (options: Record<string, unknown>) => Promise<GlobResult>
+    const globFn = nativeGlob as unknown as (options: Record<string, unknown>) => Promise<NativeGlobResult>
     const result = await globFn({
       pattern,
       path: input.cwd,
@@ -89,12 +98,9 @@ export namespace Ripgrep {
     })
 
     // Result contains FileInfo objects with { path: string, ... }
-    const files = isWrappedGlobResult(result) ? result.files : result
-    for (const fileInfo of files) {
-      // FileInfo.path is the absolute path string
-      const filePath = typeof fileInfo === "string" ? fileInfo : fileInfo.path
-      // Return relative path
-      const relativePath = path.relative(input.cwd, filePath)
+    for (const fileInfo of result.files) {
+      // Return relative path from absolute FileInfo.path
+      const relativePath = path.relative(input.cwd, fileInfo.path)
       if (relativePath && !relativePath.startsWith("..")) {
         yield relativePath
       }

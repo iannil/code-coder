@@ -8,6 +8,11 @@
  * - Dependency releases
  * - Security advisories
  *
+ * @deprecated This TypeScript implementation is deprecated in favor of the Rust
+ * implementation in services/zero-cli/src/observer/watchers/world_watch.rs. The Rust
+ * implementation provides better async handling and reduced latency.
+ * Migration was completed in Phase 6-7 of the architecture refactoring.
+ *
  * @module observer/watchers/world-watch
  */
 

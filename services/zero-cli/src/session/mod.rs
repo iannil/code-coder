@@ -10,3 +10,4 @@ pub mod compactor;
 pub mod store;
 pub mod types;
 
+// Re-export commonly used types
