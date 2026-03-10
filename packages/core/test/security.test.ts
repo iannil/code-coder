@@ -5,10 +5,6 @@ import {
   createMemoryVault,
   isSecurityNative,
 } from '../src/security.js'
-import {
-  FallbackPermissionManager,
-  FallbackVault,
-} from '../src/fallback.js'
 import type { Permission, PermissionRule, SecretEntry } from '../src/types.js'
 
 describe('Security Module', () => {
@@ -109,24 +105,6 @@ describe('Security Module', () => {
     })
   })
 
-  describe('FallbackPermissionManager', () => {
-    it('should work the same as PermissionManager', () => {
-      const manager = new FallbackPermissionManager()
-
-      expect(manager.check({ tool: 'bash', action: 'execute' })).toBe(false)
-
-      manager.addRule({
-        permission: { tool: 'file', action: 'read' },
-        allow: true,
-      })
-
-      expect(manager.check({ tool: 'file', action: 'read' })).toBe(true)
-
-      manager.clear()
-      expect(manager.check({ tool: 'file', action: 'read' })).toBe(false)
-    })
-  })
-
   describe('Vault', () => {
     let vault: Vault
 
@@ -199,23 +177,6 @@ describe('Security Module', () => {
 
       const retrieved = vault.get('simple')
       expect(retrieved?.description).toBeUndefined()
-    })
-  })
-
-  describe('FallbackVault', () => {
-    it('should work as an in-memory store', () => {
-      const vault = new FallbackVault('/fake/path.enc', 'password')
-
-      vault.set({ name: 'secret', value: 'value' })
-      expect(vault.getValue('secret')).toBe('value')
-
-      vault.delete('secret')
-      expect(vault.get('secret')).toBeNull()
-    })
-
-    it('should have correct path', () => {
-      const vault = new FallbackVault('/custom/path.enc', 'password')
-      expect(vault.path).toBe('/custom/path.enc')
     })
   })
 

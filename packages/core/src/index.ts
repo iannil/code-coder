@@ -53,9 +53,8 @@
  */
 
 // Re-export native bindings
-// Note: In development, these will be stubs until the native module is built
+// Note: Native bindings are REQUIRED - no JavaScript fallbacks
 export * from './types.js'
-export * from './fallback.js'
 export * from './session.js'
 export * from './security.js'
 export * from './protocol.js'
@@ -94,25 +93,33 @@ export {
   type AuditEntry as PermissionAuditEntry,
 } from './permission.js'
 
-// Try to load native bindings, fall back to JS implementation
+// Try to load native bindings - REQUIRED for operation
 let nativeBindings: typeof import('./binding.js') | null = null
 
 try {
   nativeBindings = await import('./binding.js')
 } catch {
-  // Native bindings not available, will use fallback
-  console.warn('@codecoder-ai/core: Native bindings not found, using JavaScript fallback')
+  // Native bindings not available - will throw on first use
+  console.error('@codecoder-ai/core: Native bindings not found. Run `cargo build` in services/zero-core.')
 }
 
 export const isNative = nativeBindings !== null
 
-// Export either native or fallback implementations
-export const grep = nativeBindings?.grep ?? (await import('./fallback.js')).grep
-export const glob = nativeBindings?.glob ?? (await import('./fallback.js')).glob
-export const readFile = nativeBindings?.readFile ?? (await import('./fallback.js')).readFile
-export const editFile = nativeBindings?.editFile ?? (await import('./fallback.js')).editFile
-export const version = nativeBindings?.version ?? (() => '0.1.0')
-export const init = nativeBindings?.init ?? (() => {})
+// Helper to require native bindings
+function requireNative<T>(name: string, fn: T | undefined): T {
+  if (!fn) {
+    throw new Error(`Native binding required: ${name}. Build native modules with \`cargo build\` in services/zero-core.`)
+  }
+  return fn
+}
+
+// Export native implementations (required - no fallbacks)
+export const grep = nativeBindings?.grep ?? (() => { throw new Error('Native binding required: grep') })
+export const glob = nativeBindings?.glob ?? (() => { throw new Error('Native binding required: glob') })
+export const readFile = nativeBindings?.readFile ?? (() => { throw new Error('Native binding required: readFile') })
+export const editFile = nativeBindings?.editFile ?? (() => { throw new Error('Native binding required: editFile') })
+export const version = nativeBindings?.version ?? (() => { throw new Error('Native binding required: version') })
+export const init = nativeBindings?.init ?? (() => { throw new Error('Native binding required: init') })
 
 // Export all native bindings (handles, functions, enums) for advanced use
 // Phase 32: Patch/Diff
@@ -232,7 +239,7 @@ export const canSafeAutoApprove = nativeBindings?.canSafeAutoApprove
 export const CompactorHandle = nativeBindings?.CompactorHandle
 export const createCompactor = nativeBindings?.createCompactor
 export const createCompactorWithLimits = nativeBindings?.createCompactorWithLimits
-// Note: estimateTokens is exported from fallback.js and compaction.js provides estimateTokenCount
+// Note: estimateTokens is also available from session.js
 
 // Phase 5: Prune (context window management via tool output compaction)
 export const isOverflow = nativeBindings?.isOverflow

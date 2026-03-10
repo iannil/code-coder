@@ -19,9 +19,21 @@ import { Database } from "bun:sqlite"
 import { homedir } from "os"
 import { join } from "path"
 import { existsSync, mkdirSync } from "fs"
+import { cosineSimilarity as nativeCosineSimilarity } from "@codecoder-ai/core"
 import { Log } from "@/util/log"
 
 const log = Log.create({ service: "api.knowledge" })
+
+/**
+ * Cosine similarity using native SIMD-accelerated Rust implementation.
+ * Requires native bindings from @codecoder-ai/core.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!nativeCosineSimilarity) {
+    throw new Error("Native bindings required: @codecoder-ai/core cosineSimilarity not available")
+  }
+  return nativeCosineSimilarity(a, b)
+}
 
 // ============================================================================
 // Configuration
@@ -386,29 +398,6 @@ function bytesToEmbedding(bytes: Uint8Array): number[] {
     embedding.push(view.getFloat32(i, true))
   }
   return embedding
-}
-
-/**
- * Compute cosine similarity between two vectors.
- */
-function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length || !a.length) return 0
-
-  let dot = 0
-  let normA = 0
-  let normB = 0
-
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i]
-    normA += a[i] * a[i]
-    normB += b[i] * b[i]
-  }
-
-  const denom = Math.sqrt(normA) * Math.sqrt(normB)
-  if (!isFinite(denom) || denom < Number.EPSILON) return 0
-
-  const sim = dot / denom
-  return Math.max(0, Math.min(1, sim))
 }
 
 // ============================================================================

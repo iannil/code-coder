@@ -250,6 +250,58 @@ packages/ccode/src/tool/              # 工具包装 (调用 NAPI)
 
 ---
 
+## NAPI 绑定状态 (2026-03-10 更新)
+
+### 已迁移的确定性模块
+
+以下模块已完成 Rust-first 迁移，TypeScript 层仅为 NAPI 薄包装：
+
+| 模块 | Rust 实现 | NAPI 绑定 | TS 包装 | 测试数 |
+|------|-----------|-----------|---------|--------|
+| **Relevance** | `context/relevance.rs` | `napi/context.rs` | `context/relevance-native.ts` | 9 |
+| **Fingerprint** | `context/fingerprint.rs` | `napi/context.rs` | `context/fingerprint.ts` | 9 |
+| **Chunker** | `memory/chunker.rs` | `napi/memory.rs` | `memory/chunker.ts` | 33 |
+| **Tokenizer** | `memory/tokenizer.rs` | `napi/memory.rs` | `util/token.ts` | 11 |
+
+### NAPI 绑定覆盖率
+
+```
+总 NAPI 绑定函数: 272 个
+NAPI 模块文件:    32 个
+主 Rust 模块:     25 个
+覆盖率:           84%
+```
+
+### 未暴露 NAPI 的模块 (设计决策)
+
+| 模块 | 原因 |
+|------|------|
+| `agent` | LLM 交互，非确定性逻辑，需要 TS 灵活性 |
+| `agent_tools` | 动态工具加载，需要 TS 灵活性 |
+| `browser` | 使用 Playwright MCP，独立自动化 |
+| `foundation` | 内部工具函数，不对外暴露 |
+
+### TypeScript 层使用模式
+
+所有 TS 包装采用 **fail-fast** 模式：
+
+```typescript
+// 示例: util/token.ts
+import { estimateTokens } from "@codecoder-ai/core"
+
+if (typeof estimateTokens !== "function") {
+  throw new Error("NAPI binding not available")
+}
+
+export namespace Token {
+  export function estimate(input: string): number {
+    return estimateTokens(input)
+  }
+}
+```
+
+---
+
 ## 相关文档
 
 - `ARCHITECTURE.md` - 系统架构总览

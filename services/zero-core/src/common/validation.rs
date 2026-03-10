@@ -359,7 +359,7 @@ impl Validate for MemoryConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::config::*;
+    use crate::common::config::*;
 
     #[test]
     fn test_valid_default_config() {

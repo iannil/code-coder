@@ -26,7 +26,8 @@ pub mod traits;
 pub mod vector;
 
 // Re-export commonly used types
-pub use chunker::{chunk_markdown, Chunk};
+// Note: chunker re-exports from crate::memory::chunker for consistency
+pub use chunker::{chunk_markdown, Chunk, ChunkerConfig};
 pub use embeddings::{create_embedding_provider, EmbeddingProvider, NoopEmbedding, OpenAiEmbedding};
 pub use hybrid_search::{HybridSearchEngine, DEFAULT_KEYWORD_WEIGHT, DEFAULT_VECTOR_WEIGHT};
 pub use markdown::MarkdownMemory;

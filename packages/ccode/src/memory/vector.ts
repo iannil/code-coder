@@ -50,33 +50,31 @@ export namespace Vector {
 
   /**
    * Initialize the native embedding index for SIMD-accelerated search.
-   * This is optional - if not called, search will use the slower Storage-based approach.
+   * This is required for search functionality.
    */
   export async function initializeNativeIndex(): Promise<void> {
-    if (indexInitialized || !createEmbeddingIndex) {
+    if (indexInitialized) {
       return
     }
 
-    try {
-      const stats = await getStats()
-      nativeIndex = createEmbeddingIndex(stats.dimension || DEFAULT_DIMENSION)
-
-      // Load existing embeddings into the native index
-      const projectID = Instance.project.id
-      const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
-
-      for (const key of keys) {
-        const embedding = await Storage.read<Embedding>(key)
-        nativeIndex.add(embedding.id, embedding.vector)
-      }
-
-      indexInitialized = true
-      log.info("Native embedding index initialized", { count: keys.length })
-    } catch (error) {
-      log.warn("Failed to initialize native index, using fallback", {
-        error: error instanceof Error ? error.message : String(error),
-      })
+    if (!createEmbeddingIndex) {
+      throw new Error("Native binding required: @codecoder-ai/core createEmbeddingIndex not available")
     }
+
+    const stats = await getStats()
+    nativeIndex = createEmbeddingIndex(stats.dimension || DEFAULT_DIMENSION)
+
+    // Load existing embeddings into the native index
+    const projectID = Instance.project.id
+    const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
+
+    for (const key of keys) {
+      const embedding = await Storage.read<Embedding>(key)
+      nativeIndex.add(embedding.id, embedding.vector)
+    }
+
+    indexInitialized = true
+    log.info("Native embedding index initialized", { count: keys.length })
   }
 
   /**
@@ -174,61 +172,36 @@ export namespace Vector {
       threshold?: number
       fileType?: string
       type?: Embedding["metadata"]["type"]
-      useNativeIndex?: boolean // Set to false to force Storage-based search
     },
   ): Promise<SearchResult[]> {
+    if (!nativeIndex) {
+      throw new Error("Native binding required: call initializeNativeIndex() before search")
+    }
+
     const projectID = Instance.project.id
     const queryVector = await generateEmbedding(query)
     const limit = options?.limit || 10
     const threshold = options?.threshold || 0
 
-    // Use native index if available and not explicitly disabled
-    const useNative = (options?.useNativeIndex !== false) && nativeIndex && !options?.fileType && !options?.type
+    // Fast path: use SIMD-accelerated native search
+    const nativeResults = nativeIndex.search(queryVector, limit * 2, threshold) // fetch extra for filtering
 
-    try {
-      if (useNative && nativeIndex) {
-        // Fast path: use SIMD-accelerated native search
-        const nativeResults = nativeIndex.search(queryVector, limit * 2, threshold) // fetch extra for filtering
+    // Load embeddings from Storage to apply metadata filters and return full data
+    const results: SearchResult[] = []
+    for (const { id, score } of nativeResults) {
+      if (results.length >= limit) break
 
-        // Load embeddings from Storage to apply metadata filters and return full data
-        const results: SearchResult[] = []
-        for (const { id, score } of nativeResults) {
-          if (results.length >= limit) break
+      const embedding = await Storage.read<Embedding>(["memory", "vector", "embeddings", projectID, id])
+      if (!embedding) continue
 
-          const embedding = await Storage.read<Embedding>(["memory", "vector", "embeddings", projectID, id])
-          if (!embedding) continue
+      // Apply metadata filters if needed
+      if (options?.fileType && embedding.metadata.file !== options.fileType) continue
+      if (options?.type && embedding.metadata.type !== options.type) continue
 
-          // Apply metadata filters if needed
-          if (options?.fileType && embedding.metadata.file !== options.fileType) continue
-          if (options?.type && embedding.metadata.type !== options.type) continue
-
-          results.push({ embedding, score })
-        }
-
-        return results
-      }
-
-      // Fallback path: iterate through Storage
-      const keys = await Storage.list(["memory", "vector", "embeddings", projectID])
-      const results: SearchResult[] = []
-
-      for (const key of keys) {
-        const embedding = await Storage.read<Embedding>(key)
-
-        if (options?.fileType && embedding.metadata.file !== options.fileType) continue
-        if (options?.type && embedding.metadata.type !== options.type) continue
-
-        const score = cosineSimilarity(queryVector, embedding.vector)
-
-        if (!options?.threshold || score >= options.threshold) {
-          results.push({ embedding, score })
-        }
-      }
-
-      return results.sort((a, b) => b.score - a.score).slice(0, options?.limit || 10)
-    } catch {
-      return []
+      results.push({ embedding, score })
     }
+
+    return results
   }
 
   export async function searchByFile(filePath: string, limit = 10): Promise<Embedding[]> {

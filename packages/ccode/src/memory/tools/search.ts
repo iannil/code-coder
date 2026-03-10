@@ -10,10 +10,22 @@
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
 import { Storage } from "@/infrastructure/storage/storage"
+import { cosineSimilarity as nativeCosineSimilarity } from "@codecoder-ai/core"
 import { ToolTypes } from "./types"
 import { ToolRegistry } from "./registry"
 
 const log = Log.create({ service: "memory.tools.search" })
+
+/**
+ * Cosine similarity using native SIMD-accelerated Rust implementation.
+ * Requires native bindings from @codecoder-ai/core.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (!nativeCosineSimilarity) {
+    throw new Error("Native bindings required: @codecoder-ai/core cosineSimilarity not available")
+  }
+  return nativeCosineSimilarity(a, b)
+}
 
 export namespace ToolSearch {
   // ============================================================================
@@ -342,27 +354,6 @@ export namespace ToolSearch {
     }
 
     return Array.from(vector)
-  }
-
-  // ============================================================================
-  // Vector Operations
-  // ============================================================================
-
-  function cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length !== b.length) return 0
-
-    let dotProduct = 0
-    let normA = 0
-    let normB = 0
-
-    for (let i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i]
-      normA += a[i] * a[i]
-      normB += b[i] * b[i]
-    }
-
-    const denominator = Math.sqrt(normA) * Math.sqrt(normB)
-    return denominator > 0 ? dotProduct / denominator : 0
   }
 
   // ============================================================================

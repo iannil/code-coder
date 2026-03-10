@@ -174,3 +174,84 @@ export class SessionStore implements ISessionStore {
 
 // Native bindings are always required
 export const isSessionNative = true
+
+// ============================================================================
+// Message/Session creation utilities (pure TypeScript helpers)
+// ============================================================================
+
+/** Generate a UUID v4 */
+function generateUuid(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0
+    const v = c === 'x' ? r : (r & 0x3) | 0x8
+    return v.toString(16)
+  })
+}
+
+/** Create a new user message */
+export function createUserMessage(content: string): Message {
+  return {
+    id: generateUuid(),
+    role: 'user',
+    content,
+    timestamp: new Date().toISOString(),
+    compacted: false,
+  }
+}
+
+/** Create a new assistant message */
+export function createAssistantMessage(content: string): Message {
+  return {
+    id: generateUuid(),
+    role: 'assistant',
+    content,
+    timestamp: new Date().toISOString(),
+    compacted: false,
+  }
+}
+
+/** Create a new system message */
+export function createSystemMessage(content: string): Message {
+  return {
+    id: generateUuid(),
+    role: 'system',
+    content,
+    timestamp: new Date().toISOString(),
+    compacted: false,
+  }
+}
+
+/** Create a new tool message */
+export function createToolMessage(
+  toolCallId: string,
+  toolName: string,
+  content: string
+): Message {
+  return {
+    id: generateUuid(),
+    role: 'tool',
+    content,
+    timestamp: new Date().toISOString(),
+    toolCallId,
+    toolName,
+    compacted: false,
+  }
+}
+
+/** Create a new session */
+export function createSession(cwd: string, name?: string): SessionData {
+  const now = new Date().toISOString()
+  return {
+    id: generateUuid(),
+    name,
+    cwd,
+    createdAt: now,
+    updatedAt: now,
+    messages: [],
+  }
+}
+
+/** Estimate token count for a message (rough approximation: ~4 chars per token) */
+export function estimateTokens(content: string): number {
+  return Math.ceil(content.length / 4)
+}

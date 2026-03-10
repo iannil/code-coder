@@ -160,10 +160,13 @@ export class MarkdownChunker {
   }
 
   /**
-   * Estimate token count for text (rough approximation)
+   * Estimate token count for text
    */
   estimateTokens(text: string): number {
-    return coreEstimateTokens?.(text) ?? Math.ceil(text.length / 4)
+    if (!coreEstimateTokens) {
+      throw new Error("Native binding required: @codecoder-ai/core estimateTokens not available")
+    }
+    return coreEstimateTokens(text)
   }
 }
 
@@ -202,5 +205,8 @@ export function chunkMarkdown(content: string, source: string, config?: Partial<
  * Estimate token count for text
  */
 export function estimateTokens(text: string): number {
-  return coreEstimateTokens?.(text) ?? Math.ceil(text.length / 4)
+  if (!coreEstimateTokens) {
+    throw new Error("Native binding required: @codecoder-ai/core estimateTokens not available")
+  }
+  return coreEstimateTokens(text)
 }

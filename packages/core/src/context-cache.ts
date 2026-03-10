@@ -96,143 +96,97 @@ export const isContextCacheNative = checkNativeAvailable
 // ============================================================================
 
 export class ContextCacheStore {
-  private handle: any = null
-  private fallbackCache = new Map<string, ProjectCache>()
+  private handle: any
 
-  private constructor() {}
+  private constructor(handle: any) {
+    this.handle = handle
+  }
 
   /**
    * Open or create a context cache store
    */
   static async open(dbPath: string): Promise<ContextCacheStore> {
-    const store = new ContextCacheStore()
-
-    if (await checkNativeAvailable()) {
-      const bindings = (await import('./binding.js')) as any
-      store.handle = new bindings.ContextCacheStoreHandle(dbPath)
+    if (!(await checkNativeAvailable())) {
+      throw new Error('Native binding required: ContextCacheStore requires @codecoder-ai/core NAPI bindings')
     }
-
-    return store
+    const bindings = (await import('./binding.js')) as any
+    const handle = new bindings.ContextCacheStoreHandle(dbPath)
+    return new ContextCacheStore(handle)
   }
 
   /**
    * Create an in-memory context cache store
    */
   static async memory(): Promise<ContextCacheStore> {
-    const store = new ContextCacheStore()
-
-    if (await checkNativeAvailable()) {
-      const bindings = (await import('./binding.js')) as any
-      store.handle = bindings.createMemoryContextCacheStore()
+    if (!(await checkNativeAvailable())) {
+      throw new Error('Native binding required: ContextCacheStore requires @codecoder-ai/core NAPI bindings')
     }
-
-    return store
+    const bindings = (await import('./binding.js')) as any
+    const handle = bindings.createMemoryContextCacheStore()
+    return new ContextCacheStore(handle)
   }
 
   /**
    * Save a project cache
    */
   async save(cache: ProjectCache): Promise<void> {
-    if (this.handle) {
-      this.handle.save(cache)
-    } else {
-      this.fallbackCache.set(cache.projectPath, cache)
-    }
+    this.handle.save(cache)
   }
 
   /**
    * Load a project cache
    */
   async load(projectPath: string): Promise<ProjectCache | null> {
-    if (this.handle) {
-      return this.handle.load(projectPath)
-    }
-    return this.fallbackCache.get(projectPath) ?? null
+    return this.handle.load(projectPath)
   }
 
   /**
    * Check if a project cache exists and is fresh
    */
   async isFresh(projectPath: string, maxAgeSeconds: number): Promise<boolean> {
-    if (this.handle) {
-      return this.handle.isFresh(projectPath, maxAgeSeconds)
-    }
-
-    const cache = this.fallbackCache.get(projectPath)
-    if (!cache) return false
-
-    const now = Date.now() / 1000
-    const cacheAge = now - cache.updatedAt.secs
-    return cacheAge < maxAgeSeconds
+    return this.handle.isFresh(projectPath, maxAgeSeconds)
   }
 
   /**
    * Get routes for a project
    */
   async getRoutes(projectPath: string): Promise<RouteCache[]> {
-    if (this.handle) {
-      return this.handle.getRoutes(projectPath)
-    }
-    return this.fallbackCache.get(projectPath)?.routes ?? []
+    return this.handle.getRoutes(projectPath)
   }
 
   /**
    * Get components for a project
    */
   async getComponents(projectPath: string): Promise<ComponentCache[]> {
-    if (this.handle) {
-      return this.handle.getComponents(projectPath)
-    }
-    return this.fallbackCache.get(projectPath)?.components ?? []
+    return this.handle.getComponents(projectPath)
   }
 
   /**
    * Get configs for a project
    */
   async getConfigs(projectPath: string): Promise<ConfigCache[]> {
-    if (this.handle) {
-      return this.handle.getConfigs(projectPath)
-    }
-    return this.fallbackCache.get(projectPath)?.configs ?? []
+    return this.handle.getConfigs(projectPath)
   }
 
   /**
    * Delete a project cache
    */
   async delete(projectPath: string): Promise<boolean> {
-    if (this.handle) {
-      return this.handle.delete(projectPath)
-    }
-    return this.fallbackCache.delete(projectPath)
+    return this.handle.delete(projectPath)
   }
 
   /**
    * List all cached project paths
    */
   async listProjects(): Promise<string[]> {
-    if (this.handle) {
-      return this.handle.listProjects()
-    }
-    return Array.from(this.fallbackCache.keys())
+    return this.handle.listProjects()
   }
 
   /**
    * Get cache statistics
    */
   async getStats(): Promise<{ projectCount: number; totalEntries: number }> {
-    if (this.handle) {
-      return this.handle.getStats()
-    }
-
-    let totalEntries = 0
-    for (const cache of this.fallbackCache.values()) {
-      totalEntries += cache.entries.length
-    }
-
-    return {
-      projectCount: this.fallbackCache.size,
-      totalEntries,
-    }
+    return this.handle.getStats()
   }
 }
 
@@ -253,25 +207,11 @@ export async function buildProjectCache(
   projectPath: string,
   options: BuildCacheOptions = {}
 ): Promise<ProjectCache> {
-  if (await checkNativeAvailable()) {
-    const bindings = (await import('./binding.js')) as any
-    return bindings.buildProjectCache(projectPath, options)
+  if (!(await checkNativeAvailable())) {
+    throw new Error('Native binding required: buildProjectCache requires @codecoder-ai/core NAPI bindings')
   }
-
-  // Fallback: return empty cache
-  const now = Date.now() / 1000
-  const cacheTime: CacheTime = { secs: Math.floor(now), nanos: 0 }
-
-  return {
-    projectPath,
-    framework: null,
-    routes: [],
-    components: [],
-    configs: [],
-    entries: [],
-    createdAt: cacheTime,
-    updatedAt: cacheTime,
-  }
+  const bindings = (await import('./binding.js')) as any
+  return bindings.buildProjectCache(projectPath, options)
 }
 
 // ============================================================================

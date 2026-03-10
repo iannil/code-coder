@@ -3,17 +3,13 @@ import {
   MessageStore,
   SessionStore,
   isSessionNative,
-} from '../src/session.js'
-import {
-  FallbackMessageStore,
-  FallbackSessionStore,
   createUserMessage,
   createAssistantMessage,
   createSystemMessage,
   createToolMessage,
   createSession,
   estimateTokens,
-} from '../src/fallback.js'
+} from '../src/session.js'
 
 describe('Session Module', () => {
   describe('isSessionNative', () => {
@@ -87,20 +83,6 @@ describe('Session Module', () => {
     })
   })
 
-  describe('FallbackMessageStore', () => {
-    it('should work the same as MessageStore', () => {
-      const store = new FallbackMessageStore()
-
-      expect(store.isEmpty()).toBe(true)
-
-      store.push(createUserMessage('Test'))
-      expect(store.len()).toBe(1)
-
-      store.clear()
-      expect(store.isEmpty()).toBe(true)
-    })
-  })
-
   describe('SessionStore', () => {
     let store: SessionStore
     const testDbPath = '/tmp/test-session-store.db'
@@ -151,22 +133,6 @@ describe('Session Module', () => {
 
       const loaded = store.load(session.id)
       expect(loaded).toBeNull()
-    })
-  })
-
-  describe('FallbackSessionStore', () => {
-    it('should work as an in-memory store', () => {
-      const store = new FallbackSessionStore('/fake/path.db')
-
-      const session = createSession('/project')
-      store.save(session)
-
-      const loaded = store.load(session.id)
-      expect(loaded).not.toBeNull()
-      expect(loaded?.id).toBe(session.id)
-
-      store.delete(session.id)
-      expect(store.load(session.id)).toBeNull()
     })
   })
 

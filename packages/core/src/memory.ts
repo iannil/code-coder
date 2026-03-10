@@ -6,6 +6,8 @@
  * - Vector operations (similarity, normalization)
  * - Embedding provider abstraction
  *
+ * NOTE: Native bindings are REQUIRED. No JavaScript fallbacks.
+ *
  * @example
  * ```typescript
  * import { chunkText, cosineSimilarity, normalizeVector } from '@codecoder-ai/core/memory'
@@ -113,234 +115,7 @@ export interface EmbeddingProvider {
   embedOne(text: string): Promise<number[]>
 }
 
-// ============================================================================
-// Fallback Implementations
-// ============================================================================
-
-/** Chunk markdown text (fallback implementation) */
-export function chunkTextFallback(text: string, maxTokens: number = 512): Chunk[] {
-  if (!text.trim()) return []
-
-  const maxChars = maxTokens * 4
-  const sections = splitOnHeadings(text)
-  const chunks: Chunk[] = []
-  let offset = 0
-
-  for (const [heading, body] of sections) {
-    const full = heading ? `${heading}\n${body}` : body
-    const sectionLen = full.length
-
-    if (full.length <= maxChars) {
-      if (full.trim()) {
-        chunks.push({
-          index: chunks.length,
-          content: full.trim(),
-          heading: heading ?? undefined,
-          startOffset: offset,
-          endOffset: offset + sectionLen,
-        })
-      }
-    } else {
-      // Split on paragraphs
-      const paragraphs = splitOnBlankLines(body)
-      let current = heading ? `${heading}\n` : ''
-      let currentStart = offset
-
-      for (const para of paragraphs) {
-        if (current.length + para.length > maxChars && current.trim()) {
-          chunks.push({
-            index: chunks.length,
-            content: current.trim(),
-            heading: heading ?? undefined,
-            startOffset: currentStart,
-            endOffset: currentStart + current.length,
-          })
-          currentStart += current.length
-          current = heading ? `${heading}\n` : ''
-        }
-        current += para + '\n'
-      }
-
-      if (current.trim()) {
-        chunks.push({
-          index: chunks.length,
-          content: current.trim(),
-          heading: heading ?? undefined,
-          startOffset: currentStart,
-          endOffset: currentStart + current.length,
-        })
-      }
-    }
-
-    offset += sectionLen
-  }
-
-  // Re-index
-  chunks.forEach((c, i) => (c.index = i))
-  return chunks
-}
-
-function splitOnHeadings(text: string): [string | null, string][] {
-  const sections: [string | null, string][] = []
-  let currentHeading: string | null = null
-  let currentBody = ''
-
-  for (const line of text.split('\n')) {
-    if (line.startsWith('# ') || line.startsWith('## ') || line.startsWith('### ')) {
-      if (currentBody.trim() || currentHeading) {
-        sections.push([currentHeading, currentBody])
-        currentBody = ''
-      }
-      currentHeading = line
-    } else {
-      currentBody += line + '\n'
-    }
-  }
-
-  if (currentBody.trim() || currentHeading) {
-    sections.push([currentHeading, currentBody])
-  }
-
-  return sections
-}
-
-function splitOnBlankLines(text: string): string[] {
-  const paragraphs: string[] = []
-  let current = ''
-
-  for (const line of text.split('\n')) {
-    if (!line.trim()) {
-      if (current.trim()) {
-        paragraphs.push(current)
-        current = ''
-      }
-    } else {
-      current += line + '\n'
-    }
-  }
-
-  if (current.trim()) {
-    paragraphs.push(current)
-  }
-
-  return paragraphs
-}
-
-/** Estimate token count (~4 chars per token) */
-export function estimateChunkTokens(text: string): number {
-  return Math.ceil(text.length / 4)
-}
-
-/** Calculate cosine similarity (fallback implementation) */
-export function cosineSimilarityFallback(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0
-
-  let dot = 0
-  let normA = 0
-  let normB = 0
-
-  for (let i = 0; i < a.length; i++) {
-    const ai = a[i]!
-    const bi = b[i]!
-    dot += ai * bi
-    normA += ai * ai
-    normB += bi * bi
-  }
-
-  const denom = Math.sqrt(normA) * Math.sqrt(normB)
-  if (denom < 1e-10) return 0
-
-  return Math.max(0, Math.min(1, dot / denom))
-}
-
-/** Calculate Euclidean distance (fallback implementation) */
-export function vectorDistanceFallback(a: number[], b: number[]): number {
-  if (a.length !== b.length || a.length === 0) return Infinity
-
-  let sum = 0
-  for (let i = 0; i < a.length; i++) {
-    const diff = a[i]! - b[i]!
-    sum += diff * diff
-  }
-
-  return Math.sqrt(sum)
-}
-
-/** Normalize vector to unit length (fallback implementation) */
-export function normalizeVectorFallback(v: number[]): number[] {
-  const norm = Math.sqrt(v.reduce((sum, x) => sum + x * x, 0))
-  if (norm < 1e-10) return v.map(() => 0)
-  return v.map((x) => x / norm)
-}
-
-/** Serialize vector to bytes (fallback implementation) */
-export function vectorToBytesFallback(v: number[]): Uint8Array {
-  const buffer = new ArrayBuffer(v.length * 4)
-  const view = new Float32Array(buffer)
-  for (let i = 0; i < v.length; i++) {
-    view[i] = v[i]!
-  }
-  return new Uint8Array(buffer)
-}
-
-/** Deserialize bytes to vector (fallback implementation) */
-export function bytesToVectorFallback(bytes: Uint8Array): number[] {
-  const view = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.length / 4))
-  return Array.from(view)
-}
-
-/** Hybrid merge: combine vector and keyword results (fallback implementation) */
-export function hybridMergeResultsFallback(
-  vectorResults: VectorResult[],
-  keywordResults: VectorResult[],
-  vectorWeight: number,
-  keywordWeight: number,
-  limit: number,
-): ScoredResult[] {
-  const map = new Map<string, ScoredResult>()
-
-  // Add vector results
-  for (const r of vectorResults) {
-    map.set(r.id, {
-      id: r.id,
-      vectorScore: r.score,
-      keywordScore: undefined,
-      finalScore: 0,
-    })
-  }
-
-  // Normalize keyword scores
-  const maxKw = Math.max(...keywordResults.map((r) => r.score), 0.001)
-
-  // Add keyword results
-  for (const r of keywordResults) {
-    const normalized = r.score / maxKw
-    const existing = map.get(r.id)
-    if (existing) {
-      existing.keywordScore = normalized
-    } else {
-      map.set(r.id, {
-        id: r.id,
-        vectorScore: undefined,
-        keywordScore: normalized,
-        finalScore: 0,
-      })
-    }
-  }
-
-  // Compute final scores
-  const results: ScoredResult[] = []
-  for (const r of map.values()) {
-    r.finalScore = vectorWeight * (r.vectorScore ?? 0) + keywordWeight * (r.keywordScore ?? 0)
-    results.push(r)
-  }
-
-  // Sort and limit
-  results.sort((a, b) => b.finalScore - a.finalScore)
-  return results.slice(0, limit)
-}
-
-/** No-op embedding provider (fallback) */
+/** No-op embedding provider (for when embeddings are disabled) */
 export class NoopEmbeddingProvider implements EmbeddingProvider {
   name(): string {
     return 'none'
@@ -356,8 +131,13 @@ export class NoopEmbeddingProvider implements EmbeddingProvider {
   }
 }
 
+/** Estimate token count (~4 chars per token) - pure TypeScript utility */
+export function estimateChunkTokens(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
 // ============================================================================
-// Exports (Native with Fallback)
+// Native Bindings (Required)
 // ============================================================================
 
 let nativeBindings: {
@@ -381,36 +161,46 @@ let nativeBindings: {
 try {
   nativeBindings = require('../binding.js')
 } catch {
-  // Native bindings not available
+  // Native bindings not available - will throw on use
+}
+
+// Helper to create a function that throws if native binding is missing
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function requireNative<T>(name: string, fn: T | undefined): T {
+  if (fn) return fn
+  // Return a function that throws - type assertion needed for flexibility
+  const throwFn = (): never => {
+    throw new Error(`Native binding required: ${name}. Build native modules with \`cargo build\` in services/zero-core.`)
+  }
+  return throwFn as unknown as T
 }
 
 /** Chunk markdown text */
-export const chunkText = nativeBindings?.chunkText ?? chunkTextFallback
+export const chunkText = requireNative('chunkText', nativeBindings?.chunkText)
 
 /** Chunk markdown text with custom configuration */
-export const chunkTextWithConfig =
-  nativeBindings?.chunkTextWithConfig ?? ((text: string, config: ChunkerConfig) => chunkTextFallback(text, config.maxTokens))
+export const chunkTextWithConfig = requireNative('chunkTextWithConfig', nativeBindings?.chunkTextWithConfig)
 
-/** Estimate token count for text */
-export const estimateChunkTokensNative = nativeBindings?.estimateTokens ?? estimateChunkTokens
+/** Estimate token count for text (native implementation) */
+export const estimateChunkTokensNative = requireNative('estimateTokens', nativeBindings?.estimateTokens)
 
 /** Calculate cosine similarity between two vectors */
-export const cosineSimilarity = nativeBindings?.cosineSimilarity ?? cosineSimilarityFallback
+export const cosineSimilarity = requireNative('cosineSimilarity', nativeBindings?.cosineSimilarity)
 
 /** Calculate Euclidean distance between two vectors */
-export const vectorDistance = nativeBindings?.vectorDistance ?? vectorDistanceFallback
+export const vectorDistance = requireNative('vectorDistance', nativeBindings?.vectorDistance)
 
 /** Normalize a vector to unit length */
-export const normalizeVector = nativeBindings?.normalizeVector ?? normalizeVectorFallback
+export const normalizeVector = requireNative('normalizeVector', nativeBindings?.normalizeVector)
 
 /** Serialize vector to bytes */
-export const vectorToBytes = nativeBindings?.vectorToBytes ?? vectorToBytesFallback
+export const vectorToBytes = requireNative('vectorToBytes', nativeBindings?.vectorToBytes)
 
 /** Deserialize bytes to vector */
-export const bytesToVector = nativeBindings?.bytesToVector ?? bytesToVectorFallback
+export const bytesToVector = requireNative('bytesToVector', nativeBindings?.bytesToVector)
 
 /** Hybrid merge: combine vector and keyword results */
-export const hybridMergeResults = nativeBindings?.hybridMergeResults ?? hybridMergeResultsFallback
+export const hybridMergeResults = requireNative('hybridMergeResults', nativeBindings?.hybridMergeResults)
 
 /** Create an embedding provider */
 export function createEmbeddingProvider(_config: EmbeddingConfig): EmbeddingProvider {
