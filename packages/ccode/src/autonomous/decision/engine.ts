@@ -2,6 +2,12 @@ import { Log } from "@/util/log"
 import type { AutonomousDecisionCriteria, CLOSEScore, DecisionRecord, DecisionType } from "./criteria"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
+import {
+  evaluateClose as nativeEvaluateClose,
+  type NapiCLOSEInput,
+  type NapiCLOSEWeights,
+  type NapiCLOSEEvaluation,
+} from "@codecoder-ai/core"
 
 const log = Log.create({ service: "autonomous.decision.engine" })
 
@@ -352,3 +358,166 @@ export async function evaluateDecision(
   const engine = createDecisionEngine(config)
   return engine.evaluate(criteria, context)
 }
+
+// ============================================================================
+// Native CLOSE Evaluation (Rust-backed)
+// ============================================================================
+
+/**
+ * Native CLOSE evaluation input - matches Rust CLOSEInput
+ */
+export interface NativeCLOSEInput {
+  // Convergence factors
+  snapshotConfidence?: number
+  buildStatus?: "green" | "yellow" | "red"
+  sessionHealth?: "healthy" | "degraded" | "critical"
+  criticalAnomalies?: number
+
+  // Leverage factors
+  strongPatterns?: number
+  highImpactOpportunities?: number
+  mediumImpactOpportunities?: number
+  externalOpportunities?: number
+  externalRisks?: number
+
+  // Optionality factors
+  totalOpportunities?: number
+  patternTypes?: number
+  anomalyCount?: number
+  decisionQuality?: number
+
+  // Surplus factors
+  recentErrors?: number
+  tokenUsage?: number
+  cost?: number
+  consensusStrength?: number
+  coverageGaps?: number
+
+  // Evolution factors
+  learningOpportunities?: number
+  recentChanges?: number
+  techDebtLevel?: "low" | "medium" | "high"
+  dismissedAnomalies?: number
+  activeAnomalies?: number
+
+  // Trend data (for historical comparison)
+  recentTrendAvg?: number | null
+  olderTrendAvg?: number | null
+}
+
+/**
+ * Native CLOSE dimension result
+ */
+export interface NativeCLOSEDimension {
+  score: number
+  confidence: number
+  factors: string[]
+}
+
+/**
+ * Native CLOSE evaluation result - matches Rust CLOSEEvaluation
+ */
+export interface NativeCLOSEEvaluation {
+  convergence: NativeCLOSEDimension
+  leverage: NativeCLOSEDimension
+  optionality: NativeCLOSEDimension
+  surplus: NativeCLOSEDimension
+  evolution: NativeCLOSEDimension
+  total: number
+  risk: number
+  confidence: number
+  recommendedGear: "P" | "N" | "D" | "S"
+  timestamp: number
+}
+
+/**
+ * Native CLOSE weights configuration
+ */
+export interface NativeCLOSEWeights {
+  convergence?: number
+  leverage?: number
+  optionality?: number
+  surplus?: number
+  evolution?: number
+}
+
+/**
+ * Evaluate CLOSE decision framework using native Rust implementation
+ *
+ * This provides a more comprehensive evaluation than the TypeScript DecisionEngine,
+ * including gear recommendations based on the Gear System (P/N/D/S).
+ *
+ * @param input - CLOSE evaluation input data
+ * @param weights - Optional custom weights for each dimension
+ * @returns Native CLOSE evaluation result with gear recommendation
+ */
+export function evaluateCLOSENative(
+  input: NativeCLOSEInput,
+  weights?: NativeCLOSEWeights,
+): NativeCLOSEEvaluation {
+  if (!nativeEvaluateClose) {
+    throw new Error("Native CLOSE evaluator not available. Build native modules with `cargo build` in services/zero-core.")
+  }
+
+  // Convert input to NAPI format
+  const napiInput: NapiCLOSEInput = {
+    snapshotConfidence: input.snapshotConfidence,
+    buildStatus: input.buildStatus,
+    sessionHealth: input.sessionHealth,
+    criticalAnomalies: input.criticalAnomalies,
+    strongPatterns: input.strongPatterns,
+    highImpactOpportunities: input.highImpactOpportunities,
+    mediumImpactOpportunities: input.mediumImpactOpportunities,
+    externalOpportunities: input.externalOpportunities,
+    externalRisks: input.externalRisks,
+    totalOpportunities: input.totalOpportunities,
+    patternTypes: input.patternTypes,
+    anomalyCount: input.anomalyCount,
+    decisionQuality: input.decisionQuality,
+    recentErrors: input.recentErrors,
+    tokenUsage: input.tokenUsage,
+    cost: input.cost,
+    consensusStrength: input.consensusStrength,
+    coverageGaps: input.coverageGaps,
+    learningOpportunities: input.learningOpportunities,
+    recentChanges: input.recentChanges,
+    techDebtLevel: input.techDebtLevel,
+    dismissedAnomalies: input.dismissedAnomalies,
+    activeAnomalies: input.activeAnomalies,
+    recentTrendAvg: input.recentTrendAvg ?? null,
+    olderTrendAvg: input.olderTrendAvg ?? null,
+  }
+
+  const napiWeights: NapiCLOSEWeights | undefined = weights
+    ? {
+        convergence: weights.convergence,
+        leverage: weights.leverage,
+        optionality: weights.optionality,
+        surplus: weights.surplus,
+        evolution: weights.evolution,
+      }
+    : undefined
+
+  const result = nativeEvaluateClose(napiInput, napiWeights)
+
+  return {
+    convergence: result.convergence,
+    leverage: result.leverage,
+    optionality: result.optionality,
+    surplus: result.surplus,
+    evolution: result.evolution,
+    total: result.total,
+    risk: result.risk,
+    confidence: result.confidence,
+    recommendedGear: result.recommendedGear as "P" | "N" | "D" | "S",
+    timestamp: result.timestamp,
+  }
+}
+
+/**
+ * Check if native CLOSE evaluator is available
+ */
+export function isNativeCLOSEAvailable(): boolean {
+  return nativeEvaluateClose !== undefined
+}
+

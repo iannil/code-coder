@@ -758,3 +758,206 @@ pub fn can_safe_auto_approve(tool: String) -> bool {
     let engine = RustAutoApproveEngine::safe_only(false);
     engine.can_auto_approve(&tool)
 }
+
+// ============================================================================
+// Remote Policy Bindings
+// ============================================================================
+
+use crate::security::remote_policy::{
+    RemotePolicy as RustRemotePolicy,
+    RemoteRiskLevel as RustRemoteRiskLevel,
+    RemoteTaskContext as RustRemoteTaskContext,
+};
+
+/// Risk level for remote operations
+#[napi(string_enum)]
+pub enum RemoteRiskLevel {
+    Safe,
+    Moderate,
+    Dangerous,
+}
+
+impl From<RustRemoteRiskLevel> for RemoteRiskLevel {
+    fn from(r: RustRemoteRiskLevel) -> Self {
+        match r {
+            RustRemoteRiskLevel::Safe => RemoteRiskLevel::Safe,
+            RustRemoteRiskLevel::Moderate => RemoteRiskLevel::Moderate,
+            RustRemoteRiskLevel::Dangerous => RemoteRiskLevel::Dangerous,
+        }
+    }
+}
+
+/// Task context for remote policy evaluation
+#[napi(object)]
+pub struct RemoteTaskContext {
+    /// Source of the request: "cli", "remote", "api"
+    pub source: String,
+    /// User identifier
+    pub user_id: String,
+    /// Optional session ID
+    pub session_id: Option<String>,
+}
+
+impl From<RemoteTaskContext> for RustRemoteTaskContext {
+    fn from(c: RemoteTaskContext) -> Self {
+        Self {
+            source: c.source,
+            user_id: c.user_id,
+            session_id: c.session_id,
+        }
+    }
+}
+
+/// Handle to a remote policy instance
+#[napi]
+pub struct RemotePolicyHandle {
+    inner: Mutex<RustRemotePolicy>,
+}
+
+#[napi]
+impl RemotePolicyHandle {
+    /// Create a new remote policy
+    #[napi(constructor)]
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(RustRemotePolicy::new()),
+        }
+    }
+
+    /// Check if an operation requires approval
+    #[napi]
+    pub fn should_require_approval(&self, tool: String, context: RemoteTaskContext) -> napi::Result<bool> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let rust_ctx: RustRemoteTaskContext = context.into();
+        Ok(guard.should_require_approval(&tool, &rust_ctx))
+    }
+
+    /// Get the risk level for an operation
+    #[napi]
+    pub fn risk_level(&self, tool: String) -> napi::Result<RemoteRiskLevel> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.risk_level(&tool).into())
+    }
+
+    /// Check if operation is dangerous
+    #[napi]
+    pub fn is_dangerous(&self, tool: String) -> napi::Result<bool> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.is_dangerous(&tool))
+    }
+
+    /// Check if operation is safe
+    #[napi]
+    pub fn is_safe(&self, tool: String) -> napi::Result<bool> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.is_safe(&tool))
+    }
+
+    /// Load allowlists from storage
+    #[napi]
+    pub fn load_allowlists(&self) -> napi::Result<()> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.load_allowlists().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to load allowlists: {}", e))
+        })
+    }
+
+    /// Allow a tool for a user
+    #[napi]
+    pub fn allow_for_user(&self, user_id: String, tool: String) -> napi::Result<()> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.allow_for_user(&user_id, &tool).map_err(|e| {
+            napi::Error::from_reason(format!("Failed to allow tool: {}", e))
+        })
+    }
+
+    /// Revoke a tool for a user
+    #[napi]
+    pub fn revoke_for_user(&self, user_id: String, tool: String) -> napi::Result<()> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.revoke_for_user(&user_id, &tool).map_err(|e| {
+            napi::Error::from_reason(format!("Failed to revoke tool: {}", e))
+        })
+    }
+
+    /// Get a user's allowlist
+    #[napi]
+    pub fn get_user_allowlist(&self, user_id: String) -> napi::Result<Vec<String>> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        Ok(guard.get_user_allowlist(&user_id))
+    }
+
+    /// Clear a user's allowlist
+    #[napi]
+    pub fn clear_user_allowlist(&self, user_id: String) -> napi::Result<()> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        guard.clear_user_allowlist(&user_id).map_err(|e| {
+            napi::Error::from_reason(format!("Failed to clear allowlist: {}", e))
+        })
+    }
+
+    /// Describe why approval is needed
+    #[napi]
+    pub fn describe_approval_reason(&self, tool: String, args: Option<String>) -> napi::Result<String> {
+        let guard = self.inner.lock().map_err(|e| {
+            napi::Error::from_reason(format!("Failed to acquire lock: {}", e))
+        })?;
+        let args_json = args.and_then(|s| serde_json::from_str(&s).ok());
+        Ok(guard.describe_approval_reason(&tool, args_json.as_ref()))
+    }
+}
+
+// ============================================================================
+// Remote Policy Convenience Functions
+// ============================================================================
+
+/// Get the remote risk level for a tool (stateless)
+#[napi]
+pub fn get_remote_risk_level(tool: String) -> RemoteRiskLevel {
+    let policy = RustRemotePolicy::new();
+    policy.risk_level(&tool).into()
+}
+
+/// Check if a tool is dangerous for remote access (stateless)
+#[napi]
+pub fn is_remote_dangerous(tool: String) -> bool {
+    let policy = RustRemotePolicy::new();
+    policy.is_dangerous(&tool)
+}
+
+/// Check if a tool is safe for remote access (stateless)
+#[napi]
+pub fn is_remote_safe(tool: String) -> bool {
+    let policy = RustRemotePolicy::new();
+    policy.is_safe(&tool)
+}
+
+/// Check if remote approval is required (stateless)
+#[napi]
+pub fn should_require_remote_approval(tool: String, source: String, user_id: String) -> bool {
+    let policy = RustRemotePolicy::new();
+    let context = RustRemoteTaskContext {
+        source,
+        user_id,
+        session_id: None,
+    };
+    policy.should_require_approval(&tool, &context)
+}

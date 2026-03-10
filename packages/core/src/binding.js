@@ -586,3 +586,11 @@ module.exports.filterIgnoredPaths = nativeBinding.filterIgnoredPaths
 module.exports.filterPathsWithPatterns = nativeBinding.filterPathsWithPatterns
 module.exports.getIgnoreDefaultFolders = nativeBinding.getIgnoreDefaultFolders
 module.exports.getIgnoreDefaultPatterns = nativeBinding.getIgnoreDefaultPatterns
+
+// Phase: Remote Policy (remote access control)
+module.exports.RemotePolicyHandle = nativeBinding.RemotePolicyHandle
+module.exports.getRemoteRiskLevel = nativeBinding.getRemoteRiskLevel
+module.exports.isRemoteDangerous = nativeBinding.isRemoteDangerous
+module.exports.isRemoteSafe = nativeBinding.isRemoteSafe
+module.exports.shouldRequireRemoteApproval = nativeBinding.shouldRequireRemoteApproval
+module.exports.RemoteRiskLevel = nativeBinding.RemoteRiskLevel

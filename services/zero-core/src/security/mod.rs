@@ -9,6 +9,7 @@
 //! - **injection**: Prompt injection detection and sanitization
 //! - **risk**: Risk assessment for tool operations (auto-approval support)
 //! - **auto_approve**: Auto-approval engine for autonomous mode
+//! - **remote_policy**: Remote access control for tool operations
 
 pub mod permission;
 pub mod vault;
@@ -16,6 +17,7 @@ pub mod keyring;
 pub mod injection;
 pub mod risk;
 pub mod auto_approve;
+pub mod remote_policy;
 
 // Sandbox will be added later
 // pub mod sandbox;
@@ -38,4 +40,7 @@ pub use risk::{
 pub use auto_approve::{
     AutoApproveConfig, AutoApproveEngine, ApprovalDecision, ToolInput,
     AuditEntry, ExecutionContext, ProjectSensitivity, TimeOfDay, AdaptiveRiskResult,
+};
+pub use remote_policy::{
+    RemotePolicy, RemoteRiskLevel, RemoteTaskContext,
 };

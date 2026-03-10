@@ -2,6 +2,14 @@ import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
 import z from "zod"
+import {
+  createSafetyGuard,
+  type SafetyGuardHandleType,
+  type NapiResourceBudget,
+  type NapiResourceUsage,
+  type NapiConstraintCheckResult,
+  type NapiResourceWarning,
+} from "@codecoder-ai/core"
 
 const log = Log.create({ service: "autonomous.safety.constraints" })
 
@@ -59,79 +67,96 @@ export const DEFAULT_BUDGET: ResourceBudget = {
 }
 
 /**
- * Safety guard for resource limits
+ * Map resource type string to ResourceBudget key
+ */
+function mapResourceToKey(resource: string | null | undefined): keyof ResourceBudget | undefined {
+  switch (resource) {
+    case "tokens":
+      return "maxTokens"
+    case "cost":
+      return "maxCostUSD"
+    case "time":
+    case "duration":
+      return "maxDurationMinutes"
+    case "files":
+      return "maxFilesChanged"
+    case "actions":
+      return "maxActions"
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Safety guard for resource limits - Rust-backed implementation
  *
- * Monitors and enforces resource constraints
+ * Monitors and enforces resource constraints using native implementation.
+ * Event publishing is handled in TypeScript for Bus compatibility.
  */
 export class SafetyGuard {
+  private handle: SafetyGuardHandleType
   private config: SafetyConfig
-  private usage: ResourceUsage
-  private startTime: number
   private sessionId: string
   private warningSent: Set<keyof ResourceBudget> = new Set()
 
   constructor(sessionId: string, budget?: Partial<ResourceBudget>) {
     this.sessionId = sessionId
-    this.startTime = Date.now()
+    const fullBudget = { ...DEFAULT_BUDGET, ...budget }
     this.config = {
-      budget: { ...DEFAULT_BUDGET, ...budget },
+      budget: fullBudget,
       warnThreshold: 80,
       hardLimit: true,
     }
-    this.usage = {
-      tokensUsed: 0,
-      costUSD: 0,
-      durationMinutes: 0,
-      filesChanged: 0,
-      actionsPerformed: 0,
+
+    // Convert to NAPI format
+    const napiBudget: NapiResourceBudget = {
+      maxTokens: fullBudget.maxTokens,
+      maxCostUsd: fullBudget.maxCostUSD,
+      maxDurationMinutes: fullBudget.maxDurationMinutes,
+      maxFilesChanged: fullBudget.maxFilesChanged,
+      maxActions: fullBudget.maxActions,
     }
+
+    // Create Rust-backed handle
+    const handle = createSafetyGuard?.(sessionId, napiBudget)
+    if (!handle) {
+      throw new Error("Native SafetyGuard not available. Build native modules with `cargo build` in services/zero-core.")
+    }
+    this.handle = handle
   }
 
   /**
    * Check if an action is safe to perform
    */
   async check(action?: keyof ResourceBudget, additionalCost?: Partial<ResourceUsage>): Promise<SafetyCheckResult> {
-    // Update duration
-    this.usage.durationMinutes = (Date.now() - this.startTime) / 60000
+    // Convert additional cost to NAPI format
+    const napiUsage: NapiResourceUsage | undefined = additionalCost
+      ? {
+          tokensUsed: additionalCost.tokensUsed,
+          costUsd: additionalCost.costUSD,
+          durationMinutes: additionalCost.durationMinutes,
+          filesChanged: additionalCost.filesChanged,
+          actionsPerformed: additionalCost.actionsPerformed,
+        }
+      : undefined
 
-    // Add additional costs if provided
-    if (additionalCost) {
-      if (additionalCost.tokensUsed) this.usage.tokensUsed += additionalCost.tokensUsed
-      if (additionalCost.costUSD) this.usage.costUSD += additionalCost.costUSD
-      if (additionalCost.filesChanged) this.usage.filesChanged += additionalCost.filesChanged
-      if (additionalCost.actionsPerformed) this.usage.actionsPerformed += additionalCost.actionsPerformed
+    // Call Rust check with warnings
+    const { result, warnings } = this.handle.check(napiUsage)
+
+    // Publish warnings to Bus (TypeScript layer handles events)
+    for (const warning of warnings) {
+      this.publishWarning(warning)
     }
 
-    // Check each resource
-    const checks: Array<{ resource: keyof ResourceBudget; current: number; limit: number }> = [
-      { resource: "maxTokens", current: this.usage.tokensUsed, limit: this.config.budget.maxTokens },
-      { resource: "maxCostUSD", current: this.usage.costUSD, limit: this.config.budget.maxCostUSD },
-      {
-        resource: "maxDurationMinutes",
-        current: this.usage.durationMinutes,
-        limit: this.config.budget.maxDurationMinutes,
-      },
-      {
-        resource: "maxFilesChanged",
-        current: this.usage.filesChanged,
-        limit: this.config.budget.maxFilesChanged,
-      },
-      { resource: "maxActions", current: this.usage.actionsPerformed, limit: this.config.budget.maxActions },
-    ]
-
-    // If specific action requested, check that
-    if (action) {
-      const check = checks.find((c) => c.resource === `max${this.capitalize(action)}` as keyof ResourceBudget)
-      if (check) {
-        return this.checkResource(check.resource, check.current, check.limit)
-      }
-    }
-
-    // Check all resources
-    for (const check of checks) {
-      const result = this.checkResource(check.resource, check.current, check.limit)
-      if (!result.safe && this.config.hardLimit) {
-        return result
+    // Convert result
+    if (!result.safe && this.config.hardLimit) {
+      const resourceKey = mapResourceToKey(result.resource)
+      return {
+        safe: false,
+        reason: result.reason ?? undefined,
+        resource: resourceKey,
+        current: result.current ?? undefined,
+        limit: result.limit ?? undefined,
       }
     }
 
@@ -139,32 +164,82 @@ export class SafetyGuard {
   }
 
   /**
+   * Publish resource warning to Bus
+   */
+  private publishWarning(warning: NapiResourceWarning): void {
+    const resourceKey = mapResourceToKey(warning.resource)
+    if (!resourceKey || this.warningSent.has(resourceKey)) {
+      return
+    }
+
+    this.warningSent.add(resourceKey)
+
+    log.warn("Resource warning", {
+      resource: warning.resource,
+      current: warning.current,
+      limit: warning.limit,
+      percentage: warning.percentage,
+    })
+
+    Bus.publish(AutonomousEvent.ResourceWarning, {
+      sessionId: this.sessionId,
+      resource: warning.resource as "tokens" | "cost" | "time" | "files" | "actions",
+      current: warning.current,
+      limit: warning.limit,
+      percentage: warning.percentage,
+    })
+  }
+
+  /**
    * Record resource usage
    */
   record(resource: keyof ResourceUsage, value: number): void {
-    this.usage[resource] = (this.usage[resource] ?? 0) + value
+    const usage: NapiResourceUsage = {}
+    switch (resource) {
+      case "tokensUsed":
+        usage.tokensUsed = value
+        break
+      case "costUSD":
+        usage.costUsd = value
+        break
+      case "durationMinutes":
+        usage.durationMinutes = value
+        break
+      case "filesChanged":
+        usage.filesChanged = value
+        break
+      case "actionsPerformed":
+        usage.actionsPerformed = value
+        break
+    }
+    this.handle.record(usage)
   }
 
   /**
    * Get current usage
    */
   getCurrentUsage(): ResourceUsage {
-    // Update duration
-    this.usage.durationMinutes = (Date.now() - this.startTime) / 60000
-    return { ...this.usage }
+    const usage = this.handle.getUsage()
+    return {
+      tokensUsed: usage.tokensUsed ?? 0,
+      costUSD: usage.costUsd ?? 0,
+      durationMinutes: usage.durationMinutes ?? 0,
+      filesChanged: usage.filesChanged ?? 0,
+      actionsPerformed: usage.actionsPerformed ?? 0,
+    }
   }
 
   /**
    * Get remaining budget
    */
   getRemaining(): Partial<ResourceBudget> {
-    const usage = this.getCurrentUsage()
+    const remaining = this.handle.getRemaining()
     return {
-      maxTokens: Math.max(0, this.config.budget.maxTokens - usage.tokensUsed),
-      maxCostUSD: Math.max(0, this.config.budget.maxCostUSD - usage.costUSD),
-      maxDurationMinutes: Math.max(0, this.config.budget.maxDurationMinutes - usage.durationMinutes),
-      maxFilesChanged: Math.max(0, this.config.budget.maxFilesChanged - usage.filesChanged),
-      maxActions: Math.max(0, this.config.budget.maxActions - usage.actionsPerformed),
+      maxTokens: remaining.maxTokens ?? 0,
+      maxCostUSD: remaining.maxCostUsd ?? 0,
+      maxDurationMinutes: remaining.maxDurationMinutes ?? 0,
+      maxFilesChanged: remaining.maxFilesChanged ?? 0,
+      maxActions: remaining.maxActions ?? 0,
     }
   }
 
@@ -172,114 +247,21 @@ export class SafetyGuard {
    * Get surplus ratio (0-1)
    */
   getSurplusRatio(): number {
-    const remaining = this.getRemaining()
-    const total = this.config.budget
-
-    // Calculate average remaining ratio
-    const ratios = [
-      (remaining.maxTokens ?? 0) / total.maxTokens,
-      (remaining.maxCostUSD ?? 0) / total.maxCostUSD,
-      (remaining.maxDurationMinutes ?? 0) / total.maxDurationMinutes,
-      (remaining.maxFilesChanged ?? 0) / total.maxFilesChanged,
-      (remaining.maxActions ?? 0) / total.maxActions,
-    ]
-
-    return ratios.reduce((sum, r) => sum + r, 0) / ratios.length
+    return this.handle.getSurplusRatio()
   }
 
   /**
-   * Check a specific resource
+   * Get warnings count (number of resources that have triggered warnings)
    */
-  private checkResource(
-    resource: keyof ResourceBudget,
-    current: number,
-    limit: number,
-  ): SafetyCheckResult {
-    const percentage = (current / limit) * 100
-
-    // Hard limit exceeded
-    if (current >= limit) {
-      log.warn("Resource limit exceeded", { resource, current, limit })
-
-      return {
-        safe: false,
-        reason: `Resource limit exceeded for ${resource}`,
-        resource,
-        current,
-        limit,
-      }
-    }
-
-    // Warning threshold
-    if (percentage >= this.config.warnThreshold && !this.warningSent.has(resource)) {
-      this.warningSent.add(resource)
-
-      Bus.publish(AutonomousEvent.ResourceWarning, {
-        sessionId: this.sessionId,
-        resource: this.normalizeResourceName(resource),
-        current,
-        limit,
-        percentage: Math.round(percentage),
-      })
-
-      log.warn("Resource warning", { resource, current, limit, percentage: Math.round(percentage) })
-    }
-
-    // Approaching limit - send warning once
-    if (percentage >= this.config.warnThreshold) {
-      if (!this.warningSent.has(resource)) {
-        this.warningSent.add(resource)
-
-        Bus.publish(AutonomousEvent.ResourceWarning, {
-          sessionId: this.sessionId,
-          resource: this.normalizeResourceName(resource),
-          current,
-          limit,
-          percentage: Math.round(percentage),
-        })
-      }
-    }
-
-    return { safe: true }
-  }
-
-  /**
-   * Normalize resource name for events
-   */
-  private normalizeResourceName(resource: keyof ResourceBudget): "tokens" | "cost" | "time" | "files" | "actions" {
-    switch (resource) {
-      case "maxTokens":
-        return "tokens"
-      case "maxCostUSD":
-        return "cost"
-      case "maxDurationMinutes":
-        return "time"
-      case "maxFilesChanged":
-        return "files"
-      case "maxActions":
-        return "actions"
-    }
-  }
-
-  /**
-   * Capitalize string
-   */
-  private capitalize(str: string): string {
-    return str.charAt(0).toUpperCase() + str.slice(1)
+  getWarningsCount(): number {
+    return this.warningSent.size
   }
 
   /**
    * Reset usage
    */
   reset(): void {
-    this.usage = {
-      tokensUsed: 0,
-      costUSD: 0,
-      durationMinutes: 0,
-      filesChanged: 0,
-      actionsPerformed: 0,
-    }
-    this.startTime = Date.now()
+    this.handle.reset()
     this.warningSent.clear()
   }
 
@@ -288,6 +270,15 @@ export class SafetyGuard {
    */
   updateBudget(budget: Partial<ResourceBudget>): void {
     this.config.budget = { ...this.config.budget, ...budget }
+
+    const napiBudget: NapiResourceBudget = {
+      maxTokens: budget.maxTokens,
+      maxCostUsd: budget.maxCostUSD,
+      maxDurationMinutes: budget.maxDurationMinutes,
+      maxFilesChanged: budget.maxFilesChanged,
+      maxActions: budget.maxActions,
+    }
+    this.handle.updateBudget(napiBudget)
   }
 
   /**
@@ -301,25 +292,50 @@ export class SafetyGuard {
    * Serialize guard state
    */
   serialize(): { usage: ResourceUsage; startTime: number; config: SafetyConfig } {
-    return {
-      usage: this.getCurrentUsage(),
-      startTime: this.startTime,
-      config: this.config,
+    const json = this.handle.serialize()
+    try {
+      const data = JSON.parse(json)
+      return {
+        usage: this.getCurrentUsage(),
+        startTime: data.startTime ?? Date.now(),
+        config: this.config,
+      }
+    } catch {
+      return {
+        usage: this.getCurrentUsage(),
+        startTime: Date.now(),
+        config: this.config,
+      }
     }
   }
 
   /**
    * Restore from serialized data
    */
-  static deserialize(data: {
-    usage: ResourceUsage
-    startTime: number
-    config: SafetyConfig
-  }, sessionId: string): SafetyGuard {
+  static deserialize(
+    data: {
+      usage: ResourceUsage
+      startTime: number
+      config: SafetyConfig
+    },
+    sessionId: string,
+  ): SafetyGuard {
     const guard = new SafetyGuard(sessionId, data.config.budget)
-    guard.usage = data.usage
-    guard.startTime = data.startTime
-    guard.config = data.config
+
+    // Add recorded usage to the new guard
+    if (data.usage.tokensUsed > 0) {
+      guard.handle.addTokens(data.usage.tokensUsed)
+    }
+    if (data.usage.costUSD > 0) {
+      guard.handle.addCost(data.usage.costUSD)
+    }
+    if (data.usage.filesChanged > 0) {
+      guard.handle.addFilesChanged(data.usage.filesChanged)
+    }
+    if (data.usage.actionsPerformed > 0) {
+      guard.handle.addActions(data.usage.actionsPerformed)
+    }
+
     return guard
   }
 }

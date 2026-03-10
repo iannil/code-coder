@@ -1150,6 +1150,218 @@ export declare class TaskQueueHandle {
   serialize(): string
 }
 
+// ============================================================================
+// Safety Guardrails Types (Phase 2)
+// ============================================================================
+
+/** Tool result enum */
+export type NapiToolResult = "Success" | "Error"
+
+/** Guardrail configuration */
+export interface NapiGuardrailConfig {
+  maxStateTransitions?: number
+  maxToolRetries?: number
+  maxDecisionHesitation?: number
+  loopDetectionEnabled?: boolean
+  loopThreshold?: number
+  autoBreakLoops?: boolean
+}
+
+/** Loop detection result */
+export interface NapiLoopDetection {
+  loopType: string
+  pattern: Array<string>
+  count: number
+  broken: boolean
+}
+
+/** Safety check result */
+export interface NapiSafetyCheckResult {
+  safe: boolean
+  reason?: string | null
+  limitType?: string | null
+}
+
+/** Guardrail statistics */
+export interface NapiGuardrailStats {
+  stateTransitions: number
+  toolCalls: number
+  decisions: number
+  loopsBroken: number
+}
+
+/** Handle to safety guardrails */
+export declare class SafetyGuardrailsHandle {
+  /** Get session ID */
+  sessionId(): string
+  /** Record a state transition */
+  recordStateTransition(from: string, to: string): NapiLoopDetection | null
+  /** Record a tool call */
+  recordToolCall(tool: string, input: string, result: NapiToolResult): NapiLoopDetection | null
+  /** Record a decision */
+  recordDecision(id: string, decisionType: string, result: string): NapiLoopDetection | null
+  /** Detect all loops */
+  detectLoops(): Array<NapiLoopDetection>
+  /** Check safety limits */
+  checkLimits(): NapiSafetyCheckResult
+  /** Get statistics */
+  getStats(): NapiGuardrailStats
+  /** Clear all records */
+  clear(): void
+  /** Serialize to JSON */
+  serialize(): string
+}
+
+/** Create new safety guardrails */
+export declare function createSafetyGuardrails(sessionId: string, config?: NapiGuardrailConfig | undefined | null): SafetyGuardrailsHandle
+
+// ============================================================================
+// Safety Constraints Types (Phase 2)
+// ============================================================================
+
+/** Resource budget */
+export interface NapiResourceBudget {
+  maxTokens?: number
+  maxCostUsd?: number
+  maxDurationMinutes?: number
+  maxFilesChanged?: number
+  maxActions?: number
+}
+
+/** Resource usage */
+export interface NapiResourceUsage {
+  tokensUsed?: number
+  costUsd?: number
+  durationMinutes?: number
+  filesChanged?: number
+  actionsPerformed?: number
+}
+
+/** Constraint check result */
+export interface NapiConstraintCheckResult {
+  safe: boolean
+  reason?: string | null
+  resource?: string | null
+  current?: number | null
+  limit?: number | null
+}
+
+/** Resource warning */
+export interface NapiResourceWarning {
+  sessionId: string
+  resource: string
+  current: number
+  limit: number
+  percentage: number
+}
+
+/** Check result with warnings */
+export interface NapiCheckWithWarnings {
+  result: NapiConstraintCheckResult
+  warnings: Array<NapiResourceWarning>
+}
+
+/** Handle to safety guard */
+export declare class SafetyGuardHandle {
+  /** Get session ID */
+  sessionId(): string
+  /** Check if operation is safe (with optional additional cost) */
+  check(additional?: NapiResourceUsage | undefined | null): NapiCheckWithWarnings
+  /** Quick check without warnings */
+  quickCheck(): NapiConstraintCheckResult
+  /** Record resource usage */
+  record(usage: NapiResourceUsage): void
+  /** Add tokens used */
+  addTokens(tokens: number): void
+  /** Add cost */
+  addCost(cost: number): void
+  /** Add files changed */
+  addFilesChanged(count: number): void
+  /** Add actions performed */
+  addActions(count: number): void
+  /** Get current usage */
+  getUsage(): NapiResourceUsage
+  /** Get remaining budget */
+  getRemaining(): NapiResourceBudget
+  /** Get surplus ratio (0.0-1.0) */
+  getSurplusRatio(): number
+  /** Update budget */
+  updateBudget(budget: NapiResourceBudget): void
+  /** Reset usage tracking */
+  reset(): void
+  /** Serialize to JSON */
+  serialize(): string
+}
+
+/** Create new safety guard */
+export declare function createSafetyGuard(sessionId: string, budget?: NapiResourceBudget | undefined | null): SafetyGuardHandle
+
+// ============================================================================
+// CLOSE Decision Framework Types (Phase 2)
+// ============================================================================
+
+/** CLOSE dimension evaluation */
+export interface NapiCLOSEDimension {
+  score: number
+  confidence: number
+  factors: Array<string>
+}
+
+/** CLOSE evaluation result */
+export interface NapiCLOSEEvaluation {
+  convergence: NapiCLOSEDimension
+  leverage: NapiCLOSEDimension
+  optionality: NapiCLOSEDimension
+  surplus: NapiCLOSEDimension
+  evolution: NapiCLOSEDimension
+  total: number
+  risk: number
+  confidence: number
+  recommendedGear: string
+  timestamp: number
+}
+
+/** CLOSE weights */
+export interface NapiCLOSEWeights {
+  convergence?: number
+  leverage?: number
+  optionality?: number
+  surplus?: number
+  evolution?: number
+}
+
+/** CLOSE input data */
+export interface NapiCLOSEInput {
+  snapshotConfidence?: number
+  buildStatus?: string
+  sessionHealth?: string
+  criticalAnomalies?: number
+  strongPatterns?: number
+  highImpactOpportunities?: number
+  mediumImpactOpportunities?: number
+  externalOpportunities?: number
+  externalRisks?: number
+  totalOpportunities?: number
+  patternTypes?: number
+  anomalyCount?: number
+  decisionQuality?: number
+  recentErrors?: number
+  tokenUsage?: number
+  cost?: number
+  consensusStrength?: number
+  coverageGaps?: number
+  learningOpportunities?: number
+  recentChanges?: number
+  techDebtLevel?: string
+  dismissedAnomalies?: number
+  activeAnomalies?: number
+  recentTrendAvg?: number | null
+  olderTrendAvg?: number | null
+}
+
+/** Evaluate CLOSE decision framework */
+export declare function evaluateClose(input: NapiCLOSEInput, weights?: NapiCLOSEWeights | undefined | null): NapiCLOSEEvaluation
+
 /** Thread-safe handle to the tool registry */
 export declare class ToolRegistryHandle {
   /** Create a new tool registry with all built-in tools */
@@ -1292,7 +1504,7 @@ export declare const enum AdrStatus {
 }
 
 /** Analyze a JAR file (standalone function) */
-export declare function analyzeJar(jarPath: string, maxClasses?: number | undefined | null): NapiJarAnalysis
+export declare export declare function analyzeJar(jarPath: string, maxClasses?: number | undefined | null): NapiJarAnalysis
 
 /**
  * Apply caching hints to messages
@@ -1301,7 +1513,7 @@ export declare function analyzeJar(jarPath: string, maxClasses?: number | undefi
  * The cache hints are applied to providerOptions for Anthropic, OpenRouter, Bedrock,
  * and openaiCompatible providers.
  */
-export declare function applyCaching(messagesJson: string, providerId: string): ApplyCachingResult
+export declare export declare function applyCaching(messagesJson: string, providerId: string): ApplyCachingResult
 
 /** Result of cache application */
 export interface ApplyCachingResult {
@@ -1334,7 +1546,7 @@ export interface ApprovalDecision {
  * @param command - The Bash command to assess
  * @returns Risk assessment result with level, reason, and auto-approvability
  */
-export declare function assessBashRisk(command: string): RiskResult
+export declare export declare function assessBashRisk(command: string): RiskResult
 
 /**
  * Assess risk level for a file path operation
@@ -1347,10 +1559,10 @@ export declare function assessBashRisk(command: string): RiskResult
  * @param path - The file path to assess
  * @returns Risk assessment result
  */
-export declare function assessFileRisk(path: string): RiskResult
+export declare export declare function assessFileRisk(path: string): RiskResult
 
 /** Assess risk of commands using the global parser */
-export declare function assessShellCommandsRisk(commands: Array<NapiParsedCommand>): NapiShellRiskAssessment
+export declare export declare function assessShellCommandsRisk(commands: Array<NapiParsedCommand>): NapiShellRiskAssessment
 
 /** Audit entry for auto-approve decisions */
 export interface AuditEntry {
@@ -1434,13 +1646,13 @@ export declare const enum AutonomousState {
 }
 
 /** Build a project cache by scanning the worktree */
-export declare function buildProjectCache(worktree: string, projectId: string, framework?: string | undefined | null): NapiProjectCache
+export declare export declare function buildProjectCache(worktree: string, projectId: string, framework?: string | undefined | null): NapiProjectCache
 
 /** Deserialize bytes to f32 vector (little-endian) */
-export declare function bytesToVector(bytes: Buffer): Array<number>
+export declare export declare function bytesToVector(bytes: Buffer): Array<number>
 
 /** Quick check if a tool can be auto-approved with safe-only config */
-export declare function canSafeAutoApprove(tool: string): boolean
+export declare export declare function canSafeAutoApprove(tool: string): boolean
 
 /**
  * Check if risk is at or below threshold
@@ -1449,19 +1661,19 @@ export declare function canSafeAutoApprove(tool: string): boolean
  * @param threshold - The maximum acceptable risk level
  * @returns true if risk <= threshold
  */
-export declare function checkRiskThreshold(risk: string, threshold: string): boolean
+export declare export declare function checkRiskThreshold(risk: string, threshold: string): boolean
 
 /** Chunk markdown text into semantic chunks */
-export declare function chunkText(text: string, maxTokens?: number | undefined | null): Array<NapiChunk>
+export declare export declare function chunkText(text: string, maxTokens?: number | undefined | null): Array<NapiChunk>
 
 /** Chunk markdown text with custom configuration */
-export declare function chunkTextWithConfig(text: string, config: NapiChunkerConfig): Array<NapiChunk>
+export declare export declare function chunkTextWithConfig(text: string, config: NapiChunkerConfig): Array<NapiChunk>
 
 /** Clone a git repository */
-export declare function cloneGitRepo(url: string, path: string, options?: NapiCloneOptions | undefined | null): GitOpsHandle
+export declare export declare function cloneGitRepo(url: string, path: string, options?: NapiCloneOptions | undefined | null): GitOpsHandle
 
 /** Compute unified diff between two strings (standalone function) */
-export declare function computeDiff(oldContent: string, newContent: string, filePath: string): string
+export declare export declare function computeDiff(oldContent: string, newContent: string, filePath: string): string
 
 /**
  * Compute a prune plan for tool outputs (standalone function)
@@ -1469,16 +1681,16 @@ export declare function computeDiff(oldContent: string, newContent: string, file
  * Goes backwards through tool parts, protecting recent ones up to `protect` tokens,
  * then marks older ones for pruning.
  */
-export declare function computePrunePlan(toolParts: Array<NapiToolPartInfo>, config: NapiPruneConfig): NapiPrunePlan
+export declare export declare function computePrunePlan(toolParts: Array<NapiToolPartInfo>, config: NapiPruneConfig): NapiPrunePlan
 
 /** Compute a prune plan with message-level turn tracking (standalone function) */
-export declare function computePrunePlanWithTurns(messages: Array<NapiMessageInfo>, config: NapiPruneConfig): NapiPrunePlan
+export declare export declare function computePrunePlanWithTurns(messages: Array<NapiMessageInfo>, config: NapiPruneConfig): NapiPrunePlan
 
 /** Check if a string matches a regex pattern (unanchored) */
-export declare function containsPattern(pattern: string, value: string): boolean
+export declare export declare function containsPattern(pattern: string, value: string): boolean
 
 /** Compute content hash for deduplication */
-export declare function contentHash(content: string): string
+export declare export declare function contentHash(content: string): string
 
 /** Line match information for content scanning */
 export interface ContentMatchResult {
@@ -1493,10 +1705,10 @@ export interface ContentMatchResult {
 }
 
 /** Calculate cosine similarity between two vectors */
-export declare function cosineSimilarity(a: Array<number>, b: Array<number>): number
+export declare export declare function cosineSimilarity(a: Array<number>, b: Array<number>): number
 
 /** Get file line count without reading entire content */
-export declare function countFileLines(filePath: string): number
+export declare export declare function countFileLines(filePath: string): number
 
 /** Input for creating an ADR */
 export interface CreateAdrInput {
@@ -1510,25 +1722,25 @@ export interface CreateAdrInput {
 }
 
 /** Create a new auto-approve engine with configuration */
-export declare function createAutoApproveEngine(config: AutoApproveConfig): AutoApproveEngineHandle
+export declare export declare function createAutoApproveEngine(config: AutoApproveConfig): AutoApproveEngineHandle
 
 /** Create a new code indexer */
-export declare function createCodeIndexer(): CodeIndexerHandle
+export declare export declare function createCodeIndexer(): CodeIndexerHandle
 
 /** Create a new compactor with default settings (128k max, 100k target) */
-export declare function createCompactor(): CompactorHandle
+export declare export declare function createCompactor(): CompactorHandle
 
 /** Create a compactor with custom token limits */
-export declare function createCompactorWithLimits(maxTokens: number, targetTokens: number): CompactorHandle
+export declare export declare function createCompactorWithLimits(maxTokens: number, targetTokens: number): CompactorHandle
 
 /** Create a new config loader */
-export declare function createConfigLoader(paths?: Array<string> | undefined | null): ConfigLoaderHandle
+export declare export declare function createConfigLoader(paths?: Array<string> | undefined | null): ConfigLoaderHandle
 
 /** Create a context loader (convenience function) */
-export declare function createContextLoader(root: string, options?: NapiScanOptions | undefined | null): ContextLoaderHandle
+export declare export declare function createContextLoader(root: string, options?: NapiScanOptions | undefined | null): ContextLoaderHandle
 
 /** Create a new credential manager */
-export declare function createCredentialManager(fileFallbackPath?: string | undefined | null): CredentialManagerHandle
+export declare export declare function createCredentialManager(fileFallbackPath?: string | undefined | null): CredentialManagerHandle
 
 /** Input for creating a decision */
 export interface CreateDecisionInput {
@@ -1544,7 +1756,7 @@ export interface CreateDecisionInput {
 }
 
 /** Create default prune config */
-export declare function createDefaultPruneConfig(): NapiPruneConfig
+export declare export declare function createDefaultPruneConfig(): NapiPruneConfig
 
 /** Input for creating an edit record */
 export interface CreateEditRecordInput {
@@ -1563,108 +1775,108 @@ export interface CreateEditRecordInput {
  * # Arguments
  * * `dimension` - The dimension of vectors that will be stored (e.g., 1536 for OpenAI)
  */
-export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
+export declare export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
 
 /** Create a credential manager that only uses file storage (for testing) */
-export declare function createFileCredentialManager(path: string): CredentialManagerHandle
+export declare export declare function createFileCredentialManager(path: string): CredentialManagerHandle
 
 /** Create a keyring manager that only uses file storage */
-export declare function createFileKeyringManager(path: string): KeyringManagerHandle
+export declare export declare function createFileKeyringManager(path: string): KeyringManagerHandle
 
 /** Create an MCP auth store that only uses file storage (for testing) */
-export declare function createFileMcpAuthStore(path: string): McpAuthStoreHandle
+export declare export declare function createFileMcpAuthStore(path: string): McpAuthStoreHandle
 
 /** Create a new file watcher with default configuration */
-export declare function createFileWatcher(): FileWatcherHandle
+export declare export declare function createFileWatcher(): FileWatcherHandle
 
 /** Create a new file watcher with custom configuration */
-export declare function createFileWatcherWithConfig(config: FileWatcherConfig): FileWatcherHandle
+export declare export declare function createFileWatcherWithConfig(config: FileWatcherConfig): FileWatcherHandle
 
 /** Create an ignore engine with default configuration */
-export declare function createIgnoreEngine(): IgnoreEngineHandle
+export declare export declare function createIgnoreEngine(): IgnoreEngineHandle
 
 /** Create an ignore engine with custom configuration */
-export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
+export declare export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
 
 /** Create a new injection scanner */
-export declare function createInjectionScanner(): InjectionScannerHandle
+export declare export declare function createInjectionScanner(): InjectionScannerHandle
 
 /** Create a new injection scanner with configuration */
-export declare function createInjectionScannerWithConfig(config: InjectionScannerConfig): InjectionScannerHandle
+export declare export declare function createInjectionScannerWithConfig(config: InjectionScannerConfig): InjectionScannerHandle
 
 /**
  * Create a new keyring manager
  *
  * Automatically selects system keyring if available, otherwise falls back to file.
  */
-export declare function createKeyringManager(fileFallbackPath?: string | undefined | null): KeyringManagerHandle
+export declare export declare function createKeyringManager(fileFallbackPath?: string | undefined | null): KeyringManagerHandle
 
 /** Create a new LSP server manager */
-export declare function createLspServerManager(): LspServerManagerHandle
+export declare export declare function createLspServerManager(): LspServerManagerHandle
 
 /** Create a new MCP auth store */
-export declare function createMcpAuthStore(fileFallbackPath?: string | undefined | null): McpAuthStoreHandle
+export declare export declare function createMcpAuthStore(fileFallbackPath?: string | undefined | null): McpAuthStoreHandle
 
 /** Create a new MCP client manager */
-export declare function createMcpClientManager(): McpClientManagerHandle
+export declare export declare function createMcpClientManager(): McpClientManagerHandle
 
 /** Create an in-memory context cache store (for testing) */
-export declare function createMemoryContextCacheStore(): ContextCacheStoreHandle
+export declare export declare function createMemoryContextCacheStore(): ContextCacheStoreHandle
 
 /** Create an in-memory history store (for testing) */
-export declare function createMemoryHistoryStore(): HistoryStoreHandle
+export declare export declare function createMemoryHistoryStore(): HistoryStoreHandle
 
 /** Create an in-memory KV store (for testing) */
-export declare function createMemoryKvStore(): KvStoreHandle
+export declare export declare function createMemoryKvStore(): KvStoreHandle
 
 /** Create an in-memory observability store (for testing) */
-export declare function createMemoryObservabilityStore(): ObservabilityStoreHandle
+export declare export declare function createMemoryObservabilityStore(): ObservabilityStoreHandle
 
 /** Create a new memory system */
-export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
+export declare export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
 
 /** Create an in-memory trace store (for testing) */
-export declare function createMemoryTraceStore(): TraceStoreHandle
+export declare export declare function createMemoryTraceStore(): TraceStoreHandle
 
 /** Create an in-memory vault (for testing) */
-export declare function createMemoryVault(password: string): VaultHandle
+export declare export declare function createMemoryVault(password: string): VaultHandle
 
 /** Create a new message store */
-export declare function createMessageStore(): MessageStoreHandle
+export declare export declare function createMessageStore(): MessageStoreHandle
 
 /** Create a compiled pattern set for efficient reuse */
-export declare function createPatternSet(patterns: Array<string>): PatternSetHandle
+export declare export declare function createPatternSet(patterns: Array<string>): PatternSetHandle
 
 /** Create a new permission manager */
-export declare function createPermissionManager(): PermissionManagerHandle
+export declare export declare function createPermissionManager(): PermissionManagerHandle
 
 /** Create a permissive auto-approve engine */
-export declare function createPermissiveEngine(unattended: boolean): AutoApproveEngineHandle
+export declare export declare function createPermissiveEngine(unattended: boolean): AutoApproveEngineHandle
 
 /** Create a safe-only auto-approve engine */
-export declare function createSafeOnlyEngine(unattended: boolean): AutoApproveEngineHandle
+export declare export declare function createSafeOnlyEngine(unattended: boolean): AutoApproveEngineHandle
 
 /** Create a new schema registry */
-export declare function createSchemaRegistry(): SchemaRegistryHandle
+export declare export declare function createSchemaRegistry(): SchemaRegistryHandle
 
 /** Create a new schema validator */
-export declare function createSchemaValidator(schemaJson: string): SchemaValidatorHandle
+export declare export declare function createSchemaValidator(schemaJson: string): SchemaValidatorHandle
 
 /** Create a new state machine */
-export declare function createStateMachine(config?: NapiStateMachineConfig | undefined | null): StateMachineHandle
+export declare export declare function createStateMachine(config?: NapiStateMachineConfig | undefined | null): StateMachineHandle
 
 /** Create a new task queue */
-export declare function createTaskQueue(sessionId: string, config?: NapiTaskQueueConfig | undefined | null): TaskQueueHandle
+export declare export declare function createTaskQueue(sessionId: string, config?: NapiTaskQueueConfig | undefined | null): TaskQueueHandle
 
 /** Create a new tool registry with all built-in tools */
-export declare function createToolRegistry(): ToolRegistryHandle
+export declare export declare function createToolRegistry(): ToolRegistryHandle
 
 /**
  * Create a unified diff patch string (equivalent to createTwoFilesPatch from npm 'diff')
  *
  * Returns a unified diff format string suitable for displaying or applying
  */
-export declare function createTwoFilesPatch(oldPath: string, newPath: string, oldContent: string, newContent: string): string
+export declare export declare function createTwoFilesPatch(oldPath: string, newPath: string, oldContent: string, newContent: string): string
 
 /** Credential type tag */
 export declare const enum CredentialType {
@@ -1684,16 +1896,16 @@ export declare const enum DecisionType {
 }
 
 /** Generate human-readable description of a fingerprint */
-export declare function describeFingerprint(fingerprint: NapiFingerprintInfo): string
+export declare export declare function describeFingerprint(fingerprint: NapiFingerprintInfo): string
 
 /** Detect technologies using the global fingerprint engine */
-export declare function detectJavaTechnologies(input: NapiFingerprintInput): Array<NapiDetection>
+export declare export declare function detectJavaTechnologies(input: NapiFingerprintInput): Array<NapiDetection>
 
 /** Detect language from file extension */
-export declare function detectLanguageFromPath(path: string): string
+export declare export declare function detectLanguageFromPath(path: string): string
 
 /** Detect web technologies using the global fingerprint engine */
-export declare function detectWebTechnologies(input: NapiWebFingerprintInput): Array<NapiWebDetection>
+export declare export declare function detectWebTechnologies(input: NapiWebFingerprintInput): Array<NapiWebDetection>
 
 /**
  * Compute line-by-line diff between two strings
@@ -1701,10 +1913,10 @@ export declare function detectWebTechnologies(input: NapiWebFingerprintInput): A
  * Returns an array of changes compatible with npm 'diff' package format.
  * Each change has: value (content), count (line count), added, removed
  */
-export declare function diffLines(oldContent: string, newContent: string): Array<NapiDiffChange>
+export declare export declare function diffLines(oldContent: string, newContent: string): Array<NapiDiffChange>
 
 /** Edit a file */
-export declare function editFile(path: string, operation: EditOperation): EditResult
+export declare export declare function editFile(path: string, operation: EditOperation): EditResult
 
 /** Edit operation */
 export interface EditOperation {
@@ -1722,26 +1934,26 @@ export interface EditResult {
 }
 
 /** Estimate token count for text - alias for compatibility */
-export declare function estimateChunkTokensNative(text: string): number
+export declare export declare function estimateChunkTokensNative(text: string): number
 
 /** Estimate token count for text (fast, approximate) */
-export declare function estimateTokens(text: string): number
+export declare export declare function estimateTokens(text: string): number
 
 /** Estimate token count for text (~4 chars per token) */
-export declare function estimateTokens(text: string): number
+export declare export declare function estimateTokens(text: string): number
 
 /** Estimate tokens for multiple texts efficiently */
-export declare function estimateTokensBatch(texts: Array<string>): NapiBatchCountResult
+export declare export declare function estimateTokensBatch(texts: Array<string>): NapiBatchCountResult
 
 /** Evaluate with adaptive risk (stateless) */
-export declare function evaluateAdaptiveAutoApprove(config: AutoApproveConfig, tool: string, input: ToolInput | undefined | null, ctx: ExecutionContext): ApprovalDecision
+export declare export declare function evaluateAdaptiveAutoApprove(config: AutoApproveConfig, tool: string, input: ToolInput | undefined | null, ctx: ExecutionContext): ApprovalDecision
 
 /**
  * Evaluate a tool operation for auto-approval (stateless)
  *
  * Creates a temporary engine with the given config and evaluates the operation.
  */
-export declare function evaluateAutoApprove(config: AutoApproveConfig, tool: string, input?: ToolInput | undefined | null): ApprovalDecision
+export declare export declare function evaluateAutoApprove(config: AutoApproveConfig, tool: string, input?: ToolInput | undefined | null): ApprovalDecision
 
 /** Execution context for adaptive risk assessment */
 export interface ExecutionContext {
@@ -1760,51 +1972,51 @@ export interface ExecutionContext {
 }
 
 /** Extract dependencies from a directory (convenience function) */
-export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions | undefined | null): NapiDependencyGraph
+export declare export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions | undefined | null): NapiDependencyGraph
 
 /**
  * Extract all fenced and indented code blocks from markdown text.
  *
  * Returns code blocks with language tag, code content, and line range.
  */
-export declare function extractMarkdownCodeBlocks(text: string): Array<NapiMarkdownCodeBlock>
+export declare export declare function extractMarkdownCodeBlocks(text: string): Array<NapiMarkdownCodeBlock>
 
 /**
  * Extract frontmatter from markdown text (YAML between --- delimiters).
  *
  * Returns the frontmatter content without the delimiters, or null if not present.
  */
-export declare function extractMarkdownFrontmatter(text: string): string | null
+export declare export declare function extractMarkdownFrontmatter(text: string): string | null
 
 /**
  * Extract all headings from markdown text.
  *
  * Returns headings with their level (1-6), text content, and line number.
  */
-export declare function extractMarkdownHeadings(text: string): Array<NapiMarkdownHeading>
+export declare export declare function extractMarkdownHeadings(text: string): Array<NapiMarkdownHeading>
 
 /**
  * Extract all images from markdown text.
  *
  * Returns images with URL, alt text, optional title, and line number.
  */
-export declare function extractMarkdownImages(text: string): Array<NapiMarkdownImage>
+export declare export declare function extractMarkdownImages(text: string): Array<NapiMarkdownImage>
 
 /**
  * Extract all links from markdown text.
  *
  * Returns links with URL, text, optional title, and line number.
  */
-export declare function extractMarkdownLinks(text: string): Array<NapiMarkdownLink>
+export declare export declare function extractMarkdownLinks(text: string): Array<NapiMarkdownLink>
 
 /** Extract directories from commands */
-export declare function extractShellDirectories(commands: Array<NapiParsedCommand>): Array<string>
+export declare export declare function extractShellDirectories(commands: Array<NapiParsedCommand>): Array<string>
 
 /** Extract permission patterns from commands */
-export declare function extractShellPermissionPatterns(commands: Array<NapiParsedCommand>): NapiPermissionPatterns
+export declare export declare function extractShellPermissionPatterns(commands: Array<NapiParsedCommand>): NapiPermissionPatterns
 
 /** Extract just the frontmatter YAML from skill content */
-export declare function extractSkillFrontmatter(content: string): string | null
+export declare export declare function extractSkillFrontmatter(content: string): string | null
 
 /** Type of file edit */
 export declare const enum FileEditType {
@@ -1848,26 +2060,26 @@ export interface FileWatcherConfig {
 }
 
 /** Filter a list of paths, returning only those that are not ignored */
-export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
+export declare export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
 
 /** Filter a list of paths using custom patterns */
-export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
+export declare export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
 
 /**
  * Find the best match among multiple candidates using Jaro-Winkler similarity
  *
  * Returns the candidate with the highest similarity score above the threshold
  */
-export declare function findBestFuzzyMatch(needle: string, candidates: Array<string>, threshold: number): NapiBestFuzzyMatch | null
+export declare export declare function findBestFuzzyMatch(needle: string, candidates: Array<string>, threshold: number): NapiBestFuzzyMatch | null
 
 /** Find the best match for a string in a list of candidates */
-export declare function findBestMatch(needle: string, haystack: Array<string>): NapiBestMatch | null
+export declare export declare function findBestMatch(needle: string, haystack: Array<string>): NapiBestMatch | null
 
 /** Compute similarity between two fingerprints */
-export declare function fingerprintSimilarity(a: NapiFingerprintInfo, b: NapiFingerprintInfo): number
+export declare export declare function fingerprintSimilarity(a: NapiFingerprintInfo, b: NapiFingerprintInfo): number
 
 /** Check if text fits within a token budget */
-export declare function fitsTokenBudget(text: string, budget: number): boolean
+export declare export declare function fitsTokenBudget(text: string, budget: number): boolean
 
 /**
  * Find the best fuzzy match for a needle in a haystack
@@ -1875,7 +2087,7 @@ export declare function fitsTokenBudget(text: string, budget: number): boolean
  * Uses Jaro-Winkler for similarity scoring with a sliding window approach.
  * Returns the best match if it exceeds the threshold, None otherwise.
  */
-export declare function fuzzyFind(needle: string, haystack: string, threshold: number): NapiFuzzyMatch | null
+export declare export declare function fuzzyFind(needle: string, haystack: string, threshold: number): NapiFuzzyMatch | null
 
 /** Result of a fuzzy replace operation */
 export interface FuzzyReplaceResult {
@@ -1900,10 +2112,10 @@ export interface FuzzyReplaceResult {
  * * `texts` - The texts to combine
  * * `dimension` - The desired embedding dimension (default: 1536)
  */
-export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number | undefined | null): Array<number>
+export declare export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number | undefined | null): Array<number>
 
 /** Generate fingerprint for a project directory */
-export declare function generateFingerprint(rootPath: string): NapiFingerprintInfo
+export declare export declare function generateFingerprint(rootPath: string): NapiFingerprintInfo
 
 /**
  * Generate a hash-based embedding for the given text.
@@ -1916,7 +2128,7 @@ export declare function generateFingerprint(rootPath: string): NapiFingerprintIn
  * * `text` - The text to embed
  * * `dimension` - The desired embedding dimension (default: 1536)
  */
-export declare function generateHashEmbedding(text: string, dimension?: number | undefined | null): Array<number>
+export declare export declare function generateHashEmbedding(text: string, dimension?: number | undefined | null): Array<number>
 
 /**
  * Generate hash-based embeddings for multiple texts (batch operation).
@@ -1927,7 +2139,7 @@ export declare function generateHashEmbedding(text: string, dimension?: number |
  * * `texts` - The texts to embed
  * * `dimension` - The desired embedding dimension (default: 1536)
  */
-export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number | undefined | null): Array<Array<number>>
+export declare export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number | undefined | null): Array<Array<number>>
 
 /**
  * Generate a hash-based embedding with full result info.
@@ -1935,7 +2147,7 @@ export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimens
  * # Arguments
  * * `text` - The text to embed
  */
-export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
+export declare export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
 
 /**
  * Generate a hash embedding with position encoding.
@@ -1948,19 +2160,19 @@ export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmb
  * * `max_position` - Maximum position in the sequence
  * * `dimension` - The desired embedding dimension (default: 1536)
  */
-export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number | undefined | null): Array<number>
+export declare export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number | undefined | null): Array<number>
 
 /** Get specifications for all built-in Rust tools (without creating a registry) */
-export declare function getBuiltinToolSpecs(): Array<NapiToolSpec>
+export declare export declare function getBuiltinToolSpecs(): Array<NapiToolSpec>
 
 /** Get the default ignored folder names */
-export declare function getIgnoreDefaultFolders(): Array<string>
+export declare export declare function getIgnoreDefaultFolders(): Array<string>
 
 /** Get the default ignore patterns */
-export declare function getIgnoreDefaultPatterns(): Array<string>
+export declare export declare function getIgnoreDefaultPatterns(): Array<string>
 
 /** Get the list of tool names that have native Rust implementations */
-export declare function getNativeToolNames(): Array<string>
+export declare export declare function getNativeToolNames(): Array<string>
 
 /**
  * Get the SDK key for provider options based on npm package
@@ -1968,10 +2180,10 @@ export declare function getNativeToolNames(): Array<string>
  * Returns the key that the AI SDK expects in providerOptions for the given
  * npm package. Returns null if no mapping exists.
  */
-export declare function getSdkKey(npm: string): string | null
+export declare export declare function getSdkKey(npm: string): string | null
 
 /** Get supported languages */
-export declare function getSupportedLanguages(): Array<string>
+export declare export declare function getSupportedLanguages(): Array<string>
 
 /**
  * Get recommended temperature for a model
@@ -1979,7 +2191,7 @@ export declare function getSupportedLanguages(): Array<string>
  * Returns the optimal temperature setting for the given model ID,
  * or null if the model should use the default temperature.
  */
-export declare function getTemperature(modelId: string): number | null
+export declare export declare function getTemperature(modelId: string): number | null
 
 /**
  * Get base risk level for a tool
@@ -1993,7 +2205,7 @@ export declare function getTemperature(modelId: string): number | null
  * @param tool - The tool name
  * @returns Risk level as string
  */
-export declare function getToolBaseRisk(tool: string): string
+export declare export declare function getToolBaseRisk(tool: string): string
 
 /**
  * Get recommended top_k for a model
@@ -2001,7 +2213,7 @@ export declare function getToolBaseRisk(tool: string): string
  * Returns the optimal top_k setting for the given model ID,
  * or null if the model should use the default.
  */
-export declare function getTopK(modelId: string): number | null
+export declare export declare function getTopK(modelId: string): number | null
 
 /**
  * Get recommended top_p for a model
@@ -2009,19 +2221,19 @@ export declare function getTopK(modelId: string): number | null
  * Returns the optimal top_p (nucleus sampling) setting for the given model ID,
  * or null if the model should use the default.
  */
-export declare function getTopP(modelId: string): number | null
+export declare export declare function getTopP(modelId: string): number | null
 
 /** Get all web technology categories */
-export declare function getWebCategories(): Array<string>
+export declare export declare function getWebCategories(): Array<string>
 
 /** Get all available web technology fingerprints */
-export declare function getWebFingerprints(): Array<NapiWebFingerprint>
+export declare export declare function getWebFingerprints(): Array<NapiWebFingerprint>
 
 /** Get web fingerprints by category */
-export declare function getWebFingerprintsByCategory(category: string): Array<NapiWebFingerprint>
+export declare export declare function getWebFingerprintsByCategory(category: string): Array<NapiWebFingerprint>
 
 /** Find files matching a glob pattern */
-export declare function glob(options: GlobOptions): Promise<GlobResult>
+export declare export declare function glob(options: GlobOptions): Promise<GlobResult>
 
 /** Glob search options */
 export interface GlobOptions {
@@ -2045,7 +2257,7 @@ export interface GlobResult {
 }
 
 /** Perform a grep search */
-export declare function grep(options: GrepOptions): Promise<GrepResult>
+export declare export declare function grep(options: GrepOptions): Promise<GrepResult>
 
 /** Grep match result */
 export interface GrepMatch {
@@ -2089,7 +2301,7 @@ export interface GrepResult {
  * * `a` - First embedding vector
  * * `b` - Second embedding vector
  */
-export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number
+export declare export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number
 
 /** Hook evaluation result */
 export interface HookEvalResult {
@@ -2112,19 +2324,19 @@ export interface HookMatchResult {
 }
 
 /** Hybrid merge: combine vector and keyword results with weighted fusion */
-export declare function hybridMergeResults(vectorResults: Array<NapiVectorResult>, keywordResults: Array<NapiVectorResult>, vectorWeight: number, keywordWeight: number, limit: number): Array<NapiScoredResult>
+export declare export declare function hybridMergeResults(vectorResults: Array<NapiVectorResult>, keywordResults: Array<NapiVectorResult>, vectorWeight: number, keywordWeight: number, limit: number): Array<NapiScoredResult>
 
 /** Index a single file from content */
-export declare function indexFileContent(path: string, content: string): NapiFileIndex
+export declare export declare function indexFileContent(path: string, content: string): NapiFileIndex
 
 /** Index multiple files (batch operation) */
-export declare function indexFilesBatch(files: Array<NapiFileInput>): Array<NapiFileIndex>
+export declare export declare function indexFilesBatch(files: Array<NapiFileInput>): Array<NapiFileIndex>
 
 /** Initialize the library */
-export declare function init(): void
+export declare export declare function init(): void
 
 /** Initialize a new git repository */
-export declare function initGitRepo(path: string, options?: NapiInitOptions | undefined | null): GitOpsHandle
+export declare export declare function initGitRepo(path: string, options?: NapiInitOptions | undefined | null): GitOpsHandle
 
 /** Detected injection pattern */
 export interface InjectionPattern {
@@ -2183,32 +2395,32 @@ export declare const enum InjectionType {
 }
 
 /** Check if a file appears to be binary */
-export declare function isBinaryFile(filePath: string): boolean
+export declare export declare function isBinaryFile(filePath: string): boolean
 
 /** Check if a command is potentially dangerous */
-export declare function isDangerousCommand(commandName: string): boolean
+export declare export declare function isDangerousCommand(commandName: string): boolean
 
 /** Check if a command is file-manipulating */
-export declare function isFileCommand(commandName: string): boolean
+export declare export declare function isFileCommand(commandName: string): boolean
 
 /** Check if a path is a git repository */
-export declare function isGitRepo(path: string): boolean
+export declare export declare function isGitRepo(path: string): boolean
 
 /** Check if system keyring is available */
-export declare function isKeyringAvailable(): boolean
+export declare export declare function isKeyringAvailable(): boolean
 
 /**
  * Check if token usage overflows the model's context limit (standalone function)
  *
  * Returns true if compaction is needed based on model limits.
  */
-export declare function isOverflow(tokens: NapiTokenUsage, limit: NapiModelLimit): boolean
+export declare export declare function isOverflow(tokens: NapiTokenUsage, limit: NapiModelLimit): boolean
 
 /** Quick one-shot schema validation (returns boolean only) */
-export declare function isValidJsonSchema(documentJson: string, schemaJson: string): boolean
+export declare export declare function isValidJsonSchema(documentJson: string, schemaJson: string): boolean
 
 /** Get JAR analysis summary */
-export declare function jarAnalysisSummary(jarPath: string): string
+export declare export declare function jarAnalysisSummary(jarPath: string): string
 
 /**
  * Calculate Jaro similarity between two strings (0.0 to 1.0)
@@ -2216,7 +2428,7 @@ export declare function jarAnalysisSummary(jarPath: string): string
  * The Jaro similarity is based on matching characters within a window
  * and transpositions of matched characters.
  */
-export declare function jaroSimilarity(s1: string, s2: string): number
+export declare export declare function jaroSimilarity(s1: string, s2: string): number
 
 /**
  * Calculate Jaro-Winkler similarity between two strings (0.0 to 1.0)
@@ -2230,7 +2442,7 @@ export declare function jaroSimilarity(s1: string, s2: string): number
  * * `s2` - Second string to compare
  * * `prefix_weight` - Optional weight given to common prefix (default 0.1, max 0.25)
  */
-export declare function jaroWinklerSimilarity(s1: string, s2: string, prefixWeight?: number | undefined | null): number
+export declare export declare function jaroWinklerSimilarity(s1: string, s2: string, prefixWeight?: number | undefined | null): number
 
 /** Keyring backend type */
 export declare const enum KeyringBackend {
@@ -2244,7 +2456,7 @@ export declare const enum KeyringBackend {
  * The Levenshtein distance is the minimum number of single-character edits
  * (insertions, deletions, substitutions) required to change one string into another.
  */
-export declare function levenshteinDistance(a: string, b: string): number
+export declare export declare function levenshteinDistance(a: string, b: string): number
 
 /** LSP call hierarchy incoming call */
 export interface LspCallHierarchyIncomingCall {
@@ -2385,7 +2597,7 @@ export interface LspWorkspaceSymbol {
 }
 
 /** Check if a string matches a regex pattern (anchored: ^pattern$) */
-export declare function matchesPattern(pattern: string, value: string): boolean
+export declare export declare function matchesPattern(pattern: string, value: string): boolean
 
 /** MCP client configuration */
 export interface McpClientConfig {
@@ -4203,38 +4415,6 @@ export declare const enum NapiPtyState {
   Error = 'Error'
 }
 
-/** Handle to a PTY session */
-export declare class PtySessionHandle {
-  /** Get session info */
-  info(): NapiPtyInfo
-  /** Read available output data */
-  read(): string
-  /** Write input data */
-  write(data: string): void
-  /** Resize the terminal */
-  resize(cols: number, rows: number): void
-  /** Kill the session */
-  kill(): void
-  /** Check if the session is still alive */
-  isAlive(): boolean
-}
-
-/** Handle to a PTY manager (manages multiple sessions) */
-export declare class PtyManagerHandle {
-  /** Create a new PTY manager */
-  constructor()
-  /** Spawn a new PTY session */
-  spawn(config: NapiPtyConfig): PtySessionHandle
-  /** Get a session by ID */
-  getSession(id: string): PtySessionHandle | null
-  /** List all active session IDs */
-  listSessions(): Array<string>
-  /** Close a session by ID */
-  closeSession(id: string): void
-  /** Close all sessions */
-  closeAll(): void
-}
-
 /** Options for reading files */
 export interface NapiReadOptions {
   /** Starting line number (1-indexed, default: 1) */
@@ -5011,7 +5191,7 @@ export interface NapiWorktreeInfo {
  * - Message sequence fixing for Mistral (tool -> user requires assistant in between)
  * - Interleaved reasoning extraction for compatible providers
  */
-export declare function normalizeMessages(messagesJson: string, modelJson: string): NormalizeMessagesResult
+export declare export declare function normalizeMessages(messagesJson: string, modelJson: string): NormalizeMessagesResult
 
 /** Result of message normalization */
 export interface NormalizeMessagesResult {
@@ -5024,7 +5204,7 @@ export interface NormalizeMessagesResult {
 }
 
 /** Normalize a vector to unit length (L2 normalization) */
-export declare function normalizeVector(v: Array<number>): Array<number>
+export declare export declare function normalizeVector(v: Array<number>): Array<number>
 
 /** OAuth configuration for an MCP server */
 export interface OAuthConfig {
@@ -5037,38 +5217,38 @@ export interface OAuthConfig {
 }
 
 /** Open or create a context cache store */
-export declare function openContextCacheStore(path: string): ContextCacheStoreHandle
+export declare export declare function openContextCacheStore(path: string): ContextCacheStoreHandle
 
 /** Open an existing git repository */
-export declare function openGitRepo(path: string): GitOpsHandle
+export declare export declare function openGitRepo(path: string): GitOpsHandle
 
 /** Open or create a history store */
-export declare function openHistoryStore(path: string): HistoryStoreHandle
+export declare export declare function openHistoryStore(path: string): HistoryStoreHandle
 
 /** Open or create a KV store at the given path */
-export declare function openKvStore(path: string): Promise<KvStoreHandle>
+export declare export declare function openKvStore(path: string): Promise<KvStoreHandle>
 
 /** Open an observability store at the given path */
-export declare function openObservabilityStore(path: string): ObservabilityStoreHandle
+export declare export declare function openObservabilityStore(path: string): ObservabilityStoreHandle
 
 /** Open or create a session store */
-export declare function openSessionStore(path: string): SessionStoreHandle
+export declare export declare function openSessionStore(path: string): SessionStoreHandle
 
 /** Open or create a trace store at the given path */
-export declare function openTraceStore(dbPath: string): TraceStoreHandle
+export declare export declare function openTraceStore(dbPath: string): TraceStoreHandle
 
 /** Open or create a vault with a password */
-export declare function openVault(path: string, password: string): VaultHandle
+export declare export declare function openVault(path: string, password: string): VaultHandle
 
 /** Parse a class file from bytes */
-export declare function parseClassFileSync(data: Buffer): NapiClassInfo
+export declare export declare function parseClassFileSync(data: Buffer): NapiClassInfo
 
 /**
  * Parse markdown text into a vector of typed nodes.
  *
  * Returns an array of nodes, each with a `node_type` and JSON-serialized `content`.
  */
-export declare function parseMarkdown(text: string): Array<NapiMarkdownNode>
+export declare export declare function parseMarkdown(text: string): Array<NapiMarkdownNode>
 
 /**
  * Parse risk level string
@@ -5076,22 +5256,22 @@ export declare function parseMarkdown(text: string): Array<NapiMarkdownNode>
  * @param level - Risk level string (case-insensitive)
  * @returns Parsed risk level or "medium" if invalid
  */
-export declare function parseRiskLevel(level: string): string
+export declare export declare function parseRiskLevel(level: string): string
 
 /** Parse a shell command using the global parser */
-export declare function parseShellCommand(command: string): NapiShellParseResult
+export declare export declare function parseShellCommand(command: string): NapiShellParseResult
 
 /** Parse a skill from content string */
-export declare function parseSkillContent(content: string): NapiParsedSkill
+export declare export declare function parseSkillContent(content: string): NapiParsedSkill
 
 /** Parse a skill from a file path */
-export declare function parseSkillFromFile(path: string): NapiParsedSkill
+export declare export declare function parseSkillFromFile(path: string): NapiParsedSkill
 
 /** Parse just the metadata from skill content (faster for listing) */
-export declare function parseSkillMetadataOnly(content: string): NapiSkillMetadata
+export declare export declare function parseSkillMetadataOnly(content: string): NapiSkillMetadata
 
 /** Parse multiple skills from an array of contents (batch operation) */
-export declare function parseSkillsBatch(contents: Array<string>): Array<NapiParsedSkillResult>
+export declare export declare function parseSkillsBatch(contents: Array<string>): Array<NapiParsedSkillResult>
 
 /** Result of pattern matching */
 export interface PatternMatchResult {
@@ -5104,10 +5284,10 @@ export interface PatternMatchResult {
 }
 
 /** Quick check if input might contain injection */
-export declare function quickCheckInjection(input: string): boolean
+export declare export declare function quickCheckInjection(input: string): boolean
 
 /** Read a file */
-export declare function readFile(path: string, options?: ReadOptions | undefined | null): ReadResult
+export declare export declare function readFile(path: string, options?: ReadOptions | undefined | null): ReadResult
 
 /**
  * Read a file range (for pagination)
@@ -5115,7 +5295,7 @@ export declare function readFile(path: string, options?: ReadOptions | undefined
  * Returns content from line `offset` to `offset + limit`.
  * Line numbers are 1-indexed.
  */
-export declare function readFileRange(filePath: string, offset: number, limit: number): NapiReadResult
+export declare export declare function readFileRange(filePath: string, offset: number, limit: number): NapiReadResult
 
 /**
  * Read a file with line numbers (convenience function)
@@ -5123,7 +5303,7 @@ export declare function readFileRange(filePath: string, offset: number, limit: n
  * This is a convenience function for one-off file reads.
  * For repeated reads, use ReaderHandle.
  */
-export declare function readFileWithLines(filePath: string, offset?: number | undefined | null, limit?: number | undefined | null, maxLineLength?: number | undefined | null, lineNumbers?: boolean | undefined | null): NapiReadResult
+export declare export declare function readFileWithLines(filePath: string, offset?: number | undefined | null, limit?: number | undefined | null, maxLineLength?: number | undefined | null, lineNumbers?: boolean | undefined | null): NapiReadResult
 
 /** Read file options */
 export interface ReadOptions {
@@ -5152,7 +5332,7 @@ export interface ReadResult {
  *
  * Example: OpenAI SDK expects "openai" key, but provider might be stored as "azure"
  */
-export declare function remapProviderOptions(messagesJson: string, fromKey: string, toKey: string): string
+export declare export declare function remapProviderOptions(messagesJson: string, fromKey: string, toKey: string): string
 
 /**
  * Render markdown text to HTML.
@@ -5160,7 +5340,7 @@ export declare function remapProviderOptions(messagesJson: string, fromKey: stri
  * Uses pulldown-cmark's HTML renderer with common extensions enabled
  * (tables, footnotes, strikethrough, task lists).
  */
-export declare function renderMarkdownToHtml(text: string): string
+export declare export declare function renderMarkdownToHtml(text: string): string
 
 /**
  * Replace content using fuzzy matching with multiple strategies
@@ -5176,7 +5356,7 @@ export declare function renderMarkdownToHtml(text: string): string
  * 8. ContextAware - uses context lines as anchors
  * 9. MultiOccurrence - yields all exact matches
  */
-export declare function replaceWithFuzzyMatch(content: string, oldString: string, newString: string, replaceAll?: boolean | undefined | null): FuzzyReplaceResult
+export declare export declare function replaceWithFuzzyMatch(content: string, oldString: string, newString: string, replaceAll?: boolean | undefined | null): FuzzyReplaceResult
 
 /** Risk level for tool operations */
 export declare const enum RiskLevel {
@@ -5198,41 +5378,41 @@ export interface RiskResult {
 }
 
 /** Sanitize input by removing injection patterns */
-export declare function sanitizeInjectionInput(input: string): string
+export declare export declare function sanitizeInjectionInput(input: string): string
 
 /** Scan content for patterns and report line numbers (one-shot) */
-export declare function scanContentPatterns(content: string, patterns: Array<string>): ContentMatchResult
+export declare export declare function scanContentPatterns(content: string, patterns: Array<string>): ContentMatchResult
 
 /** Scan a directory and return all file entries (convenience function) */
-export declare function scanDirectory(root: string, options?: NapiScanOptions | undefined | null): NapiScanResult
+export declare export declare function scanDirectory(root: string, options?: NapiScanOptions | undefined | null): NapiScanResult
 
 /** Scan input for prompt injection */
-export declare function scanInjection(input: string): InjectionScanResult
+export declare export declare function scanInjection(input: string): InjectionScanResult
 
 /** Scan input with custom configuration */
-export declare function scanInjectionWithConfig(input: string, config: InjectionScannerConfig): InjectionScanResult
+export declare export declare function scanInjectionWithConfig(input: string, config: InjectionScannerConfig): InjectionScanResult
 
 /** Scan content for patterns (one-shot, no precompilation) */
-export declare function scanPatterns(content: string, patterns: Array<string>): PatternMatchResult
+export declare export declare function scanPatterns(content: string, patterns: Array<string>): PatternMatchResult
 
 /** Score multiple files and return sorted by relevance */
-export declare function scoreFiles(query: string, files: Array<NapiFileMetadata>): Array<NapiScoredFile>
+export declare export declare function scoreFiles(query: string, files: Array<NapiFileMetadata>): Array<NapiScoredFile>
 
 /** Score content relevance against a query */
-export declare function scoreRelevance(query: string, content: string): NapiRelevanceScore
+export declare export declare function scoreRelevance(query: string, content: string): NapiRelevanceScore
 
 /** Score content relevance with custom config */
-export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
+export declare export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
 
 /** Quick check if a path matches default ignore patterns */
-export declare function shouldIgnorePath(path: string): boolean
+export declare export declare function shouldIgnorePath(path: string): boolean
 
 /** Compute the similarity ratio between two strings (0.0 to 1.0) */
-export declare function similarityRatio(s1: string, s2: string): number
+export declare export declare function similarityRatio(s1: string, s2: string): number
 
-export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
+export declare export declare function spawnPty(config: NapiPtyConfig): void
 
-export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): PtySessionHandle
+export declare export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): void
 
 /** State category */
 export declare const enum StateCategory {
@@ -5247,10 +5427,10 @@ export declare const enum StateCategory {
  *
  * Returns the markdown content without the frontmatter block.
  */
-export declare function stripMarkdownFrontmatter(text: string): string
+export declare export declare function stripMarkdownFrontmatter(text: string): string
 
 /** Strip frontmatter from skill content, returning just the body */
-export declare function stripSkillFrontmatter(content: string): string
+export declare export declare function stripSkillFrontmatter(content: string): string
 
 /** Task priority */
 export declare const enum TaskPriority {
@@ -5290,7 +5470,7 @@ export interface ToolInput {
  * 2. Apply caching hints (if Anthropic/Claude provider)
  * 3. Remap provider options keys
  */
-export declare function transformMessages(messagesJson: string, model: TransformModelInfo): TransformMessagesResult
+export declare export declare function transformMessages(messagesJson: string, model: TransformModelInfo): TransformMessagesResult
 
 /** Result of combined transform */
 export interface TransformMessagesResult {
@@ -5319,32 +5499,32 @@ export interface TransformModelInfo {
  * This is a convenience function for one-off truncation.
  * For repeated truncation operations, use TruncatorHandle.
  */
-export declare function truncateOutput(text: string, outputDir: string, options?: NapiTruncateOptions | undefined | null): NapiTruncateResult
+export declare export declare function truncateOutput(text: string, outputDir: string, options?: NapiTruncateOptions | undefined | null): NapiTruncateResult
 
 /**
  * Truncate output without saving to file
  *
  * Returns only the truncated content, useful for preview purposes.
  */
-export declare function truncatePreview(text: string, maxLines?: number | undefined | null, maxBytes?: number | undefined | null, direction?: string | undefined | null): NapiTruncateResult
+export declare export declare function truncatePreview(text: string, maxLines?: number | undefined | null, maxBytes?: number | undefined | null, direction?: string | undefined | null): NapiTruncateResult
 
 /** Truncate text to fit within a token budget */
-export declare function truncateToTokens(text: string, maxTokens: number): string
+export declare export declare function truncateToTokens(text: string, maxTokens: number): string
 
 /** One-shot schema validation (compiles schema each time) */
-export declare function validateJsonSchema(documentJson: string, schemaJson: string): NapiSchemaValidationResult
+export declare export declare function validateJsonSchema(documentJson: string, schemaJson: string): NapiSchemaValidationResult
 
 /** Validate a skill without returning the full parsed result */
-export declare function validateSkillContent(content: string): boolean
+export declare export declare function validateSkillContent(content: string): boolean
 
 /** Calculate Euclidean distance between two vectors */
-export declare function vectorDistance(a: Array<number>, b: Array<number>): number
+export declare export declare function vectorDistance(a: Array<number>, b: Array<number>): number
 
 /** Serialize f32 vector to bytes (little-endian) */
-export declare function vectorToBytes(v: Array<number>): Buffer
+export declare export declare function vectorToBytes(v: Array<number>): Buffer
 
 /** Get the zero-core version */
-export declare function version(): string
+export declare export declare function version(): string
 
 /** File watch event */
 export interface WatchEvent {
@@ -5369,4 +5549,436 @@ export declare const enum WatchEventKind {
 }
 
 /** Convenience function to watch a single path with a callback */
+export declare export declare function watchPath(path: string, callback: (path: string, event: string) => void, config?: FileWatcherConfig | undefined | null): FileWatcherHandle
+
+
+// ============================================================================
+// Manual Forward Declarations (not yet implemented in Rust)
+// ============================================================================
+
+export declare function analyzeJar(jarPath: string, maxClasses?: number | undefined | null): NapiJarAnalysis
+
+export declare function applyCaching(messagesJson: string, providerId: string): ApplyCachingResult
+
+export declare function assessBashRisk(command: string): RiskResult
+
+export declare function assessFileRisk(path: string): RiskResult
+
+export declare function assessShellCommandsRisk(commands: Array<NapiParsedCommand>): NapiShellRiskAssessment
+
+export declare function buildProjectCache(worktree: string, projectId: string, framework?: string | undefined | null): NapiProjectCache
+
+export declare function bytesToVector(bytes: Buffer): Array<number>
+
+export declare function canSafeAutoApprove(tool: string): boolean
+
+export declare function checkRiskThreshold(risk: string, threshold: string): boolean
+
+export declare function chunkText(text: string, maxTokens?: number | undefined | null): Array<NapiChunk>
+
+export declare function chunkTextWithConfig(text: string, config: NapiChunkerConfig): Array<NapiChunk>
+
+export declare function cloneGitRepo(url: string, path: string, options?: NapiCloneOptions | undefined | null): GitOpsHandle
+
+export declare function computeDiff(oldContent: string, newContent: string, filePath: string): string
+
+export declare function computePrunePlan(toolParts: Array<NapiToolPartInfo>, config: NapiPruneConfig): NapiPrunePlan
+
+export declare function computePrunePlanWithTurns(messages: Array<NapiMessageInfo>, config: NapiPruneConfig): NapiPrunePlan
+
+export declare function containsPattern(pattern: string, value: string): boolean
+
+export declare function contentHash(content: string): string
+
+export declare function cosineSimilarity(a: Array<number>, b: Array<number>): number
+
+export declare function countFileLines(filePath: string): number
+
+export declare function createAutoApproveEngine(config: AutoApproveConfig): AutoApproveEngineHandle
+
+export declare function createCodeIndexer(): CodeIndexerHandle
+
+export declare function createCompactor(): CompactorHandle
+
+export declare function createCompactorWithLimits(maxTokens: number, targetTokens: number): CompactorHandle
+
+export declare function createConfigLoader(paths?: Array<string> | undefined | null): ConfigLoaderHandle
+
+export declare function createContextLoader(root: string, options?: NapiScanOptions | undefined | null): ContextLoaderHandle
+
+export declare function createCredentialManager(fileFallbackPath?: string | undefined | null): CredentialManagerHandle
+
+export declare function createDefaultPruneConfig(): NapiPruneConfig
+
+export declare function createEmbeddingIndex(dimension: number): EmbeddingIndexHandle
+
+export declare function createFileCredentialManager(path: string): CredentialManagerHandle
+
+export declare function createFileKeyringManager(path: string): KeyringManagerHandle
+
+export declare function createFileMcpAuthStore(path: string): McpAuthStoreHandle
+
+export declare function createFileWatcher(): FileWatcherHandle
+
+export declare function createFileWatcherWithConfig(config: FileWatcherConfig): FileWatcherHandle
+
+export declare function createIgnoreEngine(): IgnoreEngineHandle
+
+export declare function createIgnoreEngineWithConfig(config: NapiIgnoreConfig): IgnoreEngineHandle
+
+export declare function createInjectionScanner(): InjectionScannerHandle
+
+export declare function createInjectionScannerWithConfig(config: InjectionScannerConfig): InjectionScannerHandle
+
+export declare function createKeyringManager(fileFallbackPath?: string | undefined | null): KeyringManagerHandle
+
+export declare function createLspServerManager(): LspServerManagerHandle
+
+export declare function createMcpAuthStore(fileFallbackPath?: string | undefined | null): McpAuthStoreHandle
+
+export declare function createMcpClientManager(): McpClientManagerHandle
+
+export declare function createMemoryContextCacheStore(): ContextCacheStoreHandle
+
+export declare function createMemoryHistoryStore(): HistoryStoreHandle
+
+export declare function createMemoryKvStore(): KvStoreHandle
+
+export declare function createMemoryObservabilityStore(): ObservabilityStoreHandle
+
+export declare function createMemorySystem(dataDir: string, projectId: string): MemorySystemHandle
+
+export declare function createMemoryTraceStore(): TraceStoreHandle
+
+export declare function createMemoryVault(password: string): VaultHandle
+
+export declare function createMessageStore(): MessageStoreHandle
+
+export declare function createPatternSet(patterns: Array<string>): PatternSetHandle
+
+export declare function createPermissionManager(): PermissionManagerHandle
+
+export declare function createPermissiveEngine(unattended: boolean): AutoApproveEngineHandle
+
+export declare function createSafeOnlyEngine(unattended: boolean): AutoApproveEngineHandle
+
+export declare function createSchemaRegistry(): SchemaRegistryHandle
+
+export declare function createSchemaValidator(schemaJson: string): SchemaValidatorHandle
+
+export declare function createStateMachine(config?: NapiStateMachineConfig | undefined | null): StateMachineHandle
+
+export declare function createTaskQueue(sessionId: string, config?: NapiTaskQueueConfig | undefined | null): TaskQueueHandle
+
+export declare function createToolRegistry(): ToolRegistryHandle
+
+export declare function createTwoFilesPatch(oldPath: string, newPath: string, oldContent: string, newContent: string): string
+
+export declare function describeFingerprint(fingerprint: NapiFingerprintInfo): string
+
+export declare function detectJavaTechnologies(input: NapiFingerprintInput): Array<NapiDetection>
+
+export declare function detectLanguageFromPath(path: string): string
+
+export declare function detectWebTechnologies(input: NapiWebFingerprintInput): Array<NapiWebDetection>
+
+export declare function diffLines(oldContent: string, newContent: string): Array<NapiDiffChange>
+
+export declare function editFile(path: string, operation: EditOperation): EditResult
+
+export declare function estimateChunkTokensNative(text: string): number
+
+export declare function estimateTokens(text: string): number
+
+export declare function estimateTokens(text: string): number
+
+export declare function estimateTokensBatch(texts: Array<string>): NapiBatchCountResult
+
+export declare function evaluateAdaptiveAutoApprove(config: AutoApproveConfig, tool: string, input: ToolInput | undefined | null, ctx: ExecutionContext): ApprovalDecision
+
+export declare function evaluateAutoApprove(config: AutoApproveConfig, tool: string, input?: ToolInput | undefined | null): ApprovalDecision
+
+export declare function extractDirectoryDependencies(root: string, language: NapiProjectLanguage, options?: NapiScanOptions | undefined | null): NapiDependencyGraph
+
+export declare function extractMarkdownCodeBlocks(text: string): Array<NapiMarkdownCodeBlock>
+
+export declare function extractMarkdownFrontmatter(text: string): string | null
+
+export declare function extractMarkdownHeadings(text: string): Array<NapiMarkdownHeading>
+
+export declare function extractMarkdownImages(text: string): Array<NapiMarkdownImage>
+
+export declare function extractMarkdownLinks(text: string): Array<NapiMarkdownLink>
+
+export declare function extractShellDirectories(commands: Array<NapiParsedCommand>): Array<string>
+
+export declare function extractShellPermissionPatterns(commands: Array<NapiParsedCommand>): NapiPermissionPatterns
+
+export declare function extractSkillFrontmatter(content: string): string | null
+
+export declare function filterIgnoredPaths(paths: Array<string>): Array<string>
+
+export declare function filterPathsWithPatterns(paths: Array<string>, additionalPatterns: Array<string>): Array<string>
+
+export declare function findBestFuzzyMatch(needle: string, candidates: Array<string>, threshold: number): NapiBestFuzzyMatch | null
+
+export declare function findBestMatch(needle: string, haystack: Array<string>): NapiBestMatch | null
+
+export declare function fingerprintSimilarity(a: NapiFingerprintInfo, b: NapiFingerprintInfo): number
+
+export declare function fitsTokenBudget(text: string, budget: number): boolean
+
+export declare function fuzzyFind(needle: string, haystack: string, threshold: number): NapiFuzzyMatch | null
+
+export declare function generateCombinedHashEmbedding(texts: Array<string>, dimension?: number | undefined | null): Array<number>
+
+export declare function generateFingerprint(rootPath: string): NapiFingerprintInfo
+
+export declare function generateHashEmbedding(text: string, dimension?: number | undefined | null): Array<number>
+
+export declare function generateHashEmbeddingsBatch(texts: Array<string>, dimension?: number | undefined | null): Array<Array<number>>
+
+export declare function generateHashEmbeddingWithInfo(text: string): NapiHashEmbeddingResult
+
+export declare function generatePositionalHashEmbedding(text: string, position: number, maxPosition: number, dimension?: number | undefined | null): Array<number>
+
+export declare function getBuiltinToolSpecs(): Array<NapiToolSpec>
+
+export declare function getIgnoreDefaultFolders(): Array<string>
+
+export declare function getIgnoreDefaultPatterns(): Array<string>
+
+export declare function getNativeToolNames(): Array<string>
+
+export declare function getSdkKey(npm: string): string | null
+
+export declare function getSupportedLanguages(): Array<string>
+
+export declare function getTemperature(modelId: string): number | null
+
+export declare function getToolBaseRisk(tool: string): string
+
+export declare function getTopK(modelId: string): number | null
+
+export declare function getTopP(modelId: string): number | null
+
+export declare function getWebCategories(): Array<string>
+
+export declare function getWebFingerprints(): Array<NapiWebFingerprint>
+
+export declare function getWebFingerprintsByCategory(category: string): Array<NapiWebFingerprint>
+
+export declare function glob(options: GlobOptions): Promise<GlobResult>
+
+export declare function grep(options: GrepOptions): Promise<GrepResult>
+
+export declare function hashEmbeddingSimilarity(a: Array<number>, b: Array<number>): number
+
+export declare function hybridMergeResults(vectorResults: Array<NapiVectorResult>, keywordResults: Array<NapiVectorResult>, vectorWeight: number, keywordWeight: number, limit: number): Array<NapiScoredResult>
+
+export declare function indexFileContent(path: string, content: string): NapiFileIndex
+
+export declare function indexFilesBatch(files: Array<NapiFileInput>): Array<NapiFileIndex>
+
+export declare function init(): void
+
+export declare function initGitRepo(path: string, options?: NapiInitOptions | undefined | null): GitOpsHandle
+
+export declare function isBinaryFile(filePath: string): boolean
+
+export declare function isDangerousCommand(commandName: string): boolean
+
+export declare function isFileCommand(commandName: string): boolean
+
+export declare function isGitRepo(path: string): boolean
+
+export declare function isKeyringAvailable(): boolean
+
+export declare function isOverflow(tokens: NapiTokenUsage, limit: NapiModelLimit): boolean
+
+export declare function isValidJsonSchema(documentJson: string, schemaJson: string): boolean
+
+export declare function jarAnalysisSummary(jarPath: string): string
+
+export declare function jaroSimilarity(s1: string, s2: string): number
+
+export declare function jaroWinklerSimilarity(s1: string, s2: string, prefixWeight?: number | undefined | null): number
+
+export declare function levenshteinDistance(a: string, b: string): number
+
+export declare function matchesPattern(pattern: string, value: string): boolean
+
+export declare class PtySessionHandle {
+  /** Get session info */
+  info(): NapiPtyInfo
+  /** Read available output data */
+  read(): string
+  /** Write input data */
+  write(data: string): void
+  /** Resize the terminal */
+  resize(cols: number, rows: number): void
+  /** Kill the session */
+  kill(): void
+  /** Check if the session is still alive */
+  isAlive(): boolean
+}
+
+export declare class PtyManagerHandle {
+  /** Create a new PTY manager */
+  constructor()
+  /** Spawn a new PTY session */
+  spawn(config: NapiPtyConfig): PtySessionHandle
+  /** Get a session by ID */
+  getSession(id: string): PtySessionHandle | null
+  /** List all active session IDs */
+  listSessions(): Array<string>
+  /** Close a session by ID */
+  closeSession(id: string): void
+  /** Close all sessions */
+  closeAll(): void
+}
+
+export declare function normalizeMessages(messagesJson: string, modelJson: string): NormalizeMessagesResult
+
+export declare function normalizeVector(v: Array<number>): Array<number>
+
+export declare function openContextCacheStore(path: string): ContextCacheStoreHandle
+
+export declare function openGitRepo(path: string): GitOpsHandle
+
+export declare function openHistoryStore(path: string): HistoryStoreHandle
+
+export declare function openKvStore(path: string): Promise<KvStoreHandle>
+
+export declare function openObservabilityStore(path: string): ObservabilityStoreHandle
+
+export declare function openSessionStore(path: string): SessionStoreHandle
+
+export declare function openTraceStore(dbPath: string): TraceStoreHandle
+
+export declare function openVault(path: string, password: string): VaultHandle
+
+export declare function parseClassFileSync(data: Buffer): NapiClassInfo
+
+export declare function parseMarkdown(text: string): Array<NapiMarkdownNode>
+
+export declare function parseRiskLevel(level: string): string
+
+export declare function parseShellCommand(command: string): NapiShellParseResult
+
+export declare function parseSkillContent(content: string): NapiParsedSkill
+
+export declare function parseSkillFromFile(path: string): NapiParsedSkill
+
+export declare function parseSkillMetadataOnly(content: string): NapiSkillMetadata
+
+export declare function parseSkillsBatch(contents: Array<string>): Array<NapiParsedSkillResult>
+
+export declare function quickCheckInjection(input: string): boolean
+
+export declare function readFile(path: string, options?: ReadOptions | undefined | null): ReadResult
+
+export declare function readFileRange(filePath: string, offset: number, limit: number): NapiReadResult
+
+export declare function readFileWithLines(filePath: string, offset?: number | undefined | null, limit?: number | undefined | null, maxLineLength?: number | undefined | null, lineNumbers?: boolean | undefined | null): NapiReadResult
+
+export declare function remapProviderOptions(messagesJson: string, fromKey: string, toKey: string): string
+
+export declare function renderMarkdownToHtml(text: string): string
+
+export declare function replaceWithFuzzyMatch(content: string, oldString: string, newString: string, replaceAll?: boolean | undefined | null): FuzzyReplaceResult
+
+export declare function sanitizeInjectionInput(input: string): string
+
+export declare function scanContentPatterns(content: string, patterns: Array<string>): ContentMatchResult
+
+export declare function scanDirectory(root: string, options?: NapiScanOptions | undefined | null): NapiScanResult
+
+export declare function scanInjection(input: string): InjectionScanResult
+
+export declare function scanInjectionWithConfig(input: string, config: InjectionScannerConfig): InjectionScanResult
+
+export declare function scanPatterns(content: string, patterns: Array<string>): PatternMatchResult
+
+export declare function scoreFiles(query: string, files: Array<NapiFileMetadata>): Array<NapiScoredFile>
+
+export declare function scoreRelevance(query: string, content: string): NapiRelevanceScore
+
+export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
+
+export declare function shouldIgnorePath(path: string): boolean
+
+export declare function similarityRatio(s1: string, s2: string): number
+
+export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
+
+export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): PtySessionHandle
+
+export declare function stripMarkdownFrontmatter(text: string): string
+
+export declare function stripSkillFrontmatter(content: string): string
+
+export declare function transformMessages(messagesJson: string, model: TransformModelInfo): TransformMessagesResult
+
+export declare function truncateOutput(text: string, outputDir: string, options?: NapiTruncateOptions | undefined | null): NapiTruncateResult
+
+export declare function truncatePreview(text: string, maxLines?: number | undefined | null, maxBytes?: number | undefined | null, direction?: string | undefined | null): NapiTruncateResult
+
+export declare function truncateToTokens(text: string, maxTokens: number): string
+
+export declare function validateJsonSchema(documentJson: string, schemaJson: string): NapiSchemaValidationResult
+
+export declare function validateSkillContent(content: string): boolean
+
+export declare function vectorDistance(a: Array<number>, b: Array<number>): number
+
+export declare function vectorToBytes(v: Array<number>): Buffer
+
+export declare function version(): string
+
 export declare function watchPath(path: string, callback: (path: string, event: string) => void, config?: FileWatcherConfig | undefined | null): FileWatcherHandle
+
+export interface RemoteTaskContext {
+  /** Source of the request: "cli", "remote", "api" */
+  source: string
+  /** User identifier */
+  userId: string
+  /** Optional session ID */
+  sessionId?: string | undefined | null
+}
+
+/** Risk level for remote operations */
+export type RemoteRiskLevel = "safe" | "moderate" | "dangerous"
+
+export declare class RemotePolicyHandle {
+  /** Create a new remote policy */
+  constructor()
+  /** Check if an operation requires approval */
+  shouldRequireApproval(tool: string, context: RemoteTaskContext): boolean
+  /** Get the risk level for an operation */
+  riskLevel(tool: string): RemoteRiskLevel
+  /** Check if operation is dangerous */
+  isDangerous(tool: string): boolean
+  /** Check if operation is safe */
+  isSafe(tool: string): boolean
+  /** Load allowlists from storage */
+  loadAllowlists(): void
+  /** Allow a tool for a user */
+  allowForUser(userId: string, tool: string): void
+  /** Revoke a tool for a user */
+  revokeForUser(userId: string, tool: string): void
+  /** Get a user's allowlist */
+  getUserAllowlist(userId: string): Array<string>
+  /** Clear a user's allowlist */
+  clearUserAllowlist(userId: string): void
+  /** Describe why approval is needed */
+  describeApprovalReason(tool: string, args?: string | undefined | null): string
+}
+
+export declare function getRemoteRiskLevel(tool: string): RemoteRiskLevel
+
+export declare function isRemoteDangerous(tool: string): boolean
+
+export declare function isRemoteSafe(tool: string): boolean
+
+export declare function shouldRequireRemoteApproval(tool: string, source: string, userId: string): boolean

@@ -235,6 +235,9 @@ export const evaluateAutoApprove = nativeBindings?.evaluateAutoApprove
 export const evaluateAdaptiveAutoApprove = nativeBindings?.evaluateAdaptiveAutoApprove
 export const canSafeAutoApprove = nativeBindings?.canSafeAutoApprove
 
+// Note: Remote Policy is exported from './security.js' via `export * from './security.js'`
+// The RemotePolicy class, getRemoteRiskLevel, isRemoteDangerous, isRemoteSafe are all available there
+
 // Phase: Compaction (context window management)
 export const CompactorHandle = nativeBindings?.CompactorHandle
 export const createCompactor = nativeBindings?.createCompactor
@@ -361,6 +364,17 @@ export const readFileWithLines = nativeBindings?.readFileWithLines
 export const readFileRange = nativeBindings?.readFileRange
 export const isBinaryFile = nativeBindings?.isBinaryFile
 export const countFileLines = nativeBindings?.countFileLines
+
+// Phase 2: Safety Guardrails (loop detection, state tracking)
+export const SafetyGuardrailsHandle = nativeBindings?.SafetyGuardrailsHandle
+export const createSafetyGuardrails = nativeBindings?.createSafetyGuardrails
+
+// Phase 2: Safety Constraints (resource budget management)
+export const SafetyGuardHandle = nativeBindings?.SafetyGuardHandle
+export const createSafetyGuard = nativeBindings?.createSafetyGuard
+
+// Phase 2: CLOSE Decision Framework
+export const evaluateClose = nativeBindings?.evaluateClose
 
 // Re-export types from binding.d.ts
 export type {
@@ -505,4 +519,23 @@ export type {
   // Chunking types
   NapiChunk,
   NapiChunkerConfig,
+  // Safety Guardrails types (Phase 2)
+  NapiToolResult,
+  NapiGuardrailConfig,
+  NapiLoopDetection,
+  NapiSafetyCheckResult,
+  NapiGuardrailStats,
+  SafetyGuardrailsHandle as SafetyGuardrailsHandleType,
+  // Safety Constraints types (Phase 2)
+  NapiResourceBudget,
+  NapiResourceUsage,
+  NapiConstraintCheckResult,
+  NapiResourceWarning,
+  NapiCheckWithWarnings,
+  SafetyGuardHandle as SafetyGuardHandleType,
+  // CLOSE Decision Framework types (Phase 2)
+  NapiCLOSEDimension,
+  NapiCLOSEEvaluation,
+  NapiCLOSEWeights,
+  NapiCLOSEInput,
 } from './binding.d.ts'

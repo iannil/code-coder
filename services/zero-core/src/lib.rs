@@ -163,6 +163,16 @@ pub use autonomous::{
     AutonomousState, StateCategory, StateMachine, StateMachineConfig,
     StateMetadata, TransitionResult, VALID_TRANSITIONS,
     Task, TaskId, TaskPriority, TaskQueue, TaskQueueConfig, TaskQueueStats, TaskStatus,
+    // Safety Guardrails (renamed to avoid conflicts)
+    DecisionRecord as GuardrailDecisionRecord, GuardrailConfig, GuardrailStats, LimitType, LoopDetection,
+    LoopType, SafetyCheckResult, SafetyGuardrails, StateTransition,
+    ToolCall as GuardrailToolCall, ToolResult as GuardrailToolResult,
+    // Safety Constraints
+    ConstraintCheckResult, ResourceBudget, ResourceType, ResourceUsage, ResourceWarning,
+    SafetyConfig, SafetyGuard,
+    // CLOSE Decision Framework
+    evaluate_close, CLOSEDimension, CLOSEEvaluation, CLOSEInput, CLOSETrend, CLOSEWeights,
+    GearRecommendation,
 };
 
 pub use graph::{

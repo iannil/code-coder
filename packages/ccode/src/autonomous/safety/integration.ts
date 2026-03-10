@@ -406,56 +406,53 @@ export class SafetyIntegration {
   /**
    * Bridge to existing DOOM_LOOP detection
    *
-   * This integrates with session/processor.ts DOOM_LOOP_THRESHOLD detection
+   * This integrates with session/processor.ts DOOM_LOOP_THRESHOLD detection.
+   * Note: With Rust-backed guardrails, loop detection is handled internally.
+   * This method checks for detected loops and notifies callbacks.
    */
   private checkForDoomLoop(tool: string, input: unknown): void {
-    const recentCalls = this.guardrails["toolCalls"] as Array<{
-      tool: string
-      input: unknown
-      result: "success" | "error"
-      timestamp: number
-    }>
+    // Get all detected loops from Rust implementation
+    const detectedLoops = this.guardrails.detectLoops()
 
-    // Find similar recent error calls
-    const matchingCalls = recentCalls.filter(
-      (c) =>
-        c.tool === tool &&
-        c.result === "error" &&
-        JSON.stringify(c.input) === JSON.stringify(input),
+    // Find tool loops matching our pattern
+    const matchingLoops = detectedLoops.filter(
+      (loop) => loop.loopType === "tool" && loop.pattern.includes(tool),
     )
 
-    if (matchingCalls.length >= 3) {
-      const loopPattern: LoopPattern = {
-        type: "tool",
-        pattern: [tool, input],
-        count: matchingCalls.length,
-        window: 60000, // 1 minute
-      }
-
-      log.warn("DOOM_LOOP detected, notifying callbacks", {
-        tool,
-        count: matchingCalls.length,
-      })
-
-      // Notify registered callbacks
-      for (const callback of this.doomLoopCallbacks) {
-        try {
-          callback(loopPattern)
-        } catch (error) {
-          log.error("DOOM_LOOP callback error", {
-            error: error instanceof Error ? error.message : String(error),
-          })
+    for (const loop of matchingLoops) {
+      if (loop.count >= 3) {
+        const loopPattern: LoopPattern = {
+          type: "tool",
+          pattern: [tool, input],
+          count: loop.count,
+          window: 60000, // 1 minute
         }
-      }
 
-      // Publish event
-      Bus.publish(AutonomousEvent.LoopDetected, {
-        sessionId: this.sessionId,
-        loopType: "tool",
-        pattern: [tool, input],
-        count: matchingCalls.length,
-        broken: true,
-      })
+        log.warn("DOOM_LOOP detected, notifying callbacks", {
+          tool,
+          count: loop.count,
+        })
+
+        // Notify registered callbacks
+        for (const callback of this.doomLoopCallbacks) {
+          try {
+            callback(loopPattern)
+          } catch (error) {
+            log.error("DOOM_LOOP callback error", {
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
+
+        // Publish event (may be duplicate if Rust already published, but ensures compatibility)
+        Bus.publish(AutonomousEvent.LoopDetected, {
+          sessionId: this.sessionId,
+          loopType: "tool" as const,
+          pattern: [tool, input],
+          count: loop.count,
+          broken: loop.broken,
+        })
+      }
     }
   }
 
@@ -483,7 +480,7 @@ export class SafetyIntegration {
         usage,
         remaining,
         surplusRatio,
-        warnings: this.safetyGuard["warningSent"].size,
+        warnings: this.safetyGuard.getWarningsCount(),
       },
       loops: {
         stateLoops: guardrailsStats.stateTransitions,

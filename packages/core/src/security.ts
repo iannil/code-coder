@@ -435,3 +435,116 @@ export function quickCheckInjection(input: string): boolean {
 export function sanitizeInjectionInput(input: string): string {
   return nativeSanitizeInjectionInput(input)
 }
+
+// ============================================================================
+// Remote Policy
+// ============================================================================
+
+import {
+  RemotePolicyHandle as NativeRemotePolicyHandle,
+  getRemoteRiskLevel as nativeGetRemoteRiskLevel,
+  isRemoteDangerous as nativeIsRemoteDangerous,
+  isRemoteSafe as nativeIsRemoteSafe,
+  shouldRequireRemoteApproval as nativeShouldRequireRemoteApproval,
+  type RemoteRiskLevel as NativeRemoteRiskLevel,
+  type RemoteTaskContext as NativeRemoteTaskContext,
+} from './binding.js'
+
+/** Risk level for remote operations */
+export type RemoteRiskLevel = 'safe' | 'moderate' | 'dangerous'
+
+/** Task context for remote policy evaluation */
+export interface RemoteTaskContext {
+  /** Source of the request: "cli", "remote", "api" */
+  source: string
+  /** User identifier */
+  userId: string
+  /** Optional session ID */
+  sessionId?: string
+}
+
+/**
+ * Remote Policy Manager
+ *
+ * Controls which operations require human approval when invoked remotely.
+ * Uses native Rust implementation.
+ */
+export class RemotePolicy {
+  private handle: NativeRemotePolicyHandle
+
+  constructor() {
+    this.handle = new NativeRemotePolicyHandle()
+  }
+
+  /** Check if an operation requires approval */
+  shouldRequireApproval(tool: string, context: RemoteTaskContext): boolean {
+    return this.handle.shouldRequireApproval(tool, context as NativeRemoteTaskContext)
+  }
+
+  /** Get the risk level for an operation */
+  riskLevel(tool: string): RemoteRiskLevel {
+    const level = this.handle.riskLevel(tool) as string
+    return level.toLowerCase() as RemoteRiskLevel
+  }
+
+  /** Check if operation is dangerous */
+  isDangerous(tool: string): boolean {
+    return this.handle.isDangerous(tool)
+  }
+
+  /** Check if operation is safe */
+  isSafe(tool: string): boolean {
+    return this.handle.isSafe(tool)
+  }
+
+  /** Load allowlists from storage */
+  loadAllowlists(): void {
+    this.handle.loadAllowlists()
+  }
+
+  /** Allow a tool for a user */
+  allowForUser(userId: string, tool: string): void {
+    this.handle.allowForUser(userId, tool)
+  }
+
+  /** Revoke a tool for a user */
+  revokeForUser(userId: string, tool: string): void {
+    this.handle.revokeForUser(userId, tool)
+  }
+
+  /** Get a user's allowlist */
+  getUserAllowlist(userId: string): string[] {
+    return this.handle.getUserAllowlist(userId)
+  }
+
+  /** Clear a user's allowlist */
+  clearUserAllowlist(userId: string): void {
+    this.handle.clearUserAllowlist(userId)
+  }
+
+  /** Describe why approval is needed */
+  describeApprovalReason(tool: string, args?: string): string {
+    return this.handle.describeApprovalReason(tool, args)
+  }
+}
+
+/** Get the remote risk level for a tool (stateless) */
+export function getRemoteRiskLevel(tool: string): RemoteRiskLevel {
+  const level = nativeGetRemoteRiskLevel(tool) as string
+  return level.toLowerCase() as RemoteRiskLevel
+}
+
+/** Check if a tool is dangerous for remote access (stateless) */
+export function isRemoteDangerous(tool: string): boolean {
+  return nativeIsRemoteDangerous(tool)
+}
+
+/** Check if a tool is safe for remote access (stateless) */
+export function isRemoteSafe(tool: string): boolean {
+  return nativeIsRemoteSafe(tool)
+}
+
+/** Check if remote approval is required (stateless) */
+export function shouldRequireRemoteApproval(tool: string, source: string, userId: string): boolean {
+  return nativeShouldRequireRemoteApproval(tool, source, userId)
+}

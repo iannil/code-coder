@@ -1,6 +1,14 @@
 import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "../events"
+import {
+  createSafetyGuardrails,
+  type SafetyGuardrailsHandleType,
+  type NapiGuardrailConfig,
+  type NapiLoopDetection,
+  type NapiSafetyCheckResult,
+  type NapiGuardrailStats,
+} from "@codecoder-ai/core"
 
 const log = Log.create({ service: "autonomous.safety.guardrails" })
 
@@ -39,7 +47,7 @@ const DEFAULT_CONFIG: GuardrailConfig = {
 }
 
 /**
- * State transition record
+ * State transition record (for serialization compatibility)
  */
 interface StateTransition {
   from: string
@@ -48,7 +56,7 @@ interface StateTransition {
 }
 
 /**
- * Tool call record
+ * Tool call record (for serialization compatibility)
  */
 interface ToolCall {
   tool: string
@@ -58,7 +66,7 @@ interface ToolCall {
 }
 
 /**
- * Decision record
+ * Decision record (for serialization compatibility)
  */
 interface DecisionRecord {
   id: string
@@ -68,39 +76,47 @@ interface DecisionRecord {
 }
 
 /**
- * Safety guardrails
+ * Safety guardrails - Rust-backed implementation
  *
- * Detects and prevents dangerous patterns
+ * Detects and prevents dangerous patterns using native loop detection.
+ * Event publishing is handled in TypeScript for Bus compatibility.
  */
 export class SafetyGuardrails {
+  private handle: SafetyGuardrailsHandleType
   private config: GuardrailConfig
   private sessionId: string
-  private stateTransitions: StateTransition[] = []
-  private toolCalls: ToolCall[] = []
-  private decisions: DecisionRecord[] = []
-  private loopsBroken: Set<string> = new Set()
 
   constructor(sessionId: string, config: Partial<GuardrailConfig> = {}) {
     this.sessionId = sessionId
     this.config = { ...DEFAULT_CONFIG, ...config }
+
+    // Convert config to NAPI format
+    const napiConfig: NapiGuardrailConfig = {
+      maxStateTransitions: this.config.maxStateTransitions,
+      maxToolRetries: this.config.maxToolRetries,
+      maxDecisionHesitation: this.config.maxDecisionHesitation,
+      loopDetectionEnabled: this.config.loopDetectionEnabled,
+      loopThreshold: this.config.loopThreshold,
+      autoBreakLoops: this.config.autoBreakLoops,
+    }
+
+    // Create Rust-backed handle
+    const handle = createSafetyGuardrails?.(sessionId, napiConfig)
+    if (!handle) {
+      throw new Error("Native SafetyGuardrails not available. Build native modules with `cargo build` in services/zero-core.")
+    }
+    this.handle = handle
   }
 
   /**
    * Record a state transition
    */
   recordStateTransition(from: string, to: string): void {
-    this.stateTransitions.push({
-      from,
-      to,
-      timestamp: Date.now(),
-    })
+    const loop = this.handle.recordStateTransition(from, to)
 
-    // Trim old records
-    this.trimRecords()
-
-    // Check for loops
-    if (this.config.loopDetectionEnabled) {
-      this.detectStateLoop()
+    // Publish event if loop detected
+    if (loop && this.config.loopDetectionEnabled) {
+      this.publishLoopEvent(loop)
     }
   }
 
@@ -108,19 +124,14 @@ export class SafetyGuardrails {
    * Record a tool call
    */
   recordToolCall(tool: string, input: unknown, result: "success" | "error"): void {
-    this.toolCalls.push({
-      tool,
-      input,
-      timestamp: Date.now(),
-      result,
-    })
+    const inputStr = typeof input === "string" ? input : JSON.stringify(input)
+    const napiResult = result === "success" ? "Success" : "Error"
 
-    // Trim old records
-    this.trimRecords()
+    const loop = this.handle.recordToolCall(tool, inputStr, napiResult as "Success" | "Error")
 
-    // Check for loops
-    if (this.config.loopDetectionEnabled) {
-      this.detectToolLoop()
+    // Publish event if loop detected
+    if (loop && this.config.loopDetectionEnabled) {
+      this.publishLoopEvent(loop)
     }
   }
 
@@ -128,167 +139,31 @@ export class SafetyGuardrails {
    * Record a decision
    */
   recordDecision(id: string, type: string, result: string): void {
-    this.decisions.push({
-      id,
-      type,
-      timestamp: Date.now(),
-      result,
+    const loop = this.handle.recordDecision(id, type, result)
+
+    // Publish event if loop detected (decision hesitation)
+    if (loop) {
+      this.publishLoopEvent(loop)
+    }
+  }
+
+  /**
+   * Publish loop detection event to the Bus
+   */
+  private publishLoopEvent(loop: NapiLoopDetection): void {
+    log.warn(`${loop.loopType} loop detected`, {
+      pattern: loop.pattern,
+      count: loop.count,
+      broken: loop.broken,
     })
 
-    // Trim old records
-    this.trimRecords()
-
-    // Check for hesitation
-    this.detectDecisionHesitation()
-  }
-
-  /**
-   * Detect state oscillation loops
-   */
-  private detectStateLoop(): boolean {
-    const recent = this.stateTransitions.slice(-this.config.loopThreshold * 2)
-
-    if (recent.length < this.config.loopThreshold * 2) {
-      return false
-    }
-
-    // Look for A -> B -> A -> B patterns
-    for (let i = 0; i <= recent.length - 4; i++) {
-      const t1 = recent[i]
-      const t2 = recent[i + 1]
-      const t3 = recent[i + 2]
-      const t4 = recent[i + 3]
-
-      if (
-        t1 &&
-        t2 &&
-        t3 &&
-        t4 &&
-        t1.from === t3.from &&
-        t1.to === t3.to &&
-        t2.from === t4.from &&
-        t2.to === t4.to &&
-        t1.from === t2.to && // Oscillating between two states
-        t2.from === t1.to
-      ) {
-        const loopKey = `state:${t1.from}<->${t2.from}`
-
-        if (this.loopsBroken.has(loopKey)) {
-          continue
-        }
-
-        log.warn("State loop detected", {
-          pattern: `${t1.from} <-> ${t2.from}`,
-          count: this.config.loopThreshold,
-        })
-
-        if (this.config.autoBreakLoops) {
-          this.loopsBroken.add(loopKey)
-        }
-
-        Bus.publish(AutonomousEvent.LoopDetected, {
-          sessionId: this.sessionId,
-          loopType: "state",
-          pattern: [t1.from, t2.from],
-          count: this.config.loopThreshold,
-          broken: this.config.autoBreakLoops,
-        })
-
-        return true
-      }
-    }
-
-    return false
-  }
-
-  /**
-   * Detect tool call loops
-   */
-  private detectToolLoop(): boolean {
-    const recent = this.toolCalls.slice(-this.config.loopThreshold)
-
-    if (recent.length < this.config.loopThreshold) {
-      return false
-    }
-
-    // Check if same tool with same input called repeatedly
-    const last = recent[recent.length - 1]
-    if (!last) return false
-
-    let count = 0
-    for (const call of recent) {
-      if (
-        call.tool === last.tool &&
-        JSON.stringify(call.input) === JSON.stringify(last.input) &&
-        call.result === "error"
-      ) {
-        count++
-      }
-    }
-
-    if (count >= this.config.loopThreshold) {
-      const loopKey = `tool:${last.tool}`
-
-      if (this.loopsBroken.has(loopKey)) {
-        return true
-      }
-
-      log.warn("Tool loop detected", {
-        tool: last.tool,
-        count,
-      })
-
-      if (this.config.autoBreakLoops) {
-        this.loopsBroken.add(loopKey)
-      }
-
-      Bus.publish(AutonomousEvent.LoopDetected, {
-        sessionId: this.sessionId,
-        loopType: "tool",
-        pattern: [last.tool, last.input],
-        count,
-        broken: this.config.autoBreakLoops,
-      })
-
-      return true
-    }
-
-    return false
-  }
-
-  /**
-   * Detect decision hesitation (repeated decision calls)
-   */
-  private detectDecisionHesitation(): boolean {
-    const recent = this.decisions.slice(-this.config.maxDecisionHesitation)
-
-    if (recent.length < this.config.maxDecisionHesitation) {
-      return false
-    }
-
-    // Count unique decision types
-    const uniqueTypes = new Set(recent.map((d) => d.type))
-
-    if (uniqueTypes.size === 1 && recent.length >= this.config.maxDecisionHesitation) {
-      const type = Array.from(uniqueTypes)[0]
-
-      log.warn("Decision hesitation detected", {
-        type,
-        count: recent.length,
-      })
-
-      Bus.publish(AutonomousEvent.LoopDetected, {
-        sessionId: this.sessionId,
-        loopType: "decision",
-        pattern: [type],
-        count: recent.length,
-        broken: false, // Don't auto-break decision loops
-      })
-
-      return true
-    }
-
-    return false
+    Bus.publish(AutonomousEvent.LoopDetected, {
+      sessionId: this.sessionId,
+      loopType: loop.loopType as "state" | "tool" | "decision",
+      pattern: loop.pattern,
+      count: loop.count,
+      broken: loop.broken,
+    })
   }
 
   /**
@@ -299,33 +174,36 @@ export class SafetyGuardrails {
     reason?: string
     limitType?: "transitions" | "toolRetries" | "decisionHesitation"
   } {
-    if (this.stateTransitions.length >= this.config.maxStateTransitions) {
+    const result: NapiSafetyCheckResult = this.handle.checkLimits()
+
+    if (!result.safe) {
+      // Map Rust limitType to TS type
+      let limitType: "transitions" | "toolRetries" | "decisionHesitation" | undefined
+      if (result.limitType === "transitions") limitType = "transitions"
+      else if (result.limitType === "toolRetries") limitType = "toolRetries"
+      else if (result.limitType === "decisionHesitation") limitType = "decisionHesitation"
+
       return {
         safe: false,
-        reason: `Maximum state transitions exceeded: ${this.stateTransitions.length}/${this.config.maxStateTransitions}`,
-        limitType: "transitions",
-      }
-    }
-
-    // Count consecutive tool failures
-    let consecutiveFailures = 0
-    for (let i = this.toolCalls.length - 1; i >= 0; i--) {
-      if (this.toolCalls[i]?.result === "error") {
-        consecutiveFailures++
-      } else {
-        break
-      }
-    }
-
-    if (consecutiveFailures >= this.config.maxToolRetries) {
-      return {
-        safe: false,
-        reason: `Maximum tool retries exceeded: ${consecutiveFailures}/${this.config.maxToolRetries}`,
-        limitType: "toolRetries",
+        reason: result.reason ?? undefined,
+        limitType,
       }
     }
 
     return { safe: true }
+  }
+
+  /**
+   * Detect all current loops
+   * Returns array of loop detections from the Rust implementation
+   */
+  detectLoops(): Array<{
+    loopType: string
+    pattern: string[]
+    count: number
+    broken: boolean
+  }> {
+    return this.handle.detectLoops()
   }
 
   /**
@@ -337,30 +215,12 @@ export class SafetyGuardrails {
     decisions: number
     loopsBroken: number
   } {
+    const stats: NapiGuardrailStats = this.handle.getStats()
     return {
-      stateTransitions: this.stateTransitions.length,
-      toolCalls: this.toolCalls.length,
-      decisions: this.decisions.length,
-      loopsBroken: this.loopsBroken.size,
-    }
-  }
-
-  /**
-   * Trim old records
-   */
-  private trimRecords(): void {
-    const maxRecords = this.config.maxStateTransitions * 2
-
-    if (this.stateTransitions.length > maxRecords) {
-      this.stateTransitions = this.stateTransitions.slice(-maxRecords)
-    }
-
-    if (this.toolCalls.length > maxRecords) {
-      this.toolCalls = this.toolCalls.slice(-maxRecords)
-    }
-
-    if (this.decisions.length > maxRecords) {
-      this.decisions = this.decisions.slice(-maxRecords)
+      stateTransitions: stats.stateTransitions,
+      toolCalls: stats.toolCalls,
+      decisions: stats.decisions,
+      loopsBroken: stats.loopsBroken,
     }
   }
 
@@ -368,10 +228,7 @@ export class SafetyGuardrails {
    * Clear all records
    */
   clear(): void {
-    this.stateTransitions = []
-    this.toolCalls = []
-    this.decisions = []
-    this.loopsBroken.clear()
+    this.handle.clear()
   }
 
   /**
@@ -383,16 +240,26 @@ export class SafetyGuardrails {
     decisions: DecisionRecord[]
     loopsBroken: string[]
   } {
-    return {
-      stateTransitions: this.stateTransitions,
-      toolCalls: this.toolCalls,
-      decisions: this.decisions,
-      loopsBroken: Array.from(this.loopsBroken),
+    // Rust handle serializes to JSON string
+    const json = this.handle.serialize()
+    try {
+      return JSON.parse(json)
+    } catch {
+      // Return empty state on parse error
+      return {
+        stateTransitions: [],
+        toolCalls: [],
+        decisions: [],
+        loopsBroken: [],
+      }
     }
   }
 
   /**
-   * Deserialize
+   * Deserialize - creates new guardrails from saved state
+   *
+   * Note: This creates a new Rust handle and doesn't restore internal state.
+   * For full state restoration, consider persisting and restoring via constructor.
    */
   static deserialize(
     data: {
@@ -404,11 +271,25 @@ export class SafetyGuardrails {
     sessionId: string,
     config?: Partial<GuardrailConfig>,
   ): SafetyGuardrails {
+    // Create new guardrails (Rust implementation doesn't support restore from state)
+    // This is a simplified implementation for backward compatibility
     const guardrails = new SafetyGuardrails(sessionId, config)
-    guardrails.stateTransitions = data.stateTransitions
-    guardrails.toolCalls = data.toolCalls
-    guardrails.decisions = data.decisions
-    guardrails.loopsBroken = new Set(data.loopsBroken)
+
+    // Replay state transitions
+    for (const t of data.stateTransitions) {
+      guardrails.recordStateTransition(t.from, t.to)
+    }
+
+    // Replay tool calls
+    for (const t of data.toolCalls) {
+      guardrails.recordToolCall(t.tool, t.input, t.result)
+    }
+
+    // Replay decisions
+    for (const d of data.decisions) {
+      guardrails.recordDecision(d.id, d.type, d.result)
+    }
+
     return guardrails
   }
 }
