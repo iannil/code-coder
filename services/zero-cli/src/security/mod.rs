@@ -7,6 +7,7 @@ pub mod vault;
 #[allow(unused_imports)]
 pub use zero_core::common::security::pairing::PairingGuard;
 pub use policy::{AutonomyLevel, SecurityPolicy};
+#[allow(unused_imports)]
 pub use remote_policy::{RemotePolicy, RiskLevel, TaskContext};
 #[allow(unused_imports)]
 pub use secrets::SecretStore;

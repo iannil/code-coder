@@ -8,6 +8,11 @@
  * 4. **Verification** - Validate and evolve skill confidence
  *
  * This module provides the core infrastructure for the bootstrap flywheel.
+ *
+ * @deprecated This module is scheduled for removal.
+ * Bootstrap functionality has been migrated to the Rust daemon.
+ *
+ * **Rust implementation:** `services/zero-cli/src/skills/loader.rs`
  */
 
 export { BootstrapTypes } from "./types"

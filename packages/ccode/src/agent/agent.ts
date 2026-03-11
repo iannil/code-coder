@@ -1,3 +1,31 @@
+/**
+ * Agent Module
+ *
+ * @deprecated This module is scheduled for removal.
+ * Agent definitions and execution have been migrated to the Rust daemon.
+ *
+ * **Migration Guide:**
+ * ```typescript
+ * // Before (deprecated):
+ * import { Agent } from "@/agent/agent"
+ * const agents = await Agent.list()
+ * const agent = await Agent.get("build")
+ *
+ * // After (recommended):
+ * import { getHttpClient, getWebSocketClient } from "@/sdk"
+ *
+ * // List agents
+ * const http = getHttpClient()
+ * const { agents } = await http.listAgents()
+ *
+ * // Execute agent
+ * const ws = getWebSocketClient()
+ * await ws.connect()
+ * await ws.executeAgent({ session_id, agent: "build", message }, onEvent)
+ * ```
+ *
+ * **Rust implementation:** `services/zero-cli/src/agent/`
+ */
 import { Config } from "@/config/config"
 import z from "zod"
 import { Provider } from "../provider/provider"

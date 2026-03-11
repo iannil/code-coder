@@ -1,3 +1,37 @@
+/**
+ * Provider Module
+ *
+ * @deprecated This module is scheduled for removal.
+ * LLM Provider management has been migrated to the Rust daemon's Provider Hub.
+ *
+ * **Migration Guide:**
+ * ```typescript
+ * // Before (deprecated):
+ * import { Provider } from "@/provider/provider"
+ * const providers = await Provider.list()
+ * const model = await Provider.getModel("anthropic", "claude-sonnet-4-5")
+ * const language = await Provider.getLanguage(model)
+ *
+ * // After (recommended):
+ * import { getHttpClient } from "@/sdk"
+ * const http = getHttpClient()
+ * const { providers } = await http.listProviders()
+ *
+ * // Agent execution (which includes model selection) is now handled by SDK:
+ * import { getWebSocketClient } from "@/sdk"
+ * const ws = getWebSocketClient()
+ * await ws.executeAgent({
+ *   session_id, agent: "build", message,
+ *   model_id: "claude-sonnet-4-5",
+ *   provider_id: "anthropic"
+ * }, onEvent)
+ * ```
+ *
+ * **Rust implementation:**
+ * - Provider Hub: `services/zero-cli/src/providers/mod.rs`
+ * - 20+ Providers: Anthropic, OpenAI, Gemini, Groq, Mistral, xAI, Deepseek, etc.
+ * - ResilientProvider: Retry + fallback mechanism
+ */
 import z from "zod"
 import fuzzysort from "fuzzysort"
 import { Config } from "@/config/config"

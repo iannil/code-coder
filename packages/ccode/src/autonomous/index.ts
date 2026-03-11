@@ -12,6 +12,29 @@
  * Based on the "祝融说" (ZhuRong Theory) philosophy of sustainable decision-making.
  *
  * @package autonomous
+ *
+ * @deprecated This module is scheduled for removal.
+ * Use `sdk/` instead for Agent execution via Rust daemon.
+ *
+ * **Migration Guide:**
+ * ```typescript
+ * // Before (deprecated):
+ * import { Orchestrator } from "@/autonomous"
+ * const orchestrator = createOrchestrator(config)
+ * await orchestrator.execute(task)
+ *
+ * // After (recommended):
+ * import { getWebSocketClient } from "@/sdk"
+ * const ws = getWebSocketClient()
+ * await ws.connect()
+ * await ws.executeAgent({
+ *   session_id: "sess-1",
+ *   agent: "autonomous",
+ *   message: task
+ * }, onEvent)
+ * ```
+ *
+ * **Rust implementation:** `services/zero-cli/src/unified_api/agents.rs`
  */
 
 import type { AutonomousModeConfig } from "./config/schema"

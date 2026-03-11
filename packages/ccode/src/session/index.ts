@@ -1,3 +1,25 @@
+/**
+ * Session Module
+ *
+ * @deprecated This module is scheduled for removal.
+ * Session management has been migrated to the Rust daemon's SessionStore.
+ *
+ * **Migration Guide:**
+ * ```typescript
+ * // Before (deprecated):
+ * import { Session } from "@/session"
+ * const session = await Session.create()
+ * const messages = await Session.messages({ sessionID })
+ *
+ * // After (recommended):
+ * import { getHttpClient } from "@/sdk"
+ * const http = getHttpClient()
+ * const session = await http.createSession()
+ * const messages = await http.getMessages(sessionID)
+ * ```
+ *
+ * **Rust implementation:** `services/zero-cli/src/session/store.rs`
+ */
 import { Slug } from "@codecoder-ai/core/util/slug"
 import path from "path"
 import { BusEvent } from "@/bus/bus-event"

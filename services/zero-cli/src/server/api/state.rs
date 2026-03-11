@@ -1,7 +1,7 @@
 //! Application state shared across handlers
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use anyhow::Result;
 use zero_core::{
@@ -10,8 +10,12 @@ use zero_core::{
 };
 
 use crate::session::store::SessionStore;
+use crate::unified_api::state::UnifiedApiState;
 
 /// Shared application state
+///
+/// Note: This struct is not Clone because several zero_core types don't implement Clone.
+/// Use Arc<AppState> when sharing between handlers.
 pub struct AppState {
     /// Grep engine
     pub grep: Grep,
@@ -34,9 +38,11 @@ pub struct AppState {
     /// Truncator
     pub truncator: Truncator,
     /// Session todo lists (session_id -> TodoList)
-    pub todo_lists: RwLock<HashMap<String, TodoList>>,
+    pub todo_lists: Arc<RwLock<HashMap<String, TodoList>>>,
     /// Session store (SQLite-backed)
     pub session_store: SessionStore,
+    /// Unified API state (for agent execution, observer, etc.)
+    pub unified_api: Option<Arc<UnifiedApiState>>,
 }
 
 impl AppState {
@@ -60,9 +66,22 @@ impl AppState {
             code_search: CodeSearch::new(),
             web_fetcher: WebFetcher::new(),
             truncator: Truncator::new(data_dir.join("tool-output")),
-            todo_lists: RwLock::new(HashMap::new()),
+            todo_lists: Arc::new(RwLock::new(HashMap::new())),
             session_store: SessionStore::new(&data_dir.join("sessions.db"))?,
+            unified_api: None,
         })
+    }
+
+    /// Create AppState with unified API state
+    pub fn with_unified_api(unified_api: Arc<UnifiedApiState>) -> Result<Self> {
+        let mut state = Self::new()?;
+        state.unified_api = Some(unified_api);
+        Ok(state)
+    }
+
+    /// Set unified API state (for lazy initialization)
+    pub fn set_unified_api(&mut self, unified_api: Arc<UnifiedApiState>) {
+        self.unified_api = Some(unified_api);
     }
 
     /// Get or create a todo list for a session

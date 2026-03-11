@@ -5405,14 +5405,14 @@ export declare export declare function scoreRelevance(query: string, content: st
 export declare export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
 
 /** Quick check if a path matches default ignore patterns */
-export declare export declare function shouldIgnorePath(path: string): boolean
+export declare function shouldIgnorePath(path: string): boolean
 
 /** Compute the similarity ratio between two strings (0.0 to 1.0) */
-export declare export declare function similarityRatio(s1: string, s2: string): number
+export declare function similarityRatio(s1: string, s2: string): number
 
-export declare export declare function spawnPty(config: NapiPtyConfig): void
+export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
 
-export declare export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): void
+export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): PtySessionHandle
 
 /** State category */
 export declare const enum StateCategory {
@@ -5905,14 +5905,6 @@ export declare function scoreFiles(query: string, files: Array<NapiFileMetadata>
 export declare function scoreRelevance(query: string, content: string): NapiRelevanceScore
 
 export declare function scoreRelevanceWithConfig(query: string, content: string, config: NapiRelevanceScorerConfig): NapiRelevanceScore
-
-export declare function shouldIgnorePath(path: string): boolean
-
-export declare function similarityRatio(s1: string, s2: string): number
-
-export declare function spawnPty(config: NapiPtyConfig): PtySessionHandle
-
-export declare function spawnPtyCommand(command: string, args: Array<string>, config: NapiPtyConfig): PtySessionHandle
 
 export declare function stripMarkdownFrontmatter(text: string): string
 

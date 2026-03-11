@@ -354,6 +354,7 @@ impl SkillLoaderStats {
 mod tests {
     use super::*;
     use std::fs;
+    use std::path::Path;
 
     fn create_test_skill_dir() -> (PathBuf, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
