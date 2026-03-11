@@ -34,7 +34,7 @@ import { validateConcept } from "./validation"
 import { registerConcept } from "./registration"
 import { DecisionEngine, createDecisionEngine, type DecisionResult } from "../decision/engine"
 import { buildCriteria, type CLOSEScore } from "../decision/criteria"
-import type { AutonomyLevel } from "../hands/bridge"
+import type { AutonomyLevel } from "../decision/engine"
 
 const log = Log.create({ service: "autonomous.builder.meta-builder" })
 

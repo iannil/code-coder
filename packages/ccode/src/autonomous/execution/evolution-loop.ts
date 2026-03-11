@@ -58,11 +58,6 @@ const getSkillModule = async () => {
   return Skill
 }
 
-const getHandsBridge = async () => {
-  const { getBridge } = await import("../hands/bridge")
-  return getBridge()
-}
-
 // ============================================================================
 // Types
 // ============================================================================
@@ -1310,81 +1305,11 @@ export class EvolutionLoop {
    * - Trigger keywords
    * - Description matching
    */
-  private async tryHandMatch(problem: AutonomousProblem): Promise<HandMatchResult> {
-    try {
-      const bridge = await getHandsBridge()
-
-      // Check if hands service is healthy
-      const isHealthy = await bridge.health()
-      if (!isHealthy) {
-        log.debug("Hands service not available - skipping hand discovery")
-        return { matched: false, score: 0 }
-      }
-
-      const hands = await bridge.list()
-      const query = problem.description.toLowerCase()
-
-      // Keywords that suggest scheduled/automated tasks
-      const scheduleKeywords = ["每天", "每周", "定时", "自动", "cron", "schedule", "daily", "weekly", "每小时", "hourly"]
-      const webhookKeywords = ["webhook", "触发", "trigger", "api", "endpoint"]
-      const gitKeywords = ["push", "pull request", "pr", "commit", "git"]
-
-      let bestMatch: { id: string; name: string; agent: string; schedule?: string } | undefined
-      let bestScore = 0
-      let matchedTriggerType: string | undefined
-
-      for (const hand of hands) {
-        if (!hand.enabled) continue
-
-        let score = 0
-        let triggerType: string | undefined
-
-        // Check for schedule-related keywords
-        if (hand.schedule && scheduleKeywords.some(k => query.includes(k))) {
-          score = 0.7
-          triggerType = "cron"
-        }
-
-        // Check name matching
-        if (query.includes(hand.name.toLowerCase())) {
-          score = Math.max(score, 0.8)
-        }
-
-        // Check for webhook triggers
-        if (webhookKeywords.some(k => query.includes(k))) {
-          score = Math.max(score, 0.6)
-          triggerType = "webhook"
-        }
-
-        // Check for git triggers
-        if (gitKeywords.some(k => query.includes(k))) {
-          score = Math.max(score, 0.6)
-          triggerType = "git"
-        }
-
-        if (score > bestScore) {
-          bestScore = score
-          bestMatch = hand
-          matchedTriggerType = triggerType
-        }
-      }
-
-      if (bestMatch && bestScore >= this.config.handMatchThreshold) {
-        return {
-          matched: true,
-          handId: bestMatch.id,
-          handName: bestMatch.name,
-          score: bestScore,
-          triggerType: matchedTriggerType,
-          recommendation: `Use autonomous hand: ${bestMatch.name} (Agent: ${bestMatch.agent}${bestMatch.schedule ? `, Schedule: ${bestMatch.schedule}` : ""})`,
-        }
-      }
-
-      return { matched: false, score: bestScore }
-    } catch (error) {
-      log.error("Hand discovery failed", { error })
-      return { matched: false, score: 0 }
-    }
+  private async tryHandMatch(_problem: AutonomousProblem): Promise<HandMatchResult> {
+    // NOTE: hands/bridge module has been removed in Phase 5 cleanup
+    // Hand discovery is disabled until hands module is re-implemented
+    log.debug("Hands bridge not available - skipping hand discovery")
+    return { matched: false, score: 0 }
   }
 
   /**

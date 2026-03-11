@@ -6,7 +6,13 @@ import { Log } from "@/util/log"
 import { bootstrap } from "../bootstrap"
 import { Document } from "../../document"
 import * as Knowledge from "../../document/knowledge"
-import { ExpansionOrchestrator } from "../../autonomous/expansion/index"
+
+// NOTE: ExpansionOrchestrator has been removed - using placeholder implementation
+const ExpansionOrchestrator = {
+  async getProgress(_documentId: string) {
+    return { wordsWritten: 0, targetWords: 100000, currentPhase: "pending" }
+  },
+}
 
 const log = Log.create({ service: "cli.book-writer" })
 

@@ -22,7 +22,7 @@ import type {
   GeneratorInput,
   GeneratedConcept,
 } from "../types"
-import type { AutonomyLevel, PipelineMode } from "../../hands/bridge"
+import type { AutonomyLevel } from "../../decision/engine"
 
 const log = Log.create({ service: "autonomous.builder.generators.hand" })
 

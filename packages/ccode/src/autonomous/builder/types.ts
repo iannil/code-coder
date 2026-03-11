@@ -10,7 +10,7 @@
 
 import z from "zod"
 import type { CLOSEScore, AutonomousDecisionCriteria } from "../decision/criteria"
-import type { AutonomyLevel } from "../hands/bridge"
+import type { AutonomyLevel } from "../decision/engine"
 
 // ============================================================================
 // Concept Types
