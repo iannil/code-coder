@@ -149,14 +149,3 @@ export function getAllFingerprints(): TechnologyFingerprint[] {
     patterns: [],
   }))
 }
-
-// ============================================================================
-// Legacy exports (for backward compatibility)
-// ============================================================================
-
-/**
- * @deprecated Use `getAllFingerprints()` or native detection instead
- * This empty object is kept for backward compatibility with code that
- * imports FINGERPRINTS directly. Use the detection functions instead.
- */
-export const FINGERPRINTS: Record<string, TechnologyFingerprint[]> = {}

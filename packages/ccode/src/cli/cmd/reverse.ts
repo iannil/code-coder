@@ -4,7 +4,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { bootstrap } from "../bootstrap"
 import { ReportGenerator, type ReverseAnalysisReport } from "@/util/report-generator"
-import { findFingerprints, FINGERPRINTS, getCategories } from "@/util/tech-fingerprints"
+import { findFingerprints, getFingerprintsByCategory, getCategories } from "@/util/tech-fingerprints"
 import { WebFetchTool } from "../../tool/webfetch"
 import path from "path"
 import { mkdir } from "node:fs/promises"
@@ -187,8 +187,8 @@ const ReverseListCommand = cmd({
       if (categoryFilter) {
         UI.empty()
         prompts.intro(`Technology Fingerprints: ${categoryFilter}`)
-        const techs = FINGERPRINTS[categoryFilter]
-        if (!techs) {
+        const techs = getFingerprintsByCategory(categoryFilter)
+        if (!techs || techs.length === 0) {
           prompts.cancel(`Category "${categoryFilter}" not found`)
           prompts.outro("Available categories: " + getCategories().join(", "))
           process.exit(1)
@@ -202,7 +202,7 @@ const ReverseListCommand = cmd({
         prompts.intro("Technology Fingerprint Categories")
         const categories = getCategories()
         for (const category of categories) {
-          const count = FINGERPRINTS[category].length
+          const count = getFingerprintsByCategory(category).length
           prompts.log.info(`${category}: ${count} technologies`)
         }
       }

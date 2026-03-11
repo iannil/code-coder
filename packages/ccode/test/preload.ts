@@ -73,19 +73,14 @@ const createLogger = (tags?: Record<string, unknown>) => ({
   },
 })
 
-// Create a mock Zod-like schema for Log.Level
-const mockZodSchema = {
-  parse: (v: string) => v,
-  safeParse: (v: string) => ({ success: true, data: v }),
-  optional: () => mockZodSchema,
-  default: () => mockZodSchema,
-  describe: () => mockZodSchema,
-}
+// Import the real Zod enum for Log.Level - don't mock Zod schemas as they have complex internals
+import z from "zod"
+const LogLevel = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).describe("Log level (DEBUG, INFO, WARN, ERROR)")
 
 // Set up Log mock before any imports
 mock.module("@/util/log", () => ({
   Log: {
-    Level: mockZodSchema,
+    Level: LogLevel,
     Default: createLogger({ service: "default" }),
     init: async () => {},
     create: createLogger,

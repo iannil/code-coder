@@ -76,24 +76,6 @@ export const LogEntry = z.object({
 })
 export type LogEntry = z.infer<typeof LogEntry>
 
-/**
- * Legacy LogEntry format for backwards compatibility.
- * @deprecated Use LogEntry instead
- */
-export const LegacyLogEntry = z.object({
-  timestamp: z.string(),
-  trace_id: z.string(),
-  span_id: z.string(),
-  parent_span_id: z.string().optional(),
-  event_type: EventType,
-  service: z.string(),
-  function_name: z.string().optional(),
-  payload: z.record(z.string(), z.unknown()),
-  duration_ms: z.number().optional(),
-  stack_trace: z.string().optional(),
-})
-export type LegacyLogEntry = z.infer<typeof LegacyLogEntry>
-
 // ============================================================================
 // Trace Context
 // ============================================================================

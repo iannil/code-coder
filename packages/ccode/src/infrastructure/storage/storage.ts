@@ -418,37 +418,4 @@ export namespace Storage {
     return result
   }
 
-  // ============================================================================
-  // Deprecated Functions (kept for backward compatibility)
-  // ============================================================================
-
-  /**
-   * @deprecated Backup is not needed for SQLite - it has ACID guarantees
-   */
-  export async function backup(_key: string[]): Promise<string | undefined> {
-    getLog().debug("backup() is deprecated - SQLite provides ACID guarantees")
-    return undefined
-  }
-
-  /**
-   * @deprecated Restore is not needed for SQLite - it has ACID guarantees
-   */
-  export async function restore(_key: string[]): Promise<boolean> {
-    getLog().debug("restore() is deprecated - SQLite provides ACID guarantees")
-    return false
-  }
-
-  /**
-   * @deprecated Use healthCheck() instead
-   */
-  export async function listCorrupted(): Promise<string[]> {
-    return []
-  }
-
-  /**
-   * @deprecated Use healthCheck() instead
-   */
-  export async function clearCorrupted(): Promise<number> {
-    return 0
-  }
 }

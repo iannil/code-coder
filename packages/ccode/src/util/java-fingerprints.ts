@@ -187,14 +187,3 @@ export function getAllJavaFingerprints(): JavaFingerprint[] {
     patterns: [],
   }))
 }
-
-// ============================================================================
-// Legacy exports (for backward compatibility)
-// ============================================================================
-
-/**
- * @deprecated Use `getAllJavaFingerprints()` or native detection instead
- * This empty object is kept for backward compatibility with code that
- * imports JAVA_FINGERPRINTS directly. Use the detection functions instead.
- */
-export const JAVA_FINGERPRINTS: Record<string, JavaFingerprint[]> = {}

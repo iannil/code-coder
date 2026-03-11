@@ -5,7 +5,7 @@ import z from "zod"
 import * as Observability from "../observability"
 
 export namespace Log {
-  export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).meta({ ref: "LogLevel", description: "Log level" })
+  export const Level = z.enum(["DEBUG", "INFO", "WARN", "ERROR"]).describe("Log level (DEBUG, INFO, WARN, ERROR)")
   export type Level = z.infer<typeof Level>
 
   const levelPriority: Record<Level, number> = {

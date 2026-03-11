@@ -257,30 +257,6 @@ export async function reloadRoutingConfig(): Promise<RoutingConfig> {
 }
 
 // ============================================================================
-// Default Configuration Exports (for backward compatibility)
-// ============================================================================
-
-/**
- * @deprecated Use getRoutingConfigSync().rules instead
- */
-export const DEFAULT_CLASSIFICATION_RULES: ClassificationRule[] = getDefaultConfig().rules
-
-/**
- * @deprecated Use getRoutingConfigSync().models instead
- */
-export const DEFAULT_MODELS: RoutableModel[] = getDefaultConfig().models
-
-/**
- * @deprecated Use getRoutingConfigSync().rolePermissions instead
- */
-export const DEFAULT_ROLE_PERMISSIONS: RolePermission[] = getDefaultConfig().rolePermissions
-
-/**
- * @deprecated Use getRoutingConfigSync() instead
- */
-export const DEFAULT_ROUTING_CONFIG: RoutingConfig = getDefaultConfig()
-
-// ============================================================================
 // Task-to-Model Mapping
 // ============================================================================
 
@@ -318,11 +294,6 @@ export function getTaskModelPreferences(): Record<TaskType, string[]> {
     sensitive: ["ollama-llama3", "ollama-codellama", "ollama-deepseek-coder"],
   }
 }
-
-/**
- * @deprecated Use getTaskModelPreferences() instead
- */
-export const TASK_MODEL_PREFERENCES: Record<TaskType, string[]> = getTaskModelPreferences()
 
 // ============================================================================
 // Helper Functions

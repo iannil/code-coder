@@ -39,7 +39,6 @@ export {
   EventType,
   LogLevel,
   LogEntry,
-  LegacyLogEntry,
   TraceHeaders,
   ObservabilityConfig,
   type TraceContext,

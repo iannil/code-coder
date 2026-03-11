@@ -196,26 +196,6 @@ async function getOrCreateSession(conversationId: string | undefined): Promise<s
 import type { AutonomousSessionStore } from "../store/autonomous-session"
 
 /**
- * @deprecated Use classifyTask from autonomous/classification instead
- * This function is kept for backward compatibility but now delegates to the classifier.
- */
-function isActionableTask(message: string): boolean {
-  const actionKeywords = [
-    // Chinese action words
-    "实现", "创建", "修复", "开发", "构建", "编写", "生成", "执行",
-    "部署", "配置", "设置", "安装", "更新", "修改", "重构", "优化",
-    "自动", "定时", "调度", "每天", "每周", "每小时",
-    // English action words
-    "implement", "create", "fix", "build", "write", "generate", "execute",
-    "deploy", "configure", "setup", "install", "update", "modify", "refactor",
-    "automate", "schedule", "cron", "daily", "weekly", "hourly",
-  ]
-
-  const lowerMessage = message.toLowerCase()
-  return actionKeywords.some(keyword => lowerMessage.includes(keyword))
-}
-
-/**
  * Execute chat with Research Loop for research/analysis tasks.
  *
  * Flow (with PDCA):
