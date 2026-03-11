@@ -1,10 +1,16 @@
 # CodeCoder 剩余任务清单
 
-更新时间: 2026-03-10
+更新时间: 2026-03-11
 
 > **状态**: 所有任务均已完成，项目整体完成度 99%+
 >
-> **最新完成**: Rust-First 架构迁移 (Phase 2-8) — 2026-03-10
+> **最新完成**: TUI SDK 迁移全部完成 — 2026-03-11
+> - worker.ts 全部 session 方法添加 SDK 模式支持
+> - Rust daemon API 功能测试全部通过
+> - SDK 适配器验证通过
+> - 详见每日记忆: memory/daily/2026-03-11.md
+>
+> **之前完成**: Rust-First 架构迁移 (Phase 2-8) — 2026-03-10
 > - Observer Network 迁移到 Rust
 > - Gear System (P/N/D/S/M + CLOSE) 迁移到 Rust
 > - Agent 定义 (29 个) 迁移到 Rust
@@ -63,6 +69,72 @@ TypeScript 层 (高不确定性): Session, Autonomous, Document, Agent 协调
       │
       ▼ NAPI-RS
 Rust 层 (高确定性): tools, trace, provider, security, context, memory, graph
+```
+
+---
+
+## 1.5 TUI SDK 迁移 🟢 完成
+
+> **状态**: SDK 适配器完成，worker.ts 全部 session 方法迁移完成，功能测试通过
+> **更新日期**: 2026-03-11
+
+### 已完成
+
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| SDK types 扩展 | ✅ | +400 行类型定义, SessionTime 兼容 |
+| SDK client 扩展 | ✅ | +80 行新方法 (fork, compact, config) |
+| Rust Session API | ✅ | 添加 time 对象, parent_id, directory |
+| SDK 适配器 | ✅ | adapter.ts - 转换 SDK 类型到 Session.Info |
+| worker.ts session.list | ✅ | 支持 SDK 模式 (CODECODER_SDK_MODE=1) |
+| worker.ts session.get | ✅ | 支持 SDK 模式 + adaptSessionInfo |
+| worker.ts session.create | ✅ | 支持 SDK 模式 + adaptSessionInfo |
+| worker.ts session.fork | ✅ | 支持 SDK 模式 + adaptSessionInfo |
+| worker.ts session.remove/delete | ✅ | 支持 SDK 模式 |
+| worker.ts session.compact | ✅ | 支持 SDK 模式 |
+| app.tsx | ✅ | 使用 SDK parseModel, isDefaultTitle |
+| context/local.tsx | ✅ | 使用 SDK parseModel |
+| **功能测试** | ✅ | API 端点全部验证通过 |
+
+### 功能测试结果 (Step 6)
+
+| 测试项 | 结果 |
+|--------|------|
+| Health check | ✅ |
+| Create session | ✅ |
+| Get session | ✅ |
+| Adapter conversion | ✅ |
+| List sessions | ✅ |
+| Compact session | ✅ |
+| Fork session | ✅ |
+| Delete session | ✅ |
+
+### 待完成 (可选优化)
+
+| 组件 | 说明 |
+|------|------|
+| Rust 端完善 | summary, permission, revert 字段 |
+| TUI 完整 E2E 测试 | 在 SDK 模式下运行完整 TUI |
+
+### 保留原导入的组件
+
+以下文件因深度集成需保留原导入：
+
+| 文件 | 原因 |
+|------|------|
+| app.tsx | SessionApi.Event.* Bus 事件订阅 |
+| dialog-session-list.tsx | Bus 事件订阅 |
+| autonomous-status.tsx | 字段名不同 |
+| routes/session/*.tsx | MessageV2 复杂类型 |
+
+### 使用方式
+
+```bash
+# 默认模式 (SDK, 使用 Rust daemon)
+bun dev
+
+# 禁用 SDK 模式 (回退到 TypeScript API)
+CODECODER_SDK_MODE=0 bun dev
 ```
 
 ---

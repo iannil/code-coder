@@ -61,10 +61,17 @@ impl SessionStore {
                 project_id      TEXT,
                 agent           TEXT,
                 created_at      INTEGER NOT NULL,
-                updated_at      INTEGER NOT NULL
+                updated_at      INTEGER NOT NULL,
+                parent_id       TEXT,
+                directory       TEXT
             );
             CREATE INDEX IF NOT EXISTS idx_metadata_project ON session_metadata(project_id);",
         )?;
+
+        // Add new columns if they don't exist (for existing databases)
+        // SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we ignore errors
+        let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN parent_id TEXT", []);
+        let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN directory TEXT", []);
 
         Ok(())
     }
@@ -326,7 +333,7 @@ impl SessionStore {
             .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
 
         let result = conn.query_row(
-            "SELECT title, project_id, agent, created_at, updated_at
+            "SELECT title, project_id, agent, created_at, updated_at, parent_id, directory
              FROM session_metadata
              WHERE session_key = ?1",
             params![session_key],
@@ -338,6 +345,8 @@ impl SessionStore {
                     agent: row.get(2)?,
                     created_at: row.get(3)?,
                     updated_at: row.get(4)?,
+                    parent_id: row.get(5).ok(),
+                    directory: row.get(6).ok(),
                 })
             },
         );
@@ -403,7 +412,8 @@ impl SessionStore {
 
         let mut stmt = conn.prepare(
             "SELECT s.session_key, COUNT(*) as msg_count, MAX(s.created_at) as last_active,
-                    m.title, m.project_id, m.agent, m.created_at as meta_created, m.updated_at
+                    m.title, m.project_id, m.agent, m.created_at as meta_created, m.updated_at,
+                    m.parent_id, m.directory
              FROM sessions s
              LEFT JOIN session_metadata m ON s.session_key = m.session_key
              GROUP BY s.session_key
@@ -421,6 +431,8 @@ impl SessionStore {
             let agent: Option<String> = row.get(5)?;
             let meta_created: Option<i64> = row.get(6)?;
             let meta_updated: Option<i64> = row.get(7)?;
+            let parent_id: Option<String> = row.get(8).ok().flatten();
+            let directory: Option<String> = row.get(9).ok().flatten();
 
             let metadata = if title.is_some() || project_id.is_some() || agent.is_some() {
                 Some(SessionMetadata {
@@ -430,6 +442,8 @@ impl SessionStore {
                     agent,
                     created_at: meta_created.unwrap_or(0),
                     updated_at: meta_updated.unwrap_or(0),
+                    parent_id,
+                    directory,
                 })
             } else {
                 None
@@ -470,6 +484,12 @@ pub struct SessionMetadata {
     pub agent: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// Parent session ID for forked sessions
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    /// Directory where session was created
+    #[serde(default)]
+    pub directory: Option<String>,
 }
 
 #[cfg(test)]

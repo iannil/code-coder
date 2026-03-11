@@ -32,6 +32,21 @@ pub struct ListSessionsQuery {
     pub project_id: Option<String>,
 }
 
+/// Time information for sessions (compatible with TS Session.Info.time)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionTime {
+    /// Creation timestamp (milliseconds since epoch)
+    pub created: i64,
+    /// Last update timestamp (milliseconds since epoch)
+    pub updated: i64,
+    /// Compacting timestamp if session is being compacted
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compacting: Option<i64>,
+    /// Archive timestamp if session is archived
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub archived: Option<i64>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SessionListResponse {
     pub success: bool,
@@ -45,9 +60,19 @@ pub struct SessionSummary {
     pub title: Option<String>,
     pub message_count: usize,
     pub token_count: usize,
+    /// Time information (TS-compatible format)
+    pub time: SessionTime,
+    /// Legacy: creation timestamp in seconds (deprecated, use time.created)
     pub created_at: i64,
+    /// Legacy: update timestamp in seconds (deprecated, use time.updated)
     pub updated_at: i64,
     pub project_id: Option<String>,
+    /// Parent session ID for forked sessions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Directory where session was created
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,10 +94,20 @@ pub struct SessionDetail {
     pub title: Option<String>,
     pub messages: Vec<SessionMessage>,
     pub token_count: usize,
+    /// Time information (TS-compatible format)
+    pub time: SessionTime,
+    /// Legacy: creation timestamp in seconds (deprecated, use time.created)
     pub created_at: i64,
+    /// Legacy: update timestamp in seconds (deprecated, use time.updated)
     pub updated_at: i64,
     pub project_id: Option<String>,
     pub agent: Option<String>,
+    /// Parent session ID for forked sessions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<String>,
+    /// Directory where session was created
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,14 +211,26 @@ pub async fn list_sessions(
                         .flatten()
                         .unwrap_or(last_active);
 
+                    // Convert to milliseconds for TS compatibility
+                    let created_ms = created_at * 1000;
+                    let updated_ms = last_active * 1000;
+
                     SessionSummary {
                         id: session_key,
                         title: metadata.as_ref().and_then(|m| m.title.clone()),
                         message_count,
                         token_count,
+                        time: SessionTime {
+                            created: created_ms,
+                            updated: updated_ms,
+                            compacting: None,
+                            archived: None,
+                        },
                         created_at,
                         updated_at: last_active,
-                        project_id: metadata.and_then(|m| m.project_id),
+                        project_id: metadata.as_ref().and_then(|m| m.project_id.clone()),
+                        parent_id: metadata.as_ref().and_then(|m| m.parent_id.clone()),
+                        directory: metadata.and_then(|m| m.directory.clone()),
                     }
                 })
                 .collect();
@@ -215,6 +262,7 @@ pub async fn create_session(
     // Generate session key
     let session_id = format!("cli:{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now().timestamp();
+    let now_ms = now * 1000;
 
     // Save metadata if any fields are provided
     if request.title.is_some() || request.project_id.is_some() || request.agent.is_some() {
@@ -235,10 +283,18 @@ pub async fn create_session(
         title: request.title,
         messages: vec![],
         token_count: 0,
+        time: SessionTime {
+            created: now_ms,
+            updated: now_ms,
+            compacting: None,
+            archived: None,
+        },
         created_at: now,
         updated_at: now,
         project_id: request.project_id,
         agent: request.agent,
+        parent_id: None,
+        directory: None,
     };
 
     (
@@ -270,6 +326,10 @@ pub async fn get_session(
                 .map(|m| m.timestamp)
                 .unwrap_or(created_at);
 
+            // Convert to milliseconds for TS compatibility
+            let created_ms = created_at * 1000;
+            let updated_ms = updated_at * 1000;
+
             // Get metadata
             let metadata = state.sessions.get_metadata(&id).ok().flatten();
 
@@ -290,10 +350,18 @@ pub async fn get_session(
                 title: metadata.as_ref().and_then(|m| m.title.clone()),
                 messages: converted_messages,
                 token_count,
+                time: SessionTime {
+                    created: created_ms,
+                    updated: updated_ms,
+                    compacting: None,
+                    archived: None,
+                },
                 created_at,
                 updated_at,
                 project_id: metadata.as_ref().and_then(|m| m.project_id.clone()),
-                agent: metadata.and_then(|m| m.agent),
+                agent: metadata.as_ref().and_then(|m| m.agent.clone()),
+                parent_id: metadata.as_ref().and_then(|m| m.parent_id.clone()),
+                directory: metadata.and_then(|m| m.directory.clone()),
             };
 
             Json(serde_json::json!({
@@ -465,6 +533,7 @@ pub async fn fork_session(
     match state.sessions.get_messages(&id) {
         Ok(messages) => {
             let now = chrono::Utc::now().timestamp();
+            let now_ms = now * 1000;
 
             // Copy messages to new session (optionally up to a specific message)
             let messages_to_copy = if let Some(ref from_id) = request.from_message_id {
@@ -516,10 +585,18 @@ pub async fn fork_session(
                         title: None,
                         messages: converted_messages,
                         token_count,
+                        time: SessionTime {
+                            created: now_ms,
+                            updated: now_ms,
+                            compacting: None,
+                            archived: None,
+                        },
                         created_at: now,
                         updated_at: now,
                         project_id: None,
                         agent: None,
+                        parent_id: Some(id),  // Record parent session
+                        directory: None,
                     },
                 }),
             )

@@ -33,7 +33,6 @@ import { ExitProvider, useExit } from "./context/exit"
 import { Session as SessionApi } from "@/session"
 import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
-import { Provider } from "@/provider/provider"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
 import { writeHeapSnapshot } from "v8"
@@ -41,6 +40,7 @@ import { PromptRefProvider, usePromptRef } from "./context/prompt"
 import { Log } from "@/util/log"
 import { GlobalErrorHandler } from "@/util/global-error-handler"
 import * as fs from "fs"
+import { isDefaultTitle, parseModel } from "@/sdk"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // Skip terminal background detection to avoid hanging
@@ -201,7 +201,7 @@ function App() {
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
-      if (!session || SessionApi.isDefaultTitle(session.title)) {
+      if (!session || isDefaultTitle(session.title)) {
         renderer.setTerminalTitle("CodeCoder")
         return
       }
@@ -217,7 +217,7 @@ function App() {
     batch(() => {
       if (args.agent) local.agent.set(args.agent)
       if (args.model) {
-        const { providerID, modelID } = Provider.parseModel(args.model)
+        const { providerID, modelID } = parseModel(args.model)
         if (!providerID || !modelID)
           return toast.show({
             variant: "warning",

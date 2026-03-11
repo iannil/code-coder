@@ -59,3 +59,13 @@ export type { WebSocketClientConfig } from "./websocket"
 // HTTP Client
 export { HttpClient, getHttpClient, resetHttpClient } from "./client"
 export type { HttpClientConfig } from "./client"
+
+// Adapter (for gradual migration from TS modules to SDK)
+export {
+  adaptSessionInfo,
+  adaptSessionList,
+  isSdkModeEnabled,
+  configureAdapter,
+  getAdapterConfig,
+} from "./adapter"
+export type { SessionInfoLegacy, AdapterConfig } from "./adapter"

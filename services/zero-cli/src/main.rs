@@ -53,7 +53,7 @@ use config::Config;
 #[command(name = "zero-cli")]
 #[command(author = "theonlyhennygod")]
 #[command(version = "0.1.0")]
-#[command(about = "The fastest, smallest AI assistant CLI.", long_about = None)]
+#[command(about = "An observation-centric AI agent system — observe first, control always.", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

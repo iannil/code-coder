@@ -21,6 +21,9 @@ import { Vcs } from "@/project/vcs"
 import { Question } from "@/agent/question"
 import { Global } from "@/util/global"
 
+// SDK imports for gradual migration
+import { getHttpClient, isSdkModeEnabled, adaptSessionList, adaptSessionInfo } from "@/sdk"
+
 await Log.init({
   print: process.argv.includes("--print-logs"),
   dev: isLocal(),
@@ -73,19 +76,149 @@ async function initialize() {
 // Local API wrapper that mimics the SDK client interface
 const localApi = {
   session: {
-    list: LocalSession.list,
-    get: Session.get,
-    create: LocalSession.create,
-    fork: LocalSession.fork,
+    list: async (input?: {
+      directory?: string
+      roots?: boolean
+      start?: number
+      search?: string
+      limit?: number
+    }) => {
+      // SDK mode: use Rust daemon API with adapter
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          const response = await client.listSessions(input?.limit ?? 50, 0)
+          const adapted = adaptSessionList(response.sessions, {
+            directory: input?.directory ?? Instance.directory,
+          })
+          // Apply filters that SDK doesn't support
+          let filtered = adapted
+          if (input?.directory !== undefined) {
+            filtered = filtered.filter((s) => s.directory === input.directory)
+          }
+          if (input?.roots) {
+            filtered = filtered.filter((s) => !s.parentID)
+          }
+          if (input?.start !== undefined) {
+            filtered = filtered.filter((s) => s.time.updated >= input.start!)
+          }
+          if (input?.search !== undefined) {
+            const search = input.search.toLowerCase()
+            filtered = filtered.filter((s) => s.title.toLowerCase().includes(search))
+          }
+          return filtered
+        } catch (error) {
+          Log.Default.warn("SDK session.list failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
+      return LocalSession.list(input)
+    },
+    get: async (input: { sessionID: string }) => {
+      // SDK mode: use Rust daemon API with adapter
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          const response = await client.getSession(input.sessionID)
+          return adaptSessionInfo(response.session, {
+            directory: Instance.directory,
+          })
+        } catch (error) {
+          Log.Default.warn("SDK session.get failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
+      return Session.get(input.sessionID)
+    },
+    create: async (input?: { title?: string; agent?: string }) => {
+      // SDK mode: use Rust daemon API with adapter
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          const response = await client.createSession({
+            title: input?.title,
+            agent: input?.agent,
+          })
+          return adaptSessionInfo(response.session, {
+            directory: Instance.directory,
+          })
+        } catch (error) {
+          Log.Default.warn("SDK session.create failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
+      return LocalSession.create(input)
+    },
+    fork: async (input: { sessionID: string; messageID?: string; title?: string }) => {
+      // SDK mode: use Rust daemon API with adapter
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          const response = await client.forkSession(input.sessionID, {
+            message_id: input.messageID,
+            title: input.title,
+          })
+          return adaptSessionInfo(response.session, {
+            directory: Instance.directory,
+          })
+        } catch (error) {
+          Log.Default.warn("SDK session.fork failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
+      return LocalSession.fork(input)
+    },
     remove: async (input: { sessionID: string }) => {
+      // SDK mode: use Rust daemon API
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          await client.deleteSession(input.sessionID)
+          return true
+        } catch (error) {
+          Log.Default.warn("SDK session.remove failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
       await Session.remove(input.sessionID)
       return true
     },
     delete: async (input: { sessionID: string }) => {
+      // SDK mode: use Rust daemon API
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          await client.deleteSession(input.sessionID)
+          return true
+        } catch (error) {
+          Log.Default.warn("SDK session.delete failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
       await Session.remove(input.sessionID)
       return true
     },
-    compact: LocalSession.compact,
+    compact: async (input: { sessionID: string }) => {
+      // SDK mode: use Rust daemon API
+      if (isSdkModeEnabled()) {
+        try {
+          const client = getHttpClient()
+          await client.compactSession(input.sessionID)
+          return true
+        } catch (error) {
+          Log.Default.warn("SDK session.compact failed, falling back to local API", { error })
+          // Fall through to local API
+        }
+      }
+      // Local mode: use TypeScript module directly
+      return LocalSession.compact(input.sessionID)
+    },
     revert: LocalSession.revert,
     status: LocalSession.status,
     summary: LocalSession.summary,

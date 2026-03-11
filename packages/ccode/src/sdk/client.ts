@@ -16,6 +16,8 @@ import type {
   GearStatus,
   ObserverStatusResponse,
   TokenUsage,
+  ProviderInfo,
+  ProviderListResponseExtended,
 } from "./types"
 
 export interface HttpClientConfig {
@@ -212,6 +214,77 @@ export class HttpClient {
     return this.get(`/api/v1/sessions/${encodeURIComponent(id)}/messages`)
   }
 
+  /**
+   * Send a message to a session.
+   */
+  async sendSessionMessage(
+    id: string,
+    message: {
+      content: string
+      agent?: string
+      model?: string
+      system?: string[]
+    }
+  ): Promise<{ success: boolean; message_id: string }> {
+    return this.post(`/api/v1/sessions/${encodeURIComponent(id)}/messages`, message)
+  }
+
+  /**
+   * Update session properties.
+   */
+  async updateSession(id: string, updates: {
+    title?: string
+    agent?: string
+  }): Promise<{ success: boolean; session: SessionInfo }> {
+    return this.patch(`/api/v1/sessions/${encodeURIComponent(id)}`, updates)
+  }
+
+  /**
+   * Rename a session (convenience method).
+   */
+  async renameSession(id: string, title: string): Promise<{ success: boolean; session: SessionInfo }> {
+    return this.updateSession(id, { title })
+  }
+
+  /**
+   * Fork a session (create a child session from a specific point).
+   */
+  async forkSession(
+    id: string,
+    options?: {
+      message_id?: string
+      title?: string
+    }
+  ): Promise<{ success: boolean; session: SessionInfo }> {
+    return this.post(`/api/v1/sessions/${encodeURIComponent(id)}/fork`, options ?? {})
+  }
+
+  /**
+   * Compact session history (summarize old messages).
+   */
+  async compactSession(id: string): Promise<{ success: boolean }> {
+    return this.post(`/api/v1/sessions/${encodeURIComponent(id)}/compact`, {})
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Providers
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * List all providers with their models.
+   * Returns connected providers, all available providers, and default model per provider.
+   */
+  async listProviders(): Promise<ProviderListResponseExtended> {
+    return this.get<ProviderListResponseExtended>("/api/v1/providers")
+  }
+
+  /**
+   * Get a specific provider's details.
+   */
+  async getProvider(id: string): Promise<{ success: boolean; provider: ProviderInfo }> {
+    return this.get(`/api/v1/providers/${encodeURIComponent(id)}`)
+  }
+
   // ──────────────────────────────────────────────────────────────────────────
   // Gear Control
   // ──────────────────────────────────────────────────────────────────────────
@@ -325,6 +398,50 @@ export class HttpClient {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Config
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Get current configuration.
+   */
+  async getConfig(): Promise<{
+    success: boolean
+    config: {
+      core: { default_model?: string; default_temperature?: number; max_tokens?: number }
+      providers: Array<{ id: string; name: string; enabled: boolean; models: string[]; has_key: boolean }>
+      workspace_dir: string
+      version: string
+    }
+  }> {
+    return this.get("/api/v1/config")
+  }
+
+  /**
+   * Update configuration.
+   */
+  async updateConfig(updates: {
+    core?: {
+      default_model?: string
+      default_temperature?: number
+      max_tokens?: number
+    }
+  }): Promise<{ success: boolean; updated_fields: string[] }> {
+    return this.put("/api/v1/config", updates)
+  }
+
+  /**
+   * Validate configuration.
+   */
+  async validateConfig(config: Record<string, unknown>): Promise<{
+    success: boolean
+    valid: boolean
+    errors: string[]
+    warnings: string[]
+  }> {
+    return this.post("/api/v1/config/validate", { config })
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Tools
   // ──────────────────────────────────────────────────────────────────────────
 
@@ -377,6 +494,44 @@ export class HttpClient {
   private async post<T>(path: string, body: unknown): Promise<T> {
     const response = await fetch(`${this.config.baseUrl}${path}`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...this.config.headers,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.config.timeout),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
+  private async patch<T>(path: string, body: unknown): Promise<T> {
+    const response = await fetch(`${this.config.baseUrl}${path}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        ...this.config.headers,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.config.timeout),
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
+  private async put<T>(path: string, body: unknown): Promise<T> {
+    const response = await fetch(`${this.config.baseUrl}${path}`, {
+      method: "PUT",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
