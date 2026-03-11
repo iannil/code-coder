@@ -10,7 +10,7 @@
  * @module sdk/adapter
  */
 
-import type { SessionInfo as SdkSessionInfo, SessionTime } from "./types"
+import type { SessionInfo as SdkSessionInfo, SessionSummary, RevertInfo, PermissionRuleset } from "./types"
 import { Instance } from "@/project/instance"
 
 /**
@@ -84,6 +84,35 @@ export function adaptSessionInfo(
     directory?: string
   } = {}
 ): SessionInfoLegacy {
+  // Convert SDK summary to legacy format (ensure diffs have required fields)
+  const summary = sdk.summary
+    ? {
+        additions: sdk.summary.additions,
+        deletions: sdk.summary.deletions,
+        files: sdk.summary.files,
+        diffs: sdk.summary.diffs?.map((d) => ({
+          file: d.file,
+          before: d.before ?? "",
+          after: d.after ?? "",
+          additions: d.additions,
+          deletions: d.deletions,
+        })),
+      }
+    : undefined
+
+  // Convert SDK permission to legacy format (Record<string, unknown>)
+  const permission = sdk.permission ? (sdk.permission as Record<string, unknown>) : undefined
+
+  // Convert SDK revert to legacy format
+  const revert = sdk.revert
+    ? {
+        messageID: sdk.revert.messageID,
+        partID: sdk.revert.partID,
+        snapshot: sdk.revert.snapshot,
+        diff: sdk.revert.diff,
+      }
+    : undefined
+
   return {
     id: sdk.id,
     slug: generateSlug(sdk.id),
@@ -98,10 +127,9 @@ export function adaptSessionInfo(
       compacting: sdk.time.compacting,
       archived: sdk.time.archived,
     },
-    // These fields are not available from SDK, provide defaults
-    summary: undefined,
-    permission: undefined,
-    revert: undefined,
+    summary,
+    permission,
+    revert,
   }
 }
 

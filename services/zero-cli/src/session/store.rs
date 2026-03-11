@@ -72,6 +72,9 @@ impl SessionStore {
         // SQLite doesn't have IF NOT EXISTS for ALTER TABLE, so we ignore errors
         let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN parent_id TEXT", []);
         let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN directory TEXT", []);
+        let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN summary TEXT", []);
+        let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN permission TEXT", []);
+        let _ = conn.execute("ALTER TABLE session_metadata ADD COLUMN revert TEXT", []);
 
         Ok(())
     }
@@ -333,7 +336,7 @@ impl SessionStore {
             .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
 
         let result = conn.query_row(
-            "SELECT title, project_id, agent, created_at, updated_at, parent_id, directory
+            "SELECT title, project_id, agent, created_at, updated_at, parent_id, directory, summary, permission, revert
              FROM session_metadata
              WHERE session_key = ?1",
             params![session_key],
@@ -347,6 +350,9 @@ impl SessionStore {
                     updated_at: row.get(4)?,
                     parent_id: row.get(5).ok(),
                     directory: row.get(6).ok(),
+                    summary: row.get(7).ok(),
+                    permission: row.get(8).ok(),
+                    revert: row.get(9).ok(),
                 })
             },
         );
@@ -413,7 +419,7 @@ impl SessionStore {
         let mut stmt = conn.prepare(
             "SELECT s.session_key, COUNT(*) as msg_count, MAX(s.created_at) as last_active,
                     m.title, m.project_id, m.agent, m.created_at as meta_created, m.updated_at,
-                    m.parent_id, m.directory
+                    m.parent_id, m.directory, m.summary, m.permission, m.revert
              FROM sessions s
              LEFT JOIN session_metadata m ON s.session_key = m.session_key
              GROUP BY s.session_key
@@ -433,6 +439,9 @@ impl SessionStore {
             let meta_updated: Option<i64> = row.get(7)?;
             let parent_id: Option<String> = row.get(8).ok().flatten();
             let directory: Option<String> = row.get(9).ok().flatten();
+            let summary: Option<String> = row.get(10).ok().flatten();
+            let permission: Option<String> = row.get(11).ok().flatten();
+            let revert: Option<String> = row.get(12).ok().flatten();
 
             let metadata = if title.is_some() || project_id.is_some() || agent.is_some() {
                 Some(SessionMetadata {
@@ -444,6 +453,9 @@ impl SessionStore {
                     updated_at: meta_updated.unwrap_or(0),
                     parent_id,
                     directory,
+                    summary,
+                    permission,
+                    revert,
                 })
             } else {
                 None
@@ -473,6 +485,73 @@ impl SessionStore {
 
         Ok(())
     }
+
+    /// Update extended session metadata (summary, permission, revert).
+    /// Values are stored as JSON strings.
+    pub fn set_extended_metadata(
+        &self,
+        session_key: &str,
+        summary: Option<&str>,
+        permission: Option<&str>,
+        revert: Option<&str>,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        let now = Local::now().timestamp();
+
+        // Ensure metadata row exists
+        conn.execute(
+            "INSERT OR IGNORE INTO session_metadata (session_key, created_at, updated_at)
+             VALUES (?1, ?2, ?2)",
+            params![session_key, now],
+        )?;
+
+        // Update extended fields
+        conn.execute(
+            "UPDATE session_metadata SET
+                summary = COALESCE(?2, summary),
+                permission = COALESCE(?3, permission),
+                revert = COALESCE(?4, revert),
+                updated_at = ?5
+             WHERE session_key = ?1",
+            params![session_key, summary, permission, revert, now],
+        )?;
+
+        Ok(())
+    }
+
+    /// Set session summary (file change information).
+    pub fn set_summary(&self, session_key: &str, summary_json: &str) -> Result<()> {
+        self.set_extended_metadata(session_key, Some(summary_json), None, None)
+    }
+
+    /// Set session permission rules.
+    pub fn set_permission(&self, session_key: &str, permission_json: &str) -> Result<()> {
+        self.set_extended_metadata(session_key, None, Some(permission_json), None)
+    }
+
+    /// Set session revert information.
+    pub fn set_revert(&self, session_key: &str, revert_json: &str) -> Result<()> {
+        self.set_extended_metadata(session_key, None, None, Some(revert_json))
+    }
+
+    /// Clear session revert information.
+    pub fn clear_revert(&self, session_key: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock error: {e}"))?;
+
+        conn.execute(
+            "UPDATE session_metadata SET revert = NULL WHERE session_key = ?1",
+            params![session_key],
+        )?;
+
+        Ok(())
+    }
 }
 
 /// Session metadata (Phase 4 extension)
@@ -490,6 +569,15 @@ pub struct SessionMetadata {
     /// Directory where session was created
     #[serde(default)]
     pub directory: Option<String>,
+    /// Summary of file changes (stored as JSON)
+    #[serde(default)]
+    pub summary: Option<String>,
+    /// Permission rules (stored as JSON)
+    #[serde(default)]
+    pub permission: Option<String>,
+    /// Revert information (stored as JSON)
+    #[serde(default)]
+    pub revert: Option<String>,
 }
 
 #[cfg(test)]

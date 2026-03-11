@@ -11,12 +11,17 @@
  * - CLOSE scores
  */
 
-import type { WatcherStatus, OperatingMode, Observation, GearPreset } from "@/observer/types"
-import type { DialValues } from "@/observer/dial"
-import { GEAR_INFO } from "@/observer/dial"
-import type { CLOSEEvaluation } from "@/observer/controller/close-evaluator"
-import type { Escalation } from "@/observer/controller/escalation"
-import type { ModeControllerStats } from "@/observer/controller/mode"
+import type {
+  WatcherStatus,
+  OperatingMode,
+  Observation,
+  GearPreset,
+  DialValues,
+  CLOSEEvaluation,
+  Escalation,
+  ModeControllerStats,
+} from "@/sdk/types"
+import { GEAR_INFO } from "@/sdk/types"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

@@ -4,13 +4,23 @@
 
 > **状态**: 所有任务均已完成，项目整体完成度 99%+
 >
-> **最新完成**: TUI SDK 迁移全部完成 — 2026-03-11
-> - worker.ts 全部 session 方法添加 SDK 模式支持
-> - Rust daemon API 功能测试全部通过
-> - SDK 适配器验证通过
+> **最新完成**: 废弃代码清理 Phase 3 — 2026-03-11
+> - 删除 test/unit/trace/ 目录 (孤儿测试, 230 行)
+> - Phase 3 总计删除: 230 行
+> - 累计删除 (Phase 1 + 2 + 2.5 + 3): ~39,580 行
+>
+> **之前完成**: 废弃代码清理 Phase 1 — 2026-03-11
+> - 删除 14,831 行已迁移到 Rust 的 Observer 实现代码
+> - Observer 目录从 ~17,000 行精简到 2,158 行 (-87%)
+> - 将 TUI 需要的类型迁移到 SDK types.ts
 > - 详见每日记忆: memory/daily/2026-03-11.md
 >
-> **之前完成**: Rust-First 架构迁移 (Phase 2-8) — 2026-03-10
+> **之前完成**: Session API 扩展字段完成 — 2026-03-11
+> - 添加 summary, permission, revert 三个扩展字段到 Rust session API
+> - 实现与 TypeScript Session.Info 的完全兼容
+> - SDK 适配器已更新支持新字段
+>
+> **架构迁移**: Rust-First 架构迁移 (Phase 2-8) — 2026-03-10
 > - Observer Network 迁移到 Rust
 > - Gear System (P/N/D/S/M + CLOSE) 迁移到 Rust
 > - Agent 定义 (29 个) 迁移到 Rust
@@ -23,12 +33,12 @@
 
 | 指标 | 状态 |
 |------|------|
-| **整体完成度** | 98%+ |
+| **整体完成度** | 99%+ |
 | **Agent 数量** | 31 个 |
 | **TypeScript 测试覆盖率** | 74.93% |
 | **Rust 代码量** | 131,593 行 (services/zero-*) |
 | **核心服务端口** | 4400-4439 |
-| **累计删除 TS 代码** | ~3,500+ 行 |
+| **累计删除 TS 代码** | ~39,580 行 (Phase 1: 14.8k, Phase 2: 17.2k, Phase 2.5: 7.3k, Phase 3: 0.2k) |
 
 **架构定位**: 高确定性任务用 zero-* (Rust)，高不确定性任务用 ccode (LLM)
 
@@ -75,7 +85,7 @@ Rust 层 (高确定性): tools, trace, provider, security, context, memory, grap
 
 ## 1.5 TUI SDK 迁移 🟢 完成
 
-> **状态**: SDK 适配器完成，worker.ts 全部 session 方法迁移完成，功能测试通过
+> **状态**: SDK 适配器完成，worker.ts 全部 session 方法迁移完成，功能测试通过，扩展字段已添加
 > **更新日期**: 2026-03-11
 
 ### 已完成
@@ -85,6 +95,7 @@ Rust 层 (高确定性): tools, trace, provider, security, context, memory, grap
 | SDK types 扩展 | ✅ | +400 行类型定义, SessionTime 兼容 |
 | SDK client 扩展 | ✅ | +80 行新方法 (fork, compact, config) |
 | Rust Session API | ✅ | 添加 time 对象, parent_id, directory |
+| **Rust 扩展字段** | ✅ | **summary, permission, revert 完整支持** |
 | SDK 适配器 | ✅ | adapter.ts - 转换 SDK 类型到 Session.Info |
 | worker.ts session.list | ✅ | 支持 SDK 模式 (CODECODER_SDK_MODE=1) |
 | worker.ts session.get | ✅ | 支持 SDK 模式 + adaptSessionInfo |
@@ -95,6 +106,22 @@ Rust 层 (高确定性): tools, trace, provider, security, context, memory, grap
 | app.tsx | ✅ | 使用 SDK parseModel, isDefaultTitle |
 | context/local.tsx | ✅ | 使用 SDK parseModel |
 | **功能测试** | ✅ | API 端点全部验证通过 |
+
+### Session.Info 完整兼容性
+
+| 字段 | 状态 | 说明 |
+|------|------|------|
+| `id` | ✅ | 会话 ID |
+| `slug` | ✅ | 适配器生成 (前 8 字符) |
+| `projectID` | ✅ | 项目 ID |
+| `directory` | ✅ | 会话目录 |
+| `parentID` | ✅ | 父会话 ID |
+| `title` | ✅ | 会话标题 |
+| `version` | ✅ | 适配器生成 ("v1.0.0") |
+| `time` | ✅ | 时间对象 (毫秒) |
+| `summary` | ✅ | 文件变更摘要 |
+| `permission` | ✅ | 权限规则 |
+| `revert` | ✅ | 回滚信息 |
 
 ### 功能测试结果 (Step 6)
 
@@ -111,10 +138,9 @@ Rust 层 (高确定性): tools, trace, provider, security, context, memory, grap
 
 ### 待完成 (可选优化)
 
-| 组件 | 说明 |
-|------|------|
-| Rust 端完善 | summary, permission, revert 字段 |
-| TUI 完整 E2E 测试 | 在 SDK 模式下运行完整 TUI |
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| TUI 完整 E2E 测试 | 🔴 | 在 SDK 模式下运行完整 TUI |
 
 ### 保留原导入的组件
 
@@ -135,6 +161,95 @@ bun dev
 
 # 禁用 SDK 模式 (回退到 TypeScript API)
 CODECODER_SDK_MODE=0 bun dev
+```
+
+---
+
+## 1.6 废弃代码清理 🟢 完成
+
+> **状态**: Observer Network + Trace + Bootstrap 废弃代码清理完成
+> **更新日期**: 2026-03-11
+
+### Phase 1: Observer Network (2026-03-11)
+
+| 目录 | 文件数 | 行数 | 状态 |
+|------|--------|------|------|
+| `observer/watchers/` | 6 | ~2,500 | ✅ 已删除 |
+| `observer/consensus/` | 7 | ~2,800 | ✅ 已删除 |
+| `observer/controller/` | 5 | ~2,000 | ✅ 已删除 |
+| `observer/tower/` | 4 | ~1,500 | ✅ 已删除 |
+| `observer/panel/` | 2 | ~500 | ✅ 已删除 |
+| `observer/responders/` | 5 | ~2,500 | ✅ 已删除 |
+| `observer/integration/` | 5 | ~1,500 | ✅ 已删除 |
+| `observer/event-stream.ts` | 1 | ~300 | ✅ 已删除 |
+| `observer/api.ts` | 1 | ~200 | ✅ 已删除 |
+| **Phase 1 总计** | **36** | **~14,800** | **✅** |
+
+### Phase 2: Trace + Bootstrap (2026-03-11)
+
+| 目录 | 文件数 | 行数 | 状态 |
+|------|--------|------|------|
+| `src/trace/` | 7 | ~1,500 | ✅ 已删除 |
+| `src/bootstrap/` | 12 | ~3,300 | ✅ 已删除 |
+| `cli/cmd/trace.ts` | 1 | ~600 | ✅ 已删除 |
+| `test/bootstrap/` | 3 | ~300 | ✅ 已删除 |
+| `test/evaluation/` | 26 | ~11,500 | ✅ 已删除 |
+| **Phase 2 总计** | **49** | **~17,200** | **✅** |
+
+### Phase 2.5: 孤儿测试清理 (2026-03-11)
+
+| 目录 | 文件数 | 行数 | 状态 |
+|------|--------|------|------|
+| `test/observer/watchers/` | 4 | ~1,200 | ✅ 已删除 |
+| `test/observer/consensus/` | 1 | ~600 | ✅ 已删除 |
+| `test/observer/controller/` | 3 | ~1,500 | ✅ 已删除 |
+| `test/observer/responders/` | 4 | ~1,800 | ✅ 已删除 |
+| `test/observer/integration/` | 3 | ~900 | ✅ 已删除 |
+| `test/observer/e2e/` | 2 | ~800 | ✅ 已删除 |
+| `test/observer/fixtures/` | 1 | ~300 | ✅ 已删除 |
+| `test/observer/helpers/` | 1 | ~100 | ✅ 已删除 |
+| `test/observer/setup.ts` | 1 | ~150 | ✅ 已删除 |
+| **Phase 2.5 总计** | **20** | **~7,350** | **✅** |
+
+### Phase 3: 孤儿 Trace 测试清理 (2026-03-11)
+
+| 目录 | 文件数 | 行数 | 状态 |
+|------|--------|------|------|
+| `test/unit/trace/` | 1 | ~230 | ✅ 已删除 |
+| **Phase 3 总计** | **1** | **~230** | **✅** |
+
+**清理原因**: 测试文件导入了已删除的 `@/trace/native` 模块
+
+**Rust 替代**:
+- `trace/` → `services/zero-core/src/trace/`
+- `bootstrap/` → `services/zero-cli/src/skills/loader.rs`
+
+### 类型迁移
+
+将 TUI 需要的类型迁移到 `sdk/types.ts`:
+
+| 类型 | 来源 | 目标 |
+|------|------|------|
+| `WatcherType`, `WatcherStatus` | observer/types | sdk/types.ts |
+| `Observation` | observer/types | sdk/types.ts |
+| `CLOSEEvaluation`, `CLOSEDimension` | observer/controller | sdk/types.ts |
+| `Escalation`, `HumanDecision` | observer/controller | sdk/types.ts |
+| `ConsensusSnapshot` | observer/consensus | sdk/types.ts |
+| `ModeDecision`, `ModeControllerStats` | observer/controller | sdk/types.ts |
+| `GEAR_INFO`, `GEAR_PRESETS` | observer/dial | sdk/types.ts |
+
+### Observer 目录现状
+
+```
+packages/ccode/src/observer/
+├── agent-registry.ts   (120 行) - 观察者 Agent 注册
+├── client.ts           (374 行) - Rust API 客户端
+├── dial.ts             (424 行) - 档位控制类
+├── events.ts           (475 行) - 事件定义
+├── index.ts            (147 行) - 导出入口
+└── types.ts            (618 行) - 类型定义
+                        ─────────
+                        2,158 行 (原 ~17,000 行, -87%)
 ```
 
 ---

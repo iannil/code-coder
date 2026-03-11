@@ -73,6 +73,15 @@ pub struct SessionSummary {
     /// Directory where session was created
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
+    /// Summary of file changes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<SessionSummaryInfo>,
+    /// Permission rules
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<SessionPermission>,
+    /// Revert information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revert: Option<RevertInfo>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,6 +117,15 @@ pub struct SessionDetail {
     /// Directory where session was created
     #[serde(skip_serializing_if = "Option::is_none")]
     pub directory: Option<String>,
+    /// Summary of file changes
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<SessionSummaryInfo>,
+    /// Permission rules
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<SessionPermission>,
+    /// Revert information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revert: Option<RevertInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,6 +145,70 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: serde_json::Value,
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Extended Session Types (TS Session.Info compatibility)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// File diff information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileDiff {
+    pub file: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub before: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub after: Option<String>,
+    pub additions: i32,
+    pub deletions: i32,
+}
+
+/// Summary of file changes made during the session
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionSummaryInfo {
+    /// Total lines added
+    pub additions: i32,
+    /// Total lines deleted
+    pub deletions: i32,
+    /// Number of files modified
+    pub files: i32,
+    /// Detailed diffs per file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diffs: Option<Vec<FileDiff>>,
+}
+
+/// Permission rules for session operations
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SessionPermission {
+    /// Allowed tools
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allowed_tools: Option<Vec<String>>,
+    /// Denied tools
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denied_tools: Option<Vec<String>>,
+    /// Auto-approve patterns
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_approve: Option<Vec<String>>,
+    /// Additional permission data
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+/// Information for reverting to a previous state
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RevertInfo {
+    /// Message ID to revert to
+    #[serde(rename = "messageID")]
+    pub message_id: String,
+    /// Part ID within the message
+    #[serde(rename = "partID", skip_serializing_if = "Option::is_none")]
+    pub part_id: Option<String>,
+    /// Snapshot data
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<String>,
+    /// Diff to apply
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,6 +297,17 @@ pub async fn list_sessions(
                     let created_ms = created_at * 1000;
                     let updated_ms = last_active * 1000;
 
+                    // Parse extended metadata from JSON strings
+                    let summary = metadata.as_ref()
+                        .and_then(|m| m.summary.as_ref())
+                        .and_then(|s| serde_json::from_str::<SessionSummaryInfo>(s).ok());
+                    let permission = metadata.as_ref()
+                        .and_then(|m| m.permission.as_ref())
+                        .and_then(|s| serde_json::from_str::<SessionPermission>(s).ok());
+                    let revert = metadata.as_ref()
+                        .and_then(|m| m.revert.as_ref())
+                        .and_then(|s| serde_json::from_str::<RevertInfo>(s).ok());
+
                     SessionSummary {
                         id: session_key,
                         title: metadata.as_ref().and_then(|m| m.title.clone()),
@@ -231,6 +324,9 @@ pub async fn list_sessions(
                         project_id: metadata.as_ref().and_then(|m| m.project_id.clone()),
                         parent_id: metadata.as_ref().and_then(|m| m.parent_id.clone()),
                         directory: metadata.and_then(|m| m.directory.clone()),
+                        summary,
+                        permission,
+                        revert,
                     }
                 })
                 .collect();
@@ -295,6 +391,9 @@ pub async fn create_session(
         agent: request.agent,
         parent_id: None,
         directory: None,
+        summary: None,
+        permission: None,
+        revert: None,
     };
 
     (
@@ -333,6 +432,17 @@ pub async fn get_session(
             // Get metadata
             let metadata = state.sessions.get_metadata(&id).ok().flatten();
 
+            // Parse extended metadata from JSON strings
+            let summary = metadata.as_ref()
+                .and_then(|m| m.summary.as_ref())
+                .and_then(|s| serde_json::from_str::<SessionSummaryInfo>(s).ok());
+            let permission = metadata.as_ref()
+                .and_then(|m| m.permission.as_ref())
+                .and_then(|s| serde_json::from_str::<SessionPermission>(s).ok());
+            let revert = metadata.as_ref()
+                .and_then(|m| m.revert.as_ref())
+                .and_then(|s| serde_json::from_str::<RevertInfo>(s).ok());
+
             let converted_messages: Vec<SessionMessage> = messages
                 .into_iter()
                 .map(|m| SessionMessage {
@@ -362,6 +472,9 @@ pub async fn get_session(
                 agent: metadata.as_ref().and_then(|m| m.agent.clone()),
                 parent_id: metadata.as_ref().and_then(|m| m.parent_id.clone()),
                 directory: metadata.and_then(|m| m.directory.clone()),
+                summary,
+                permission,
+                revert,
             };
 
             Json(serde_json::json!({
@@ -597,6 +710,9 @@ pub async fn fork_session(
                         agent: None,
                         parent_id: Some(id),  // Record parent session
                         directory: None,
+                        summary: None,
+                        permission: None,
+                        revert: None,
                     },
                 }),
             )

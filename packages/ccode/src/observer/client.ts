@@ -10,15 +10,18 @@
 import type {
   OperatingMode,
   GearPreset,
-  Observation,
-  WorldModel,
-  Opportunity,
   WatcherStatus,
-} from "./types"
-import type { DialValues } from "./dial"
-import type { CLOSEEvaluation } from "./controller/close-evaluator"
-import type { Escalation, HumanDecision } from "./controller/escalation"
-import type { ConsensusSnapshot } from "./consensus"
+  CLOSEEvaluation,
+  Escalation,
+  HumanDecision,
+  ConsensusSnapshot,
+  DialValues,
+  Observation,
+} from "@/sdk/types"
+
+// WorldModel and Opportunity are complex types from Rust - use unknown for API responses
+type WorldModel = unknown
+type Opportunity = unknown
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Configuration

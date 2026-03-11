@@ -299,6 +299,40 @@ export interface SessionInfo {
   parent_id?: string
   /** Directory where session was created */
   directory?: string
+  /** Summary of file changes */
+  summary?: SessionSummary
+  /** Permission rules */
+  permission?: PermissionRuleset
+  /** Revert information */
+  revert?: RevertInfo
+}
+
+/**
+ * Summary of file changes made during the session
+ */
+export interface SessionSummary {
+  /** Total lines added */
+  additions: number
+  /** Total lines deleted */
+  deletions: number
+  /** Number of files modified */
+  files: number
+  /** Detailed diffs per file */
+  diffs?: FileDiff[]
+}
+
+/**
+ * Revert information for returning to a previous state
+ */
+export interface RevertInfo {
+  /** Message ID to revert to */
+  messageID: string
+  /** Part ID within the message */
+  partID?: string
+  /** Snapshot data */
+  snapshot?: string
+  /** Diff to apply */
+  diff?: string
 }
 
 /**
@@ -937,4 +971,224 @@ export function parseModeCapability(input: string): { mode: string; capability: 
   if (!match) return null
   const [, mode, capability] = match
   return { mode, capability }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Observer Network Types (migrated from @/observer for TUI display)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Watcher types in the Observer Network
+ */
+export type WatcherType = "code" | "world" | "self" | "meta"
+
+/**
+ * Operating mode for the system (legacy, prefer GearPreset)
+ */
+export type OperatingMode = "AUTO" | "MANUAL" | "HYBRID"
+
+/**
+ * Gear presets for intuitive control
+ * Like a car's gear selector: P (Park), N (Neutral), D (Drive), S (Sport), M (Manual)
+ */
+export type GearPreset = "P" | "N" | "D" | "S" | "M"
+
+/**
+ * Simple dial values for gear control
+ */
+export interface DialValues {
+  observe: number
+  decide: number
+  act: number
+}
+
+/**
+ * Gear preset information for display
+ */
+export const GEAR_INFO: Record<GearPreset, { name: string; description: string }> = {
+  P: { name: "Park", description: "System inactive, no resource consumption" },
+  N: { name: "Neutral", description: "Observe and record only, no intervention" },
+  D: { name: "Drive", description: "Balanced autonomy for daily operation" },
+  S: { name: "Sport", description: "High autonomy, aggressive mode" },
+  M: { name: "Manual", description: "Full manual control over each dial" },
+}
+
+/**
+ * Preset dial values for each gear
+ */
+export const GEAR_PRESETS: Record<GearPreset, DialValues> = {
+  P: { observe: 0, decide: 0, act: 0 },
+  N: { observe: 50, decide: 0, act: 0 },
+  D: { observe: 70, decide: 60, act: 40 },
+  S: { observe: 90, decide: 80, act: 70 },
+  M: { observe: 50, decide: 50, act: 50 },
+}
+
+/**
+ * Watcher status in the Observer Network
+ */
+export interface WatcherStatus {
+  id: string
+  type: WatcherType
+  running: boolean
+  health: "healthy" | "degraded" | "failing" | "stopped"
+  lastObservation?: Date
+  observationCount: number
+  errorCount: number
+  avgLatency: number
+}
+
+/**
+ * Base observation from a watcher
+ */
+export interface Observation {
+  id: string
+  timestamp: Date
+  watcherId: string
+  watcherType: WatcherType
+  type: string
+  confidence: number
+  tags?: string[]
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * CLOSE dimension score (Convergence, Leverage, Optionality, Surplus, Evolution)
+ */
+export interface CLOSEDimension {
+  score: number // 0-10
+  confidence: number // 0-1
+  factors: string[]
+}
+
+/**
+ * CLOSE framework evaluation result
+ */
+export interface CLOSEEvaluation {
+  convergence: CLOSEDimension
+  leverage: CLOSEDimension
+  optionality: CLOSEDimension
+  surplus: CLOSEDimension
+  evolution: CLOSEDimension
+  total: number // Weighted sum, 0-10
+  risk: number // Computed risk score, 0-10
+  confidence: number // Overall confidence, 0-1
+  timestamp: Date
+}
+
+/**
+ * Escalation priority levels
+ */
+export type EscalationPriority = "critical" | "high" | "medium" | "low"
+
+/**
+ * Escalation status
+ */
+export type EscalationStatus = "pending" | "acknowledged" | "resolved" | "dismissed" | "expired"
+
+/**
+ * Context for an escalation request
+ */
+export interface EscalationContext {
+  currentMode: OperatingMode
+  recommendedMode: OperatingMode
+  closeEvaluation: CLOSEEvaluation
+  anomalies: unknown[]
+  opportunities: unknown[]
+  trigger: string
+}
+
+/**
+ * Escalation to human decision-maker
+ */
+export interface Escalation {
+  id: string
+  priority: EscalationPriority
+  title: string
+  description: string
+  context: EscalationContext
+  status: EscalationStatus
+  createdAt: Date
+  updatedAt: Date
+  expiresAt: Date
+  resolution?: HumanDecision
+}
+
+/**
+ * Human decision for an escalation
+ */
+export interface HumanDecision {
+  action: "approve" | "reject" | "modify" | "defer"
+  chosenMode?: OperatingMode
+  reason?: string
+  timestamp: Date
+}
+
+/**
+ * Consensus snapshot from the Observer Network
+ */
+export interface ConsensusSnapshot {
+  worldModel: unknown | null
+  patterns: unknown[]
+  anomalies: unknown[]
+  opportunities: unknown[]
+  timestamp: Date
+  confidence: number
+}
+
+/**
+ * Mode decision from the controller
+ */
+export interface ModeDecision {
+  currentMode: OperatingMode
+  recommendedMode: OperatingMode
+  shouldSwitch: boolean
+  reason: string
+  evaluation: CLOSEEvaluation
+  escalation?: Escalation
+  timestamp: Date
+}
+
+/**
+ * Mode controller statistics
+ */
+export interface ModeControllerStats {
+  currentMode: OperatingMode
+  currentGear: GearPreset
+  modeSwitches: number
+  escalations: number
+  pendingEscalations: number
+  lastEvaluation: CLOSEEvaluation | null
+  lastDecision: ModeDecision | null
+  uptime: number
+}
+
+/**
+ * Map legacy OperatingMode to GearPreset
+ */
+export function operatingModeToGear(mode: OperatingMode): GearPreset {
+  switch (mode) {
+    case "AUTO":
+      return "S"
+    case "HYBRID":
+      return "D"
+    case "MANUAL":
+      return "N"
+  }
+}
+
+/**
+ * Map GearPreset to legacy OperatingMode
+ */
+export function gearToOperatingMode(gear: GearPreset): OperatingMode {
+  switch (gear) {
+    case "P":
+    case "N":
+    case "M":
+      return "MANUAL"
+    case "D":
+      return "HYBRID"
+    case "S":
+      return "AUTO"
+  }
 }

@@ -10,7 +10,7 @@
 
 import { Agent } from "@/agent/agent"
 import { Log } from "@/util/log"
-import type { WatcherType } from "./watchers"
+import type { WatcherType } from "@/sdk/types"
 
 const log = Log.create({ service: "observer.agent-registry" })
 
