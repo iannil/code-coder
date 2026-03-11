@@ -13,11 +13,11 @@
 
 ### 版本信息
 
-- **当前版本**: 0.0.1 (开发中，功能完成度 98%+)
+- **当前版本**: 0.0.1 (开发中，功能完成度 99%+)
 - **发布时间**: 待定
 - **Agent 数量**: 31 个
 - **测试覆盖**: TypeScript 74.93% / Rust 364+ tests
-- **最后更新**: 2026-03-08
+- **最后更新**: 2026-03-11
 
 ### 核心架构
 
@@ -463,6 +463,34 @@
 - **删除**: autonomous-agent.ts (已被 forum/aggregator 替代)
 - **整理**: 移动 10 个已完成进度文件到 completed/
 - **影响**: 代码库更简洁，文档结构更清晰
+
+### 2026-03-11: CodeCoder v2 架构计划审查
+
+- **决策**: 简化原 7 周重构计划至 1 周
+- **理由**: 代码分析发现大部分工作已完成
+  - LLM Providers: 95% (zero-hub/gateway/provider/)
+  - Observer Network: 100% (zero-cli/observer/)
+  - Gear System: 100% (zero-cli/gear/)
+  - Agent API: 90% (zero-cli/unified_api/)
+- **实际工作**:
+  - NAPI 绑定扩展 (LLM/Observer/Gear/Agent)
+  - ccode-ui 包创建 (纯 UI 层)
+  - 集成验证
+- **影响**: 避免重复劳动，聚焦真正缺失的组件
+
+### 2026-03-11: 文档整理与 PROJECT_STATUS.md
+
+- **决策**: 系统性整理项目文档，创建 LLM 友好的项目状态概览
+- **归档内容**:
+  - 5 个已完成计划 (plans/ → reports/completed/)
+  - 9 个已完成报告 (reports/ → reports/completed/)
+- **删除目录**:
+  - `docs/guides/` (空目录)
+  - `docs/plans/` (文件已归档)
+- **新建文档**:
+  - `docs/PROJECT_STATUS.md` - LLM 友好的项目状态概览
+  - `docs/reports/2026-03-11-code-audit-redundancy.md` - 冗余代码审计报告
+- **影响**: 文档结构更清晰，LLM 更容易理解项目全貌
 
 ## 经验教训
 

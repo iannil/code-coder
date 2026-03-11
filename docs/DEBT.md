@@ -263,3 +263,4 @@ grep -rn "TODO\|FIXME\|HACK\|WORKAROUND\|KNOWN ISSUE\|IMPLEMENTATION NEEDED" \
 - 2026-03-03: 完成 Zod `.default([])` workaround 统一 (7 个文件); TypeScript typecheck 0 errors
 - 2026-03-03: 创建 SHARED_TYPES.md 文档; 完成 2FA 审批系统实现 (zero-cli/auto_login.rs + HitLClient 集成)
 - 2026-03-03: 完成 ts-rs 类型自动化; 生成脚本 script/generate-ts-bindings.sh; 更新 §8.2 状态为已自动化
+- 2026-03-11: 文档归档整理 (14 个文档从 plans+reports 移至 completed/); 删除空目录 (guides/, plans/); 创建 PROJECT_STATUS.md

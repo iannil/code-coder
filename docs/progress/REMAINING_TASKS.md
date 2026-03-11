@@ -4,7 +4,13 @@
 
 > **状态**: 所有任务均已完成，项目整体完成度 99%+
 >
-> **最新完成**: 废弃代码清理 Phase 3 — 2026-03-11
+> **最新完成**: 文档整理与归档 — 2026-03-11
+> - 归档 5 个已完成计划 (plans/ → reports/completed/)
+> - 归档 9 个已完成报告 (reports/ → reports/completed/)
+> - 删除空目录 (docs/guides/, docs/plans/)
+> - 创建 LLM 友好的项目状态文档 (PROJECT_STATUS.md)
+>
+> **之前完成**: 废弃代码清理 Phase 3 — 2026-03-11
 > - 删除 test/unit/trace/ 目录 (孤儿测试, 230 行)
 > - Phase 3 总计删除: 230 行
 > - 累计删除 (Phase 1 + 2 + 2.5 + 3): ~39,580 行
