@@ -1,7 +1,7 @@
 # TypeScript 代码清理审计报告
 
 > 创建时间: 2026-03-12
-> 更新时间: 2026-03-12 20:10 (Session 8 - @ts-nocheck 清理)
+> 更新时间: 2026-03-12 20:30 (Session 8 - @ts-nocheck 清理完成)
 > 状态: **✅ 审计通过**
 
 ## Context
@@ -69,19 +69,20 @@ $ grep -r "from ['\"]@/(agent|session|tool|provider|memory|context)/" packages/c
 | `sdk/index.ts` | JSDoc 注释 | ✅ 非实际导入 |
 | `cli/cmd/debug/snapshot.ts` | 运行时 | ⚠️ Debug 命令，调用 stub |
 
-### 4. @ts-nocheck 文件 (10 个)
+### 4. @ts-nocheck 文件 (7 个)
 
-这些文件使用 `@ts-nocheck` 跳过类型检查，但仍可正常运行：
+这些文件使用 `@ts-nocheck` 跳过类型检查，需要更复杂的重构：
 
-- `cli/cmd/tui/routes/session/*.tsx` (3)
-- `cli/cmd/*.ts` (2: debug/agent.ts, run.ts)
-- `config/config.ts` (1)
-- `sdk/provider-bridge.ts` (1)
-- `memory-markdown/consolidate.ts` (1)
-- `mcp/server.ts` (1)
-- `cli/cmd/tui/component/dialog-session-list.tsx` (1)
+- `cli/cmd/tui/routes/session/index.tsx` - ToolState 类型收窄
+- `mcp/server.ts` - 复杂工具上下文类型
+- `cli/cmd/run.ts` - MessageV2.Part 动态状态访问
+- `memory-markdown/consolidate.ts` - Bus 事件订阅
+- `sdk/provider-bridge.ts` - Config 依赖
+- `config/config.ts` - Zod schema 方法调用
+- `cli/cmd/debug/agent.ts` - Session/Tool 运行时依赖
 
-**已清理:** cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts
+**已清理 (9 个):**
+cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts, cli/cmd/tui/routes/session/sidebar.tsx, cli/cmd/tui/routes/session/footer.tsx, cli/cmd/tui/component/dialog-session-list.tsx
 
 ### 5. TypeScript 编译状态
 
