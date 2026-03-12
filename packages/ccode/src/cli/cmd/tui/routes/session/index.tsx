@@ -1,4 +1,3 @@
-// @ts-nocheck
 // TUI session component - needs ToolState type narrowing
 import {
   batch,
@@ -1812,7 +1811,8 @@ function Write(props: ToolProps<typeof WriteTool>) {
 
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(safeText(props.input.filePath))
-    return props.metadata.diagnostics?.[filePath] ?? []
+    const diagMap = props.metadata.diagnostics as Record<string, Array<{ range: { start: { line: number; character: number } }; message: string }>> | undefined
+    return diagMap?.[filePath] ?? []
   })
 
   const title = createMemo(() => {
@@ -1945,7 +1945,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const local = useLocal()
   const [now, setNow] = createSignal(Date.now())
 
-  const current = createMemo(() => props.metadata.summary?.findLast((x) => x.state.status !== "pending"))
+  const current = createMemo(() => props.metadata.summary?.findLast((x) => x.state?.status !== "pending"))
   const color = createMemo(() => local.agent.color(props.input.subagent_type ?? "unknown"))
 
   const toolDuration = createMemo(() => getToolDuration(props.part))
@@ -1955,7 +1955,7 @@ function Task(props: ToolProps<typeof TaskTool>) {
   const taskProgress = createMemo(() => {
     const summary = props.metadata.summary
     if (!summary || summary.length === 0) return 0
-    const completed = summary.filter((x) => x.state.status === "completed" || x.state.status === "error").length
+    const completed = summary.filter((x) => x.state?.status === "completed" || x.state?.status === "error").length
     return Math.round((completed / summary.length) * 100)
   })
 
@@ -2009,16 +2009,16 @@ function Task(props: ToolProps<typeof TaskTool>) {
                     <text
                       style={{
                         fg:
-                          item.state.status === "error"
+                          item.state?.status === "error"
                             ? theme.error
-                            : item.state.status === "completed"
+                            : item.state?.status === "completed"
                               ? theme.textMuted
                               : theme.accent,
                       }}
                     >
-                      {item.state.status === "completed" ? "✓" : item.state.status === "error" ? "✗" : "⟳"}{" "}
+                      {item.state?.status === "completed" ? "✓" : item.state?.status === "error" ? "✗" : "⟳"}{" "}
                       {Locale.titlecase(safeText(item.tool))}{" "}
-                      {item.state.status === "completed" ? safeText(item.state.title) : ""}
+                      {item.state?.status === "completed" ? safeText((item.state as any).title) : ""}
                     </text>
                   )}
                 </For>
@@ -2068,7 +2068,8 @@ function Edit(props: ToolProps<typeof EditTool>) {
 
   const diagnostics = createMemo(() => {
     const filePath = Filesystem.normalizePath(safeText(props.input.filePath))
-    const arr = props.metadata.diagnostics?.[filePath] ?? []
+    const diagMap = props.metadata.diagnostics as Record<string, Array<{ severity: number; range: { start: { line: number; character: number } }; message: string }>> | undefined
+    const arr = diagMap?.[filePath] ?? []
     return arr.filter((x) => x.severity === 1).slice(0, 3)
   })
 
@@ -2185,7 +2186,7 @@ function ApplyPatch(props: ToolProps<typeof ApplyPatchTool>) {
                   </text>
                 }
               >
-                <Diff diff={file.diff} filePath={file.filePath} />
+                <Diff diff={file.diff ?? ""} filePath={file.filePath} />
               </Show>
             </BlockTool>
           )}
@@ -2225,9 +2226,11 @@ function Question(props: ToolProps<typeof QuestionTool>) {
   const { theme } = useTheme()
   const count = createMemo(() => props.input.questions?.length ?? 0)
 
-  function format(answer?: string[]) {
-    if (!answer?.length) return "(no answer)"
-    return answer.map(a => safeText(a)).join(", ")
+  function format(answer?: string | string[]) {
+    if (!answer) return "(no answer)"
+    const answers = Array.isArray(answer) ? answer : [answer]
+    if (!answers.length) return "(no answer)"
+    return answers.map(a => safeText(a)).join(", ")
   }
 
   return (

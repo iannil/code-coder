@@ -1,4 +1,3 @@
-// @ts-nocheck
 // MCP server - uses complex tool context types
 /**
  * MCP Server - Exposes CodeCoder's tools, prompts, and resources via Model Context Protocol
@@ -95,6 +94,7 @@ export namespace McpServer {
     abort: AbortSignal
     metadata: (input: { title?: string; metadata?: Record<string, unknown> }) => void
     ask: () => Promise<void>
+    [key: string]: unknown
   }
 
   /** Tool info with initialized execute function */
@@ -460,7 +460,11 @@ Use these tools to assist with software engineering tasks.`,
       if (options.enabledTools && !options.enabledTools.includes(tool.id)) {
         continue
       }
-      tools.set(tool.id, tool)
+      // Skip tools without parameters schema
+      if (!tool.parameters) {
+        continue
+      }
+      tools.set(tool.id, tool as InitializedTool)
     }
 
     return tools

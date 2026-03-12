@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Run command - uses MessageV2.Part with dynamic state access
+// Run command - executes CodeCoder with a message
 import type { Argv } from "yargs"
 import path from "path"
 import { UI } from "../ui"
@@ -193,14 +192,15 @@ export const RunCommand = cmd({
             const part = props.part
             if (part.sessionID !== sessionID) continue
 
-            if (part.type === "tool" && part.state.status === "completed") {
+            if (part.type === "tool" && part.state && part.state.status === "completed") {
               if (outputJsonEvent("tool_use", { part })) continue
-              const [tool, color] = TOOL[part.tool] ?? [part.tool, UI.Style.TEXT_INFO_BOLD]
+              const toolName = part.tool ?? "unknown"
+              const [tool, color] = TOOL[toolName] ?? [toolName, UI.Style.TEXT_INFO_BOLD]
               const title =
                 part.state.title ||
-                (Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
+                (part.state.input && Object.keys(part.state.input).length > 0 ? JSON.stringify(part.state.input) : "Unknown")
               printEvent(color, tool, title)
-              if (part.tool === "bash" && part.state.output?.trim()) {
+              if (toolName === "bash" && part.state.output?.trim()) {
                 UI.println()
                 UI.println(part.state.output)
               }
@@ -214,7 +214,7 @@ export const RunCommand = cmd({
               if (outputJsonEvent("step_finish", { part })) continue
             }
 
-            if (part.type === "text" && part.time?.end) {
+            if (part.type === "text" && part.time?.end && part.text) {
               if (outputJsonEvent("text", { part })) continue
               const isPiped = !process.stdout.isTTY
               if (!isPiped) UI.println()

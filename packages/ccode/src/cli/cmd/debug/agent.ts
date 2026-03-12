@@ -1,4 +1,3 @@
-// @ts-nocheck
 // Debug agent command - needs permission type handling
 import { EOL } from "os"
 import { basename } from "path"
@@ -149,7 +148,8 @@ async function createToolContext(agent: AgentInfoType) {
   }
   await Session.updateMessage(message)
 
-  const ruleset = PermissionNext.merge(agent.permission, session.permission ?? [])
+  const sessionPermission = Array.isArray(session.permission) ? session.permission : []
+  const ruleset = PermissionNext.merge(agent.permission, sessionPermission)
 
   return {
     sessionID: session.id,

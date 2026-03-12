@@ -1,8 +1,8 @@
 # TypeScript 代码清理审计报告
 
 > 创建时间: 2026-03-12
-> 更新时间: 2026-03-12 20:50 (Session 8 - @ts-nocheck 清理 75%)
-> 状态: **✅ 审计通过**
+> 更新时间: 2026-03-12 21:50 (Session 10 - binding.d.ts 修复)
+> 状态: **✅ 审计通过 - 完全清理**
 
 ## Context
 
@@ -20,10 +20,11 @@
 | 评估项 | 状态 | 说明 |
 |--------|------|------|
 | TS 迁移是否完成？ | **✅ 是** | @/api 不再依赖废弃目录，TUI 仅 type-only 导入 |
-| 废弃代码是否清理？ | **✅ 是** | ~41,000 行 → ~909 行 stub (97.8% 减少) |
+| 废弃代码是否清理？ | **✅ 是** | ~41,000 行 → ~1,071 行 stub (97.4% 减少) |
 | TS 是否仅作为展示层？ | **✅ 是** | 业务逻辑在 Rust，TS 只有 UI 和类型定义 |
+| @ts-nocheck 清理 | **✅ 100%** | 16 → 0 个文件 |
 
-### 整体评估：✅ 迁移完成
+### 整体评估：✅ 迁移完成，类型完全安全
 
 ---
 
@@ -34,14 +35,14 @@
 | 目录 | 之前状态 | 当前状态 | 说明 |
 |------|----------|----------|------|
 | `agent/` | ~7,260 行 | 2 文件, ~50 行 | 仅保留 mode.ts + causal-recorder.ts stub |
-| `session/` | ~6,202 行 | 3 文件, ~100 行 | 仅保留 index.ts, message-v2.ts, snapshot/ stub |
-| `tool/` | ~10,204 行 | 15 文件, ~500 行 | Zod schema stubs (TUI type 兼容) |
-| `provider/` | ~5,741 行 | 2 文件, ~100 行 | 仅保留 provider.ts, models.ts stub |
+| `session/` | ~6,202 行 | 2 文件, ~150 行 | 仅保留 index.ts, message-v2.ts stub |
+| `tool/` | ~10,204 行 | 15 文件, ~600 行 | Zod schema stubs (TUI type 兼容) |
+| `provider/` | ~5,741 行 | 2 文件, ~120 行 | 仅保留 provider.ts, models.ts stub |
 | `memory/` | ~9,677 行 | **0 文件** | ✅ 完全删除 |
 | `context/` | ~2,196 行 | **0 文件** | ✅ 完全删除 |
 | `autonomous/` | N/A | 2 文件, ~150 行 | BusEvent 定义 stub |
 | `api/server/` | N/A | **0 文件** | ✅ 完全删除 |
-| **合计** | **~41,280 行** | **~909 行** | **97.8% 减少** |
+| **合计** | **~41,280 行** | **~1,071 行** | **97.4% 减少** |
 
 ### 2. @/api 层依赖状态
 
@@ -50,38 +51,30 @@ $ grep -r "from ['\"]@/(agent|session|tool|provider|memory|context)/" packages/c
 # (无输出)
 ```
 
-**结论**: @/api 层**不再依赖**任何废弃目录。所有导入都来自有效模块：
-- `@/util/*` - 工具函数
-- `@/bus` - 事件总线
-- `@/config/*` - 配置系统
-- `@/security/*` - 权限系统
-- `@/project/*` - 项目实例
-- `@/infrastructure/*` - 基础设施
+**结论**: @/api 层**不再依赖**任何废弃目录。
 
-### 3. TUI/CLI 层依赖状态
+### 3. @ts-nocheck 清理进度
 
-仅 **4 个文件**仍引用废弃目录：
+**Session 8 (75%):**
+- cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts
+- cli/cmd/get-started.ts, cli/cmd/reverse.ts
+- cli/cmd/tui/routes/session/sidebar.tsx, footer.tsx
+- cli/cmd/tui/component/dialog-session-list.tsx
+- memory-markdown/consolidate.ts, sdk/provider-bridge.ts, config/config.ts
 
-| 文件 | 导入类型 | 状态 |
-|------|----------|------|
-| `cli/cmd/tui/routes/session/index.tsx` | type-only | ✅ 编译时擦除 |
-| `cli/cmd/run.ts` | type-only | ✅ 编译时擦除 |
-| `sdk/index.ts` | JSDoc 注释 | ✅ 非实际导入 |
-| `cli/cmd/debug/snapshot.ts` | 运行时 | ⚠️ Debug 命令，调用 stub |
+**Session 9 (100% - @ts-nocheck):**
+- cli/cmd/run.ts - 添加类型守卫 `part.state &&` 和 `part.text &&`
+- cli/cmd/debug/agent.ts - 添加 `Array.isArray(session.permission)` 检查
+- mcp/server.ts - 添加索引签名 `[key: string]: unknown` 和 `tool.parameters` 检查
+- cli/cmd/tui/routes/session/index.tsx - 添加可选链 `x.state?.status` 和类型断言
 
-### 4. @ts-nocheck 文件 (4 个)
+**Session 10 (binding.d.ts 修复):**
+- packages/core/src/binding.d.ts 被意外清空 (5,699 → 0 行)
+- 发现原因: 近期 git commit 意外删除文件内容
+- 修复方式: `git checkout f76e4c3 -- packages/core/src/binding.d.ts`
+- 结果: 恢复 5,699 行 NAPI-RS 类型定义，packages/core 编译 0 错误
 
-这些文件使用 `@ts-nocheck` 跳过类型检查，需要更复杂的代码逻辑修改：
-
-- `cli/cmd/tui/routes/session/index.tsx` - ToolState 联合类型需要类型收窄
-- `mcp/server.ts` - 复杂工具上下文类型映射
-- `cli/cmd/run.ts` - MessageV2.Part 动态状态访问
-- `cli/cmd/debug/agent.ts` - Permission 联合类型处理
-
-**已清理 (12 个):**
-cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts, cli/cmd/tui/routes/session/sidebar.tsx, cli/cmd/tui/routes/session/footer.tsx, cli/cmd/tui/component/dialog-session-list.tsx, memory-markdown/consolidate.ts, sdk/provider-bridge.ts, config/config.ts
-
-### 5. TypeScript 编译状态
+### 4. TypeScript 编译状态
 
 ```bash
 $ bun tsc --noEmit 2>&1 | grep "packages/ccode/src"
@@ -89,8 +82,7 @@ $ bun tsc --noEmit 2>&1 | grep "packages/ccode/src"
 ```
 
 **packages/ccode**: ✅ 0 错误
-
-**packages/core**: ⚠️ 27 错误 (binding.d.ts - 独立的 native bindings 问题，与本次清理无关)
+**packages/core**: ✅ 0 错误 (binding.d.ts 已修复，见 Session 10)
 
 ---
 
@@ -145,23 +137,25 @@ $ bun tsc --noEmit 2>&1 | grep "packages/ccode/src"
 ```bash
 # 1. TypeScript 编译检查 - packages/ccode 无错误
 $ bun tsc --noEmit 2>&1 | grep "packages/ccode/src"
-# 结果: 无输出 (所有 27 个错误来自 packages/core/binding.d.ts)
+# 结果: 无输出 ✅
 
-# 2. @/api 废弃依赖检查
-$ grep -r "from ['\"]@/(agent|session|tool|provider|memory|context)/" src/api/
-# 结果: No matches found ✅
+# 2. TypeScript 编译检查 - packages/core 无错误
+$ bun tsc --noEmit 2>&1 | grep "packages/core/src"
+# 结果: 无输出 ✅
 
-# 3. Stub 文件行数统计
-$ wc -l src/tool/*.ts src/provider/*.ts src/agent/*.ts src/autonomous/*.ts src/session/*.ts 2>/dev/null | tail -1
-# 结果: 909 total ✅
+# 3. @ts-nocheck 文件数量
+$ grep -r "@ts-nocheck" packages/ccode/src --include="*.ts" --include="*.tsx" | wc -l
+# 结果: 0 ✅ (从 16 减少到 0，清理了 100%)
 
-# 4. memory/context 目录检查
-$ ls src/{memory,context}/
-# 结果: No such file or directory ✅ (已删除)
+# 4. Stub 文件行数统计
+$ wc -l packages/ccode/src/tool/*.ts packages/ccode/src/provider/*.ts \
+       packages/ccode/src/agent/*.ts packages/ccode/src/agent/hooks/*.ts \
+       packages/ccode/src/autonomous/*.ts packages/ccode/src/session/*.ts | tail -1
+# 结果: 1071 total ✅
 
-# 5. @ts-nocheck 文件数量
-$ grep -r "@ts-nocheck" src --include="*.ts" --include="*.tsx" | wc -l
-# 结果: 4 ✅ (从 16 减少到 4，清理了 75%)
+# 5. binding.d.ts 行数验证
+$ wc -l packages/core/src/binding.d.ts
+# 结果: 5699 ✅
 ```
 
 ---
@@ -172,9 +166,9 @@ $ grep -r "@ts-nocheck" src --include="*.ts" --include="*.tsx" | wc -l
 
 ### 低优先级
 
-1. **移除剩余 4 个 @ts-nocheck** - 需要代码逻辑修改处理联合类型
+1. ~~移除剩余 @ts-nocheck~~ - ✅ 全部清理
 2. ~~删除 debug/snapshot.ts~~ - ✅ 已删除
-3. **packages/core binding.d.ts** - 修复 native bindings 类型定义
+3. ~~packages/core binding.d.ts~~ - ✅ 已修复 (Session 10: 从 git 恢复 5,699 行类型定义)
 
 ---
 
@@ -183,8 +177,10 @@ $ grep -r "@ts-nocheck" src --include="*.ts" --include="*.tsx" | wc -l
 **TypeScript 代码清理任务已完成。**
 
 - ✅ 业务逻辑已迁移到 Rust
-- ✅ 废弃代码已删除 (97.8% 减少)
+- ✅ 废弃代码已删除 (97.4% 减少)
 - ✅ TypeScript 仅作为展示层
-- ✅ 编译通过 (0 错误 in packages/ccode)
+- ✅ 编译通过 (packages/ccode 0 错误, packages/core 0 错误)
+- ✅ @ts-nocheck 完全清理 (16 → 0)
+- ✅ binding.d.ts 已修复 (5,699 行类型定义)
 
-剩余的 ~909 行 stub 代码是**必要的类型兼容层**，用于 TUI 组件的 TypeScript 类型推断，不包含业务逻辑。
+剩余的 ~1,071 行 stub 代码是**必要的类型兼容层**，用于 TUI 组件的 TypeScript 类型推断，不包含业务逻辑。
