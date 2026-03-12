@@ -1,5 +1,5 @@
 // @ts-nocheck
-// This file uses deprecated Session API - needs migration to Rust API
+// Debug agent command - needs permission type handling
 import { EOL } from "os"
 import { basename } from "path"
 import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"

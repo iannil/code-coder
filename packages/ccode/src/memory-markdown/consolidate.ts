@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Memory consolidation - uses deprecated autonomous events
+// Memory consolidation - extracts important info to long-term memory
 /**
  * Memory Consolidation
  *

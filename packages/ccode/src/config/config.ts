@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Config module - uses deprecated Session.Event and ModelsDev types
+// Config module - configuration management
 import { Log } from "@/util/log"
 import path from "path"
 import { pathToFileURL } from "url"

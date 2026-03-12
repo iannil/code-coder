@@ -211,6 +211,10 @@ export const AutonomousEvent = {
       sessionId: z.string().optional(),
       topic: z.string().optional(),
       entries: z.number().optional(),
+      solutionId: z.string().optional(),
+      category: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+      confidence: z.number().optional(),
     }),
   ),
 } as const

@@ -53,11 +53,11 @@ export namespace Provider {
     return {}
   }
 
-  export function defaultModel(): string | undefined {
+  export function defaultModel(): { providerID: string; modelID: string } | undefined {
     return undefined
   }
 
-  export async function getModel(_modelId: string): Promise<ModelInfo | undefined> {
+  export async function getModel(_providerID: string, _modelID?: string): Promise<ModelInfo | undefined> {
     return undefined
   }
 }

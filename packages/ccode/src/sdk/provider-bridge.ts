@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Provider bridge - uses deprecated Provider types
+// Provider bridge - read-only access to provider/model metadata
 /**
  * Provider Bridge SDK
  *
@@ -304,7 +303,11 @@ export async function getDefaultModelWithFallback(): Promise<ModelReference> {
   if (useFallback) {
     // Dynamically import to avoid circular deps
     const { Provider } = await import("../provider/provider")
-    return Provider.defaultModel()
+    const model = Provider.defaultModel()
+    if (!model) {
+      throw new Error("No default model configured")
+    }
+    return model
   }
 
   return bridge.defaultModel()

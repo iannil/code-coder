@@ -3,6 +3,8 @@
  * @deprecated Models are now implemented in Rust.
  */
 
+import { z } from "zod"
+
 export interface ModelInfo {
   id: string
   name: string
@@ -39,9 +41,21 @@ export namespace ModelsDev {
     },
   }
 
-  // Value exports for runtime access
-  export const Provider = {} as Record<string, Provider>
-  export const Model = {} as Record<string, Model>
+  // Zod schemas for config compatibility
+  export const Model = z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    provider: z.string().optional(),
+    status: z.string().optional(),
+    tool_call: z.boolean().optional(),
+  }).passthrough()
+
+  export const Provider = z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    models: z.record(z.string(), Model).optional(),
+    status: z.enum(["connected", "disconnected", "error"]).optional(),
+  }).passthrough()
 
   export function list(): Model[] {
     return []
