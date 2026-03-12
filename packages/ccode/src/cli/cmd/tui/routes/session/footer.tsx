@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TUI session footer - uses deprecated autonomous events
+// TUI session footer - autonomous state display
 import {
   createMemo,
   Match,
@@ -205,13 +204,15 @@ export function Footer() {
     unsubscribes.push(
       Bus.subscribe(AutonomousEvent.MetricsUpdated, (event) => {
         const metrics = event.properties.metrics
-        setAutonomousState((prev) => ({
-          ...prev,
-          qualityScore: metrics.qualityScore,
-          crazinessScore: metrics.crazinessScore,
-          tasksCompleted: metrics.tasksCompleted,
-          tasksTotal: metrics.tasksTotal,
-        }))
+        if (metrics) {
+          setAutonomousState((prev) => ({
+            ...prev,
+            qualityScore: metrics.qualityScore,
+            crazinessScore: metrics.crazinessScore,
+            tasksCompleted: metrics.tasksCompleted,
+            tasksTotal: metrics.tasksTotal,
+          }))
+        }
       }),
     )
 

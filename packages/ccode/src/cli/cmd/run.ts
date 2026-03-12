@@ -1,5 +1,5 @@
 // @ts-nocheck
-// This file uses deprecated agent mode functionality - needs migration to Rust API
+// Run command - uses MessageV2.Part with dynamic state access
 import type { Argv } from "yargs"
 import path from "path"
 import { UI } from "../ui"

@@ -188,6 +188,10 @@ export const AutonomousEvent = {
         .object({
           tokensUsed: z.number().optional(),
           costUSD: z.number().optional(),
+          qualityScore: z.number().optional(),
+          crazinessScore: z.number().optional(),
+          tasksCompleted: z.number().optional(),
+          tasksTotal: z.number().optional(),
         })
         .optional(),
     }),

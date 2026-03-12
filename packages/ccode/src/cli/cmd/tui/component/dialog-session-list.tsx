@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TUI session list dialog - uses deprecated autonomous events
+// TUI session list dialog - autonomous session tracking
 import { useDialog } from "@tui/ui/dialog"
 import { DialogSelect } from "@tui/ui/dialog-select"
 import { useRoute } from "@tui/context/route"
@@ -123,7 +122,7 @@ export function DialogSessionList() {
         setAutonomousSessions((prev) => {
           const next = new Map(prev)
           next.set(event.properties.sessionId, {
-            level: event.properties.autonomyLevel,
+            level: event.properties.autonomyLevel ?? "unknown",
             state: "PLANNING",
           })
           return next
@@ -139,7 +138,7 @@ export function DialogSessionList() {
           for (const [sessionId, info] of next.entries()) {
             next.set(sessionId, {
               ...info,
-              state: event.properties.to,
+              state: event.properties.to ?? info.state,
             })
           }
           return next
@@ -152,11 +151,12 @@ export function DialogSessionList() {
         setAutonomousSessions((prev) => {
           const next = new Map(prev)
           const existing = next.get(event.properties.sessionId)
-          if (existing) {
+          const metrics = event.properties.metrics
+          if (existing && metrics) {
             next.set(event.properties.sessionId, {
               ...existing,
-              tasksCompleted: event.properties.metrics.tasksCompleted,
-              tasksTotal: event.properties.metrics.tasksTotal,
+              tasksCompleted: metrics.tasksCompleted,
+              tasksTotal: metrics.tasksTotal,
             })
           }
           return next

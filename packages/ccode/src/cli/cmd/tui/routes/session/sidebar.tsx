@@ -1,5 +1,4 @@
-// @ts-nocheck
-// TUI session sidebar - uses deprecated autonomous events
+// TUI session sidebar - autonomous state display
 import { useSync } from "@tui/context/sync"
 import { createMemo, createSignal, For, Show, Switch, Match, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -135,13 +134,15 @@ export function Sidebar(props: { sessionID: string; overlay?: boolean }) {
       Bus.subscribe(AutonomousEvent.MetricsUpdated, (event) => {
         if (event.properties.sessionId === props.sessionID) {
           const metrics = event.properties.metrics
-          setAutonomousState((prev) => ({
-            ...prev,
-            qualityScore: metrics.qualityScore,
-            crazinessScore: metrics.crazinessScore,
-            tasksCompleted: metrics.tasksCompleted,
-            tasksTotal: metrics.tasksTotal,
-          }))
+          if (metrics) {
+            setAutonomousState((prev) => ({
+              ...prev,
+              qualityScore: metrics.qualityScore,
+              crazinessScore: metrics.crazinessScore,
+              tasksCompleted: metrics.tasksCompleted,
+              tasksTotal: metrics.tasksTotal,
+            }))
+          }
         }
       }),
     )

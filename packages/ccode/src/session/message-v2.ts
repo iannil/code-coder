@@ -4,9 +4,20 @@
  */
 
 export namespace MessageV2 {
+  export interface ToolState {
+    status?: string
+    title?: string
+    input?: Record<string, unknown>
+    output?: string
+  }
+
   export interface Part {
     type: string
     sessionID?: string
+    tool?: string
+    state?: ToolState
+    text?: string
+    time?: { start?: number; end?: number }
     [key: string]: unknown
   }
 
@@ -19,10 +30,22 @@ export namespace MessageV2 {
     id: string
     role: "assistant"
     sessionID: string
-    parts: Part[]
+    parentID?: string
+    modelID?: string
+    providerID?: string
+    mode?: string
+    agent?: string
+    path?: { cwd: string; root: string }
+    cost?: number
+    tokens?: {
+      input: number
+      output: number
+      reasoning: number
+      cache: { read: number; write: number }
+    }
+    parts?: Part[]
     time?: { created: number }
     model?: { providerID: string; modelID: string }
-    agent?: string
   }
 
   export interface User {

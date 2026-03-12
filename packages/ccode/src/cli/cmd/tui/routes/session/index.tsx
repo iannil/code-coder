@@ -1,5 +1,5 @@
 // @ts-nocheck
-// TUI session component - uses deprecated tool type stubs
+// TUI session component - needs ToolState type narrowing
 import {
   batch,
   createContext,

@@ -1,5 +1,5 @@
 // @ts-nocheck
-// MCP server - uses deprecated Tool and ToolRegistry types
+// MCP server - uses complex tool context types
 /**
  * MCP Server - Exposes CodeCoder's tools, prompts, and resources via Model Context Protocol
  *
@@ -48,7 +48,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js"
 import z from "zod/v4"
 import { ToolRegistry } from "../tool/registry"
-import { Tool } from "../tool/tool"
+import type { Tool } from "../tool/tool"
 import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
 import { VERSION } from "../version"
 import { Log } from "@/util/log"
