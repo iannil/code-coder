@@ -117,6 +117,10 @@ pub fn build_router(state: Arc<UnifiedApiState>) -> Router {
             post(definitions::create_agent_definition),
         )
         .route(
+            "/api/v1/definitions/agents/generate",
+            post(definitions::generate_agent_definition),
+        )
+        .route(
             "/api/v1/definitions/agents/:name",
             get(definitions::get_agent_definition),
         )

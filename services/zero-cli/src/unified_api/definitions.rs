@@ -1045,6 +1045,29 @@ pub struct CreateAgentDefinitionRequest {
     pub observer_capability: Option<ObserverCapability>,
 }
 
+/// Request to generate an agent using AI
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateAgentRequest {
+    /// Description of what the agent should do
+    pub description: String,
+    /// Optional model override (format: "provider/model")
+    pub model: Option<String>,
+}
+
+/// Response from AI-generated agent
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateAgentResponse {
+    pub success: bool,
+    /// Generated agent identifier
+    pub identifier: String,
+    /// When to use this agent (description)
+    pub when_to_use: String,
+    /// Generated system prompt
+    pub system_prompt: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub success: bool,
@@ -1284,6 +1307,135 @@ pub async fn create_agent_definition(
         }),
     )
         .into_response()
+}
+
+/// POST /api/v1/definitions/agents/generate - Generate agent using AI
+///
+/// This endpoint uses an LLM to generate an agent configuration based on a description.
+/// It returns the generated identifier, whenToUse, and systemPrompt.
+pub async fn generate_agent_definition(
+    State(state): State<Arc<UnifiedApiState>>,
+    Json(request): Json<GenerateAgentRequest>,
+) -> impl IntoResponse {
+    // Check if provider is available
+    let provider = match &state.llm_provider {
+        Some(p) => Arc::clone(p),
+        None => {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(ErrorResponse {
+                    success: false,
+                    error: "LLM provider not configured".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Get existing agent names to avoid conflicts
+    let builtins = builtin_agents();
+    let custom_agents = state.custom_agents.read().await;
+    let existing_names: Vec<String> = builtins
+        .keys()
+        .chain(custom_agents.keys())
+        .cloned()
+        .collect();
+    drop(custom_agents);
+
+    // Build prompt for agent generation
+    let system_prompt = r#"You are an expert at creating AI agent configurations.
+
+Given a description of what the user wants the agent to do, generate:
+1. A unique identifier (lowercase, hyphen-separated, max 30 chars)
+2. A clear "when to use" description for documentation
+3. A detailed system prompt that defines the agent's behavior
+
+Return your response as valid JSON with these exact fields:
+{
+  "identifier": "agent-name",
+  "whenToUse": "Short description of when to use this agent",
+  "systemPrompt": "Detailed system prompt..."
+}
+
+IMPORTANT: Return ONLY the JSON object, no other text, no markdown code blocks."#;
+
+    let user_message = format!(
+        "Create an agent configuration based on this request: \"{}\"\n\n\
+         IMPORTANT: The following identifiers already exist and must NOT be used: {}",
+        request.description,
+        existing_names.join(", ")
+    );
+
+    // Create stream request
+    let stream_request = super::state::StreamRequest {
+        system: vec![system_prompt.to_string()],
+        messages: vec![super::state::Message::user(&user_message)],
+        tools: vec![],
+        model: request.model.unwrap_or_else(|| "claude-sonnet-4-5-20250514".to_string()),
+        temperature: Some(0.3),
+        max_tokens: Some(4096),
+    };
+
+    // Execute LLM call
+    use futures_util::StreamExt;
+    let mut event_stream = match provider.stream(stream_request).await {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    success: false,
+                    error: format!("Failed to call LLM: {}", e),
+                }),
+            )
+                .into_response();
+        }
+    };
+
+    // Collect response text
+    let mut response_text = String::new();
+    while let Some(result) = event_stream.next().await {
+        if let Ok(event) = result {
+            if let super::state::StreamEvent::TextDelta { content } = event {
+                response_text.push_str(&content);
+            }
+        }
+    }
+
+    // Parse JSON response
+    // Try to extract JSON from the response (handle potential markdown wrapping)
+    let json_text = response_text
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    #[derive(Debug, serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct GeneratedAgent {
+        identifier: String,
+        when_to_use: String,
+        system_prompt: String,
+    }
+
+    match serde_json::from_str::<GeneratedAgent>(json_text) {
+        Ok(generated) => Json(GenerateAgentResponse {
+            success: true,
+            identifier: generated.identifier,
+            when_to_use: generated.when_to_use,
+            system_prompt: generated.system_prompt,
+        })
+        .into_response(),
+        Err(e) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ErrorResponse {
+                success: false,
+                error: format!("Failed to parse LLM response as JSON: {}. Response was: {}", e, json_text),
+            }),
+        )
+            .into_response(),
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

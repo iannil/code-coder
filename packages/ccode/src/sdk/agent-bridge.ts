@@ -60,6 +60,19 @@ export interface AgentInfo {
   permission?: {
     rules: Record<string, "allow" | "deny" | "ask" | Record<string, "allow" | "deny" | "ask">>
   }
+  // Auto-approve configuration (from Rust registry)
+  auto_approve?: {
+    enabled: boolean
+    allowed_tools: string[]
+    risk_threshold: "safe" | "low" | "medium" | "high"
+    max_approvals?: number
+  }
+  // Observer capability (from Rust registry)
+  observer?: {
+    can_watch: ("code" | "world" | "self" | "meta")[]
+    contribute_to_consensus: boolean
+    report_to_meta: boolean
+  }
   options?: Record<string, unknown>
 }
 
@@ -129,7 +142,12 @@ export interface ConvertedAgentInfo {
   prompt?: string
   options: Record<string, unknown>
   steps?: number
-  autoApprove?: Record<string, unknown>
+  autoApprove?: {
+    enabled: boolean
+    allowedTools: string[]
+    riskThreshold: "safe" | "low" | "medium" | "high"
+    maxApprovals?: number
+  }
   observerCapability?: {
     canWatch: ("code" | "world" | "self" | "meta")[]
     contributeToConsensus: boolean
@@ -149,6 +167,8 @@ export type AgentInfoType = ConvertedAgentInfo
  * Field mappings:
  * - permission: { rules: Record } → PermissionRule[]
  * - model: { provider_id, model_id } → { providerID, modelID }
+ * - auto_approve: { enabled, allowed_tools, ... } → autoApprove
+ * - observer: { can_watch, ... } → observerCapability
  */
 export function toAgentInfo(agent: AgentInfo): ConvertedAgentInfo {
   return {
@@ -163,6 +183,21 @@ export function toAgentInfo(agent: AgentInfo): ConvertedAgentInfo {
       ? { providerID: agent.model.provider_id, modelID: agent.model.model_id }
       : undefined,
     options: agent.options ?? {},
+    autoApprove: agent.auto_approve
+      ? {
+          enabled: agent.auto_approve.enabled,
+          allowedTools: agent.auto_approve.allowed_tools,
+          riskThreshold: agent.auto_approve.risk_threshold,
+          maxApprovals: agent.auto_approve.max_approvals,
+        }
+      : undefined,
+    observerCapability: agent.observer
+      ? {
+          canWatch: agent.observer.can_watch,
+          contributeToConsensus: agent.observer.contribute_to_consensus,
+          reportToMeta: agent.observer.report_to_meta,
+        }
+      : undefined,
   }
 }
 
@@ -433,6 +468,40 @@ export class AgentBridge {
     })
 
     return { text, toolCalls, usage }
+  }
+
+  /**
+   * Generate an agent configuration using AI
+   * This calls the Rust daemon's generate endpoint.
+   */
+  async generate(options: {
+    description: string
+    model?: string
+  }): Promise<{ identifier: string; whenToUse: string; systemPrompt: string }> {
+    const res = await fetch(`${this.baseUrl}/api/v1/definitions/agents/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description: options.description,
+        model: options.model,
+      }),
+    })
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: res.statusText }))
+      throw new Error(error.error || `Failed to generate agent: ${res.status}`)
+    }
+
+    const data = await res.json()
+    if (!data.success) {
+      throw new Error(data.error || "Failed to generate agent")
+    }
+
+    return {
+      identifier: data.identifier,
+      whenToUse: data.whenToUse,
+      systemPrompt: data.systemPrompt,
+    }
   }
 }
 

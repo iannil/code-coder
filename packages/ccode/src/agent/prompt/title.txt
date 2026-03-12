@@ -1,3 +1,7 @@
+<!-- description: Title generator for conversation threads -->
+<!-- mode: primary -->
+<!-- hidden: true -->
+
 You are a title generator. You output ONLY a thread title. Nothing else.
 
 <task>

@@ -80,8 +80,8 @@ pub use registry::{
     AgentRegistry, RegistryError,
 };
 pub use streaming::{
-    AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
-    ToolDef, Usage,
+    AnthropicProvider, ContentPart, GoogleProvider, Message, OpenAIProvider, Role, StreamEvent,
+    StreamRequest, StreamingProvider, ToolDef, Usage,
 };
 
 pub use builtin_prompts::{get_builtin_prompt, list_builtin_agents};

@@ -1712,20 +1712,30 @@ impl Config {
 
     /// Apply environment variable overrides to config
     pub fn apply_env_overrides(&mut self) {
-        // API Key: ZERO_BOT_API_KEY or API_KEY
-        if let Ok(key) = std::env::var("ZERO_BOT_API_KEY").or_else(|_| std::env::var("API_KEY")) {
+        // API Key: ANTHROPIC_API_KEY or OPENAI_API_KEY or API_KEY (legacy)
+        // Priority: ANTHROPIC_API_KEY > OPENAI_API_KEY > API_KEY
+        if let Ok(key) = std::env::var("ANTHROPIC_API_KEY")
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+            .or_else(|_| std::env::var("API_KEY"))
+        {
             if !key.is_empty() {
                 self.api_key = Some(key);
             }
         }
 
-        // Provider: ZERO_BOT_PROVIDER or PROVIDER
-        if let Ok(provider) =
-            std::env::var("ZERO_BOT_PROVIDER").or_else(|_| std::env::var("PROVIDER"))
-        {
+        // Provider: Detect from API key or use explicit PROVIDER env var
+        // If ANTHROPIC_API_KEY is set, default to anthropic
+        // If OPENAI_API_KEY is set, default to openai
+        if let Ok(provider) = std::env::var("PROVIDER") {
             if !provider.is_empty() {
                 self.default_provider = Some(provider);
             }
+        } else if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+            self.default_provider = Some("anthropic".to_string());
+        } else if std::env::var("OPENAI_API_KEY").is_ok() {
+            self.default_provider = Some("openai".to_string());
+        } else if std::env::var("GOOGLE_API_KEY").is_ok() {
+            self.default_provider = Some("google".to_string());
         }
 
         // Model: ZERO_BOT_MODEL

@@ -2,9 +2,7 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Global } from "@/util/global"
-import { Agent } from "../../agent/agent"
 import { getAgentBridge, toAgentInfo } from "../../sdk/agent-bridge"
-import { Provider } from "../../provider/provider"
 import path from "path"
 import fs from "fs/promises"
 import matter from "gray-matter"
@@ -121,8 +119,11 @@ const AgentCreateCommand = cmd({
         // Generate agent
         const spinner = prompts.spinner()
         spinner.start("Generating agent configuration...")
-        const model = args.model ? Provider.parseModel(args.model) : undefined
-        const generated = await Agent.generate({ description, model }).catch((error) => {
+        const bridge = await getAgentBridge()
+        const modelStr = args.model
+          ? args.model
+          : undefined
+        const generated = await bridge.generate({ description, model: modelStr }).catch((error) => {
           spinner.stop(`LLM failed to generate agent: ${error.message}`, 1)
           if (isFullyNonInteractive) process.exit(1)
           throw new UI.CancelledError()

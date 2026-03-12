@@ -10,7 +10,7 @@ use crate::observer::watchers::{
 use crate::process::{HealthChecker, ServiceConfig, ServiceManager};
 use crate::session::store::SessionStore;
 use crate::tools::ToolRegistry;
-use crate::unified_api::state::AnthropicProvider;
+use crate::unified_api::state::{AnthropicProvider, GoogleProvider, OpenAIProvider, StreamingProvider};
 use crate::unified_api::UnifiedApiState;
 use anyhow::Result;
 use chrono::Utc;
@@ -206,9 +206,11 @@ pub async fn run_orchestrator(
 
         // Create unified API state with LLM provider if API key is available
         let state = if let Some(ref api_key) = config.api_key {
-            // Create Anthropic provider
-            let provider = Arc::new(AnthropicProvider::new(api_key));
-            tracing::info!("LLM provider: Anthropic (streaming enabled)");
+            // Determine provider based on config or environment
+            let provider: Arc<dyn StreamingProvider> =
+                create_streaming_provider(&config.default_provider, api_key);
+            let provider_name = provider.name();
+            tracing::info!("LLM provider: {} (streaming enabled)", provider_name);
 
             Arc::new(UnifiedApiState::with_provider(
                 sessions,
@@ -624,6 +626,54 @@ fn find_prompts_dir(workspace: &std::path::Path) -> PathBuf {
 
     // Fallback to workspace/prompts
     workspace.join("prompts")
+}
+
+/// Create a streaming provider based on provider name and API key
+///
+/// Priority:
+/// 1. Use explicit provider name if specified
+/// 2. Auto-detect based on API key format
+/// 3. Default to Anthropic
+fn create_streaming_provider(
+    provider_name: &Option<String>,
+    api_key: &str,
+) -> Arc<dyn StreamingProvider> {
+    let provider_id = provider_name
+        .as_ref()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_else(|| detect_provider_from_key(api_key));
+
+    match provider_id.as_str() {
+        "openai" | "openai-compatible" => {
+            tracing::info!("Creating OpenAI provider");
+            Arc::new(OpenAIProvider::new(api_key))
+        }
+        "google" | "gemini" => {
+            tracing::info!("Creating Google provider");
+            Arc::new(GoogleProvider::new(api_key))
+        }
+        _ => {
+            // Default to Anthropic (includes "anthropic", "claude", and unknown providers)
+            tracing::info!("Creating Anthropic provider");
+            Arc::new(AnthropicProvider::new(api_key))
+        }
+    }
+}
+
+/// Detect provider type from API key format
+fn detect_provider_from_key(api_key: &str) -> String {
+    if api_key.starts_with("sk-ant-") || api_key.starts_with("sk-proj-") {
+        "anthropic".to_string()
+    } else if api_key.starts_with("sk-") {
+        // OpenAI keys start with sk- (but not sk-ant- or sk-proj-)
+        "openai".to_string()
+    } else if api_key.starts_with("AIza") {
+        // Google API keys typically start with AIza
+        "google".to_string()
+    } else {
+        // Default to anthropic for unknown key formats
+        "anthropic".to_string()
+    }
 }
 
 #[cfg(test)]

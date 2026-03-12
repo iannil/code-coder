@@ -81,6 +81,12 @@ pub struct AgentInfo {
     /// Permission rules (for processor.ts doom loop detection)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permission: Option<PermissionInfo>,
+    /// Auto-approve configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_approve: Option<zero_core::agent::AutoApproveConfig>,
+    /// Observer capability
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observer: Option<zero_core::agent::ObserverCapability>,
     /// Additional options
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<HashMap<String, serde_json::Value>>,
@@ -149,6 +155,8 @@ impl From<AgentMetadata> for AgentInfo {
                     .collect();
                 PermissionInfo { rules }
             }),
+            auto_approve: m.auto_approve,
+            observer: m.observer,
             options: m.options,
         }
     }

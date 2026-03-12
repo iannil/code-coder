@@ -95,8 +95,8 @@ impl ApiConfig {
 
 // Re-export streaming types from zero-core for agent execution
 pub use zero_core::agent::{
-    AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
-    ToolDef,
+    AnthropicProvider, ContentPart, GoogleProvider, Message, OpenAIProvider, Role, StreamEvent,
+    StreamRequest, StreamingProvider, ToolDef,
 };
 
 /// Cached agent metadata
@@ -118,6 +118,12 @@ pub struct AgentMetadata {
     /// Permission configuration (from registry)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub permission: Option<zero_core::agent::PermissionConfig>,
+    /// Auto-approve configuration (from registry)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_approve: Option<zero_core::agent::AutoApproveConfig>,
+    /// Observer capability (from registry)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub observer: Option<zero_core::agent::ObserverCapability>,
     /// Additional options (from registry)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub options: Option<std::collections::HashMap<String, serde_json::Value>>,
@@ -273,6 +279,8 @@ impl UnifiedApiState {
                     if let Some(agent_config) = reg.get(&name).await {
                         metadata.model = agent_config.model.clone();
                         metadata.permission = Some(agent_config.permission.clone());
+                        metadata.auto_approve = Some(agent_config.auto_approve.clone());
+                        metadata.observer = Some(agent_config.observer.clone());
                         metadata.options = if agent_config.options.is_empty() {
                             None
                         } else {
@@ -309,6 +317,8 @@ impl UnifiedApiState {
             if let Some(agent_config) = registry.get(name).await {
                 metadata.model = agent_config.model.clone();
                 metadata.permission = Some(agent_config.permission.clone());
+                metadata.auto_approve = Some(agent_config.auto_approve.clone());
+                metadata.observer = Some(agent_config.observer.clone());
                 metadata.options = if agent_config.options.is_empty() {
                     None
                 } else {
@@ -395,9 +405,11 @@ fn parse_prompt_metadata(name: &str, content: &str, path: &std::path::Path) -> A
         hidden,
         prompt_modified_at: modified_at,
         prompt: Some(content.to_string()),
-        model: None,      // Will be populated from registry
-        permission: None, // Will be populated from registry
-        options: None,    // Will be populated from registry
+        model: None,        // Will be populated from registry
+        permission: None,   // Will be populated from registry
+        auto_approve: None, // Will be populated from registry
+        observer: None,     // Will be populated from registry
+        options: None,      // Will be populated from registry
     }
 }
 

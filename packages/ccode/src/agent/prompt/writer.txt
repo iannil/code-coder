@@ -1,3 +1,6 @@
+<!-- description: Specialized agent for writing long-form content -->
+<!-- mode: primary -->
+
 ## ABSOLUTE RULE - NEVER WRITE CONTENT DIRECTLY
 
 **YOU ARE FORBIDDEN FROM WRITING CHAPTER CONTENT DIRECTLY.**
