@@ -329,7 +329,7 @@ Rust daemon 从 prompt 文件 (`src/agent/prompt/*.txt`) 加载 agents，但:
 
 ---
 
-## 阶段 4: 清理与优化 (进行中)
+## 阶段 4: 清理与优化 (✅ 完成)
 
 ### 2026-03-12: 依赖分析 + 迁移实施
 
@@ -339,11 +339,24 @@ Rust daemon 从 prompt 文件 (`src/agent/prompt/*.txt`) 加载 agents，但:
 |------|---------|---------|---------|
 | ✅ 已迁移 | `cli/cmd/agent.ts:125` | `Agent.generate()` | 使用 Rust API + AgentBridge.generate() |
 | ✅ 已迁移 | `cli/cmd/agent.ts:236` | 列表功能 | 使用 `AgentBridge.list()` |
+| ✅ 已迁移 | `agent/registry.ts:16,772` | `Agent.list()` | 使用 `AgentBridge.list()` + `toAgentInfo()` |
 
 **Agent 模块迁移完成**:
 - ✅ 实现 Rust API: `POST /api/v1/definitions/agents/generate`
 - ✅ 在 AgentBridge 添加 `generate()` 方法
 - ✅ 更新 CLI 使用 AgentBridge 替代 Agent
+- ✅ 迁移 `agent/registry.ts` 使用 AgentBridge (2026-03-12)
+
+**清理验证结果** (2026-03-12):
+```bash
+# Agent 模块导入数 (排除 agent/agent.ts 自身)
+$ grep -r "import.*from.*agent/agent" src --include="*.ts" | grep -v "agent/agent.ts" | wc -l
+0
+
+# Agent 方法实际调用数 (排除注释和文档)
+$ grep -rE "Agent\.(list|get|generate|defaultAgent)\(" src --include="*.ts" | grep -v "agent.ts:" | grep -v "agent-bridge.ts:" | grep -v "//" | wc -l
+0
+```
 
 #### Provider 模块 (`src/provider/provider.ts`)
 
@@ -354,7 +367,7 @@ Rust daemon 从 prompt 文件 (`src/agent/prompt/*.txt`) 加载 agents，但:
 | 函数类型 | 迁移状态 | 原因 |
 |---------|---------|------|
 | 元数据操作 (`list`, `getProvider`, `defaultModel`) | ✅ 已迁移到 ProviderBridge | HTTP 可序列化 |
-| AI SDK 集成 (`getLanguage`) | ❌ 必须保留 | 返回 `LanguageModel` 对象，无法序列化 |
+| AI SDK 集成 (`getLanguage`, `getModel`) | ❌ 必须保留 | 返回 `LanguageModel` 对象，无法序列化 |
 
 **结论**: Provider 模块需要保留，但元数据操作应优先使用 ProviderBridge
 
@@ -362,7 +375,8 @@ Rust daemon 从 prompt 文件 (`src/agent/prompt/*.txt`) 加载 agents，但:
 
 1. [x] 实现 Rust Agent 生成 API (`POST /api/v1/definitions/agents/generate`) - ✅ 2026-03-12
 2. [x] 迁移 `cli/cmd/agent.ts` 使用新 API - ✅ 2026-03-12
-3. [x] 添加 TS 代码弃用警告 (console.warn) - ✅ 已存在
-4. [x] 文档化迁移指南 - ✅ 2026-03-12
+3. [x] 迁移 `agent/registry.ts` 使用 AgentBridge - ✅ 2026-03-12
+4. [x] 添加 TS 代码弃用警告 (console.warn) - ✅ 已存在
+5. [x] 文档化迁移指南 - ✅ 2026-03-12
    - 创建 `/docs/migration/rust-first-agent-migration.md`
-5. [ ] 删除 `agent/agent.ts` (v2.0)
+6. [ ] 删除 `agent/agent.ts` (计划 v2.0)

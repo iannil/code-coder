@@ -13,8 +13,10 @@ use clap::{Parser, Subcommand};
 use tracing::{info, Level};
 
 mod agent;
+mod agents;
 mod alerts;
 mod channels;
+mod commit;
 mod config;
 mod credential;
 mod cron;
@@ -25,6 +27,7 @@ mod health;
 mod heartbeat;
 mod integrations;
 mod ipc;
+mod jar;
 mod mcp;
 mod memory;
 mod migration;
@@ -33,6 +36,7 @@ mod observer;
 mod onboard;
 mod process;
 mod providers;
+mod review;
 mod runtime;
 mod sandbox;
 mod security;
@@ -115,6 +119,81 @@ enum Commands {
         /// Temperature (0.0 - 2.0)
         #[arg(short, long, default_value = "0.7")]
         temperature: f64,
+    },
+
+    /// Create a git commit with AI-generated message
+    Commit {
+        /// Custom commit message (skip AI generation)
+        #[arg(short, long)]
+        message: Option<String>,
+
+        /// Show what would be committed without actually committing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Stage all changes before committing
+        #[arg(short, long)]
+        add_all: bool,
+
+        /// Allow creating an empty commit
+        #[arg(long)]
+        allow_empty: bool,
+    },
+
+    /// Review code changes with AI analysis (like a PR review)
+    Review {
+        /// Target branch or commit to review (default: HEAD)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Base branch to compare against (default: main/master)
+        #[arg(short, long)]
+        base: Option<String>,
+
+        /// Output format (text, json, markdown)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show full diff in output
+        #[arg(long)]
+        show_diff: bool,
+    },
+
+    /// Manage and search AI agents
+    Agents {
+        #[command(subcommand)]
+        agents_command: AgentsCommands,
+    },
+
+    /// Reverse engineer JAR/WAR/EAR files
+    #[command(name = "jar-reverse")]
+    JarReverse {
+        /// Path to JAR file
+        path: std::path::PathBuf,
+
+        /// Output directory for extracted files
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
+
+        /// Maximum number of classes to analyze
+        #[arg(long)]
+        max_classes: Option<usize>,
+
+        /// Output format (text, json, markdown)
+        #[arg(long, default_value = "text")]
+        format: String,
+
+        /// Show class details
+        #[arg(long)]
+        show_classes: bool,
+
+        /// Show configuration file contents
+        #[arg(long)]
+        show_configs: bool,
+
+        /// Extract config files to output directory
+        #[arg(long)]
+        extract_configs: bool,
     },
 
     /// Start daemon (process orchestrator for gateway, channels, workflow)
@@ -226,6 +305,37 @@ enum MigrateCommands {
         /// Validate and preview migration without writing any data
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum AgentsCommands {
+    /// Search for agents by query
+    Search {
+        /// Search query
+        query: String,
+        /// Limit results
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    /// List all available agents
+    List {
+        /// Filter by category (engineering, content, analysis, philosophy, system)
+        #[arg(short, long)]
+        category: Option<String>,
+        /// Filter by mode
+        #[arg(short, long)]
+        mode: Option<String>,
+    },
+    /// Show detailed information about an agent
+    Info {
+        /// Agent name
+        name: String,
+    },
+    /// Get agent recommendation for a task
+    Recommend {
+        /// Task description or intent
+        intent: String,
     },
 }
 
@@ -420,6 +530,76 @@ async fn main() -> Result<()> {
             model,
             temperature,
         } => agent::run(config, message, provider, model, temperature).await,
+
+        Commands::Commit {
+            message,
+            dry_run,
+            add_all,
+            allow_empty,
+        } => {
+            let options = commit::CommitOptions {
+                message,
+                dry_run,
+                add_all,
+                allow_empty,
+                conventional: true,
+            };
+            commit::run(config, options).await
+        }
+
+        Commands::Review {
+            target,
+            base,
+            format,
+            show_diff,
+        } => {
+            let options = review::ReviewOptions {
+                target,
+                base,
+                format: format.parse().unwrap_or_default(),
+                show_diff,
+                ..Default::default()
+            };
+            review::run(config, options).await
+        }
+
+        Commands::Agents { agents_command } => {
+            match agents_command {
+                AgentsCommands::Search { query, limit } => {
+                    agents::search(&query, limit)
+                }
+                AgentsCommands::List { category, mode } => {
+                    agents::list(category.as_deref(), mode.as_deref())
+                }
+                AgentsCommands::Info { name } => {
+                    agents::info(&name)
+                }
+                AgentsCommands::Recommend { intent } => {
+                    agents::recommend(&intent)
+                }
+            }
+        }
+
+        Commands::JarReverse {
+            path,
+            output,
+            max_classes,
+            format,
+            show_classes,
+            show_configs,
+            extract_configs,
+        } => {
+            let options = jar::JarReverseOptions {
+                jar_path: path,
+                output_dir: output,
+                max_classes,
+                format: format.parse().unwrap_or_default(),
+                show_classes,
+                show_configs,
+                extract_configs,
+            };
+            jar::run(options)
+        }
 
         Commands::Daemon {
             host,

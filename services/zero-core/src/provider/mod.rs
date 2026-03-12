@@ -76,6 +76,7 @@ use futures_util::Stream;
 pub mod anthropic;
 pub mod google;
 pub mod openai;
+pub mod openai_compat;
 pub mod rate_limit;
 pub mod transform;
 pub mod types;
@@ -105,6 +106,14 @@ pub use transform::{
 pub use anthropic::AnthropicProvider;
 pub use google::GoogleProvider;
 pub use openai::OpenAIProvider;
+
+// Re-export OpenAI-compatible providers
+pub use openai_compat::{
+    DeepSeekProvider, GroqProvider, MistralProvider, OllamaProvider,
+    OpenAICompatConfig, OpenAICompatProvider, PerplexityProvider, TogetherProvider,
+    DEEPSEEK_API_URL, GROQ_API_URL, MISTRAL_API_URL, OLLAMA_API_URL,
+    PERPLEXITY_API_URL, TOGETHER_API_URL,
+};
 
 // Re-export rate limiting
 pub use rate_limit::{CircuitBreaker, CircuitState, RateLimiter, ResilientProvider, RetryConfig};
@@ -214,6 +223,12 @@ pub fn create_provider(
         "anthropic" => Ok(Box::new(AnthropicProvider::new(config))),
         "openai" => Ok(Box::new(OpenAIProvider::new(config))),
         "google" | "gemini" => Ok(Box::new(GoogleProvider::new(config))),
+        "ollama" => Ok(Box::new(OllamaProvider::new(config))),
+        "groq" => Ok(Box::new(GroqProvider::new(config))),
+        "mistral" => Ok(Box::new(MistralProvider::new(config))),
+        "together" => Ok(Box::new(TogetherProvider::new(config))),
+        "perplexity" => Ok(Box::new(PerplexityProvider::new(config))),
+        "deepseek" => Ok(Box::new(DeepSeekProvider::new(config))),
         _ => Err(ProviderError::new(
             ProviderErrorKind::InvalidRequest,
             format!("Unknown provider: {}", provider_id),

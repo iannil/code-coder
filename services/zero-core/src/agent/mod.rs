@@ -57,6 +57,7 @@ pub mod confirmation;
 pub mod context;
 pub mod executor;
 pub mod loader;
+pub mod metadata;
 pub mod provider;
 pub mod registry;
 pub mod streaming;
@@ -78,6 +79,11 @@ pub use provider::Provider;
 pub use registry::{
     create_builtin_agents, get_global_registry, init_and_load, init_global_registry,
     AgentRegistry, RegistryError,
+};
+pub use metadata::{
+    AgentCapability, AgentCategory, AgentExample, AgentMetadata, AgentRole, AgentTrigger,
+    FieldWeights, MetadataIndex, SearchMatch, SearchOptions, SearchResult, TriggerType,
+    create_builtin_metadata,
 };
 pub use streaming::{
     AnthropicProvider, ContentPart, GoogleProvider, Message, OpenAIProvider, Role, StreamEvent,

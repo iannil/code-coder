@@ -10,11 +10,136 @@
  * Triggers are loaded from external configuration:
  * - Default: packages/ccode/src/agent/keywords.default.json
  * - User override: ~/.codecoder/keywords.json
+ *
+ * ## Rust Backend
+ *
+ * Set `CODECODER_RUST_REGISTRY=1` to use the Rust fuzzy search implementation
+ * via NAPI bindings. This provides better performance for large agent indexes.
  */
 
 import z from "zod"
-import { Agent } from "./agent"
+import { getAgentBridge, toAgentInfo } from "@/sdk/agent-bridge"
 import Fuse from "fuse.js"
+
+// Feature flag: Use Rust NAPI bindings for fuzzy search
+const USE_RUST_REGISTRY = process.env.CODECODER_RUST_REGISTRY === "1"
+
+// Lazy-load Rust bindings only when feature flag is enabled
+type RustIndexHandle = {
+  search(query: string, options?: { limit?: number; threshold?: number }): Promise<RustSearchResult[]>
+  findByTrigger(input: string): Promise<RustAgentMetadata[]>
+  recommend(intent: string): Promise<RustAgentMetadata | null>
+  listByMode(mode: string): Promise<RustAgentMetadata[]>
+  listByCategory(category: string): Promise<RustAgentMetadata[]>
+  getPrimaryForMode(mode: string): Promise<RustAgentMetadata | null>
+  list(): Promise<RustAgentMetadata[]>
+  listVisible(): Promise<RustAgentMetadata[]>
+  listRecommended(): Promise<RustAgentMetadata[]>
+  get(name: string): Promise<RustAgentMetadata | null>
+  count(): Promise<number>
+}
+
+interface RustAgentMetadata {
+  name: string
+  display_name?: string
+  short_description?: string
+  long_description?: string
+  category: string
+  mode?: string
+  role: string
+  capabilities: Array<{ id: string; name: string; description: string; primary: boolean }>
+  triggers: Array<{ type: string; value: string; priority: number; description?: string }>
+  examples: Array<{ title: string; input: string; output: string; tags: string[] }>
+  tags: string[]
+  author?: string
+  version: string
+  builtin: boolean
+  icon?: string
+  recommended: boolean
+}
+
+interface RustSearchResult {
+  agent: RustAgentMetadata
+  score: number
+  matches: Array<{ key: string; value: string; indices: number[][] }>
+}
+
+let rustIndexHandle: RustIndexHandle | null = null
+
+async function getRustIndex(): Promise<RustIndexHandle | null> {
+  if (!USE_RUST_REGISTRY) return null
+  if (rustIndexHandle) return rustIndexHandle
+
+  try {
+    // Dynamic import to avoid loading Rust bindings when not needed
+    // Use require() with type assertion since NAPI types may not be generated
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const core = await import("@codecoder-ai/core") as { createAgentMetadataIndexWithBuiltins?: () => RustIndexHandle }
+    if (!core.createAgentMetadataIndexWithBuiltins) {
+      console.warn("[AgentRegistry] Rust NAPI bindings not available (function not exported)")
+      return null
+    }
+    rustIndexHandle = core.createAgentMetadataIndexWithBuiltins()
+    return rustIndexHandle
+  } catch (e) {
+    console.warn("[AgentRegistry] Failed to load Rust NAPI bindings, falling back to TypeScript:", e)
+    return null
+  }
+}
+
+/**
+ * Convert Rust metadata to TypeScript format
+ */
+function rustToTsMetadata(r: RustAgentMetadata): AgentMetadata {
+  return {
+    name: r.name,
+    displayName: r.display_name,
+    shortDescription: r.short_description,
+    longDescription: r.long_description,
+    category: r.category as AgentCategory,
+    mode: r.mode,
+    role: r.role as AgentRole,
+    capabilities: r.capabilities.map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      primary: c.primary,
+    })),
+    triggers: r.triggers.map((t) => ({
+      type: t.type as "keyword" | "pattern" | "event" | "context",
+      value: t.value,
+      priority: t.priority,
+      description: t.description,
+    })),
+    examples: r.examples.map((e) => ({
+      title: e.title,
+      input: e.input,
+      output: e.output,
+      tags: e.tags,
+    })),
+    tags: r.tags,
+    author: r.author,
+    version: r.version,
+    builtin: r.builtin,
+    icon: r.icon,
+    recommended: r.recommended,
+  }
+}
+
+/**
+ * Convert Rust search result to TypeScript format
+ */
+function rustToTsSearchResult(r: RustSearchResult): SearchResult {
+  return {
+    agent: rustToTsMetadata(r.agent),
+    score: r.score,
+    matches: r.matches.map((m) => ({
+      key: m.key,
+      value: m.value,
+      indices: m.indices.map(([start, end]) => [start, end] as [number, number]),
+    })),
+  }
+}
 import {
   getKeywords,
   detectAlias,
@@ -130,7 +255,7 @@ export type AgentRole = z.infer<typeof AgentRole>
  * Extended agent metadata for registry.
  */
 export const AgentMetadata = z.object({
-  /** Agent name (must match Agent.Info.name) */
+  /** Agent name (must match AgentInfo.name from agent-bridge) */
   name: z.string(),
   /** Display name for UI */
   displayName: z.string().optional(),
@@ -768,10 +893,12 @@ export class AgentRegistry {
    * the keywords configuration file.
    */
   async initialize(): Promise<void> {
-    const [agents, keywordsConfig] = await Promise.all([
-      Agent.list(),
+    const bridge = await getAgentBridge()
+    const [rawAgents, keywordsConfig] = await Promise.all([
+      bridge.list(),
       getKeywords(),
     ])
+    const agents = rawAgents.map(toAgentInfo)
 
     this.keywordsConfig = keywordsConfig
 
@@ -1087,6 +1214,73 @@ export class AgentRegistry {
     return recommended[0]
   }
 
+  // =========================================================================
+  // Async Methods with Rust Backend Support
+  // =========================================================================
+
+  /**
+   * Search agents using Rust backend when available (async).
+   *
+   * When `CODECODER_RUST_REGISTRY=1` is set, uses the high-performance Rust
+   * fuzzy search implementation via NAPI bindings. Falls back to Fuse.js.
+   */
+  async searchAsync(query: string, options?: { limit?: number; threshold?: number }): Promise<SearchResult[]> {
+    const rustIndex = await getRustIndex()
+    if (rustIndex) {
+      const results = await rustIndex.search(query, options)
+      return results.map(rustToTsSearchResult)
+    }
+    return this.search(query, options)
+  }
+
+  /**
+   * Find agent by trigger match using Rust backend when available (async).
+   */
+  async findByTriggerAsync(input: string): Promise<AgentMetadata[]> {
+    const rustIndex = await getRustIndex()
+    if (rustIndex) {
+      const results = await rustIndex.findByTrigger(input)
+      return results.map(rustToTsMetadata)
+    }
+    return this.findByTrigger(input)
+  }
+
+  /**
+   * Recommend an agent using Rust backend when available (async).
+   */
+  async recommendAsync(intent: string): Promise<AgentMetadata | undefined> {
+    const rustIndex = await getRustIndex()
+    if (rustIndex) {
+      const result = await rustIndex.recommend(intent)
+      return result ? rustToTsMetadata(result) : undefined
+    }
+    return this.recommend(intent)
+  }
+
+  /**
+   * List agents by mode using Rust backend when available (async).
+   */
+  async listByModeAsync(modeId: string): Promise<AgentMetadata[]> {
+    const rustIndex = await getRustIndex()
+    if (rustIndex) {
+      const results = await rustIndex.listByMode(modeId)
+      return results.map(rustToTsMetadata)
+    }
+    return this.listByMode(modeId)
+  }
+
+  /**
+   * Get primary agent for mode using Rust backend when available (async).
+   */
+  async getPrimaryForModeAsync(modeId: string): Promise<AgentMetadata | undefined> {
+    const rustIndex = await getRustIndex()
+    if (rustIndex) {
+      const result = await rustIndex.getPrimaryForMode(modeId)
+      return result ? rustToTsMetadata(result) : undefined
+    }
+    return this.getPrimaryForMode(modeId)
+  }
+
   /**
    * Rebuild the search index.
    */
@@ -1158,4 +1352,20 @@ export async function getRegistry(): Promise<AgentRegistry> {
  */
 export function resetRegistry(): void {
   registryInstance = null
+}
+
+/**
+ * Check if Rust backend is enabled via CODECODER_RUST_REGISTRY=1.
+ */
+export function isRustBackendEnabled(): boolean {
+  return USE_RUST_REGISTRY
+}
+
+/**
+ * Check if Rust backend is available (enabled and successfully loaded).
+ */
+export async function isRustBackendAvailable(): Promise<boolean> {
+  if (!USE_RUST_REGISTRY) return false
+  const index = await getRustIndex()
+  return index !== null
 }

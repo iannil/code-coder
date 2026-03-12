@@ -119,6 +119,9 @@ zip = { workspace = true }
 # Multi-pattern matching
 aho-corasick = { workspace = true }
 
+# Fuzzy string matching (for agent registry search)
+strsim = "0.11"
+
 # Parallel processing
 rayon = { workspace = true }
 

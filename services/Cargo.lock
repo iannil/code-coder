@@ -7060,6 +7060,7 @@ dependencies = [
  "sha2",
  "shellexpand",
  "similar",
+ "strsim",
  "tempfile",
  "test-case",
  "thiserror 2.0.18",

@@ -4,6 +4,9 @@
 //! to JavaScript/TypeScript via napi-rs.
 
 #[cfg(feature = "napi-bindings")]
+mod agent_registry;
+
+#[cfg(feature = "napi-bindings")]
 mod audit;
 
 #[cfg(feature = "napi-bindings")]
@@ -101,6 +104,9 @@ mod watcher;
 
 #[cfg(feature = "napi-bindings")]
 mod web;
+
+#[cfg(feature = "napi-bindings")]
+pub use agent_registry::*;
 
 #[cfg(feature = "napi-bindings")]
 pub use audit::*;
