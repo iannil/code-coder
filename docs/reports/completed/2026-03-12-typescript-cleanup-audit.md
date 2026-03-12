@@ -1,7 +1,7 @@
 # TypeScript 代码清理审计报告
 
 > 创建时间: 2026-03-12
-> 更新时间: 2026-03-12 20:30 (Session 8 - @ts-nocheck 清理完成)
+> 更新时间: 2026-03-12 20:50 (Session 8 - @ts-nocheck 清理 75%)
 > 状态: **✅ 审计通过**
 
 ## Context
@@ -69,20 +69,17 @@ $ grep -r "from ['\"]@/(agent|session|tool|provider|memory|context)/" packages/c
 | `sdk/index.ts` | JSDoc 注释 | ✅ 非实际导入 |
 | `cli/cmd/debug/snapshot.ts` | 运行时 | ⚠️ Debug 命令，调用 stub |
 
-### 4. @ts-nocheck 文件 (7 个)
+### 4. @ts-nocheck 文件 (4 个)
 
-这些文件使用 `@ts-nocheck` 跳过类型检查，需要更复杂的重构：
+这些文件使用 `@ts-nocheck` 跳过类型检查，需要更复杂的代码逻辑修改：
 
-- `cli/cmd/tui/routes/session/index.tsx` - ToolState 类型收窄
-- `mcp/server.ts` - 复杂工具上下文类型
+- `cli/cmd/tui/routes/session/index.tsx` - ToolState 联合类型需要类型收窄
+- `mcp/server.ts` - 复杂工具上下文类型映射
 - `cli/cmd/run.ts` - MessageV2.Part 动态状态访问
-- `memory-markdown/consolidate.ts` - Bus 事件订阅
-- `sdk/provider-bridge.ts` - Config 依赖
-- `config/config.ts` - Zod schema 方法调用
-- `cli/cmd/debug/agent.ts` - Session/Tool 运行时依赖
+- `cli/cmd/debug/agent.ts` - Permission 联合类型处理
 
-**已清理 (9 个):**
-cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts, cli/cmd/tui/routes/session/sidebar.tsx, cli/cmd/tui/routes/session/footer.tsx, cli/cmd/tui/component/dialog-session-list.tsx
+**已清理 (12 个):**
+cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts, cli/cmd/tui/routes/session/sidebar.tsx, cli/cmd/tui/routes/session/footer.tsx, cli/cmd/tui/component/dialog-session-list.tsx, memory-markdown/consolidate.ts, sdk/provider-bridge.ts, config/config.ts
 
 ### 5. TypeScript 编译状态
 
@@ -164,7 +161,7 @@ $ ls src/{memory,context}/
 
 # 5. @ts-nocheck 文件数量
 $ grep -r "@ts-nocheck" src --include="*.ts" --include="*.tsx" | wc -l
-# 结果: 16 ✅
+# 结果: 4 ✅ (从 16 减少到 4，清理了 75%)
 ```
 
 ---
@@ -175,8 +172,8 @@ $ grep -r "@ts-nocheck" src --include="*.ts" --include="*.tsx" | wc -l
 
 ### 低优先级
 
-1. **移除 @ts-nocheck** - 逐步修复 16 个文件的类型问题
-2. **删除 debug/snapshot.ts** - 或将其 stub 返回改为调用 Rust API
+1. **移除剩余 4 个 @ts-nocheck** - 需要代码逻辑修改处理联合类型
+2. ~~删除 debug/snapshot.ts~~ - ✅ 已删除
 3. **packages/core binding.d.ts** - 修复 native bindings 类型定义
 
 ---
