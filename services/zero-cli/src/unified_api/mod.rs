@@ -45,6 +45,7 @@ pub mod gear;
 pub mod memory;
 pub mod observer;
 pub mod prompts;
+pub mod providers;
 pub mod sessions;
 pub mod state;
 pub mod tasks;
@@ -90,6 +91,22 @@ pub fn build_router(state: Arc<UnifiedApiState>) -> Router {
         .route("/api/v1/agents/:name", get(agents::get_agent))
         .route("/api/v1/agents/dispatch", post(agents::dispatch_agent))
         .route("/api/v1/agents/:name/prompt", get(agents::get_agent_prompt))
+        // Provider routes
+        .route("/api/v1/providers", get(providers::list_providers))
+        .route("/api/v1/providers/all", get(providers::list_all_providers))
+        .route(
+            "/api/v1/providers/default-model",
+            get(providers::get_default_model),
+        )
+        .route("/api/v1/providers/:id", get(providers::get_provider))
+        .route(
+            "/api/v1/providers/:provider_id/models/:model_id",
+            get(providers::get_model),
+        )
+        .route(
+            "/api/v1/providers/:provider_id/small-model",
+            get(providers::get_small_model),
+        )
         // Agent definition routes (new)
         .route(
             "/api/v1/definitions/agents",

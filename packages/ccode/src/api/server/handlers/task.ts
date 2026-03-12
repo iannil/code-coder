@@ -307,8 +307,9 @@ export async function createTask(req: HttpRequest, _params: RouteParams): Promis
     const input = CreateTaskRequest.parse(JSON.parse(body))
 
     // Validate agent exists
-    const { Agent } = await import("@/agent/agent")
-    const agents = await Agent.list()
+    const { getAgentBridge } = await import("@/sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     const agentExists = agents.some((a) => a.name === input.agent)
 
     if (!agentExists) {

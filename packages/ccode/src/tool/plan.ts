@@ -5,7 +5,7 @@ import { Question } from "@/agent/question"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "@/util/id/id"
-import { Provider } from "../provider/provider"
+import { getDefaultModelWithFallback } from "../sdk/provider-bridge"
 import { Instance } from "@/project/instance"
 import EXIT_DESCRIPTION from "./plan-exit.txt"
 import ENTER_DESCRIPTION from "./plan-enter.txt"
@@ -14,7 +14,7 @@ async function getLastModel(sessionID: string) {
   for await (const item of MessageV2.stream(sessionID)) {
     if (item.info.role === "user" && item.info.model) return item.info.model
   }
-  return Provider.defaultModel()
+  return getDefaultModelWithFallback()
 }
 
 export const PlanExitTool = Tool.define("plan_exit", {

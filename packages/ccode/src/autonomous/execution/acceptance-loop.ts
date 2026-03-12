@@ -414,10 +414,11 @@ export function createAcceptanceLoop(config: AcceptanceLoopConfig = {}) {
     // Use LLM to verify conformance if implementation result exists
     try {
       const { generateObject } = await import("ai")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const { Provider } = await import("@/provider/provider")
       const z = await import("zod").then((m) => m.default)
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 

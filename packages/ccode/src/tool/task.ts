@@ -5,7 +5,7 @@ import { Session } from "../session"
 import { Bus } from "@/bus"
 import { MessageV2 } from "../session/message-v2"
 import { Identifier } from "@/util/id/id"
-import { Agent } from "../agent/agent"
+import { getAgentBridge, toAgentInfo } from "../sdk/agent-bridge"
 import { SessionPrompt } from "../session/prompt"
 import { iife } from "@/util/iife"
 import { defer } from "@/util/defer"
@@ -28,7 +28,9 @@ const parameters = z.object({
 })
 
 export const TaskTool = Tool.define("task", async (ctx) => {
-  const agents = await Agent.list().then((x) => x.filter((a) => a.mode !== "primary"))
+  const bridge = await getAgentBridge()
+  const rawAgents = await bridge.list()
+  const agents = rawAgents.map(toAgentInfo).filter((a) => a.mode !== "primary")
 
   // Filter agents by permissions if agent provided
   const caller = ctx?.agent
@@ -73,8 +75,9 @@ export const TaskTool = Tool.define("task", async (ctx) => {
         })
       }
 
-      const agent = await Agent.get(params.subagent_type)
-      if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      const agentData = await bridge.get(params.subagent_type)
+      if (!agentData) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
+      const agent = toAgentInfo(agentData)
 
       const hasTaskPermission = agent.permission.some((rule) => rule.permission === "task")
 

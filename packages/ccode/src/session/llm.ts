@@ -18,7 +18,7 @@ import { clone, mergeDeep, pipe } from "remeda"
 import { ProviderTransform } from "@/provider/transform"
 import { Config } from "@/config/config"
 import { Instance } from "@/project/instance"
-import type { Agent } from "@/agent/agent"
+import type { AgentInfoType } from "@/sdk/agent-bridge"
 import type { MessageV2 } from "./message-v2"
 import { SystemPrompt } from "./system"
 import { Flag } from "@/util/flag/flag"
@@ -40,7 +40,7 @@ export namespace LLM {
     user: MessageV2.User
     sessionID: string
     model: Provider.Model
-    agent: Agent.Info
+    agent: AgentInfoType
     system: string[]
     abort: AbortSignal
     messages: ModelMessage[]

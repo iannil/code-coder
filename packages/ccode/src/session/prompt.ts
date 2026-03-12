@@ -7,7 +7,8 @@ import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
 import { SessionRevert } from "./revert"
 import { Session } from "."
-import { Agent } from "../agent/agent"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { Provider } from "../provider/provider"
 import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
 import { SessionCompaction } from "./compaction"
@@ -200,11 +201,12 @@ export namespace SessionPrompt {
 
         const stats = await fs.stat(filepath).catch(() => undefined)
         if (!stats) {
-          const agent = await Agent.get(name)
-          if (agent) {
+          const bridge = await getAgentBridge()
+          const agentData = await bridge.get(name)
+          if (agentData) {
             parts.push({
               type: "agent",
-              name: agent.name,
+              name: agentData.name,
             })
           }
           return
@@ -376,7 +378,9 @@ export namespace SessionPrompt {
           command: task.command,
         }
         let executionError: Error | undefined
-        const taskAgent = await Agent.get(task.agent)
+        const taskBridge = await getAgentBridge()
+        const taskAgentData = await taskBridge.get(task.agent)
+        const taskAgent = taskAgentData ? toAgentInfo(taskAgentData) : undefined
         const taskCtx: Tool.Context = {
           agent: task.agent,
           messageID: assistantMessage.id,
@@ -395,11 +399,13 @@ export namespace SessionPrompt {
             } satisfies MessageV2.ToolPart)
           },
           async ask(req) {
+            const agentPermission = taskAgent?.permission ?? []
+            const agentAutoApprove = taskAgent?.autoApprove
             await PermissionNext.ask({
               ...req,
               sessionID: sessionID,
-              ruleset: PermissionNext.merge(taskAgent.permission, session.permission ?? []),
-              autoApproveConfig: taskAgent.autoApprove,
+              ruleset: PermissionNext.merge(agentPermission, session.permission ?? []),
+              autoApproveConfig: agentAutoApprove,
             })
           },
         }
@@ -501,7 +507,10 @@ export namespace SessionPrompt {
       }
 
       // normal processing
-      const agent = await Agent.get(lastUser.agent)
+      const agentBridge = await getAgentBridge()
+      const agentData = await agentBridge.get(lastUser.agent)
+      if (!agentData) throw new Error(`Agent not found: ${lastUser.agent}`)
+      const agent = toAgentInfo(agentData)
 
       // Track agent switching
       if (previousAgent && previousAgent !== agent.name) {
@@ -683,11 +692,11 @@ export namespace SessionPrompt {
     for await (const item of MessageV2.stream(sessionID)) {
       if (item.info.role === "user" && item.info.model) return item.info.model
     }
-    return Provider.defaultModel()
+    return getDefaultModelWithFallback()
   }
 
   async function resolveTools(input: {
-    agent: Agent.Info
+    agent: AgentInfoType
     model: Provider.Model
     session: Session.Info
     tools?: Record<string, boolean>
@@ -834,7 +843,11 @@ export namespace SessionPrompt {
   }
 
   async function createUserMessage(input: PromptInput) {
-    const agent = await Agent.get(input.agent ?? (await Agent.defaultAgent()))
+    const bridge = await getAgentBridge()
+    const agentName = input.agent ?? (await bridge.defaultAgent())
+    const agentData = await bridge.get(agentName)
+    if (!agentData) throw new Error(`Agent not found: ${agentName}`)
+    const agent = toAgentInfo(agentData)
     const info: MessageV2.Info = {
       id: input.messageID ?? Identifier.ascending("message"),
       role: "user",
@@ -1187,7 +1200,7 @@ export namespace SessionPrompt {
     }
   }
 
-  async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: Agent.Info; session: Session.Info }) {
+  async function insertReminders(input: { messages: MessageV2.WithParts[]; agent: AgentInfoType; session: Session.Info }) {
     const userMessage = input.messages.findLast((msg) => msg.info.role === "user")
     if (!userMessage) return input.messages
 
@@ -1350,7 +1363,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     if (session.revert) {
       SessionRevert.cleanup(session)
     }
-    const agent = await Agent.get(input.agent)
+    const agentBridge = await getAgentBridge()
+    const agentData = await agentBridge.get(input.agent)
+    if (!agentData) throw new Error(`Agent not found: ${input.agent}`)
+    const agent = toAgentInfo(agentData)
     const model = input.model ?? agent.model ?? (await lastModel(input.sessionID))
     const userMsg: MessageV2.User = {
       id: Identifier.ascending("message"),
@@ -1594,7 +1610,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
   export async function command(input: CommandInput) {
     log.info("command", input)
     const command = await Command.get(input.command)
-    const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
+    const cmdBridge = await getAgentBridge()
+    const agentName = command.agent ?? input.agent ?? (await cmdBridge.defaultAgent())
 
     const raw = input.arguments.match(argsRegex) ?? []
     const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
@@ -1646,7 +1663,8 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         return Provider.parseModel(command.model)
       }
       if (command.agent) {
-        const cmdAgent = await Agent.get(command.agent)
+        const cmdAgentData = await cmdBridge.get(command.agent)
+        const cmdAgent = cmdAgentData ? toAgentInfo(cmdAgentData) : undefined
         if (cmdAgent?.model) {
           return cmdAgent.model
         }
@@ -1668,9 +1686,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       }
       throw e
     }
-    const agent = await Agent.get(agentName)
-    if (!agent) {
-      const available = await Agent.list().then((agents) => agents.filter((a) => !a.hidden).map((a) => a.name))
+    const agentData = await cmdBridge.get(agentName)
+    if (!agentData) {
+      const allAgents = await cmdBridge.list()
+      const available = allAgents.filter((a) => !a.hidden).map((a) => a.name)
       const hint = available.length ? ` Available agents: ${available.join(", ")}` : ""
       const error = new NamedError.Unknown({ message: `Agent not found: "${agentName}".${hint}` })
       Bus.publish(Session.Event.Error, {
@@ -1679,6 +1698,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
       })
       throw error
     }
+    const agent = toAgentInfo(agentData)
 
     const templateParts = await resolvePromptParts(template)
     const isSubtask = (agent.mode === "subagent" && command.subtask !== false) || command.subtask === true
@@ -1704,7 +1724,7 @@ NOTE: At any point in time through this workflow you should feel free to ask the
         ]
       : [...templateParts, ...(input.parts ?? [])]
 
-    const userAgent = isSubtask ? (input.agent ?? (await Agent.defaultAgent())) : agentName
+    const userAgent = isSubtask ? (input.agent ?? (await cmdBridge.defaultAgent())) : agentName
     const userModel = isSubtask
       ? input.model
         ? Provider.parseModel(input.model)
@@ -1760,8 +1780,10 @@ NOTE: At any point in time through this workflow you should feel free to ask the
     const subtaskParts = firstRealUser.parts.filter((p) => p.type === "subtask") as MessageV2.SubtaskPart[]
     const hasOnlySubtaskParts = subtaskParts.length > 0 && firstRealUser.parts.every((p) => p.type === "subtask")
 
-    const agent = await Agent.get("title")
-    if (!agent) return
+    const titleBridge = await getAgentBridge()
+    const titleAgentData = await titleBridge.get("title")
+    if (!titleAgentData) return
+    const agent = toAgentInfo(titleAgentData)
     const model = await iife(async () => {
       if (agent.model) return await Provider.getModel(agent.model.providerID, agent.model.modelID)
       return (

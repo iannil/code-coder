@@ -72,6 +72,7 @@ async function llmClassify(
   // Lazy import to avoid circular dependency
   const { generateObject } = await import("ai")
   const { Provider } = await import("@/provider/provider")
+  const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
   const z = await import("zod").then((m) => m.default)
 
   const systemPrompt = `You are a task classifier. Classify the user's request into one of these types:
@@ -82,7 +83,7 @@ async function llmClassify(
 - other: Anything else`
 
   try {
-    const defaultModel = await Provider.defaultModel()
+    const defaultModel = await getDefaultModelWithFallback()
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
     const language = await Provider.getLanguage(model)
 

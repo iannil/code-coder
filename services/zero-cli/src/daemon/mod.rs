@@ -228,6 +228,14 @@ pub async fn run_orchestrator(
         };
 
         // Load agents on startup
+        // First, initialize the global registry with built-in agents
+        {
+            let registry = zero_core::agent::init_global_registry();
+            let natives = zero_core::agent::create_builtin_agents();
+            registry.register_natives(natives).await;
+            tracing::info!("Agent registry initialized with {} built-in agents", registry.len().await);
+        }
+
         if let Err(e) = state.load_agents().await {
             tracing::warn!("Failed to load agents: {e}");
         }
@@ -278,6 +286,18 @@ pub async fn run_orchestrator(
         // Create new state with observer - need to reconstruct Arc
         let mut state_inner = Arc::try_unwrap(state).unwrap_or_else(|arc| (*arc).clone());
         state_inner.set_observer(observer_state);
+
+        // Load API configuration (providers.json, config.json)
+        let api_config = crate::unified_api::state::ApiConfig::load_from_config_dir();
+        if api_config.provider.is_some() || api_config.model.is_some() {
+            tracing::info!(
+                "Loaded provider config: {} providers, default model: {:?}",
+                api_config.provider.as_ref().map(|p| p.len()).unwrap_or(0),
+                api_config.model
+            );
+        }
+        state_inner.set_config(api_config);
+
         let state = Arc::new(state_inner);
 
         state

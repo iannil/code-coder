@@ -9,7 +9,7 @@ import z from "zod"
 import { Log } from "@/util/log"
 import { SessionProcessor } from "./processor"
 import { fn } from "@/util/fn"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
 import { Config } from "@/config/config"
 import {
   isOverflow as nativeIsOverflow,
@@ -140,9 +140,11 @@ export namespace SessionCompaction {
     auto: boolean
   }) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
-    const agent = await Agent.get("compaction")
-    const model = agent.model
-      ? await Provider.getModel(agent.model.providerID, agent.model.modelID)
+    // Get agent config from AgentBridge (Rust daemon)
+    const bridge = await getAgentBridge()
+    const agent = await bridge.get("compaction")
+    const model = agent?.model
+      ? await Provider.getModel(agent.model.provider_id, agent.model.model_id)
       : await Provider.getModel(userMessage.model.providerID, userMessage.model.modelID)
     const msg = (await Session.updateMessage({
       id: Identifier.ascending("message"),
@@ -178,9 +180,16 @@ export namespace SessionCompaction {
     const defaultPrompt =
       "Provide a detailed prompt for continuing our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next considering new session will not have access to our conversation."
     const promptText = defaultPrompt
+    // Default agent config for compaction when not available from bridge
+    const defaultCompactionAgent: AgentInfoType = {
+      name: "compaction",
+      mode: "subagent",
+      permission: [],
+      options: {},
+    }
     const result = await processor.process({
       user: userMessage,
-      agent,
+      agent: agent ? (toAgentInfo(agent) as AgentInfoType) : defaultCompactionAgent,
       abort: input.abort,
       sessionID: input.sessionID,
       tools: {},

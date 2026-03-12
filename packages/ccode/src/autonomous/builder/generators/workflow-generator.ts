@@ -12,7 +12,7 @@
 
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge } from "@/sdk/agent-bridge"
 import path from "path"
 import { nanoid } from "nanoid"
 
@@ -97,7 +97,8 @@ export class WorkflowGenerator implements ConceptGenerator {
     }
 
     // Verify agents exist
-    const agents = await Agent.list()
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     if (agents.length === 0) {
       issues.push("No agents available - workflows require agents")
     }

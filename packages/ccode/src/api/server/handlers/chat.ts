@@ -909,8 +909,9 @@ export async function chat(req: HttpRequest, _params: RouteParams): Promise<Http
     }
 
     // Validate agent exists
-    const { Agent } = await import("../../../agent/agent")
-    const agents = await Agent.list()
+    const { getAgentBridge } = await import("../../../sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     const agentExists = agents.some((a) => a.name === agentName)
 
     if (!agentExists) {

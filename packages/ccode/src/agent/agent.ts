@@ -1,30 +1,53 @@
 /**
  * Agent Module
  *
- * @deprecated This module is scheduled for removal.
- * Agent definitions and execution have been migrated to the Rust daemon.
+ * @deprecated **DEPRECATED - Scheduled for removal in v2.0**
  *
- * **Migration Guide:**
+ * Agent definitions and execution have been migrated to the Rust daemon.
+ * This TypeScript module is maintained only for backward compatibility during
+ * the migration period.
+ *
+ * ## Rust Implementation Location
+ * - Agent Registry: `services/zero-core/src/agent/registry.rs`
+ * - Agent Executor: `services/zero-core/src/agent/executor.rs`
+ * - Built-in Prompts: `services/zero-core/src/agent/builtin_prompts.rs`
+ * - Streaming Provider: `services/zero-core/src/agent/streaming.rs`
+ * - API Routes: `services/zero-cli/src/unified_api/agents.rs`
+ *
+ * ## Migration Guide
+ *
+ * ### Before (deprecated TypeScript):
  * ```typescript
- * // Before (deprecated):
  * import { Agent } from "@/agent/agent"
  * const agents = await Agent.list()
  * const agent = await Agent.get("build")
- *
- * // After (recommended):
- * import { getHttpClient, getWebSocketClient } from "@/sdk"
- *
- * // List agents
- * const http = getHttpClient()
- * const { agents } = await http.listAgents()
- *
- * // Execute agent
- * const ws = getWebSocketClient()
- * await ws.connect()
- * await ws.executeAgent({ session_id, agent: "build", message }, onEvent)
  * ```
  *
- * **Rust implementation:** `services/zero-cli/src/agent/`
+ * ### After (recommended Rust API):
+ * ```typescript
+ * import { getHttpClient, getWebSocketClient } from "@/sdk"
+ *
+ * // List agents via HTTP
+ * const http = getHttpClient()
+ * const { agents } = await http.get("/api/v1/agents")
+ *
+ * // Execute agent via WebSocket (streaming)
+ * const ws = getWebSocketClient()
+ * await ws.connect()
+ * await ws.send({
+ *   type: "agent_dispatch",
+ *   session_id: "...",
+ *   agent: "build",
+ *   message: "Hello"
+ * })
+ * ws.onmessage = (event) => { /* handle StreamEvent *\/ }
+ * ```
+ *
+ * ## Timeline
+ * - v1.x: This module works but logs deprecation warnings
+ * - v2.0: This module will be removed entirely
+ *
+ * @see https://github.com/codecoder-ai/codecoder/docs/migration/rust-first.md
  */
 import { Config } from "@/config/config"
 import z from "zod"
@@ -34,7 +57,7 @@ import { SystemPrompt } from "../session/system"
 import { Instance } from "@/project/instance"
 import { Truncate } from "../tool/truncation"
 import { ProviderTransform } from "../provider/transform"
-
+import { getAgentBridge } from "../sdk/agent-bridge"
 import PROMPT_BUILD from "./prompt/build.txt"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
@@ -722,11 +745,21 @@ export namespace Agent {
     return result
   })
 
+  /**
+   * Get an agent by name.
+   * @deprecated Use HTTP API: GET /api/v1/agents/:name
+   */
   export async function get(agent: string) {
+    console.warn(`[DEPRECATED] Agent.get() is deprecated. Use HTTP API: GET /api/v1/agents/${agent}`)
     return state().then((x) => x[agent])
   }
 
+  /**
+   * List all available agents.
+   * @deprecated Use HTTP API: GET /api/v1/agents
+   */
   export async function list() {
+    console.warn("[DEPRECATED] Agent.list() is deprecated. Use HTTP API: GET /api/v1/agents")
     const cfg = await Config.get()
     return pipe(
       await state(),
@@ -735,7 +768,12 @@ export namespace Agent {
     )
   }
 
+  /**
+   * Get the default agent name.
+   * @deprecated Use HTTP API: GET /api/v1/agents with ?default=true
+   */
   export async function defaultAgent() {
+    console.warn("[DEPRECATED] Agent.defaultAgent() is deprecated. Use HTTP API: GET /api/v1/agents?default=true")
     const cfg = await Config.get()
     const agents = await state()
 
@@ -768,7 +806,12 @@ export namespace Agent {
     return primaryVisible.name
   }
 
+  /**
+   * Generate a new agent configuration using AI.
+   * @deprecated Use HTTP API: POST /api/v1/definitions/agents
+   */
   export async function generate(input: { description: string; model?: { providerID: string; modelID: string } }) {
+    console.warn("[DEPRECATED] Agent.generate() is deprecated. Use HTTP API: POST /api/v1/definitions/agents")
     const cfg = await Config.get()
     const defaultModel = input.model ?? (await Provider.defaultModel())
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
@@ -776,7 +819,8 @@ export namespace Agent {
 
     const system = SystemPrompt.header(defaultModel.providerID)
     system.push(PROMPT_GENERATE)
-    const existing = await list()
+    const bridge = await getAgentBridge()
+    const existing = await bridge.list()
 
     const params = {
       experimental_telemetry: {

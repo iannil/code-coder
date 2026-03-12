@@ -12,7 +12,8 @@
 
 import { Log } from "@/util/log"
 import { Global } from "@/util/global"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge } from "@/sdk/agent-bridge"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { Provider } from "@/provider/provider"
 import { SystemPrompt } from "@/session/system"
 import { generateObject, type ModelMessage } from "ai"
@@ -85,7 +86,8 @@ export class AgentGenerator implements ConceptGenerator {
     }
 
     // Check for existing agents
-    const existingAgents = await Agent.list()
+    const bridge = await getAgentBridge()
+    const existingAgents = await bridge.list()
     const suggestedName = input.gap.suggestedName?.toLowerCase()
 
     if (suggestedName && existingAgents.some((a) => a.name.toLowerCase() === suggestedName)) {
@@ -109,11 +111,12 @@ export class AgentGenerator implements ConceptGenerator {
   }> {
     try {
       // Try using the existing Agent.generate pattern
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 
-      const existingAgents = await Agent.list()
+      const bridge = await getAgentBridge()
+      const existingAgents = await bridge.list()
       const existingNames = existingAgents.map((a) => a.name).join(", ")
 
       const system = SystemPrompt.header(defaultModel.providerID)

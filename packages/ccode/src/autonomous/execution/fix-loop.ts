@@ -445,9 +445,10 @@ export function createFixLoop(config: FixLoopConfig = {}) {
   ): Promise<{ success: boolean; code?: string; error?: string }> {
     try {
       const { generateText } = await import("ai")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const { Provider } = await import("@/provider/provider")
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 

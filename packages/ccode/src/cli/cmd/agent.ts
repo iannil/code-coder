@@ -3,6 +3,7 @@ import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Global } from "@/util/global"
 import { Agent } from "../../agent/agent"
+import { getAgentBridge, toAgentInfo } from "../../sdk/agent-bridge"
 import { Provider } from "../../provider/provider"
 import path from "path"
 import fs from "fs/promises"
@@ -232,7 +233,9 @@ const AgentListCommand = cmd({
     await Instance.provide({
       directory: process.cwd(),
       async fn() {
-        const agents = await Agent.list()
+        const bridge = await getAgentBridge()
+        const rawAgents = await bridge.list()
+        const agents = rawAgents.map(toAgentInfo)
         const sortedAgents = agents.sort((a, b) => {
           if (a.native !== b.native) {
             return a.native ? -1 : 1

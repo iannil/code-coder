@@ -292,9 +292,10 @@ export class ResearchStrategy extends BaseAcceptanceStrategy<ResearchOutput> {
     try {
       const { generateObject } = await import("ai")
       const { Provider } = await import("@/provider/provider")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const z = await import("zod").then((m) => m.default)
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 
@@ -441,9 +442,10 @@ Evaluate coverage (0-10) and list any missing dimensions.`,
     try {
       const { generateObject } = await import("ai")
       const { Provider } = await import("@/provider/provider")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const z = await import("zod").then((m) => m.default)
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 
@@ -890,9 +892,10 @@ Check for contradictions or inconsistencies. Rate accuracy 0-10.`,
 
       const { generateObject } = await import("ai")
       const { Provider } = await import("@/provider/provider")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const z = await import("zod").then((m) => m.default)
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 

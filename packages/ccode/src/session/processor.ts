@@ -2,7 +2,7 @@ import { MessageV2 } from "./message-v2"
 import { Log } from "@/util/log"
 import { Identifier } from "@/util/id/id"
 import { Session } from "."
-import { Agent } from "@/agent/agent"
+import { getAgentBridge } from "@/sdk/agent-bridge"
 import { Snapshot } from "@/session/snapshot"
 import { SessionSummary } from "./summary"
 import { Bus } from "@/bus"
@@ -237,7 +237,9 @@ export namespace SessionProcessor {
                           JSON.stringify(p.state.input) === JSON.stringify(value.input),
                       )
                     ) {
-                      const agent = await Agent.get(input.assistantMessage.agent)
+                      // Get permission ruleset from AgentBridge (Rust daemon)
+                      const bridge = await getAgentBridge()
+                      const ruleset = await bridge.getPermissionRuleset(input.assistantMessage.agent)
                       await PermissionNext.ask({
                         permission: "doom_loop",
                         patterns: [value.toolName],
@@ -247,7 +249,7 @@ export namespace SessionProcessor {
                           input: value.input,
                         },
                         always: [value.toolName],
-                        ruleset: agent.permission,
+                        ruleset,
                       })
                     }
                   }

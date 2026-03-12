@@ -14,6 +14,7 @@
 
 import { Log } from "@/util/log"
 import { Provider } from "@/provider/provider"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { generateText } from "ai"
 import { ToolTypes } from "./types"
 
@@ -118,7 +119,7 @@ Respond with ONLY valid JSON (no markdown, no explanation):
         codeLength: execution.code.length,
       })
 
-      const model = await Provider.defaultModel()
+      const model = await getDefaultModelWithFallback()
       const languageModel = await Provider.getLanguage(
         await Provider.getModel(model.providerID, model.modelID),
       )

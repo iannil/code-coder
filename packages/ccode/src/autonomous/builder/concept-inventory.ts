@@ -8,7 +8,7 @@
  * @package autonomous/builder
  */
 
-import { Agent } from "@/agent/agent"
+import { getAgentBridge, type AgentInfo } from "@/sdk/agent-bridge"
 import { Skill } from "@/skill/skill"
 import { DynamicToolRegistry, type ToolTypes } from "@/memory/tools"
 import { Instance } from "@/project/instance"
@@ -232,13 +232,14 @@ export class ConceptInventory {
 
   private async collectAgents(): Promise<ConceptEntry[]> {
     try {
-      const agents = await Agent.list()
+      const bridge = await getAgentBridge()
+      const agents = await bridge.list()
       return agents.map((agent) => ({
         type: "AGENT" as const,
         identifier: agent.name,
         displayName: agent.name,
         description: agent.description,
-        native: agent.native ?? false,
+        native: false, // Bridge agents don't have native flag
         tags: this.extractAgentTags(agent),
       }))
     } catch (error) {
@@ -470,11 +471,10 @@ export class ConceptInventory {
     }
   }
 
-  private extractAgentTags(agent: Agent.Info): string[] {
+  private extractAgentTags(agent: AgentInfo): string[] {
     const tags: string[] = []
 
     if (agent.mode) tags.push(agent.mode)
-    if (agent.native) tags.push("native")
     if (agent.hidden) tags.push("hidden")
 
     return tags

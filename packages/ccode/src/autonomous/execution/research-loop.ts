@@ -499,6 +499,7 @@ export function createResearchLoop(config: ResearchLoopConfig = {}) {
     // Use LLM for analysis
     try {
       const { generateText } = await import("ai")
+      const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
       const { Provider } = await import("@/provider/provider")
 
       const systemPrompt = `你是一个专业的研究分析师。基于提供的信息，生成结构化的分析报告。
@@ -520,7 +521,7 @@ export function createResearchLoop(config: ResearchLoopConfig = {}) {
 
       console.error("[RESEARCH-LOOP] Starting LLM analysis, content length:", synthesizedContent.length)
 
-      const defaultModel = await Provider.defaultModel()
+      const defaultModel = await getDefaultModelWithFallback()
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 

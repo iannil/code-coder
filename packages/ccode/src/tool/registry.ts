@@ -11,7 +11,7 @@ import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
 import { SkillTool } from "./skill"
-import type { Agent } from "../agent/agent"
+import type { AgentInfoType } from "@/sdk/agent-bridge"
 import { Tool } from "./tool"
 import { Instance } from "@/project/instance"
 import { Config } from "@/config/config"
@@ -244,7 +244,7 @@ export namespace ToolRegistry {
       providerID: string
       modelID: string
     },
-    agent?: Agent.Info,
+    agent?: AgentInfoType,
   ) {
     const tools = await all()
     const result = await Promise.all(

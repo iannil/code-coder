@@ -45,9 +45,9 @@ interface InvokeAgentRequest {
  */
 export async function listAgents(_req: HttpRequest, _params: RouteParams): Promise<HttpResponse> {
   try {
-    // Import Agent dynamically to avoid circular dependencies
-    const { Agent } = await import("../../../agent/agent")
-    const agents = await Agent.list()
+    const { getAgentBridge } = await import("../../../sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
 
     const agentList = agents.map((agent) => ({
       id: agent.name,
@@ -88,8 +88,9 @@ export async function invokeAgent(req: HttpRequest, _params: RouteParams): Promi
     }
 
     // Validate agent exists
-    const { Agent } = await import("../../../agent/agent")
-    const agents = await Agent.list()
+    const { getAgentBridge } = await import("../../../sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     const agentExists = agents.some((a) => a.name === input.agent)
 
     if (!agentExists) {
@@ -147,8 +148,9 @@ export async function getAgent(_req: HttpRequest, params: RouteParams): Promise<
       return errorResponse("Agent ID is required", 400)
     }
 
-    const { Agent } = await import("../../../agent/agent")
-    const agents = await Agent.list()
+    const { getAgentBridge } = await import("../../../sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     const agent = agents.find((a) => a.name === agentId)
 
     if (!agent) {

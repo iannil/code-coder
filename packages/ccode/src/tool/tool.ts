@@ -1,6 +1,6 @@
 import z from "zod"
 import type { MessageV2 } from "../session/message-v2"
-import type { Agent } from "../agent/agent"
+import type { AgentInfoType } from "@/sdk/agent-bridge"
 import type { PermissionNext } from "@/security/permission/next"
 import { Truncate } from "./truncation"
 import { Hook } from "../hook"
@@ -23,7 +23,7 @@ export namespace Tool {
   }
 
   export interface InitContext {
-    agent?: Agent.Info
+    agent?: AgentInfoType
   }
 
   export const HookBlockedError = NamedError.create(

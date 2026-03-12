@@ -70,6 +70,10 @@ export {
 } from "./adapter"
 export type { SessionInfoLegacy, AdapterConfig } from "./adapter"
 
+// Agent Bridge (for migrating from deprecated Agent module)
+export { AgentBridge, getAgentBridge, resetAgentBridge } from "./agent-bridge"
+export type { AgentInfo as BridgeAgentInfo, StreamEvent, ExecuteOptions } from "./agent-bridge"
+
 // NAPI Bindings (for direct Rust function calls)
 export { NAPI } from "./napi"
 export type {

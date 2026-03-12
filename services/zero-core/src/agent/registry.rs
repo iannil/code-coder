@@ -305,9 +305,15 @@ pub async fn init_and_load() -> Result<&'static AgentRegistry, RegistryError> {
 
 /// Create default built-in agent configurations
 pub fn create_builtin_agents() -> Vec<AgentConfig> {
+    use super::builtin_prompts::get_builtin_prompt;
     use super::loader::{
         AutoApproveConfig, ObserverCapability, PermissionAction, PermissionConfig,
         PermissionValue, RiskThreshold, ThinkingMode, WatcherType,
+    };
+
+    // Helper to get embedded prompt content
+    let prompt_for = |name: &str| -> Option<String> {
+        get_builtin_prompt(name).map(|s| s.to_string())
     };
 
     let default_permission = || {
@@ -334,6 +340,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 p
             },
             prompt: Some("build.md".to_string()),
+            prompt_content: prompt_for("build"),
             ..Default::default()
         },
         // Plan agent (primary)
@@ -349,6 +356,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 p
             },
             prompt: Some("plan.md".to_string()),
+            prompt_content: prompt_for("plan"),
             options: {
                 let mut m = HashMap::new();
                 m.insert("maxOutputTokens".to_string(), serde_json::json!(128_000));
@@ -385,6 +393,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("explore.md".to_string()),
+            prompt_content: prompt_for("explore"),
             ..Default::default()
         },
         // General agent (subagent)
@@ -406,6 +415,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 max_approvals: None,
             },
             prompt: Some("general.md".to_string()),
+            prompt_content: prompt_for("general"),
             ..Default::default()
         },
         // Code reviewer (subagent)
@@ -420,6 +430,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("code-reviewer.md".to_string()),
+            prompt_content: prompt_for("code-reviewer"),
             ..Default::default()
         },
         // Security reviewer (subagent)
@@ -434,6 +445,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("security-reviewer.md".to_string()),
+            prompt_content: prompt_for("security-reviewer"),
             ..Default::default()
         },
         // TDD guide (subagent)
@@ -448,6 +460,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("tdd-guide.md".to_string()),
+            prompt_content: prompt_for("tdd-guide"),
             ..Default::default()
         },
         // Architect (subagent)
@@ -462,6 +475,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("architect.md".to_string()),
+            prompt_content: prompt_for("architect"),
             ..Default::default()
         },
         // Writer (primary)
@@ -483,6 +497,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 m
             },
             prompt: Some("writer.md".to_string()),
+            prompt_content: prompt_for("writer"),
             color: Some("blue".to_string()),
             ..Default::default()
         },
@@ -498,6 +513,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: false, // MetaWatch doesn't report to itself
             },
             prompt: Some("observer.md".to_string()),
+            prompt_content: prompt_for("observer"),
             ..Default::default()
         },
         // Decision (subagent) - CLOSE framework
@@ -512,6 +528,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("decision.md".to_string()),
+            prompt_content: prompt_for("decision"),
             ..Default::default()
         },
         // Macro (subagent) - Macroeconomic analysis
@@ -526,6 +543,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("macro.md".to_string()),
+            prompt_content: prompt_for("macro"),
             ..Default::default()
         },
         // Trader (subagent)
@@ -540,6 +558,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 report_to_meta: true,
             },
             prompt: Some("trader.md".to_string()),
+            prompt_content: prompt_for("trader"),
             ..Default::default()
         },
         // Autonomous (primary)
@@ -570,6 +589,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 m
             },
             prompt: Some("autonomous.md".to_string()),
+            prompt_content: prompt_for("autonomous"),
             color: Some("magenta".to_string()),
             ..Default::default()
         },
@@ -586,6 +606,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 PermissionConfig { rules }
             },
             prompt: Some("compaction.md".to_string()),
+            prompt_content: prompt_for("compaction"),
             ..Default::default()
         },
         AgentConfig {
@@ -600,6 +621,7 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 PermissionConfig { rules }
             },
             prompt: Some("title.md".to_string()),
+            prompt_content: prompt_for("title"),
             ..Default::default()
         },
         AgentConfig {
@@ -614,6 +636,233 @@ pub fn create_builtin_agents() -> Vec<AgentConfig> {
                 PermissionConfig { rules }
             },
             prompt: Some("summary.md".to_string()),
+            prompt_content: prompt_for("summary"),
+            ..Default::default()
+        },
+        // Expander (subagent) - unified content expansion
+        AgentConfig {
+            name: "expander".to_string(),
+            description: Some(
+                "Unified content expansion specialist for fiction, non-fiction, and general content. \
+                Transforms ideas into comprehensive books through systematic framework building."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            thinking: ThinkingMode::Disabled,
+            options: {
+                let mut m = HashMap::new();
+                m.insert("maxOutputTokens".to_string(), serde_json::json!(128_000));
+                m
+            },
+            prompt: Some("expander.md".to_string()),
+            prompt_content: prompt_for("expander"),
+            color: Some("blue".to_string()),
+            ..Default::default()
+        },
+        // Proofreader (subagent)
+        AgentConfig {
+            name: "proofreader".to_string(),
+            description: Some(
+                "Proofreading specialist for long-form text. Checks grammar, spelling, \
+                punctuation, style, terminology, flow, readability using the PROOF framework."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            thinking: ThinkingMode::Disabled,
+            options: {
+                let mut m = HashMap::new();
+                m.insert("maxOutputTokens".to_string(), serde_json::json!(128_000));
+                m
+            },
+            prompt: Some("proofreader.md".to_string()),
+            prompt_content: prompt_for("proofreader"),
+            ..Default::default()
+        },
+        // Code-reverse (subagent) - website reverse engineering
+        AgentConfig {
+            name: "code-reverse".to_string(),
+            description: Some(
+                "Website reverse engineering agent for pixel-perfect recreation planning. \
+                Analyzes websites, identifies technology stacks, extracts design systems."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            permission: {
+                let mut p = default_permission();
+                p.rules.insert("question".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p.rules.insert("plan_enter".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p.rules.insert("plan_exit".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p
+            },
+            prompt: Some("code-reverse.md".to_string()),
+            prompt_content: prompt_for("code-reverse"),
+            color: Some("cyan".to_string()),
+            ..Default::default()
+        },
+        // JAR-code-reverse (subagent) - Java JAR reverse engineering
+        AgentConfig {
+            name: "jar-code-reverse".to_string(),
+            description: Some(
+                "JAR reverse engineering agent for Java source code reconstruction. \
+                Analyzes JAR files, identifies frameworks and libraries, extracts class structure."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            permission: {
+                let mut p = default_permission();
+                p.rules.insert("question".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p.rules.insert("plan_enter".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p.rules.insert("plan_exit".to_string(), PermissionValue::Simple(PermissionAction::Allow));
+                p
+            },
+            prompt: Some("jar-code-reverse.md".to_string()),
+            prompt_content: prompt_for("jar-code-reverse"),
+            color: Some("magenta".to_string()),
+            ..Default::default()
+        },
+        // Picker (subagent) - product selection expert
+        AgentConfig {
+            name: "picker".to_string(),
+            description: Some(
+                "Product selection expert using '爆品之眼' methodology. \
+                Identifies market opportunities using seven deadly sins selection method."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            observer: ObserverCapability {
+                can_watch: vec![WatcherType::World],
+                contribute_to_consensus: true,
+                report_to_meta: true,
+            },
+            prompt: Some("picker.md".to_string()),
+            prompt_content: prompt_for("picker"),
+            ..Default::default()
+        },
+        // Miniproduct (subagent) - indie product coach
+        AgentConfig {
+            name: "miniproduct".to_string(),
+            description: Some(
+                "Indie product coach for building profitable software products from 0 to 1. \
+                Covers requirement validation, AI-assisted development, monetization strategies."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            prompt: Some("miniproduct.md".to_string()),
+            prompt_content: prompt_for("miniproduct"),
+            ..Default::default()
+        },
+        // Synton-assistant (subagent) - SYNTON-DB helper
+        AgentConfig {
+            name: "synton-assistant".to_string(),
+            description: Some(
+                "SYNTON-DB assistant for understanding and using the LLM-designed memory database. \
+                Includes tensor graph storage, PaQL queries, and Graph-RAG retrieval."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            prompt: Some("synton-assistant.md".to_string()),
+            prompt_content: prompt_for("synton-assistant"),
+            ..Default::default()
+        },
+        // AI-engineer (subagent) - AI engineering mentor
+        AgentConfig {
+            name: "ai-engineer".to_string(),
+            description: Some(
+                "AI engineer mentor covering Python basics to LLM application development, \
+                RAG system construction, fine-tuning, and performance optimization."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            prompt: Some("ai-engineer.md".to_string()),
+            prompt_content: prompt_for("ai-engineer"),
+            ..Default::default()
+        },
+        // Value-analyst (subagent) - value analysis expert
+        AgentConfig {
+            name: "value-analyst".to_string(),
+            description: Some(
+                "Value analyst using observer construction framework from '价值逻辑'. \
+                Analyzes national consensus, business evaluation rights, and financial realities."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            observer: ObserverCapability {
+                can_watch: vec![WatcherType::World],
+                contribute_to_consensus: true,
+                report_to_meta: true,
+            },
+            prompt: Some("value-analyst.md".to_string()),
+            prompt_content: prompt_for("value-analyst"),
+            ..Default::default()
+        },
+        // Verifier (subagent) - comprehensive verification
+        AgentConfig {
+            name: "verifier".to_string(),
+            description: Some(
+                "Verification agent for comprehensive validation. Performs build check, type check, \
+                lint, test suite, console.log audit, git status, formal methods, and coverage analysis."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            observer: ObserverCapability {
+                can_watch: vec![WatcherType::Self_],
+                contribute_to_consensus: true,
+                report_to_meta: true,
+            },
+            prompt: Some("verifier.md".to_string()),
+            prompt_content: prompt_for("verifier"),
+            ..Default::default()
+        },
+        // PRD-generator (subagent) - product requirement document generator
+        AgentConfig {
+            name: "prd-generator".to_string(),
+            description: Some(
+                "PRD generator that transforms meeting notes or requirement discussions \
+                into structured documents with user analysis, functional requirements, \
+                interaction design, technical solutions, and development plans."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            options: {
+                let mut m = HashMap::new();
+                m.insert("maxOutputTokens".to_string(), serde_json::json!(64_000));
+                m
+            },
+            prompt: Some("prd-generator.md".to_string()),
+            prompt_content: prompt_for("prd-generator"),
+            color: Some("blue".to_string()),
+            ..Default::default()
+        },
+        // Feasibility-assess (subagent) - technical feasibility assessment
+        AgentConfig {
+            name: "feasibility-assess".to_string(),
+            description: Some(
+                "Technical feasibility assessment expert. Analyzes requirement complexity, \
+                existing capabilities, change lists, dependencies, and risks based on \
+                codebase semantic graph. Outputs structured JSON assessment reports."
+                    .to_string(),
+            ),
+            mode: AgentMode::Subagent,
+            native: true,
+            observer: ObserverCapability {
+                can_watch: vec![WatcherType::Code],
+                contribute_to_consensus: true,
+                report_to_meta: true,
+            },
+            prompt: Some("feasibility-assess.md".to_string()),
+            prompt_content: prompt_for("feasibility-assess"),
+            color: Some("yellow".to_string()),
             ..Default::default()
         },
     ]

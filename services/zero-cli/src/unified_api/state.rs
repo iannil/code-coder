@@ -16,6 +16,83 @@ use crate::observer::WatcherManager;
 use crate::session::store::SessionStore;
 use crate::tools::ToolRegistry;
 
+/// Configuration struct for provider API
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct ApiConfig {
+    /// Default model in format "provider/model"
+    pub model: Option<String>,
+    /// Provider configurations (key: provider_id)
+    pub provider: Option<std::collections::HashMap<String, serde_json::Value>>,
+    /// Legacy LLM configuration
+    pub llm: Option<serde_json::Value>,
+}
+
+impl ApiConfig {
+    /// Load API configuration from ~/.codecoder/providers.json
+    ///
+    /// This loads the providers configuration and extracts:
+    /// - `_settings.default` as the default model
+    /// - All other keys as provider configurations
+    pub fn load_from_config_dir() -> Self {
+        let config_dir = dirs::home_dir()
+            .map(|h| h.join(".codecoder"))
+            .unwrap_or_else(|| PathBuf::from(".codecoder"));
+
+        Self::load_from_dir(&config_dir)
+    }
+
+    /// Load API configuration from a specific directory
+    pub fn load_from_dir(config_dir: &std::path::Path) -> Self {
+        let mut config = Self::default();
+
+        // Load providers.json
+        let providers_path = config_dir.join("providers.json");
+        if providers_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&providers_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(obj) = json.as_object() {
+                        let mut providers = HashMap::new();
+
+                        for (key, value) in obj {
+                            if key == "$schema" {
+                                continue;
+                            }
+
+                            if key == "_settings" {
+                                // Extract default model from _settings
+                                if let Some(default) = value.get("default").and_then(|d| d.as_str()) {
+                                    config.model = Some(default.to_string());
+                                }
+                            } else {
+                                // Add as provider configuration
+                                providers.insert(key.clone(), value.clone());
+                            }
+                        }
+
+                        if !providers.is_empty() {
+                            config.provider = Some(providers);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also try to load from config.json for llm section
+        let config_path = config_dir.join("config.json");
+        if config_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&config_path) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(llm) = json.get("llm") {
+                        config.llm = Some(llm.clone());
+                    }
+                }
+            }
+        }
+
+        config
+    }
+}
+
 // Re-export streaming types from zero-core for agent execution
 pub use zero_core::agent::{
     AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
@@ -35,6 +112,15 @@ pub struct AgentMetadata {
     pub prompt_modified_at: Option<DateTime<Utc>>,
     /// Cached prompt content
     pub prompt: Option<String>,
+    /// Model configuration (from registry)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<zero_core::agent::ModelConfig>,
+    /// Permission configuration (from registry)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<zero_core::agent::PermissionConfig>,
+    /// Additional options (from registry)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Unified API state shared across all handlers
@@ -75,6 +161,9 @@ pub struct UnifiedApiState {
 
     /// Watcher manager for controlling individual watchers
     pub watcher_manager: Option<Arc<RwLock<WatcherManager>>>,
+
+    /// API configuration (for provider endpoints)
+    pub config: ApiConfig,
 }
 
 impl UnifiedApiState {
@@ -98,6 +187,7 @@ impl UnifiedApiState {
             llm_provider: None,
             observer: None,
             watcher_manager: None,
+            config: ApiConfig::default(),
         }
     }
 
@@ -122,6 +212,7 @@ impl UnifiedApiState {
             llm_provider: Some(provider),
             observer: None,
             watcher_manager: None,
+            config: ApiConfig::default(),
         }
     }
 
@@ -140,7 +231,12 @@ impl UnifiedApiState {
         self.watcher_manager = Some(Arc::new(RwLock::new(manager)));
     }
 
-    /// Load agent metadata from prompt files
+    /// Set the API configuration (for lazy initialization)
+    pub fn set_config(&mut self, config: ApiConfig) {
+        self.config = config;
+    }
+
+    /// Load agent metadata from prompt files and registry
     pub async fn load_agents(&self) -> anyhow::Result<()> {
         use std::fs;
         use tracing::info;
@@ -153,6 +249,9 @@ impl UnifiedApiState {
 
         let mut agents = self.agents.write().await;
         agents.clear();
+
+        // Get the global registry for permission/model info (may not be initialized)
+        let registry = zero_core::agent::get_global_registry();
 
         // Read all .txt files in the prompt directory
         for entry in fs::read_dir(prompt_dir)? {
@@ -167,7 +266,24 @@ impl UnifiedApiState {
                 let content = fs::read_to_string(&path)?;
 
                 // Parse metadata from first few lines (YAML-like frontmatter)
-                let metadata = parse_prompt_metadata(&name, &content, &path);
+                let mut metadata = parse_prompt_metadata(&name, &content, &path);
+
+                // Merge with registry data if available
+                if let Some(reg) = registry {
+                    if let Some(agent_config) = reg.get(&name).await {
+                        metadata.model = agent_config.model.clone();
+                        metadata.permission = Some(agent_config.permission.clone());
+                        metadata.options = if agent_config.options.is_empty() {
+                            None
+                        } else {
+                            Some(agent_config.options.clone())
+                        };
+                        // Override description if registry has one
+                        if agent_config.description.is_some() {
+                            metadata.description = agent_config.description.clone();
+                        }
+                    }
+                }
 
                 info!("Loaded agent: {}", name);
                 agents.insert(name, metadata);
@@ -186,7 +302,20 @@ impl UnifiedApiState {
         }
 
         let content = std::fs::read_to_string(&path)?;
-        let metadata = parse_prompt_metadata(name, &content, &path);
+        let mut metadata = parse_prompt_metadata(name, &content, &path);
+
+        // Merge with registry data if available
+        if let Some(registry) = zero_core::agent::get_global_registry() {
+            if let Some(agent_config) = registry.get(name).await {
+                metadata.model = agent_config.model.clone();
+                metadata.permission = Some(agent_config.permission.clone());
+                metadata.options = if agent_config.options.is_empty() {
+                    None
+                } else {
+                    Some(agent_config.options.clone())
+                };
+            }
+        }
 
         let mut agents = self.agents.write().await;
         agents.insert(name.to_string(), metadata);
@@ -266,6 +395,9 @@ fn parse_prompt_metadata(name: &str, content: &str, path: &std::path::Path) -> A
         hidden,
         prompt_modified_at: modified_at,
         prompt: Some(content.to_string()),
+        model: None,      // Will be populated from registry
+        permission: None, // Will be populated from registry
+        options: None,    // Will be populated from registry
     }
 }
 

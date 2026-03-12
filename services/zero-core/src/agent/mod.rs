@@ -52,6 +52,7 @@
 //! let response = executor.execute("Hello!").await?;
 //! ```
 
+pub mod builtin_prompts;
 pub mod confirmation;
 pub mod context;
 pub mod executor;
@@ -82,3 +83,5 @@ pub use streaming::{
     AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
     ToolDef, Usage,
 };
+
+pub use builtin_prompts::{get_builtin_prompt, list_builtin_agents};

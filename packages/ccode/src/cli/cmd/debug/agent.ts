@@ -1,7 +1,7 @@
 import { EOL } from "os"
 import { basename } from "path"
-import { Agent } from "../../../agent/agent"
-import { Provider } from "../../../provider/provider"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { Session } from "../../../session"
 import type { MessageV2 } from "../../../session/message-v2"
 import { Identifier } from "@/util/id/id"
@@ -33,13 +33,15 @@ export const AgentCommand = cmd({
   async handler(args) {
     await bootstrap(process.cwd(), async () => {
       const agentName = args.name as string
-      const agent = await Agent.get(agentName)
-      if (!agent) {
+      const bridge = await getAgentBridge()
+      const agentData = await bridge.get(agentName)
+      if (!agentData) {
         process.stderr.write(
           `Agent ${agentName} not found, run '${basename(process.execPath)} agent list' to get an agent list` + EOL,
         )
         process.exit(1)
       }
+      const agent = toAgentInfo(agentData)
       const availableTools = await getAvailableTools(agent)
       const resolvedTools = await resolveTools(agent, availableTools)
       const toolID = args.tool as string | undefined
@@ -69,12 +71,12 @@ export const AgentCommand = cmd({
   },
 })
 
-async function getAvailableTools(agent: Agent.Info) {
-  const model = agent.model ?? (await Provider.defaultModel())
+async function getAvailableTools(agent: AgentInfoType) {
+  const model = agent.model ?? (await getDefaultModelWithFallback())
   return ToolRegistry.tools(model, agent)
 }
 
-async function resolveTools(agent: Agent.Info, availableTools: Awaited<ReturnType<typeof getAvailableTools>>) {
+async function resolveTools(agent: AgentInfoType, availableTools: Awaited<ReturnType<typeof getAvailableTools>>) {
   const disabled = PermissionNext.disabled(
     availableTools.map((tool) => tool.id),
     agent.permission,
@@ -111,10 +113,10 @@ function parseToolParams(input?: string) {
   return parsed as Record<string, unknown>
 }
 
-async function createToolContext(agent: Agent.Info) {
+async function createToolContext(agent: AgentInfoType) {
   const session = await Session.create({ title: `Debug tool run (${agent.name})` })
   const messageID = Identifier.ascending("message")
-  const model = agent.model ?? (await Provider.defaultModel())
+  const model = agent.model ?? (await getDefaultModelWithFallback())
   const now = Date.now()
   const message: MessageV2.Assistant = {
     id: messageID,

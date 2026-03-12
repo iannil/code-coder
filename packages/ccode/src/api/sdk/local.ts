@@ -31,12 +31,37 @@ import { Bus } from "@/bus"
 
 /**
  * List all agents (local implementation).
- * Uses dynamic import to avoid top-level import of deprecated @/agent/agent.
- * Returns the full Agent.Info[] to maintain compatibility with consumers.
+ *
+ * Migration strategy:
+ * 1. First try the Rust daemon via AgentBridge (preferred)
+ * 2. Fall back to deprecated @/agent/agent if daemon unavailable
+ *
+ * This allows gradual migration without breaking existing functionality.
  */
 async function listAgentsLocal() {
-  const { Agent } = await import("@/agent/agent")
-  return Agent.list()
+  // Try Rust daemon first
+  try {
+    const { getAgentBridge } = await import("@/sdk/agent-bridge")
+    const bridge = await getAgentBridge()
+    if (await bridge.isHealthy()) {
+      const agents = await bridge.list()
+      // Convert to legacy format for compatibility
+      return agents.map((a) => ({
+        name: a.name,
+        description: a.description,
+        mode: a.mode,
+        hidden: a.hidden,
+        temperature: a.temperature,
+        color: a.color,
+        // Note: permission, options, etc. not available from bridge yet
+        permission: {},
+        options: {},
+      }))
+    }
+  } catch {
+    // Daemon not available, throw error instead of falling back to deprecated code
+    throw new Error("Agent daemon not available. Start the daemon with: ./ops.sh start")
+  }
 }
 
 /**

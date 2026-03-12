@@ -15,7 +15,7 @@ import { Storage } from "@/infrastructure/storage/storage"
 import { Bus } from "@/bus"
 
 import { LLM } from "./llm"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
@@ -76,8 +76,10 @@ export namespace SessionSummary {
 
     const textPart = msgWithParts.parts.find((p) => p.type === "text" && !p.synthetic) as MessageV2.TextPart
     if (textPart && !userMsg.summary?.title) {
-      const agent = await Agent.get("title")
-      if (!agent) return
+      const bridge = await getAgentBridge()
+      const agentInfo = await bridge.get("title")
+      if (!agentInfo) return
+      const agent = toAgentInfo(agentInfo) as AgentInfoType
       const stream = await LLM.stream({
         agent,
         user: userMsg,

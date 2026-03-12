@@ -589,9 +589,10 @@ export class Orchestrator {
   }> {
     const { generateObject } = await import("ai")
     const { Provider } = await import("@/provider/provider")
+    const { getDefaultModelWithFallback } = await import("@/sdk/provider-bridge")
     const z = (await import("zod")).default
 
-    const defaultModel = await Provider.defaultModel()
+    const defaultModel = await getDefaultModelWithFallback()
     const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
     const language = await Provider.getLanguage(model)
 

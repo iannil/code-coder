@@ -376,11 +376,12 @@ async function executeAutonomousTask(
   }
 
   // Import agent invocation
-  const { Agent } = await import("../../../agent/agent")
+  const { getAgentBridge } = await import("../../../sdk/agent-bridge")
   const { SessionPrompt } = await import("../../../session/prompt")
 
   // Determine agent to use
-  const agents = await Agent.list()
+  const bridge = await getAgentBridge()
+  const agents = await bridge.list()
   let agentName = explicitAgent ?? "general"
 
   // If explicit agent is provided, verify it exists

@@ -47,7 +47,7 @@ import {
 import z from "zod/v4"
 import { ToolRegistry } from "../tool/registry"
 import { Tool } from "../tool/tool"
-import { Agent } from "../agent/agent"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
 import { VERSION } from "../version"
 import { Log } from "@/util/log"
 import { ulid } from "ulid"
@@ -146,8 +146,8 @@ export namespace McpServer {
     }
   }
 
-  /** Convert Agent.Info to MCP Prompt */
-  function toMcpPrompt(agent: Agent.Info): MCPPrompt {
+  /** Convert AgentInfoType to MCP Prompt */
+  function toMcpPrompt(agent: AgentInfoType): MCPPrompt {
     return {
       name: agent.name,
       description: agent.description ?? `Agent: ${agent.name}`,
@@ -252,7 +252,7 @@ Use these tools to assist with software engineering tasks.`,
   }
 
   /** Register prompts handlers on server */
-  function registerPromptsHandlers(server: Server, agents: Map<string, Agent.Info>) {
+  function registerPromptsHandlers(server: Server, agents: Map<string, AgentInfoType>) {
     server.setRequestHandler(ListPromptsRequestSchema, async () => {
       const prompts: MCPPrompt[] = []
       for (const agent of agents.values()) {
@@ -447,7 +447,9 @@ Use these tools to assist with software engineering tasks.`,
   /** Initialize tools based on options */
   async function initializeTools(options: ServeOptions): Promise<Map<string, InitializedTool>> {
     const modelInfo = options.model ?? { providerID: "ccode", modelID: "default" }
-    const agent = options.agentFilter ? await Agent.get(options.agentFilter) : undefined
+    const bridge = await getAgentBridge()
+    const agentData = options.agentFilter ? await bridge.get(options.agentFilter) : undefined
+    const agent = agentData ? toAgentInfo(agentData) : undefined
     const toolDefs = await ToolRegistry.tools(modelInfo, agent)
     const tools = new Map<string, InitializedTool>()
 
@@ -463,9 +465,11 @@ Use these tools to assist with software engineering tasks.`,
   }
 
   /** Initialize agents for prompts */
-  async function initializeAgents(): Promise<Map<string, Agent.Info>> {
-    const agentList = await Agent.list()
-    const agents = new Map<string, Agent.Info>()
+  async function initializeAgents(): Promise<Map<string, AgentInfoType>> {
+    const bridge = await getAgentBridge()
+    const rawAgents = await bridge.list()
+    const agentList = rawAgents.map(toAgentInfo)
+    const agents = new Map<string, AgentInfoType>()
 
     for (const agent of agentList) {
       agents.set(agent.name, agent)
@@ -499,7 +503,7 @@ Use these tools to assist with software engineering tasks.`,
   /** Start the MCP server with HTTP transport */
   async function serveHttp(
     tools: Map<string, InitializedTool>,
-    agents: Map<string, Agent.Info>,
+    agents: Map<string, AgentInfoType>,
     workdir: string,
     options: ServeOptions,
     sessionID: string,

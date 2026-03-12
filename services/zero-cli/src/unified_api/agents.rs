@@ -11,6 +11,7 @@ use axum::{
 };
 use futures_util::stream::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
@@ -34,6 +35,38 @@ pub struct AgentListResponse {
     pub total: usize,
 }
 
+/// Model configuration for an agent
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelInfo {
+    pub provider_id: String,
+    pub model_id: String,
+    pub temperature: Option<f64>,
+    pub max_tokens: Option<u32>,
+}
+
+/// Permission action (allow, deny, ask)
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionAction {
+    Allow,
+    Deny,
+    Ask,
+}
+
+/// Permission value - either simple or with patterns
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
+pub enum PermissionValue {
+    Simple(PermissionAction),
+    Patterns(HashMap<String, PermissionAction>),
+}
+
+/// Permission configuration for an agent
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct PermissionInfo {
+    pub rules: HashMap<String, PermissionValue>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AgentInfo {
     pub name: String,
@@ -42,6 +75,15 @@ pub struct AgentInfo {
     pub temperature: Option<f64>,
     pub color: Option<String>,
     pub hidden: bool,
+    /// Model configuration (for compaction.ts, summary.ts)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<ModelInfo>,
+    /// Permission rules (for processor.ts doom loop detection)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permission: Option<PermissionInfo>,
+    /// Additional options
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
 impl From<AgentMetadata> for AgentInfo {
@@ -53,6 +95,61 @@ impl From<AgentMetadata> for AgentInfo {
             temperature: m.temperature,
             color: m.color,
             hidden: m.hidden,
+            model: m.model.map(|mc| ModelInfo {
+                provider_id: mc.provider_id,
+                model_id: mc.model_id,
+                temperature: mc.temperature,
+                max_tokens: mc.max_tokens,
+            }),
+            permission: m.permission.map(|pc| {
+                let rules = pc
+                    .rules
+                    .into_iter()
+                    .map(|(k, v)| {
+                        let pv = match v {
+                            zero_core::agent::PermissionValue::Simple(a) => {
+                                PermissionValue::Simple(match a {
+                                    zero_core::agent::PermissionAction::Allow => {
+                                        PermissionAction::Allow
+                                    }
+                                    zero_core::agent::PermissionAction::Deny => {
+                                        PermissionAction::Deny
+                                    }
+                                    zero_core::agent::PermissionAction::Ask => {
+                                        PermissionAction::Ask
+                                    }
+                                })
+                            }
+                            zero_core::agent::PermissionValue::Patterns(patterns) => {
+                                PermissionValue::Patterns(
+                                    patterns
+                                        .into_iter()
+                                        .map(|(pk, pa)| {
+                                            (
+                                                pk,
+                                                match pa {
+                                                    zero_core::agent::PermissionAction::Allow => {
+                                                        PermissionAction::Allow
+                                                    }
+                                                    zero_core::agent::PermissionAction::Deny => {
+                                                        PermissionAction::Deny
+                                                    }
+                                                    zero_core::agent::PermissionAction::Ask => {
+                                                        PermissionAction::Ask
+                                                    }
+                                                },
+                                            )
+                                        })
+                                        .collect(),
+                                )
+                            }
+                        };
+                        (k, pv)
+                    })
+                    .collect();
+                PermissionInfo { rules }
+            }),
+            options: m.options,
         }
     }
 }

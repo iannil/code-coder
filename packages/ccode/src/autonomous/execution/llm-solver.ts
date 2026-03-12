@@ -13,6 +13,7 @@
 
 import { Log } from "@/util/log"
 import { Provider } from "@/provider/provider"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { generateText } from "ai"
 import type { FetchedContent } from "./web-search"
 
@@ -343,7 +344,7 @@ export class LLMSolver {
   }
 
   private async callLLM(prompt: string, temperature: number): Promise<string> {
-    const model = await Provider.defaultModel()
+    const model = await getDefaultModelWithFallback()
     const languageModel = await Provider.getLanguage(
       await Provider.getModel(model.providerID, model.modelID),
     )

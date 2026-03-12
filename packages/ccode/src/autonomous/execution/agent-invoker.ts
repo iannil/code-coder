@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge, toAgentInfo, type AgentInfoType } from "@/sdk/agent-bridge"
+import { getDefaultModelWithFallback } from "@/sdk/provider-bridge"
 import { Instance } from "@/project/instance"
 import { Provider } from "@/provider/provider"
 import { generateObject, streamObject, type ModelMessage } from "ai"
@@ -122,14 +123,16 @@ export namespace AgentInvoker {
     })
 
     try {
-      // Get agent configuration
-      const agentInfo = await Agent.get(request.agent)
-      if (!agentInfo) {
+      // Get agent configuration from AgentBridge (Rust daemon)
+      const bridge = await getAgentBridge()
+      const agentData = await bridge.get(request.agent)
+      if (!agentData) {
         throw new Error(`Agent "${request.agent}" not found`)
       }
+      const agentInfo = toAgentInfo(agentData) as AgentInfoType
 
       // Get model
-      const defaultModel = agentInfo.model ?? (await Provider.defaultModel())
+      const defaultModel = agentInfo.model ?? (await getDefaultModelWithFallback())
       const model = await Provider.getModel(defaultModel.providerID, defaultModel.modelID)
       const language = await Provider.getLanguage(model)
 

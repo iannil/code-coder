@@ -12,7 +12,7 @@
 
 import { Log } from "@/util/log"
 import { Instance } from "@/project/instance"
-import { Agent } from "@/agent/agent"
+import { getAgentBridge } from "@/sdk/agent-bridge"
 import path from "path"
 import { nanoid } from "nanoid"
 
@@ -87,7 +87,8 @@ export class HandGenerator implements ConceptGenerator {
     }
 
     // Verify at least one agent exists
-    const agents = await Agent.list()
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     if (agents.length === 0) {
       issues.push("No agents available - cannot create a hand without an agent")
     }
@@ -103,7 +104,8 @@ export class HandGenerator implements ConceptGenerator {
   // ============================================================================
 
   private async inferAgent(input: GeneratorInput): Promise<string> {
-    const agents = await Agent.list()
+    const bridge = await getAgentBridge()
+    const agents = await bridge.list()
     const descLower = input.gap.description.toLowerCase()
 
     // Try to match based on description keywords
