@@ -1,5 +1,4 @@
-// @ts-nocheck
-// This file uses deprecated ModelsDev functionality - needs migration to Rust API
+// Get-started wizard - uses ModelsDev stubs
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"

@@ -20,17 +20,24 @@ export namespace ModelsDev {
     name: string
     provider: string
     status?: string
+    tool_call?: boolean
     [key: string]: unknown
   }
 
   export interface Provider {
     id: string
     name: string
-    models: Model[]
+    models: Record<string, Model>
     status?: "connected" | "disconnected" | "error"
   }
 
-  export const Data: Record<string, Provider> = {}
+  // Data store with reset functionality
+  export const Data = {
+    providers: {} as Record<string, Provider>,
+    reset(): void {
+      this.providers = {}
+    },
+  }
 
   // Value exports for runtime access
   export const Provider = {} as Record<string, Provider>
@@ -40,11 +47,11 @@ export namespace ModelsDev {
     return []
   }
 
-  export function get(_id: string): Model | undefined {
-    return undefined
+  export function get(_id?: string): Record<string, Provider> {
+    return Data.providers
   }
 
   export async function refresh(): Promise<void> {
-    // No-op stub
+    // No-op stub - models are fetched from Rust API
   }
 }

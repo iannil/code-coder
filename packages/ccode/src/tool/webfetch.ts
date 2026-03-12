@@ -6,6 +6,20 @@
 import { z } from "zod"
 import type { Tool } from "./tool"
 
+export interface WebFetchExecutor {
+  execute: (
+    input: { url: string; format?: string },
+    ctx: {
+      sessionID: string
+      messageID: string
+      agent: string
+      abort: AbortSignal
+      ask: (req: unknown) => Promise<unknown>
+      metadata: () => void
+    }
+  ) => Promise<{ output?: string }>
+}
+
 export const WebFetchTool = {
   name: "WebFetch",
   description: "Fetch content from a URL",
@@ -21,5 +35,7 @@ export const WebFetchTool = {
     statusCode: z.number().optional(),
   }),
   // Stub init method for compatibility
-  init: () => Promise.resolve(),
-} satisfies Tool & { init: () => Promise<void> }
+  init: async (_options: Record<string, unknown>): Promise<WebFetchExecutor> => ({
+    execute: async () => ({ output: undefined }),
+  }),
+} satisfies Tool & { init: (options: Record<string, unknown>) => Promise<WebFetchExecutor> }

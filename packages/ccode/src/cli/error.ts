@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Error handler - uses deprecated Provider error types
+// Error handler - uses Provider error types from stub
 import { ConfigMarkdown } from "@/config/markdown"
 import { Config } from "@/config/config"
 import { MCP } from "../mcp"

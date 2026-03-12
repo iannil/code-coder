@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Keywords config - uses deprecated keywords.default.json
+// Keywords config - loads keywords.default.json
 /**
  * Agent Keywords Configuration Loader.
  *

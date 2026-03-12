@@ -1,3 +1,10 @@
 {
-  "keywords": []
+  "version": "1.0.0",
+  "agents": {},
+  "defaults": {
+    "agent": "build",
+    "cli_agent": "build",
+    "im_agent": "build",
+    "use_implicit_matching": false
+  }
 }

@@ -1,5 +1,4 @@
-// @ts-nocheck
-// Hook module - uses deprecated CausalRecorder
+// Hook module - causal recording via Rust
 import z from "zod"
 import path from "path"
 import { Log } from "@/util/log"
@@ -226,7 +225,7 @@ export namespace Hook {
 
         // Use native pattern scanning with line numbers
         const result = scanContentPatterns(ctx.fileContent, action.patterns)
-        const lines = result.lines.map((n) => `Line ${n}`)
+        const lines = result.lines.map((n: number) => `Line ${n}`)
 
         if (result.found) {
           const msg =
