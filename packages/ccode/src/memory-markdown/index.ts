@@ -35,6 +35,11 @@ export {
   resetStorage,
   configureMemory,
   getMemoryConfig,
+  // NAPI memory handle (high-performance Rust backend)
+  isNapiMemoryAvailable,
+  getNapiMemoryHandle,
+  resetNapiMemoryHandle,
+  configureNapiMemory,
   type MarkdownStorageProvider,
   type LocalMarkdownStorage,
 } from "./storage"

@@ -15,8 +15,7 @@ import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
 import { formatPreciseTime, getToolDuration } from "@tui/util/execution-time"
 import { Spinner } from "../../ui/progress-bar"
-import type { ToolPart, Part } from "@/types"
-import { MessageV2 } from "@/session/message-v2"
+import type { ToolPart, Part, StepStartPart, StepFinishPart } from "@/types"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "@/autonomous"
 
@@ -97,8 +96,8 @@ export function Footer() {
       const elapsed = (now() - startTime) / 1000
 
       // Check for step-start part
-      const stepStart = parts.find((p): p is MessageV2.StepStartPart => p.type === "step-start")
-      const stepFinish = parts.find((p): p is MessageV2.StepFinishPart => p.type === "step-finish")
+      const stepStart = parts.find((p): p is StepStartPart => p.type === "step-start")
+      const stepFinish = parts.find((p): p is StepFinishPart => p.type === "step-finish")
 
       return {
         type: "generating",

@@ -4,8 +4,7 @@ import { useSync } from "@tui/context/sync"
 import { pipe, sumBy } from "remeda"
 import { useTheme } from "@tui/context/theme"
 import { SplitBorder } from "@tui/component/border"
-import type { AssistantMessage } from "@/types"
-import type { Session } from "@/session"
+import type { AssistantMessage, SessionInfoExtended } from "@/types"
 import { useCommandDialog } from "@tui/component/dialog-command"
 import { useKeybind } from "../../context/keybind"
 import { formatExecutionTime, getToolDuration } from "@tui/util/execution-time"
@@ -13,7 +12,7 @@ import { Spinner } from "../../ui/progress-bar"
 import { VERSION } from "@/version"
 import { useTerminalDimensions } from "@opentui/solid"
 
-const Title = (props: { session: Accessor<Session.Info> }) => {
+const Title = (props: { session: Accessor<SessionInfoExtended> }) => {
   const { theme } = useTheme()
   return (
     <text fg={theme.text}>

@@ -3,6 +3,7 @@ import type {
   AgentInfo,
   ProviderInfo,
   Session,
+  Snapshot,
   Part,
   Config,
   TodoInfo,
@@ -18,11 +19,25 @@ import type {
   ProviderAuthMethod,
   VcsInfo,
 } from "@/types"
+
+// Event payload types for type-safe event handling
+type PermissionRepliedPayload = { sessionID: string; requestID: string }
+type QuestionRepliedPayload = { sessionID: string; requestID: string }
+type QuestionRejectedPayload = { sessionID: string; requestID: string }
+type TodoUpdatedPayload = { sessionID: string; todos: TodoInfo[] }
+type SessionDiffPayload = { sessionID: string; diff: Snapshot.FileDiff[] }
+type SessionDeletedPayload = { info: Session.Info }
+type SessionUpdatedPayload = { info: Session.Info }
+type SessionStatusPayload = { sessionID: string; status: SessionStatusInfo }
+type MessageUpdatedPayload = { info: Message }
+type MessageRemovedPayload = { sessionID: string; messageID: string }
+type MessagePartUpdatedPayload = { part: Part; delta?: string }
+type MessagePartRemovedPayload = { sessionID: string; messageID: string; partID: string }
+type VcsBranchUpdatedPayload = { branch?: string }
 import { createStore, produce, reconcile } from "solid-js/store"
 import { useSDK } from "@tui/context/sdk"
 import { Binary } from "@codecoder-ai/core/util/binary"
 import { createSimpleContext } from "./helper"
-import type { Snapshot } from "@/session/snapshot"
 import { useExit } from "./exit"
 import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
@@ -115,13 +130,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           bootstrap()
           break
         case "permission.replied": {
-          const requests = store.permission[event.properties.sessionID]
+          const props = event.properties as PermissionRepliedPayload
+          const requests = store.permission[props.sessionID]
           if (!requests) break
-          const match = Binary.search(requests, event.properties.requestID, (r) => r.id)
+          const match = Binary.search(requests, props.requestID, (r) => r.id)
           if (!match.found) break
           setStore(
             "permission",
-            event.properties.sessionID,
+            props.sessionID,
             produce((draft) => {
               draft.splice(match.index, 1)
             }),
@@ -130,7 +146,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "permission.asked": {
-          const request = event.properties
+          const request = event.properties as PermissionRequest
           const requests = store.permission[request.sessionID]
           if (!requests) {
             setStore("permission", request.sessionID, [request])
@@ -153,13 +169,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
         case "question.replied":
         case "question.rejected": {
-          const requests = store.question[event.properties.sessionID]
+          const props = event.properties as QuestionRepliedPayload
+          const requests = store.question[props.sessionID]
           if (!requests) break
-          const match = Binary.search(requests, event.properties.requestID, (r) => r.id)
+          const match = Binary.search(requests, props.requestID, (r) => r.id)
           if (!match.found) break
           setStore(
             "question",
-            event.properties.sessionID,
+            props.sessionID,
             produce((draft) => {
               draft.splice(match.index, 1)
             }),
@@ -168,7 +185,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "question.asked": {
-          const request = event.properties
+          const request = event.properties as QuestionRequest
           const requests = store.question[request.sessionID]
           if (!requests) {
             setStore("question", request.sessionID, [request])
@@ -189,16 +206,21 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
 
-        case "todo.updated":
-          setStore("todo", event.properties.sessionID, event.properties.todos)
+        case "todo.updated": {
+          const props = event.properties as TodoUpdatedPayload
+          setStore("todo", props.sessionID, props.todos)
           break
+        }
 
-        case "session.diff":
-          setStore("session_diff", event.properties.sessionID, event.properties.diff)
+        case "session.diff": {
+          const props = event.properties as SessionDiffPayload
+          setStore("session_diff", props.sessionID, props.diff)
           break
+        }
 
         case "session.deleted": {
-          const result = Binary.search(store.session, event.properties.info.id, (s) => s.id)
+          const props = event.properties as SessionDeletedPayload
+          const result = Binary.search(store.session, props.info.id, (s) => s.id)
           if (result.found) {
             setStore(
               "session",
@@ -210,50 +232,53 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "session.updated": {
-          const result = Binary.search(store.session, event.properties.info.id, (s) => s.id)
+          const props = event.properties as SessionUpdatedPayload
+          const result = Binary.search(store.session, props.info.id, (s) => s.id)
           if (result.found) {
-            setStore("session", result.index, reconcile(event.properties.info))
+            setStore("session", result.index, reconcile(props.info))
             break
           }
           setStore(
             "session",
             produce((draft) => {
-              draft.splice(result.index, 0, event.properties.info)
+              draft.splice(result.index, 0, props.info)
             }),
           )
           break
         }
 
         case "session.status": {
-          setStore("session_status", event.properties.sessionID, event.properties.status)
+          const props = event.properties as SessionStatusPayload
+          setStore("session_status", props.sessionID, props.status)
           break
         }
 
         case "message.updated": {
-          const messages = store.message[event.properties.info.sessionID]
+          const props = event.properties as MessageUpdatedPayload
+          const messages = store.message[props.info.sessionID]
           if (!messages) {
-            setStore("message", event.properties.info.sessionID, [event.properties.info])
+            setStore("message", props.info.sessionID, [props.info])
             break
           }
-          const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
+          const result = Binary.search(messages, props.info.id, (m) => m.id)
           if (result.found) {
-            setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
+            setStore("message", props.info.sessionID, result.index, reconcile(props.info))
             break
           }
           setStore(
             "message",
-            event.properties.info.sessionID,
+            props.info.sessionID,
             produce((draft) => {
-              draft.splice(result.index, 0, event.properties.info)
+              draft.splice(result.index, 0, props.info)
             }),
           )
-          const updated = store.message[event.properties.info.sessionID]
+          const updated = store.message[props.info.sessionID]
           if (updated.length > 100) {
             const oldest = updated[0]
             batch(() => {
               setStore(
                 "message",
-                event.properties.info.sessionID,
+                props.info.sessionID,
                 produce((draft) => {
                   draft.shift()
                 }),
@@ -269,12 +294,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "message.removed": {
-          const messages = store.message[event.properties.sessionID]
-          const result = Binary.search(messages, event.properties.messageID, (m) => m.id)
+          const props = event.properties as MessageRemovedPayload
+          const messages = store.message[props.sessionID]
+          const result = Binary.search(messages, props.messageID, (m) => m.id)
           if (result.found) {
             setStore(
               "message",
-              event.properties.sessionID,
+              props.sessionID,
               produce((draft) => {
                 draft.splice(result.index, 1)
               }),
@@ -283,8 +309,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           break
         }
         case "message.part.updated": {
+          const props = event.properties as MessagePartUpdatedPayload
           // Extra debugging for part updates since they drive most UI rendering
-          const part = event.properties.part
+          const part = props.part
           GlobalErrorHandler.addContext("sync:part.detail", {
             type: part.type,
             id: part.id,
@@ -292,33 +319,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             tool: (part as any).tool,
             state: (part as any).state?.status,
           })
-          const parts = store.part[event.properties.part.messageID]
+          const parts = store.part[props.part.messageID]
           if (!parts) {
-            setStore("part", event.properties.part.messageID, [event.properties.part])
+            setStore("part", props.part.messageID, [props.part])
             break
           }
-          const result = Binary.search(parts, event.properties.part.id, (p) => p.id)
+          const result = Binary.search(parts, props.part.id, (p) => p.id)
           if (result.found) {
-            setStore("part", event.properties.part.messageID, result.index, reconcile(event.properties.part))
+            setStore("part", props.part.messageID, result.index, reconcile(props.part))
             break
           }
           setStore(
             "part",
-            event.properties.part.messageID,
+            props.part.messageID,
             produce((draft) => {
-              draft.splice(result.index, 0, event.properties.part)
+              draft.splice(result.index, 0, props.part)
             }),
           )
           break
         }
 
         case "message.part.removed": {
-          const parts = store.part[event.properties.messageID]
-          const result = Binary.search(parts, event.properties.partID, (p) => p.id)
+          const props = event.properties as MessagePartRemovedPayload
+          const parts = store.part[props.messageID]
+          const result = Binary.search(parts, props.partID, (p) => p.id)
           if (result.found)
             setStore(
               "part",
-              event.properties.messageID,
+              props.messageID,
               produce((draft) => {
                 draft.splice(result.index, 1)
               }),
@@ -332,7 +360,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         case "vcs.branch.updated": {
-          setStore("vcs", { branch: event.properties.branch })
+          const props = event.properties as VcsBranchUpdatedPayload
+          setStore("vcs", { branch: props.branch })
           break
         }
       }

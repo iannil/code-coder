@@ -7,6 +7,7 @@
 //! - **history**: Edit and decision history tracking
 //! - **tokenizer**: LLM token counting with caching
 //! - **system**: Unified memory system entry point
+//! - **markdown**: Dual-layer markdown-based memory (daily notes + long-term)
 //!
 //! Adapted from zero-memory for use in zero-core NAPI bindings.
 
@@ -14,6 +15,7 @@ pub mod chunker;
 pub mod embedding;
 pub mod hash_embedding;
 pub mod history;
+pub mod markdown;
 pub mod system;
 pub mod tokenizer;
 pub mod vector;
@@ -55,4 +57,11 @@ pub use system::{
     StoredEmbedding, VectorStore,
     // Tool registry types
     ToolDefinition, ToolMatch,
+};
+pub use markdown::{
+    // Types
+    DailyEntry, DailyEntryType, MemoryCategory, MemorySection, MemoryContext,
+    MarkdownMemoryConfig,
+    // Store
+    MarkdownMemoryStore,
 };

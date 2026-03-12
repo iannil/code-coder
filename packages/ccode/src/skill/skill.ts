@@ -9,7 +9,7 @@ import { Global } from "@/util/global"
 import { Filesystem } from "@/util/filesystem"
 import { Flag } from "@/util/flag/flag"
 import { Bus } from "@/bus"
-import { Session } from "@/session"
+import { BusEvent } from "@/bus/bus-event"
 import { parseSkillFromFile } from "@codecoder-ai/core"
 
 export namespace Skill {
@@ -38,6 +38,22 @@ export namespace Skill {
       actual: z.string(),
     }),
   )
+
+  /**
+   * Error event for skill loading failures.
+   * Mirrors Session.Event.Error for compatibility with existing Bus subscribers.
+   */
+  export const Event = {
+    Error: BusEvent.define(
+      "skill.error",
+      z.object({
+        error: z.object({
+          name: z.string(),
+          message: z.string().optional(),
+        }).passthrough(),
+      }),
+    ),
+  }
 
   const CCODE_SKILL_GLOB = new Bun.Glob("{skill,skills}/**/SKILL.md")
   const CLAUDE_SKILL_GLOB = new Bun.Glob("skills/**/SKILL.md")
@@ -97,7 +113,7 @@ export namespace Skill {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : `Failed to parse skill ${filePath}`
-        Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+        Bus.publish(Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
         log.error("failed to load skill with native parser", { skill: filePath, err })
         return undefined
       }
@@ -108,7 +124,7 @@ export namespace Skill {
       return await parseSkillFallback(filePath)
     } catch (err) {
       const message = err instanceof Error ? err.message : `Failed to parse skill ${filePath}`
-      Bus.publish(Session.Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
+      Bus.publish(Event.Error, { error: new NamedError.Unknown({ message }).toObject() })
       log.error("failed to load skill", { skill: filePath, err })
       return undefined
     }

@@ -2,15 +2,34 @@
  * Daily notes management (flow layer)
  *
  * Immutable chronological log stored in ./memory/daily/{YYYY-MM-DD}.md
+ *
+ * Uses NAPI (Rust) backend when available for high performance,
+ * falls back to local filesystem storage otherwise.
  */
 
 import path from "path"
 import { Log } from "@/util/log"
-import type { DailyEntry } from "./types"
+import type { DailyEntry, DailyEntryType } from "./types"
 import { formatDate, formatTimestamp, formatDailyEntry } from "./util"
-import { getStorage } from "./storage"
+import { getStorage, getNapiMemoryHandle } from "./storage"
+import type { NapiDailyEntryType } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "memory-markdown.daily" })
+
+/**
+ * Map TypeScript entry type to NAPI format
+ * Uses double cast due to const enum with verbatimModuleSyntax
+ */
+function mapEntryTypeToNapi(entryType: DailyEntryType): NapiDailyEntryType {
+  const mapping: Record<DailyEntryType, string> = {
+    decision: "Decision",
+    action: "Action",
+    output: "Output",
+    error: "Error",
+    solution: "Solution",
+  }
+  return (mapping[entryType] ?? "Action") as unknown as NapiDailyEntryType
+}
 
 /**
  * Get daily note file path for a given date
@@ -23,8 +42,33 @@ export function getDailyPath(date: Date): string {
 
 /**
  * Append a new entry to today's daily notes
+ *
+ * Uses NAPI backend when available for better performance.
  */
 export async function appendDailyNote(entry: DailyEntry): Promise<void> {
+  // Try NAPI first (high performance Rust backend)
+  const napiHandle = getNapiMemoryHandle()
+  if (napiHandle) {
+    try {
+      const metadataStr = entry.metadata ? JSON.stringify({
+        ...entry.metadata,
+        projectId: getStorage().projectId,
+        projectPath: process.cwd(),
+      }) : undefined
+
+      napiHandle.appendDailyNote(
+        mapEntryTypeToNapi(entry.type),
+        entry.content,
+        metadataStr,
+      )
+      log.debug("appended daily note via NAPI", { type: entry.type })
+      return
+    } catch (error) {
+      log.warn("NAPI appendDailyNote failed, falling back to local storage", { error })
+    }
+  }
+
+  // Fallback to local storage
   const storage = getStorage()
   const today = new Date()
   const dailyPath = getDailyPath(today)
@@ -92,8 +136,22 @@ export async function loadDailyNotes(startDate: Date, days = 1): Promise<string[
 
 /**
  * Get content from today's daily notes
+ *
+ * Uses NAPI backend when available.
  */
 export async function getTodayNotes(): Promise<string> {
+  // Try NAPI first
+  const napiHandle = getNapiMemoryHandle()
+  if (napiHandle) {
+    try {
+      const content = napiHandle.getTodayNotes()
+      if (content) return content
+    } catch (error) {
+      log.warn("NAPI getTodayNotes failed, falling back to local storage", { error })
+    }
+  }
+
+  // Fallback to local storage
   const today = new Date()
   const dailyPath = getDailyPath(today)
 
@@ -112,8 +170,21 @@ export async function getTodayNotes(): Promise<string> {
 
 /**
  * List all available daily note dates
+ *
+ * Uses NAPI backend when available.
  */
 export async function listDailyNoteDates(): Promise<string[]> {
+  // Try NAPI first
+  const napiHandle = getNapiMemoryHandle()
+  if (napiHandle) {
+    try {
+      return napiHandle.listDailyNoteDates()
+    } catch (error) {
+      log.warn("NAPI listDailyNoteDates failed, falling back to local storage", { error })
+    }
+  }
+
+  // Fallback to local storage
   const storage = getStorage()
   return await storage.listDailyNotes()
 }

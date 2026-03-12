@@ -10,7 +10,7 @@ import { useSDK } from "../context/sdk"
 import { DialogSessionRename } from "./dialog-session-rename"
 import { useKV } from "../context/kv"
 import { createDebouncedSignal } from "../util/signal"
-import { Session } from "@/session"
+import type { SessionInfoExtended } from "@/types"
 import { Bus } from "@/bus"
 import { AutonomousEvent } from "@/autonomous"
 import "opentui-spinner/solid"
@@ -57,9 +57,9 @@ export function DialogSessionList() {
     const deleting = toDelete()
     const autoSessions = autonomousSessions()
     return sessions()
-      .filter((x: Session.Info) => x.parentID === undefined)
-      .toSorted((a: Session.Info, b: Session.Info) => b.time.updated - a.time.updated)
-      .map((x: Session.Info) => {
+      .filter((x: SessionInfoExtended) => x.parentID === undefined)
+      .toSorted((a: SessionInfoExtended, b: SessionInfoExtended) => b.time.updated - a.time.updated)
+      .map((x: SessionInfoExtended) => {
         const date = new Date(x.time.updated)
         let category = date.toDateString()
         if (category === today) {

@@ -3,6 +3,7 @@
  *
  * Abstracts storage backend operations to support:
  * - Local filesystem (current default)
+ * - NAPI-backed Rust implementation (high performance)
  * - Remote storage (future: HTTP, database)
  * - Multi-project shared memory with project isolation
  */
@@ -12,6 +13,13 @@ import { Log } from "@/util/log"
 import type { MemoryStorageConfig } from "./types"
 import { loadStorageConfig } from "./config"
 import { detectProjectIdSync } from "./project"
+import {
+  createMarkdownMemory,
+  isNative,
+} from "@codecoder-ai/core"
+
+// Instance type for MarkdownMemoryHandle (return type of createMarkdownMemory)
+type MarkdownMemoryHandleInstance = NonNullable<ReturnType<NonNullable<typeof createMarkdownMemory>>>
 
 const log = Log.create({ service: "memory-markdown.storage" })
 
@@ -239,3 +247,84 @@ export function getMemoryConfig(): {
     longTermPath: storage.longTermPath,
   }
 }
+
+// ============================================================================
+// NAPI Memory Handle (High-Performance Rust Backend)
+// ============================================================================
+
+/** Global NAPI memory handle instance */
+let napiMemoryHandle: MarkdownMemoryHandleInstance | null = null
+
+/**
+ * Check if NAPI memory is available
+ */
+export function isNapiMemoryAvailable(): boolean {
+  return Boolean(isNative && createMarkdownMemory)
+}
+
+/**
+ * Get NAPI markdown memory handle
+ *
+ * Returns the high-performance Rust-backed memory handle when available.
+ * Returns null if NAPI bindings are not available.
+ *
+ * Usage:
+ * ```typescript
+ * const handle = getNapiMemoryHandle()
+ * if (handle) {
+ *   handle.appendDailyNote("Action", "completed task", null)
+ * } else {
+ *   // Fall back to storage provider
+ * }
+ * ```
+ */
+export function getNapiMemoryHandle(): MarkdownMemoryHandleInstance | null {
+  if (!isNapiMemoryAvailable()) {
+    return null
+  }
+
+  if (!napiMemoryHandle) {
+    try {
+      const config = loadStorageConfig()
+      const basePath = config.basePath ?? path.join(process.cwd(), "memory")
+      const projectId = config.projectId ?? detectProjectIdSync()
+
+      napiMemoryHandle = createMarkdownMemory!(basePath, projectId)
+      log.debug("created NAPI memory handle", { basePath, projectId })
+    } catch (error) {
+      log.warn("failed to create NAPI memory handle", { error })
+      return null
+    }
+  }
+
+  return napiMemoryHandle
+}
+
+/**
+ * Reset NAPI memory handle
+ *
+ * Call this to force recreation with new configuration.
+ */
+export function resetNapiMemoryHandle(): void {
+  napiMemoryHandle = null
+}
+
+/**
+ * Configure NAPI memory with custom settings
+ */
+export function configureNapiMemory(basePath: string, projectId: string): MarkdownMemoryHandleInstance | null {
+  if (!isNapiMemoryAvailable()) {
+    log.warn("NAPI memory not available, using local storage")
+    return null
+  }
+
+  try {
+    napiMemoryHandle = createMarkdownMemory!(basePath, projectId)
+    log.debug("configured NAPI memory handle", { basePath, projectId })
+    return napiMemoryHandle
+  } catch (error) {
+    log.error("failed to configure NAPI memory", { error })
+    return null
+  }
+}
+

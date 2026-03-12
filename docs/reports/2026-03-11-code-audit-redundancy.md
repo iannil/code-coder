@@ -160,3 +160,58 @@ find packages/ccode/test -type d -empty
 | 日期 | 变更 |
 |------|------|
 | 2026-03-11 | 初始审计报告 |
+| 2026-03-11 | SDK 验证完成，更新 security 模块分析 |
+
+---
+
+## 7. 2026-03-11 SDK 验证更新
+
+### 7.1 SDK 模式验证结果
+
+**验证时间**: 2026-03-11 (会话继续)
+
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| Rust daemon 启动 | ✅ | Port 4402, PID 32155 |
+| `/api/v1/agents` | ✅ | 返回 30 个 agents |
+| `/api/v1/sessions` | ✅ | 正常返回空列表 |
+| `/health` | ✅ | `{"status":"healthy"}` |
+
+### 7.2 Security 模块分析修正
+
+**重要发现**: `security/` 模块**不是废弃代码**，而是必要的 NAPI 桥接层。
+
+| 文件 | 类型 | 状态 | 说明 |
+|------|------|------|------|
+| `security/index.ts` | re-export | **保留** | 导出 NAPI 绑定 |
+| `security/remote-policy.ts` | NAPI 包装器 | **保留** | 调用 `@codecoder-ai/core` |
+| `security/prompt-injection.ts` | NAPI 包装器 | **保留** | 调用 `@codecoder-ai/core` |
+| `security/permission/` | 纯 TS 实现 | **保留** | 权限系统核心 |
+
+**依赖链**:
+```
+TypeScript (api/server/handlers/task.ts)
+    ↓
+security/remote-policy.ts (NAPI 包装器)
+    ↓
+@codecoder-ai/core (NAPI 绑定)
+    ↓
+services/zero-core/src/security/ (Rust 实现)
+```
+
+### 7.3 修正后的清理计划
+
+**P1 - 可安全删除** (SDK 验证通过后):
+- ~~`security/index.ts`~~ → **保留** (NAPI 桥接必需)
+- ~~`security/remote-policy.ts`~~ → **保留** (NAPI 桥接必需)
+- ~~`security/prompt-injection.ts`~~ → **保留** (NAPI 桥接必需)
+
+**实际 P1 - 需渐进式迁移**:
+- `agent/agent.ts` - 仍有 14 处直接引用，需先迁移到 SDK 客户端
+- `provider/provider.ts` - 仍有 18 处直接引用，需先迁移到 SDK 客户端
+
+**正确的清理策略**:
+1. 将直接引用逐步改为通过 `sdk/client.ts` 调用 Rust daemon
+2. 当所有引用清除后，删除废弃实现文件
+3. 保留类型定义文件或提取到 `types/` 目录
+

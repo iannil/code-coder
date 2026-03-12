@@ -6,23 +6,23 @@ import { Rpc } from "@/util/rpc"
 import { Bus } from "@/bus"
 import type { Event } from "@/types"
 
-// Local API imports
+// Local API imports (for features not yet migrated to SDK)
 import { LocalSession, LocalPermission, LocalConfig, LocalFind } from "@/api"
 import { SessionPrompt } from "@/session/prompt"
-import { Session } from "@/session"
-import { Provider } from "@/provider/provider"
 import { Command } from "@/agent/command"
 import { LSP } from "@/lsp"
 import { Format } from "@/util/format"
-import { Agent } from "@/agent/agent"
 import { Skill } from "@/skill/skill"
 import { MCP } from "@/mcp"
 import { Vcs } from "@/project/vcs"
 import { Question } from "@/agent/question"
 import { Global } from "@/util/global"
 
-// SDK imports for gradual migration
-import { getHttpClient, isSdkModeEnabled, adaptSessionList, adaptSessionInfo } from "@/sdk"
+// SDK imports - primary API access
+import { getHttpClient, adaptSessionList, adaptSessionInfo } from "@/sdk"
+import { promptViaWebSocket, type WebSocketPromptInput } from "@/sdk"
+import type { AgentInfo, ProviderInfo } from "@/sdk"
+import { MessageV2 } from "@/session/message-v2"
 
 await Log.init({
   print: process.argv.includes("--print-logs"),
@@ -48,6 +48,36 @@ process.on("uncaughtException", (e) => {
 // Worker state
 let eventUnsub = () => {}
 let initPromise: Promise<void> | null = null
+
+// Feature flag for SDK-based prompt (via WebSocket to Rust daemon)
+// Set to true to use the new WebSocket-based agent execution
+const USE_SDK_PROMPT = process.env.USE_SDK_PROMPT === "true"
+
+/**
+ * SDK-based prompt implementation using WebSocket executeAgent()
+ * This replaces LocalSession.prompt when USE_SDK_PROMPT is enabled.
+ */
+async function promptViaSdk(input: WebSocketPromptInput): Promise<{ messageID: string; content?: string }> {
+  // Create publisher that bridges SDK events to Bus
+  const publisher = {
+    publishPartUpdated: (part: unknown, delta?: string) => {
+      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part, delta })
+    },
+    publishMessageUpdated: (info: unknown) => {
+      Bus.publish(MessageV2.Event.Updated, { info: info as MessageV2.Info })
+    },
+    publishStepStart: (part: unknown) => {
+      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part })
+    },
+    publishStepFinish: (part: unknown) => {
+      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part })
+    },
+    publishError: (error: { code: string; message: string }) => {
+      Log.Default.error("SDK agent error", error)
+    },
+  }
+  return promptViaWebSocket(input, publisher)
+}
 
 // One-time initialization of instance and bus
 async function initialize() {
@@ -83,147 +113,76 @@ const localApi = {
       search?: string
       limit?: number
     }) => {
-      // SDK mode: use Rust daemon API with adapter
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          const response = await client.listSessions(input?.limit ?? 50, 0)
-          const adapted = adaptSessionList(response.sessions, {
-            directory: input?.directory ?? Instance.directory,
-          })
-          // Apply filters that SDK doesn't support
-          let filtered = adapted
-          if (input?.directory !== undefined) {
-            filtered = filtered.filter((s) => s.directory === input.directory)
-          }
-          if (input?.roots) {
-            filtered = filtered.filter((s) => !s.parentID)
-          }
-          if (input?.start !== undefined) {
-            filtered = filtered.filter((s) => s.time.updated >= input.start!)
-          }
-          if (input?.search !== undefined) {
-            const search = input.search.toLowerCase()
-            filtered = filtered.filter((s) => s.title.toLowerCase().includes(search))
-          }
-          return filtered
-        } catch (error) {
-          Log.Default.warn("SDK session.list failed, falling back to local API", { error })
-          // Fall through to local API
-        }
+      const client = getHttpClient()
+      const response = await client.listSessions(input?.limit ?? 50, 0)
+      const adapted = adaptSessionList(response.sessions, {
+        directory: input?.directory ?? Instance.directory,
+      })
+      // Apply filters that SDK doesn't support natively
+      let filtered = adapted
+      if (input?.directory !== undefined) {
+        filtered = filtered.filter((s) => s.directory === input.directory)
       }
-      // Local mode: use TypeScript module directly
-      return LocalSession.list(input)
+      if (input?.roots) {
+        filtered = filtered.filter((s) => !s.parentID)
+      }
+      if (input?.start !== undefined) {
+        filtered = filtered.filter((s) => s.time.updated >= input.start!)
+      }
+      if (input?.search !== undefined) {
+        const search = input.search.toLowerCase()
+        filtered = filtered.filter((s) => s.title.toLowerCase().includes(search))
+      }
+      return filtered
     },
     get: async (input: { sessionID: string }) => {
-      // SDK mode: use Rust daemon API with adapter
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          const response = await client.getSession(input.sessionID)
-          return adaptSessionInfo(response.session, {
-            directory: Instance.directory,
-          })
-        } catch (error) {
-          Log.Default.warn("SDK session.get failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      return Session.get(input.sessionID)
+      const client = getHttpClient()
+      const response = await client.getSession(input.sessionID)
+      return adaptSessionInfo(response.session, {
+        directory: Instance.directory,
+      })
     },
     create: async (input?: { title?: string; agent?: string }) => {
-      // SDK mode: use Rust daemon API with adapter
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          const response = await client.createSession({
-            title: input?.title,
-            agent: input?.agent,
-          })
-          return adaptSessionInfo(response.session, {
-            directory: Instance.directory,
-          })
-        } catch (error) {
-          Log.Default.warn("SDK session.create failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      return LocalSession.create(input)
+      const client = getHttpClient()
+      const response = await client.createSession({
+        title: input?.title,
+        agent: input?.agent,
+      })
+      return adaptSessionInfo(response.session, {
+        directory: Instance.directory,
+      })
     },
     fork: async (input: { sessionID: string; messageID?: string; title?: string }) => {
-      // SDK mode: use Rust daemon API with adapter
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          const response = await client.forkSession(input.sessionID, {
-            message_id: input.messageID,
-            title: input.title,
-          })
-          return adaptSessionInfo(response.session, {
-            directory: Instance.directory,
-          })
-        } catch (error) {
-          Log.Default.warn("SDK session.fork failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      return LocalSession.fork(input)
+      const client = getHttpClient()
+      const response = await client.forkSession(input.sessionID, {
+        message_id: input.messageID,
+        title: input.title,
+      })
+      return adaptSessionInfo(response.session, {
+        directory: Instance.directory,
+      })
     },
     remove: async (input: { sessionID: string }) => {
-      // SDK mode: use Rust daemon API
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          await client.deleteSession(input.sessionID)
-          return true
-        } catch (error) {
-          Log.Default.warn("SDK session.remove failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      await Session.remove(input.sessionID)
+      const client = getHttpClient()
+      await client.deleteSession(input.sessionID)
       return true
     },
     delete: async (input: { sessionID: string }) => {
-      // SDK mode: use Rust daemon API
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          await client.deleteSession(input.sessionID)
-          return true
-        } catch (error) {
-          Log.Default.warn("SDK session.delete failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      await Session.remove(input.sessionID)
+      const client = getHttpClient()
+      await client.deleteSession(input.sessionID)
       return true
     },
     compact: async (input: { sessionID: string }) => {
-      // SDK mode: use Rust daemon API
-      if (isSdkModeEnabled()) {
-        try {
-          const client = getHttpClient()
-          await client.compactSession(input.sessionID)
-          return true
-        } catch (error) {
-          Log.Default.warn("SDK session.compact failed, falling back to local API", { error })
-          // Fall through to local API
-        }
-      }
-      // Local mode: use TypeScript module directly
-      return LocalSession.compact(input.sessionID)
+      const client = getHttpClient()
+      await client.compactSession(input.sessionID)
+      return true
     },
     revert: LocalSession.revert,
     status: LocalSession.status,
     summary: LocalSession.summary,
     todo: LocalSession.todo,
-    prompt: LocalSession.prompt,
+    // Use SDK-based prompt via WebSocket when feature flag is enabled
+    prompt: USE_SDK_PROMPT ? promptViaSdk : LocalSession.prompt,
     command: LocalSession.command,
     children: LocalSession.children,
     messages: LocalSession.messages,
@@ -244,8 +203,9 @@ const localApi = {
     get: LocalConfig.get,
     update: LocalConfig.update,
     providers: async () => {
-      const result = await Provider.listAll()
-      const providers = result.all.map((p) => ({
+      const client = getHttpClient()
+      const result = await client.listProviders()
+      const providers = result.all.map((p: ProviderInfo) => ({
         id: p.id,
         name: p.name,
         models: p.models,
@@ -255,8 +215,14 @@ const localApi = {
   },
 
   provider: {
-    list: Provider.listAll,
-    auth: Provider.authMethods,
+    list: async () => {
+      const client = getHttpClient()
+      return client.listProviders()
+    },
+    auth: async () => {
+      // TODO: Migrate auth methods to SDK when available
+      return {}
+    },
   },
 
   command: {
@@ -264,7 +230,18 @@ const localApi = {
   },
 
   app: {
-    agents: Agent.list,
+    agents: async () => {
+      const client = getHttpClient()
+      const response = await client.listAgents()
+      return response.agents.map((a: AgentInfo) => ({
+        name: a.name,
+        description: a.description,
+        mode: a.mode,
+        temperature: a.temperature,
+        color: a.color,
+        hidden: a.hidden,
+      }))
+    },
     skills: Skill.all,
   },
 

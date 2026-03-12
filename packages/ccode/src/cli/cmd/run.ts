@@ -6,12 +6,31 @@ import { Flag } from "@/util/flag/flag"
 import { bootstrap } from "../bootstrap"
 import { EOL } from "os"
 import { select } from "@clack/prompts"
-import { Agent } from "../../agent/agent"
 import { getMode } from "../../agent/mode"
 import { Command } from "@/agent/command"
 import { LocalSession, LocalEvent } from "@/api"
 import { Permission } from "@/security/permission"
-import { Provider } from "@/provider/provider"
+import { getAgentByName } from "@/sdk"
+import type { MessageV2 } from "@/session/message-v2"
+import type { PermissionNext } from "@/security/permission/next"
+
+// Type definitions for Bus events used in this file
+interface MessagePartUpdatedProps {
+  part: MessageV2.Part
+  delta?: string
+}
+
+interface SessionErrorProps {
+  sessionID?: string
+  error?: {
+    name: string
+    data?: { message?: string }
+  }
+}
+
+interface SessionIdleProps {
+  sessionID: string
+}
 
 function parseModelString(model: string) {
   const [providerID, ...rest] = model.split("/")
@@ -169,7 +188,8 @@ export const RunCommand = cmd({
             if (done) break
             const event = value
           if (event.type === "message.part.updated") {
-            const part = event.properties.part
+            const props = event.properties as MessagePartUpdatedProps
+            const part = props.part
             if (part.sessionID !== sessionID) continue
 
             if (part.type === "tool" && part.state.status === "completed") {
@@ -203,10 +223,10 @@ export const RunCommand = cmd({
           }
 
           if (event.type === "session.error") {
-            const props = event.properties
+            const props = event.properties as SessionErrorProps
             if (props.sessionID !== sessionID || !props.error) continue
             let err = String(props.error.name)
-            if ("data" in props.error && props.error.data && "message" in props.error.data) {
+            if (props.error.data && props.error.data.message) {
               err = String(props.error.data.message)
             }
             errorMsg = errorMsg ? errorMsg + EOL + err : err
@@ -214,12 +234,15 @@ export const RunCommand = cmd({
             UI.error(err)
           }
 
-          if (event.type === "session.idle" && event.properties.sessionID === sessionID) {
-            break
+          if (event.type === "session.idle") {
+            const props = event.properties as SessionIdleProps
+            if (props.sessionID === sessionID) {
+              break
+            }
           }
 
           if (event.type === "permission.asked") {
-            const permission = event.properties
+            const permission = event.properties as PermissionNext.Request
             if (permission.sessionID !== sessionID) continue
             const result = await select({
               message: `Permission required: ${permission.permission} (${permission.patterns.join(", ")})`,
@@ -247,7 +270,7 @@ export const RunCommand = cmd({
       const resolvedAgent = await (async () => {
         // If explicit agent specified, validate it
         if (args.agent) {
-          const agent = await Agent.get(args.agent)
+          const agent = await getAgentByName(args.agent)
           if (!agent) {
             UI.println(
               UI.Style.TEXT_WARNING_BOLD + "!",

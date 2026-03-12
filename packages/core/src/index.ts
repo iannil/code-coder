@@ -297,8 +297,9 @@ export const extractMarkdownFrontmatter = nativeBindings?.extractMarkdownFrontma
 export const stripMarkdownFrontmatter = nativeBindings?.stripMarkdownFrontmatter
 
 // Phase 12: PTY (native portable-pty)
-export const PtySessionHandle = nativeBindings?.PtySessionHandle
-export const PtyManagerHandle = nativeBindings?.PtyManagerHandle
+// Note: PtySessionHandle and PtyManagerHandle not available in current binding
+export const PtySessionHandle = undefined
+export const PtyManagerHandle = undefined
 export const spawnPty = nativeBindings?.spawnPty
 export const spawnPtyCommand = nativeBindings?.spawnPtyCommand
 
@@ -335,6 +336,10 @@ export const createEmbeddingIndex = nativeBindings?.createEmbeddingIndex
 // Memory System (unified memory management)
 export const MemorySystemHandle = nativeBindings?.MemorySystemHandle
 export const createMemorySystem = nativeBindings?.createMemorySystem
+
+// Markdown Memory (dual-layer transparent memory)
+export const MarkdownMemoryHandle = nativeBindings?.MarkdownMemoryHandle
+export const createMarkdownMemory = nativeBindings?.createMarkdownMemory
 
 // Observability (emit API for tracing, metrics, cost tracking)
 // TODO: NAPI bindings not yet implemented in Rust.
@@ -399,8 +404,7 @@ export type {
   NapiPtyConfig,
   NapiPtyState,
   NapiPtyInfo,
-  PtySessionHandle as PtySessionHandleType,
-  PtyManagerHandle as PtyManagerHandleType,
+  // Note: PtySessionHandle and PtyManagerHandle not exported from current binding
   // Config Loader types
   NapiProviderConfig,
   NapiAgentConfig,
@@ -484,6 +488,14 @@ export type {
   NapiImportResult,
   NapiCleanupResult,
   MemorySystemHandle as MemorySystemHandleType,
+  // Markdown Memory types
+  NapiDailyEntry,
+  NapiDailyEntryType,
+  NapiMemoryCategory,
+  NapiMemorySection,
+  NapiMemoryContext,
+  NapiMarkdownMemoryConfig,
+  MarkdownMemoryHandle as MarkdownMemoryHandleType,
   // Skill Parser types
   NapiSkillMetadata,
   NapiParsedSkill,
@@ -534,8 +546,8 @@ export type {
   NapiCheckWithWarnings,
   SafetyGuardHandle as SafetyGuardHandleType,
   // CLOSE Decision Framework types (Phase 2)
-  NapiCLOSEDimension,
-  NapiCLOSEEvaluation,
-  NapiCLOSEWeights,
-  NapiCLOSEInput,
+  NapiCloseDimension as NapiCLOSEDimension,
+  NapiCloseEvaluation as NapiCLOSEEvaluation,
+  NapiCloseWeights as NapiCLOSEWeights,
+  NapiCloseInput as NapiCLOSEInput,
 } from './binding.d.ts'

@@ -93,7 +93,7 @@ export function Prompt(props: PromptProps) {
   const pasteStyleId = syntax().getStyleId("extmark.paste")!
   let promptPartTypeId = 0
 
-  sdk.event.on(TuiEvent.PromptAppend.type, (evt) => {
+  sdk.subscribe(TuiEvent.PromptAppend, (evt) => {
     input.insertText(evt.properties.text)
     setTimeout(() => {
       input.getLayoutNode().markDirty()
@@ -1065,7 +1065,7 @@ export function Prompt(props: PromptProps) {
                     })
                     const message = createMemo(() => {
                       const r = retry()
-                      if (!r) return
+                      if (!r || !r.message) return
                       if (r.message.includes("exceeded your current quota") && r.message.includes("gemini"))
                         return "gemini is way too hot right now"
                       if (r.message.length > 80) return r.message.slice(0, 80) + "..."
@@ -1073,7 +1073,7 @@ export function Prompt(props: PromptProps) {
                     })
                     const isTruncated = createMemo(() => {
                       const r = retry()
-                      if (!r) return false
+                      if (!r || !r.message) return false
                       return r.message.length > 120
                     })
                     const [seconds, setSeconds] = createSignal(0)
@@ -1089,7 +1089,7 @@ export function Prompt(props: PromptProps) {
                     })
                     const handleMessageClick = () => {
                       const r = retry()
-                      if (!r) return
+                      if (!r || !r.message) return
                       if (isTruncated()) {
                         DialogAlert.show(dialog, "Retry Error", r.message)
                       }

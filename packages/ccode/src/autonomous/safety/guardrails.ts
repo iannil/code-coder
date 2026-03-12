@@ -8,6 +8,7 @@ import {
   type NapiLoopDetection,
   type NapiSafetyCheckResult,
   type NapiGuardrailStats,
+  type NapiToolResult,
 } from "@codecoder-ai/core"
 
 const log = Log.create({ service: "autonomous.safety.guardrails" })
@@ -125,9 +126,9 @@ export class SafetyGuardrails {
    */
   recordToolCall(tool: string, input: unknown, result: "success" | "error"): void {
     const inputStr = typeof input === "string" ? input : JSON.stringify(input)
-    const napiResult = result === "success" ? "Success" : "Error"
+    const napiResult = (result === "success" ? "Success" : "Error") as NapiToolResult
 
-    const loop = this.handle.recordToolCall(tool, inputStr, napiResult as "Success" | "Error")
+    const loop = this.handle.recordToolCall(tool, inputStr, napiResult)
 
     // Publish event if loop detected
     if (loop && this.config.loopDetectionEnabled) {

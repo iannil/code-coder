@@ -8,7 +8,7 @@
  * @module observer/agent-registry
  */
 
-import { Agent } from "@/agent/agent"
+import { listAgentsFiltered } from "@/sdk"
 import { Log } from "@/util/log"
 import type { WatcherType } from "@/sdk/types"
 
@@ -17,6 +17,12 @@ const log = Log.create({ service: "observer.agent-registry" })
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
+
+export interface ObserverCapability {
+  canWatch: WatcherType[]
+  contributeToConsensus: boolean
+  reportToMeta: boolean
+}
 
 export interface ObserverAgentInfo {
   name: string
@@ -27,6 +33,84 @@ export interface ObserverAgentInfo {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Static Observer Capability Mapping
+// Defines which agents have observer capabilities (static configuration)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OBSERVER_CAPABILITIES: Record<string, ObserverCapability> = {
+  explore: {
+    canWatch: ["code"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  "code-reviewer": {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  "security-reviewer": {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  "tdd-guide": {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  architect: {
+    canWatch: ["code"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  observer: {
+    canWatch: ["meta"],
+    contributeToConsensus: true,
+    reportToMeta: false,
+  },
+  decision: {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  macro: {
+    canWatch: ["world"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  trader: {
+    canWatch: ["world"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  picker: {
+    canWatch: ["world"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  "value-analyst": {
+    canWatch: ["world"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  verifier: {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  autonomous: {
+    canWatch: ["self"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+  "feasibility-assess": {
+    canWatch: ["code"],
+    contributeToConsensus: true,
+    reportToMeta: true,
+  },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Registry Functions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -34,17 +118,23 @@ export interface ObserverAgentInfo {
  * Get all agents with observer capabilities.
  */
 export async function getObserverAgents(): Promise<ObserverAgentInfo[]> {
-  const agents = await Agent.list()
+  const agents = await listAgentsFiltered()
+  const result: ObserverAgentInfo[] = []
 
-  return agents
-    .filter((agent) => agent.observerCapability)
-    .map((agent) => ({
-      name: agent.name,
-      description: agent.description,
-      canWatch: agent.observerCapability!.canWatch as WatcherType[],
-      contributeToConsensus: agent.observerCapability!.contributeToConsensus,
-      reportToMeta: agent.observerCapability!.reportToMeta,
-    }))
+  for (const agent of agents) {
+    const capability = OBSERVER_CAPABILITIES[agent.name]
+    if (capability) {
+      result.push({
+        name: agent.name,
+        description: agent.description,
+        canWatch: capability.canWatch,
+        contributeToConsensus: capability.contributeToConsensus,
+        reportToMeta: capability.reportToMeta,
+      })
+    }
+  }
+
+  return result
 }
 
 /**
@@ -75,16 +165,14 @@ export async function getMetaReportingAgents(): Promise<ObserverAgentInfo[]> {
  * Check if a specific agent has observer capability.
  */
 export async function hasObserverCapability(agentName: string): Promise<boolean> {
-  const agent = await Agent.get(agentName)
-  return !!agent?.observerCapability
+  return agentName in OBSERVER_CAPABILITIES
 }
 
 /**
  * Get observer capability for a specific agent.
  */
-export async function getAgentObserverCapability(agentName: string): Promise<Agent.ObserverCapability | null> {
-  const agent = await Agent.get(agentName)
-  return agent?.observerCapability ?? null
+export async function getAgentObserverCapability(agentName: string): Promise<ObserverCapability | null> {
+  return OBSERVER_CAPABILITIES[agentName] ?? null
 }
 
 /**

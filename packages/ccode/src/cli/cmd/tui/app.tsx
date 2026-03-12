@@ -30,7 +30,6 @@ import { PromptStashProvider } from "./component/prompt/stash"
 import { DialogAlert } from "./ui/dialog-alert"
 import { ToastProvider, useToast } from "./ui/toast"
 import { ExitProvider, useExit } from "./context/exit"
-import { Session as SessionApi } from "@/session"
 import { TuiEvent } from "./event"
 import { KVProvider, useKV } from "./context/kv"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
@@ -41,6 +40,7 @@ import { Log } from "@/util/log"
 import { GlobalErrorHandler } from "@/util/global-error-handler"
 import * as fs from "fs"
 import { isDefaultTitle, parseModel } from "@/sdk"
+import { SessionEventTypes } from "@/types"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // Skip terminal background detection to avoid hanging
@@ -579,12 +579,12 @@ function App() {
     }
   })
 
-  sdk.event.on(TuiEvent.CommandExecute.type, (evt) => {
+  sdk.subscribe(TuiEvent.CommandExecute, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.CommandExecute", evt.properties)
     command.trigger(evt.properties.command)
   })
 
-  sdk.event.on(TuiEvent.ToastShow.type, (evt) => {
+  sdk.subscribe(TuiEvent.ToastShow, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.ToastShow", evt.properties)
     toast.show({
       title: evt.properties.title,
@@ -594,7 +594,7 @@ function App() {
     })
   })
 
-  sdk.event.on(TuiEvent.SessionSelect.type, (evt) => {
+  sdk.subscribe(TuiEvent.SessionSelect, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.SessionSelect", evt.properties)
     route.navigate({
       type: "session",
@@ -602,7 +602,7 @@ function App() {
     })
   })
 
-  sdk.event.on(TuiEvent.ModelCall.type, (evt) => {
+  sdk.subscribe(TuiEvent.ModelCall, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.ModelCall", evt.properties)
     const { providerID, modelID, agent, sessionID } = evt.properties
     // Defer toast.show to avoid interfering with event processing
@@ -616,7 +616,7 @@ function App() {
   })
 
   // Track writer agent progress for long-form tasks
-  sdk.event.on(TuiEvent.WriterProgress.type, (evt) => {
+  sdk.subscribe(TuiEvent.WriterProgress, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.WriterProgress", evt.properties)
     const { action, chapter, total, message } = evt.properties
     let progressMessage = ""
@@ -649,7 +649,7 @@ function App() {
   })
 
   // Track expander agent execution stats for long-form content generation
-  sdk.event.on(TuiEvent.WriterStats.type, (evt) => {
+  sdk.subscribe(TuiEvent.WriterStats, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.WriterStats", evt.properties)
     const { status, agentType, elapsedSeconds, wordsGenerated, filesWritten, writesPending, isStalled } = evt.properties
 
@@ -697,7 +697,7 @@ function App() {
   })
 
   // Track chapter draft saves for progress protection
-  sdk.event.on(TuiEvent.ChapterDraftSaved.type, (evt) => {
+  sdk.subscribe(TuiEvent.ChapterDraftSaved, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.ChapterDraftSaved", evt.properties)
     const { wordsWritten, saveCount } = evt.properties
 
@@ -710,7 +710,7 @@ function App() {
     })
   })
 
-  sdk.event.on(TuiEvent.ChapterDraftFinalized.type, (evt) => {
+  sdk.subscribe(TuiEvent.ChapterDraftFinalized, (evt) => {
     GlobalErrorHandler.addContext("TuiEvent.ChapterDraftFinalized", evt.properties)
     const { wordsWritten, totalSaves } = evt.properties
 
@@ -723,9 +723,10 @@ function App() {
     })
   })
 
-  sdk.event.on(SessionApi.Event.Deleted.type, (evt) => {
-    GlobalErrorHandler.addContext("SessionApi.Event.Deleted", evt.properties)
-    if (route.data.type === "session" && route.data.sessionID === evt.properties.info.id) {
+  sdk.event.on(SessionEventTypes.Deleted, (evt) => {
+    GlobalErrorHandler.addContext("SessionEventTypes.Deleted", evt.properties)
+    const props = evt.properties as { info: { id: string } }
+    if (route.data.type === "session" && route.data.sessionID === props.info.id) {
       route.navigate({ type: "home" })
       toast.show({
         variant: "info",
@@ -734,10 +735,11 @@ function App() {
     }
   })
 
-  sdk.event.on(SessionApi.Event.Error.type, (evt) => {
-    GlobalErrorHandler.addContext("SessionApi.Event.Error", evt.properties)
-    const error = evt.properties.error
-    if (error && typeof error === "object" && error.name === "MessageAbortedError") return
+  sdk.event.on(SessionEventTypes.Error, (evt) => {
+    GlobalErrorHandler.addContext("SessionEventTypes.Error", evt.properties)
+    const props = evt.properties as { error?: unknown }
+    const error = props.error
+    if (error && typeof error === "object" && "name" in error && error.name === "MessageAbortedError") return
     const message = (() => {
       if (!error) return "An error occurred"
 

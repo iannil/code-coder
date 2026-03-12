@@ -7,18 +7,46 @@
 //! - Executes tools and feeds results back
 //! - Returns final text response
 //!
+//! ## Architecture
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────────┐
+//! │                        AgentRegistry                                │
+//! │              (configuration storage and lookup)                     │
+//! └─────────────────────────────────────────────────────────────────────┘
+//!                                │
+//!                                ▼
+//! ┌─────────────────────────────────────────────────────────────────────┐
+//! │                         AgentLoader                                 │
+//! │        (YAML config + Markdown prompt file loading)                 │
+//! └─────────────────────────────────────────────────────────────────────┘
+//!                                │
+//!                                ▼
+//! ┌─────────────────────────────────────────────────────────────────────┐
+//! │                        AgentExecutor                                │
+//! │              (tool-calling loop with LLM)                           │
+//! └─────────────────────────────────────────────────────────────────────┘
+//! ```
+//!
 //! ## Example
 //!
 //! ```ignore
-//! use zero_agent::{AgentExecutor, ToolContext};
-//! use zero_tools::Tool;
+//! use zero_core::agent::{AgentExecutor, AgentRegistry, ToolContext};
 //!
+//! // Initialize registry with built-in agents
+//! let registry = AgentRegistry::new();
+//! registry.register_natives(create_builtin_agents()).await;
+//!
+//! // Get agent configuration
+//! let config = registry.get("build").await.unwrap();
+//!
+//! // Create executor
 //! let executor = AgentExecutor::new(
 //!     provider,
 //!     tools,
-//!     system_prompt,
+//!     config.prompt_content.unwrap_or_default(),
 //!     model,
-//!     temperature,
+//!     config.model.map(|m| m.temperature).flatten().unwrap_or(0.7),
 //! );
 //!
 //! let response = executor.execute("Hello!").await?;
@@ -27,7 +55,9 @@
 pub mod confirmation;
 pub mod context;
 pub mod executor;
+pub mod loader;
 pub mod provider;
+pub mod registry;
 pub mod streaming;
 
 pub use confirmation::{
@@ -37,8 +67,17 @@ pub use confirmation::{
     ConfirmationResponse, NotificationSink, PendingConfirmation,
 };
 pub use context::ToolContext;
-pub use executor::{AgentExecutor, ToolCall};
+pub use executor::{AgentExecutor, ConfiguredExecutor, ToolCall, ToolRisk};
+pub use loader::{
+    AgentConfig, AgentLoader, AgentMode, AutoApproveConfig, LoaderError, LoaderPaths,
+    ModelConfig, ObserverCapability, PermissionAction, PermissionConfig, PermissionRule,
+    PermissionValue, RiskThreshold, ThinkingMode, WatcherType,
+};
 pub use provider::Provider;
+pub use registry::{
+    create_builtin_agents, get_global_registry, init_and_load, init_global_registry,
+    AgentRegistry, RegistryError,
+};
 pub use streaming::{
     AnthropicProvider, ContentPart, Message, Role, StreamEvent, StreamRequest, StreamingProvider,
     ToolDef, Usage,

@@ -484,8 +484,8 @@ export function evaluateCLOSENative(
     techDebtLevel: input.techDebtLevel,
     dismissedAnomalies: input.dismissedAnomalies,
     activeAnomalies: input.activeAnomalies,
-    recentTrendAvg: input.recentTrendAvg ?? null,
-    olderTrendAvg: input.olderTrendAvg ?? null,
+    recentTrendAvg: input.recentTrendAvg ?? undefined,
+    olderTrendAvg: input.olderTrendAvg ?? undefined,
   }
 
   const napiWeights: NapiCLOSEWeights | undefined = weights

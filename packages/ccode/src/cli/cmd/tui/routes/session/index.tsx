@@ -50,8 +50,7 @@ import {
   RGBA,
 } from "@opentui/core"
 import { Prompt, type PromptRef } from "@tui/component/prompt"
-import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart } from "@/types"
-import { MessageV2 } from "@/session/message-v2"
+import type { AssistantMessage, Part, ToolPart, UserMessage, TextPart, ReasoningPart, StepStartPart, StepFinishPart } from "@/types"
 import { useLocal } from "@tui/context/local"
 import { Locale } from "@/util/locale"
 import type { Tool } from "@/tool/tool"
@@ -228,7 +227,8 @@ export function Session() {
 
   let lastSwitch: string | undefined = undefined
   sdk.event.on("message.part.updated", (evt) => {
-    const part = evt.properties.part
+    const props = evt.properties as { part: { type: string; sessionID: string; id: string; tool?: string; state: { status: string } } }
+    const part = props.part
     if (part.type !== "tool") return
     if (part.sessionID !== route.sessionID) return
     if (part.state.status !== "completed") return
@@ -1311,7 +1311,7 @@ const PART_MAPPING = {
   "step-finish": ModelStepFinish,
 }
 
-function ModelStepStart(props: { last: boolean; part: MessageV2.StepStartPart; message: AssistantMessage }) {
+function ModelStepStart(props: { last: boolean; part: StepStartPart; message: AssistantMessage }) {
   const { theme } = useTheme()
   const ctx = use()
   const sync = useSync()
@@ -1339,7 +1339,7 @@ function ModelStepStart(props: { last: boolean; part: MessageV2.StepStartPart; m
   )
 }
 
-function ModelStepFinish(props: { last: boolean; part: MessageV2.StepFinishPart; message: AssistantMessage }) {
+function ModelStepFinish(props: { last: boolean; part: StepFinishPart; message: AssistantMessage }) {
   const { theme } = useTheme()
   const ctx = use()
 

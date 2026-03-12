@@ -1,17 +1,21 @@
 /**
  * Local SDK client that provides the same interface as the HTTP SDK client
  * but uses direct function calls instead of HTTP requests.
+ *
+ * NOTE: This module avoids importing from deprecated modules (@/agent/agent,
+ * @/provider/provider, @/session). Instead, it uses:
+ * - LocalSession from @/api for session operations
+ * - Direct imports from non-deprecated modules where available
+ * - Lazy dynamic imports where necessary to avoid circular dependencies
  */
 
 import type { Event } from "@/types"
+import type { ProviderListResponseExtended } from "@/sdk/types"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { LocalSession, LocalPermission, LocalConfig, LocalEvent, LocalFind } from "@/api"
-import { Session } from "@/session"
-import { Provider } from "@/provider/provider"
 import { Command } from "@/agent/command"
 import { LSP } from "@/lsp"
 import { Format } from "@/util/format"
-import { Agent } from "@/agent/agent"
 import { Skill } from "@/skill/skill"
 import { MCP } from "@/mcp"
 import { Vcs } from "@/project/vcs"
@@ -19,6 +23,45 @@ import { Question } from "@/agent/question"
 import { Global } from "@/util/global"
 import { Instance } from "@/project/instance"
 import { Bus } from "@/bus"
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Local Provider/Agent Functions
+// These use dynamic imports to avoid importing deprecated modules at module load time
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * List all agents (local implementation).
+ * Uses dynamic import to avoid top-level import of deprecated @/agent/agent.
+ * Returns the full Agent.Info[] to maintain compatibility with consumers.
+ */
+async function listAgentsLocal() {
+  const { Agent } = await import("@/agent/agent")
+  return Agent.list()
+}
+
+/**
+ * List all providers with connection info (local implementation).
+ * Uses dynamic import to avoid top-level import of deprecated @/provider/provider.
+ */
+async function listProvidersLocal(): Promise<ProviderListResponseExtended> {
+  const { Provider } = await import("@/provider/provider")
+  const result = await Provider.listAll()
+  return {
+    success: true,
+    all: result.all,
+    default: result.default,
+    connected: result.connected,
+  }
+}
+
+/**
+ * Get provider auth methods (local implementation).
+ * Uses dynamic import to avoid top-level import of deprecated @/provider/provider.
+ */
+async function getProviderAuthMethodsLocal(): Promise<Record<string, { type: "oauth" | "api"; label: string }[]>> {
+  const { Provider } = await import("@/provider/provider")
+  return Provider.authMethods()
+}
 
 export function createLocalClient() {
   const eventSource = LocalEvent.subscribe()
@@ -59,17 +102,17 @@ export function createLocalClient() {
     client: {
       session: {
         list: async (input?: any) => ({ data: await LocalSession.list(input) }),
-        get: async (input: { sessionID: string }) => ({ data: await Session.get(input.sessionID) }),
+        get: async (input: { sessionID: string }) => ({ data: await LocalSession.get(input.sessionID) }),
         create: async (input?: any) => ({ data: await LocalSession.create(input) }),
         fork: async (input: { sessionID: string; messageID?: string }) => ({
           data: await LocalSession.fork(input),
         }),
         remove: async (input: { sessionID: string }) => {
-          await Session.remove(input.sessionID)
+          await LocalSession.remove(input.sessionID)
           return { data: true }
         },
         delete: async (input: { sessionID: string }) => {
-          await Session.remove(input.sessionID)
+          await LocalSession.remove(input.sessionID)
           return { data: true }
         },
         compact: async (input: { sessionID: string }) => ({ data: await LocalSession.compact(input.sessionID) }),
@@ -98,8 +141,8 @@ export function createLocalClient() {
       },
 
       provider: {
-        list: async () => ({ data: await Provider.listAll() }),
-        auth: async () => ({ data: await Provider.authMethods() }),
+        list: async () => ({ data: await listProvidersLocal() }),
+        auth: async () => ({ data: await getProviderAuthMethodsLocal() }),
       },
 
       command: {
@@ -107,7 +150,7 @@ export function createLocalClient() {
       },
 
       app: {
-        agents: async () => ({ data: await Agent.list() }),
+        agents: async () => ({ data: await listAgentsLocal() }),
         skills: async () => ({ data: await Skill.all() }),
       },
 

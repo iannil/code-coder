@@ -2,11 +2,21 @@ import { createSimpleContext } from "./helper"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, onCleanup, onMount } from "solid-js"
 import type { Event } from "@/types"
+import type { BusEvent } from "@/bus/bus-event"
+import type z from "zod"
 import * as fs from "fs"
 import { GlobalErrorHandler } from "@/util/global-error-handler"
 
 export type EventSource = {
   on: (handler: (event: Event) => void) => () => void
+}
+
+/**
+ * Type-safe event payload for Bus events
+ */
+export type TypedEventPayload<T extends BusEvent.Definition> = {
+  type: T["type"]
+  properties: z.infer<T["properties"]>
 }
 
 type RpcClient = {
@@ -233,10 +243,30 @@ export const { use: useSDK, provider: SDKProvider } = createSimpleContext({
     // Create the local SDK client
     const client = createSDKClient()
 
+    /**
+     * Type-safe event subscription that infers properties type from BusEvent definition.
+     *
+     * @example
+     * ```typescript
+     * sdk.subscribe(TuiEvent.ModelCall, (evt) => {
+     *   // evt.properties is properly typed as { providerID: string, modelID: string, ... }
+     *   console.log(evt.properties.providerID)
+     * })
+     * ```
+     */
+    const subscribe = <T extends BusEvent.Definition>(
+      def: T,
+      callback: (event: TypedEventPayload<T>) => void
+    ) => {
+      return emitter.on(def.type, callback as (event: Event) => void)
+    }
+
     return {
       url: props.url,
       event: emitter,
       client,
+      /** Type-safe event subscription */
+      subscribe,
       // Expose current event for debugging
       getCurrentEvent: () => currentEvent,
     }

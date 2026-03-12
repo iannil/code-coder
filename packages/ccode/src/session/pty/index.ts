@@ -6,7 +6,17 @@ import { Log } from "@/util/log"
 import type { WSContext } from "hono/ws"
 import { Instance } from "@/project/instance"
 import { Shell } from "@/session/shell/shell"
-import { spawnPty, type NapiPtyConfig, type PtySessionHandleType } from "@codecoder-ai/core"
+import { spawnPty, type NapiPtyConfig, type NapiPtyInfo } from "@codecoder-ai/core"
+
+// Stub type for PTY session handle until proper binding is available
+interface PtySessionHandle {
+  info(): NapiPtyInfo
+  read(): string
+  write(data: string): void
+  resize(cols: number, rows: number): void
+  kill(): void
+  isAlive(): boolean
+}
 
 export namespace Pty {
   const log = Log.create({ service: "pty" })
@@ -60,7 +70,7 @@ export namespace Pty {
 
   interface ActiveSession {
     info: Info
-    handle: PtySessionHandleType
+    handle: PtySessionHandle
     buffer: string
     subscribers: Set<WSContext>
     pollTimer: Timer | null
@@ -128,9 +138,15 @@ export namespace Pty {
       inheritEnv: false, // We provide full env above
     }
 
-    const handle = spawnPty(config)
-    const nativeInfo = handle.info()
+    // TODO: Current NAPI binding returns void. PTY handle support needs to be added.
+    // For now, throw an error until proper PTY handle binding is available.
+    spawnPty(config)
+    throw new Error("PTY handle support not yet available in current NAPI binding. Use shell fallback.")
 
+    // NOTE: Code below is commented out until PTY handle binding is implemented.
+    // When spawnPty returns a handle, remove the throw above and uncomment this code.
+    /*
+    const nativeInfo = handle.info()
     const info: Info = {
       id,
       title: input.title || `Terminal ${id.slice(-4)}`,
@@ -138,7 +154,6 @@ export namespace Pty {
       args,
       cwd,
       status: "running",
-      // Native PTY doesn't expose PID directly, use a placeholder based on session ID hash
       pid: Math.abs(hashCode(nativeInfo.id)),
     }
 
@@ -157,7 +172,6 @@ export namespace Pty {
       try {
         const data = session.handle.read()
         if (data && data.length > 0) {
-          // read() returns string from native binding
           let open = false
           for (const ws of session.subscribers) {
             if (ws.readyState !== 1) {
@@ -204,6 +218,7 @@ export namespace Pty {
 
     Bus.publish(Event.Created, { info })
     return info
+    */
   }
 
   export async function update(id: string, input: UpdateInput) {

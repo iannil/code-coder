@@ -14,7 +14,7 @@ import { Bus } from "@/bus"
 import { FileTime } from "../file/time"
 import { Filesystem } from "@/util/filesystem"
 import { Instance } from "@/project/instance"
-import { Snapshot } from "@/session/snapshot"
+import type { FileDiff } from "@/types"
 import { assertExternalDirectory } from "./external-directory"
 import { point, runWithChildSpanAsync, functionStart, functionEnd } from "@/observability"
 import { replaceWithFuzzyMatch as replaceWithFuzzyMatchNative } from "@codecoder-ai/core"
@@ -168,7 +168,7 @@ export const EditTool = Tool.define("edit", {
         FileTime.read(ctx.sessionID, filePath)
       })
 
-      const filediff: Snapshot.FileDiff = {
+      const filediff: FileDiff = {
         file: filePath,
         before: contentOld,
         after: contentNew,

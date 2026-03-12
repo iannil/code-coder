@@ -963,6 +963,344 @@ pub fn create_memory_system(data_dir: String, project_id: String) -> Result<Memo
     MemorySystemHandle::new(data_dir, project_id)
 }
 
+// ============================================================================
+// Markdown Memory Types (NAPI)
+// ============================================================================
+
+use crate::memory::markdown::{
+    DailyEntry as RustDailyEntry,
+    DailyEntryType as RustDailyEntryType,
+    MemoryCategory as RustMemoryCategory,
+    MemorySection as RustMemorySection,
+    MemoryContext as RustMemoryContext,
+    MarkdownMemoryConfig as RustMarkdownMemoryConfig,
+    MarkdownMemoryStore as RustMarkdownMemoryStore,
+};
+
+/// Daily entry type for NAPI
+#[napi(string_enum)]
+pub enum NapiDailyEntryType {
+    Decision,
+    Action,
+    Output,
+    Error,
+    Solution,
+}
+
+impl From<NapiDailyEntryType> for RustDailyEntryType {
+    fn from(t: NapiDailyEntryType) -> Self {
+        match t {
+            NapiDailyEntryType::Decision => RustDailyEntryType::Decision,
+            NapiDailyEntryType::Action => RustDailyEntryType::Action,
+            NapiDailyEntryType::Output => RustDailyEntryType::Output,
+            NapiDailyEntryType::Error => RustDailyEntryType::Error,
+            NapiDailyEntryType::Solution => RustDailyEntryType::Solution,
+        }
+    }
+}
+
+impl From<RustDailyEntryType> for NapiDailyEntryType {
+    fn from(t: RustDailyEntryType) -> Self {
+        match t {
+            RustDailyEntryType::Decision => NapiDailyEntryType::Decision,
+            RustDailyEntryType::Action => NapiDailyEntryType::Action,
+            RustDailyEntryType::Output => NapiDailyEntryType::Output,
+            RustDailyEntryType::Error => NapiDailyEntryType::Error,
+            RustDailyEntryType::Solution => NapiDailyEntryType::Solution,
+        }
+    }
+}
+
+/// Memory category for NAPI
+#[napi(string_enum)]
+pub enum NapiMemoryCategory {
+    UserPreferences,
+    ProjectContext,
+    KeyDecisions,
+    LessonsLearned,
+    SuccessfulSolutions,
+}
+
+impl From<NapiMemoryCategory> for RustMemoryCategory {
+    fn from(c: NapiMemoryCategory) -> Self {
+        match c {
+            NapiMemoryCategory::UserPreferences => RustMemoryCategory::UserPreferences,
+            NapiMemoryCategory::ProjectContext => RustMemoryCategory::ProjectContext,
+            NapiMemoryCategory::KeyDecisions => RustMemoryCategory::KeyDecisions,
+            NapiMemoryCategory::LessonsLearned => RustMemoryCategory::LessonsLearned,
+            NapiMemoryCategory::SuccessfulSolutions => RustMemoryCategory::SuccessfulSolutions,
+        }
+    }
+}
+
+impl From<RustMemoryCategory> for NapiMemoryCategory {
+    fn from(c: RustMemoryCategory) -> Self {
+        match c {
+            RustMemoryCategory::UserPreferences => NapiMemoryCategory::UserPreferences,
+            RustMemoryCategory::ProjectContext => NapiMemoryCategory::ProjectContext,
+            RustMemoryCategory::KeyDecisions => NapiMemoryCategory::KeyDecisions,
+            RustMemoryCategory::LessonsLearned => NapiMemoryCategory::LessonsLearned,
+            RustMemoryCategory::SuccessfulSolutions => NapiMemoryCategory::SuccessfulSolutions,
+        }
+    }
+}
+
+/// Daily entry for NAPI
+#[napi(object)]
+pub struct NapiDailyEntry {
+    /// ISO 8601 timestamp
+    pub timestamp: String,
+    /// Entry type
+    pub entry_type: String,
+    /// Entry content
+    pub content: String,
+    /// Metadata as JSON string
+    pub metadata: String,
+}
+
+impl From<RustDailyEntry> for NapiDailyEntry {
+    fn from(e: RustDailyEntry) -> Self {
+        Self {
+            timestamp: e.timestamp,
+            entry_type: e.entry_type.to_string(),
+            content: e.content,
+            metadata: serde_json::to_string(&e.metadata).unwrap_or_default(),
+        }
+    }
+}
+
+/// Memory section for NAPI
+#[napi(object)]
+pub struct NapiMemorySection {
+    /// Category name (Chinese)
+    pub category: String,
+    /// Section content
+    pub content: String,
+    /// Last updated timestamp
+    pub last_updated: String,
+}
+
+impl From<RustMemorySection> for NapiMemorySection {
+    fn from(s: RustMemorySection) -> Self {
+        Self {
+            category: s.category.display_name().to_string(),
+            content: s.content,
+            last_updated: s.last_updated,
+        }
+    }
+}
+
+/// Memory context for NAPI
+#[napi(object)]
+pub struct NapiMemoryContext {
+    /// Long-term memory content
+    pub long_term: String,
+    /// Recent daily notes
+    pub daily: Vec<String>,
+    /// Combined context string
+    pub combined: String,
+}
+
+impl From<RustMemoryContext> for NapiMemoryContext {
+    fn from(c: RustMemoryContext) -> Self {
+        Self {
+            long_term: c.long_term,
+            daily: c.daily,
+            combined: c.combined,
+        }
+    }
+}
+
+/// Markdown memory config for NAPI
+#[napi(object)]
+pub struct NapiMarkdownMemoryConfig {
+    /// Base path for memory storage
+    pub base_path: String,
+    /// Project identifier
+    pub project_id: String,
+    /// Daily notes directory path
+    pub daily_path: String,
+    /// Long-term memory file path
+    pub long_term_path: String,
+}
+
+impl From<RustMarkdownMemoryConfig> for NapiMarkdownMemoryConfig {
+    fn from(c: RustMarkdownMemoryConfig) -> Self {
+        Self {
+            base_path: c.base_path.to_string_lossy().to_string(),
+            project_id: c.project_id,
+            daily_path: c.daily_path.to_string_lossy().to_string(),
+            long_term_path: c.long_term_path.to_string_lossy().to_string(),
+        }
+    }
+}
+
+// ============================================================================
+// Markdown Memory Store Handle (NAPI)
+// ============================================================================
+
+/// Handle to a markdown memory store
+#[napi]
+pub struct MarkdownMemoryHandle {
+    inner: RustMarkdownMemoryStore,
+}
+
+#[napi]
+impl MarkdownMemoryHandle {
+    /// Create a new markdown memory store
+    #[napi(constructor)]
+    pub fn new(base_path: String, project_id: String) -> Self {
+        let config = RustMarkdownMemoryConfig::new(&base_path, &project_id);
+        Self {
+            inner: RustMarkdownMemoryStore::new(config),
+        }
+    }
+
+    /// Get the configuration
+    #[napi]
+    pub fn config(&self) -> NapiMarkdownMemoryConfig {
+        self.inner.config().clone().into()
+    }
+
+    // ========================================================================
+    // Daily Notes (Flow Layer)
+    // ========================================================================
+
+    /// Append a new entry to today's daily notes
+    #[napi]
+    pub fn append_daily_note(
+        &self,
+        entry_type: NapiDailyEntryType,
+        content: String,
+        metadata: Option<String>,
+    ) -> Result<()> {
+        let meta: std::collections::HashMap<String, serde_json::Value> = metadata
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        let entry = RustMarkdownMemoryStore::create_entry(
+            entry_type.into(),
+            content,
+            Some(meta),
+        );
+
+        self.inner
+            .append_daily_note(&entry)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Get content from today's daily notes
+    #[napi]
+    pub fn get_today_notes(&self) -> Result<String> {
+        self.inner
+            .get_today_notes()
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Load daily notes for a date range (starting from today, going back N days)
+    #[napi]
+    pub fn load_recent_daily_notes(&self, days: u32) -> Result<Vec<String>> {
+        let today = chrono::Local::now().date_naive();
+        let start = today - chrono::Duration::days((days - 1) as i64);
+        self.inner
+            .load_daily_notes(start, days as usize)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// List all available daily note dates
+    #[napi]
+    pub fn list_daily_note_dates(&self) -> Result<Vec<String>> {
+        self.inner
+            .list_daily_note_dates()
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    // ========================================================================
+    // Long-term Memory (Sediment Layer)
+    // ========================================================================
+
+    /// Load entire long-term memory file
+    #[napi]
+    pub fn load_long_term_memory(&self) -> Result<String> {
+        self.inner
+            .load_long_term_memory()
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Load specific category from long-term memory
+    #[napi]
+    pub fn load_category(&self, category: NapiMemoryCategory) -> Result<String> {
+        self.inner
+            .load_category(category.into())
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Update or create a category in long-term memory
+    #[napi]
+    pub fn update_category(&self, category: NapiMemoryCategory, content: String) -> Result<()> {
+        self.inner
+            .update_category(category.into(), &content)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Merge new content into existing category
+    #[napi]
+    pub fn merge_to_category(&self, category: NapiMemoryCategory, update: String) -> Result<()> {
+        self.inner
+            .merge_to_category(category.into(), &update)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Get all memory sections
+    #[napi]
+    pub fn get_memory_sections(&self) -> Result<Vec<NapiMemorySection>> {
+        self.inner
+            .get_memory_sections()
+            .map(|sections| sections.into_iter().map(Into::into).collect())
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Add item to a category list
+    #[napi]
+    pub fn add_list_item(
+        &self,
+        category: NapiMemoryCategory,
+        item: String,
+        subtext: Option<String>,
+    ) -> Result<()> {
+        self.inner
+            .add_list_item(category.into(), &item, subtext.as_deref())
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    /// Remove item from a category
+    #[napi]
+    pub fn remove_list_item(&self, category: NapiMemoryCategory, item_pattern: String) -> Result<()> {
+        self.inner
+            .remove_list_item(category.into(), &item_pattern)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+
+    // ========================================================================
+    // Context Loading
+    // ========================================================================
+
+    /// Load combined memory context
+    #[napi]
+    pub fn load_context(&self, include_days: u32) -> Result<NapiMemoryContext> {
+        self.inner
+            .load_context(include_days as usize)
+            .map(Into::into)
+            .map_err(|e| Error::from_reason(e.to_string()))
+    }
+}
+
+/// Create a new markdown memory store
+#[napi]
+pub fn create_markdown_memory(base_path: String, project_id: String) -> MarkdownMemoryHandle {
+    MarkdownMemoryHandle::new(base_path, project_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

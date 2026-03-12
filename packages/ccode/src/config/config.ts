@@ -1019,6 +1019,7 @@ export namespace Config {
   export const ServicePortConfig = z
     .object({
       port: z.number().int().positive().optional().describe("Port number for the service"),
+      _comment: z.string().optional().describe("Optional comment for documentation"),
     })
     .strict()
     .meta({ ref: "ServicePortConfig" })
@@ -1027,6 +1028,7 @@ export namespace Config {
   export const Services = z
     .object({
       codecoder: ServicePortConfig.optional().describe("CodeCoder API service (default port: 4400)"),
+      daemon: ServicePortConfig.optional().describe("Unified daemon service - zero-cli (default port: 4402)"),
       gateway: ServicePortConfig.optional().describe("Gateway service (default port: 4430)"),
       channels: ServicePortConfig.optional().describe("Channels service (default port: 4431)"),
       workflow: ServicePortConfig.optional().describe("Workflow service (default port: 4432)"),

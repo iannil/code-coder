@@ -463,6 +463,265 @@ pub async fn fetch_url(url: &str) -> Result<WebFetchResult> {
     fetcher.fetch(&options).await
 }
 
+// ============================================================================
+// Web Search (Exa MCP API)
+// ============================================================================
+
+/// Live crawl mode for web search
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LiveCrawlMode {
+    /// Use live crawling as backup if cached content unavailable
+    #[default]
+    Fallback,
+    /// Prioritize live crawling
+    Preferred,
+}
+
+/// Search type for web search
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchType {
+    /// Balanced search (default)
+    #[default]
+    Auto,
+    /// Quick results
+    Fast,
+    /// Comprehensive search
+    Deep,
+}
+
+/// Options for web search operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchOptions {
+    /// The search query
+    pub query: String,
+
+    /// Number of search results to return
+    #[serde(default = "default_num_results")]
+    pub num_results: usize,
+
+    /// Live crawl mode
+    #[serde(default)]
+    pub livecrawl: LiveCrawlMode,
+
+    /// Search type
+    #[serde(rename = "type")]
+    #[serde(default)]
+    pub search_type: SearchType,
+
+    /// Maximum characters for context string optimized for LLMs
+    #[serde(default = "default_context_max_chars")]
+    pub context_max_characters: Option<usize>,
+
+    /// Timeout in milliseconds
+    #[serde(default = "default_search_timeout")]
+    pub timeout_ms: u64,
+}
+
+fn default_num_results() -> usize {
+    8
+}
+
+fn default_context_max_chars() -> Option<usize> {
+    Some(10000)
+}
+
+fn default_search_timeout() -> u64 {
+    25000
+}
+
+impl Default for WebSearchOptions {
+    fn default() -> Self {
+        Self {
+            query: String::new(),
+            num_results: 8,
+            livecrawl: LiveCrawlMode::Fallback,
+            search_type: SearchType::Auto,
+            context_max_characters: Some(10000),
+            timeout_ms: 25000,
+        }
+    }
+}
+
+/// Result of a web search operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebSearchResult {
+    /// Whether the search succeeded
+    pub success: bool,
+
+    /// Search result content
+    pub content: String,
+
+    /// Number of results returned
+    pub num_results: usize,
+
+    /// Error message if failed
+    pub error: Option<String>,
+
+    /// Response time in milliseconds
+    pub response_time_ms: u64,
+}
+
+impl WebSearchResult {
+    /// Create a successful result
+    pub fn ok(content: String, num_results: usize, response_time_ms: u64) -> Self {
+        Self {
+            success: true,
+            content,
+            num_results,
+            error: None,
+            response_time_ms,
+        }
+    }
+
+    /// Create a failed result
+    pub fn err(error: impl Into<String>) -> Self {
+        Self {
+            success: false,
+            content: String::new(),
+            num_results: 0,
+            error: Some(error.into()),
+            response_time_ms: 0,
+        }
+    }
+}
+
+/// Web searcher using Exa MCP API
+pub struct WebSearcher {
+    client: reqwest::Client,
+    base_url: String,
+}
+
+impl Default for WebSearcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl WebSearcher {
+    /// Create a new WebSearcher
+    pub fn new() -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+
+        Self {
+            client,
+            base_url: "https://mcp.exa.ai".to_string(),
+        }
+    }
+
+    /// Create with custom base URL (for testing)
+    pub fn with_base_url(base_url: impl Into<String>) -> Self {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+
+        Self {
+            client,
+            base_url: base_url.into(),
+        }
+    }
+
+    /// Perform a web search
+    pub async fn search(&self, options: &WebSearchOptions) -> Result<WebSearchResult> {
+        let start = std::time::Instant::now();
+
+        // Build MCP JSON-RPC request
+        let request_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "web_search_exa",
+                "arguments": {
+                    "query": options.query,
+                    "type": match options.search_type {
+                        SearchType::Auto => "auto",
+                        SearchType::Fast => "fast",
+                        SearchType::Deep => "deep",
+                    },
+                    "numResults": options.num_results,
+                    "livecrawl": match options.livecrawl {
+                        LiveCrawlMode::Fallback => "fallback",
+                        LiveCrawlMode::Preferred => "preferred",
+                    },
+                    "contextMaxCharacters": options.context_max_characters,
+                }
+            }
+        });
+
+        let url = format!("{}/mcp", self.base_url);
+
+        let response = self.client
+            .post(&url)
+            .header("accept", "application/json, text/event-stream")
+            .header("content-type", "application/json")
+            .json(&request_body)
+            .timeout(Duration::from_millis(options.timeout_ms))
+            .send()
+            .await
+            .with_context(|| format!("Failed to send search request to {}", url))?;
+
+        let response_time_ms = start.elapsed().as_millis() as u64;
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Ok(WebSearchResult::err(format!(
+                "Search error ({}): {}",
+                status.as_u16(),
+                error_text
+            )));
+        }
+
+        let response_text = response.text().await
+            .with_context(|| "Failed to read search response")?;
+
+        // Parse SSE response
+        for line in response_text.lines() {
+            if let Some(data) = line.strip_prefix("data: ") {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+                    if let Some(result) = json.get("result") {
+                        if let Some(content) = result.get("content") {
+                            if let Some(arr) = content.as_array() {
+                                if let Some(first) = arr.first() {
+                                    if let Some(text) = first.get("text").and_then(|t| t.as_str()) {
+                                        return Ok(WebSearchResult::ok(
+                                            text.to_string(),
+                                            options.num_results,
+                                            response_time_ms,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(WebSearchResult::ok(
+            "No search results found. Please try a different query.".to_string(),
+            0,
+            response_time_ms,
+        ))
+    }
+}
+
+/// Convenience function for simple web search
+pub async fn search_web(query: &str) -> Result<WebSearchResult> {
+    let searcher = WebSearcher::new();
+    let options = WebSearchOptions {
+        query: query.to_string(),
+        ..Default::default()
+    };
+    searcher.search(&options).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -515,4 +774,30 @@ mod tests {
     //     assert!(result.success);
     //     assert_eq!(result.status, 200);
     // }
+
+    #[test]
+    fn test_web_search_options_default() {
+        let options = WebSearchOptions::default();
+        assert_eq!(options.num_results, 8);
+        assert_eq!(options.livecrawl, LiveCrawlMode::Fallback);
+        assert_eq!(options.search_type, SearchType::Auto);
+        assert_eq!(options.context_max_characters, Some(10000));
+    }
+
+    #[test]
+    fn test_web_search_result_ok() {
+        let result = WebSearchResult::ok("Test content".to_string(), 5, 100);
+        assert!(result.success);
+        assert_eq!(result.content, "Test content");
+        assert_eq!(result.num_results, 5);
+        assert!(result.error.is_none());
+    }
+
+    #[test]
+    fn test_web_search_result_err() {
+        let result = WebSearchResult::err("Test error");
+        assert!(!result.success);
+        assert!(result.content.is_empty());
+        assert_eq!(result.error, Some("Test error".to_string()));
+    }
 }

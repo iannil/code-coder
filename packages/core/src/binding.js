@@ -594,3 +594,51 @@ module.exports.isRemoteDangerous = nativeBinding.isRemoteDangerous
 module.exports.isRemoteSafe = nativeBinding.isRemoteSafe
 module.exports.shouldRequireRemoteApproval = nativeBinding.shouldRequireRemoteApproval
 module.exports.RemoteRiskLevel = nativeBinding.RemoteRiskLevel
+
+// Phase: Markdown Memory (dual-layer transparent memory)
+module.exports.MarkdownMemoryHandle = nativeBinding.MarkdownMemoryHandle
+module.exports.createMarkdownMemory = nativeBinding.createMarkdownMemory
+module.exports.NapiMemoryCategory = nativeBinding.NapiMemoryCategory
+module.exports.NapiDailyEntryType = nativeBinding.NapiDailyEntryType
+
+// Phase: Memory System (unified memory management)
+module.exports.MemorySystemHandle = nativeBinding.MemorySystemHandle
+module.exports.createMemorySystem = nativeBinding.createMemorySystem
+module.exports.createMemoryObservabilityStore = nativeBinding.createMemoryObservabilityStore
+
+// Phase: Safety Guardrails (loop detection, state tracking)
+module.exports.SafetyGuardrailsHandle = nativeBinding.SafetyGuardrailsHandle
+module.exports.createSafetyGuardrails = nativeBinding.createSafetyGuardrails
+module.exports.NapiToolResult = nativeBinding.NapiToolResult
+
+// Phase: CLOSE Decision Framework
+module.exports.evaluateClose = nativeBinding.evaluateClose
+
+// Phase: Embedding Index (SIMD-accelerated KNN search)
+module.exports.EmbeddingIndexHandle = nativeBinding.EmbeddingIndexHandle
+module.exports.createEmbeddingIndex = nativeBinding.createEmbeddingIndex
+
+// Phase: Skill Parser
+module.exports.parseSkillContent = nativeBinding.parseSkillContent
+module.exports.parseSkillFromFile = nativeBinding.parseSkillFromFile
+module.exports.parseSkillMetadataOnly = nativeBinding.parseSkillMetadataOnly
+module.exports.validateSkillContent = nativeBinding.validateSkillContent
+module.exports.parseSkillsBatch = nativeBinding.parseSkillsBatch
+module.exports.extractSkillFrontmatter = nativeBinding.extractSkillFrontmatter
+module.exports.stripSkillFrontmatter = nativeBinding.stripSkillFrontmatter
+
+// Phase: Truncation
+module.exports.TruncatorHandle = nativeBinding.TruncatorHandle
+module.exports.truncateOutput = nativeBinding.truncateOutput
+module.exports.truncatePreview = nativeBinding.truncatePreview
+
+// Phase: Read (native file reading)
+module.exports.ReaderHandle = nativeBinding.ReaderHandle
+module.exports.readFileWithLines = nativeBinding.readFileWithLines
+module.exports.readFileRange = nativeBinding.readFileRange
+module.exports.isBinaryFile = nativeBinding.isBinaryFile
+module.exports.countFileLines = nativeBinding.countFileLines
+
+// Phase: Dependency Analysis
+module.exports.extractFileDependencies = nativeBinding.extractFileDependencies
+module.exports.extractDirectoryDependencies = nativeBinding.extractDirectoryDependencies

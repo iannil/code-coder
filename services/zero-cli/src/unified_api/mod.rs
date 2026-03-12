@@ -48,6 +48,7 @@ pub mod prompts;
 pub mod sessions;
 pub mod state;
 pub mod tasks;
+pub mod websocket;
 
 use axum::{
     routing::{delete, get, patch, post, put},
@@ -60,6 +61,8 @@ pub use state::UnifiedApiState;
 /// Build the unified API router with all routes
 pub fn build_router(state: Arc<UnifiedApiState>) -> Router {
     Router::new()
+        // WebSocket route for real-time streaming
+        .route("/ws", get(websocket::ws_handler))
         // Session routes
         .route("/api/v1/sessions", get(sessions::list_sessions))
         .route("/api/v1/sessions", post(sessions::create_session))

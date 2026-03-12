@@ -17,7 +17,7 @@ import { spawn } from "child_process"
 import path from "path"
 import { ConfigManager } from "@codecoder-ai/core/util/config"
 import { Project } from "@/project/project"
-import { Session } from "@/session"
+import { getHttpClient } from "@/sdk"
 
 // Use config manager for endpoint
 const configManager = new ConfigManager()
@@ -47,8 +47,13 @@ async function getActiveProjectCount(): Promise<number> {
 async function getRecentSessionCount(projectPath?: string): Promise<number> {
   try {
     const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000
+    const http = getHttpClient()
+    // Fetch sessions via SDK (default limit is 50, use larger limit for counts)
+    const response = await http.listSessions(1000, 0)
+    if (!response.success) return 0
+
     let count = 0
-    for await (const session of Session.list()) {
+    for (const session of response.sessions) {
       if (session.time.updated > oneDayAgo) {
         // If projectPath specified, only count sessions for that project
         if (projectPath && session.directory !== projectPath) continue

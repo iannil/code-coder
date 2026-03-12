@@ -250,10 +250,24 @@ pub use index::{
 };
 
 pub use provider::{
+    // Transform utilities (legacy AI SDK format)
     apply_caching, get_sdk_key, get_temperature, get_top_k, get_top_p,
     normalize_messages, remap_provider_options,
-    CacheResult, ModelInfo, NormalizeResult,
+    CacheResult, NormalizeResult,
     ProviderMessage, ProviderMessageContent,
+    TransformContentPart, TransformModelInfo,
+    // New provider types
+    ChatRequest, ChatResponse, ContentDelta, ContentPart as ProviderContentPart,
+    ImageSource, Message as ProviderChatMessage, MessageContent, MessageDelta,
+    MessageRole as ProviderMessageRole, ModelCapabilities, ModelCost, ModelInfo, ModelLimits,
+    ProviderConfig, ProviderError, ProviderErrorKind, ProviderTrait,
+    StopReason, StreamError, StreamEvent as ProviderStreamEvent, StreamMessage as ProviderStreamMessage,
+    ThinkingConfig, ThinkingType, ToolChoice, ToolDefinition as ProviderToolDefinition, Usage as ProviderUsage,
+    // Provider implementations
+    AnthropicProvider as ClaudeProvider, GoogleProvider as GeminiProvider, OpenAIProvider as GptProvider,
+    // Resilience
+    CircuitBreaker, CircuitState, RateLimiter, ResilientProvider, RetryConfig, SamplingParams,
+    create_provider, create_resilient_provider, get_sampling_params,
 };
 
 // Agent execution engine re-exports

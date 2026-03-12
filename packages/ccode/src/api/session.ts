@@ -1,7 +1,6 @@
 import { Session } from "@/session"
 import { SessionPrompt } from "@/session/prompt"
 import { Command } from "@/agent/command"
-import type { Provider } from "@/provider/provider"
 import { SessionStatus } from "@/session/status"
 import { Todo } from "@/session/todo"
 import { SessionCompaction } from "@/session/compaction"

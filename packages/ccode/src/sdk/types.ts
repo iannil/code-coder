@@ -250,6 +250,21 @@ export interface AgentInfo {
   temperature?: number
   color?: string
   hidden: boolean
+  /** Whether this is a native (built-in) agent */
+  native?: boolean
+  /** Model override for this agent */
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  /** Agent prompt (for SDK-retrieved agents) */
+  prompt?: string
+  /** Top P parameter */
+  topP?: number
+  /** Max execution steps */
+  steps?: number
+  /** Agent-specific options */
+  options?: Record<string, unknown>
 }
 
 export interface AgentListResponse {
@@ -626,7 +641,7 @@ export interface AssistantMessageInfo {
   sessionID: string
   role: "assistant"
   time: { created: number; completed?: number }
-  error?: { name: string; [key: string]: unknown }
+  error?: { name: string; data?: { message?: string }; [key: string]: unknown }
   parentID: string
   modelID: string
   providerID: string
