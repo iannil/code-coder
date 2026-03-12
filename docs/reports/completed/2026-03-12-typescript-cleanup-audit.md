@@ -1,7 +1,7 @@
 # TypeScript 代码清理审计报告
 
 > 创建时间: 2026-03-12
-> 更新时间: 2026-03-12 19:55 (Session 8 - 最终验证)
+> 更新时间: 2026-03-12 20:10 (Session 8 - @ts-nocheck 清理)
 > 状态: **✅ 审计通过**
 
 ## Context
@@ -69,19 +69,19 @@ $ grep -r "from ['\"]@/(agent|session|tool|provider|memory|context)/" packages/c
 | `sdk/index.ts` | JSDoc 注释 | ✅ 非实际导入 |
 | `cli/cmd/debug/snapshot.ts` | 运行时 | ⚠️ Debug 命令，调用 stub |
 
-### 4. @ts-nocheck 文件 (16 个)
+### 4. @ts-nocheck 文件 (10 个)
 
 这些文件使用 `@ts-nocheck` 跳过类型检查，但仍可正常运行：
 
 - `cli/cmd/tui/routes/session/*.tsx` (3)
-- `cli/cmd/*.ts` (5)
-- `config/*.ts` (2)
+- `cli/cmd/*.ts` (2: debug/agent.ts, run.ts)
+- `config/config.ts` (1)
 - `sdk/provider-bridge.ts` (1)
 - `memory-markdown/consolidate.ts` (1)
 - `mcp/server.ts` (1)
-- `hook/hook.ts` (1)
-- `cli/error.ts` (1)
-- `test-geopolitical.ts` (1)
+- `cli/cmd/tui/component/dialog-session-list.tsx` (1)
+
+**已清理:** cli/error.ts, hook/hook.ts, config/keywords.ts, cli/cmd/models.ts, cli/cmd/get-started.ts, cli/cmd/reverse.ts
 
 ### 5. TypeScript 编译状态
 
