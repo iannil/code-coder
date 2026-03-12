@@ -1,6 +1,7 @@
 import type { Argv } from "yargs"
 import { cmd } from "./cmd"
-import { Session } from "../../session"
+import { LocalSession } from "@/api"
+import type { Session } from "@/session"
 import { bootstrap } from "../bootstrap"
 import { UI } from "../ui"
 import { Locale } from "@/util/locale"
@@ -61,12 +62,7 @@ export const SessionListCommand = cmd({
   },
   handler: async (args) => {
     await bootstrap(process.cwd(), async () => {
-      const sessions = []
-      for await (const session of Session.list()) {
-        if (!session.parentID) {
-          sessions.push(session)
-        }
-      }
+      const sessions = await LocalSession.list({ roots: true })
 
       sessions.sort((a, b) => b.time.updated - a.time.updated)
 

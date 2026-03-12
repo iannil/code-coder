@@ -84,6 +84,35 @@ export type {
   MarkdownMemoryConfig,
 } from "./napi"
 
+// HITL Client (Human-in-the-Loop approval system)
+export {
+  HitLClient,
+  HitLApiError,
+  getHitLClient,
+  createHitLClient,
+  resetHitLClient,
+  listPendingApprovals,
+  approveRequest,
+  rejectRequest,
+  isHitLServiceHealthy,
+  getApprovalTypeName,
+  getRiskLevelColor,
+  getRiskLevelIcon,
+  getStatusDisplay,
+  formatApprovalSummary,
+} from "./hitl"
+export type {
+  RiskLevel,
+  ApprovalType,
+  ApprovalStatus,
+  ApprovalRequest,
+  CreateApprovalRequest,
+  ApprovalResponse,
+  ListPendingResponse,
+  DecideRequest,
+  HitLClientConfig,
+} from "./hitl"
+
 // ══════════════════════════════════════════════════════════════════════════════
 // SDK Helper Functions
 // These replace commonly used patterns from deprecated modules (agent/agent.ts,

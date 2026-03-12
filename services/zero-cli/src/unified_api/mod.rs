@@ -39,6 +39,7 @@
 //! 3. Prompt files are hot-loaded from TS source
 
 pub mod agents;
+pub mod chat;
 pub mod config;
 pub mod definitions;
 pub mod gear;
@@ -49,6 +50,7 @@ pub mod providers;
 pub mod sessions;
 pub mod state;
 pub mod tasks;
+pub mod tools_api;
 pub mod websocket;
 
 use axum::{
@@ -86,6 +88,14 @@ pub fn build_router(state: Arc<UnifiedApiState>) -> Router {
             "/api/v1/sessions/:id/compact",
             post(sessions::compact_session),
         )
+        // SSE Chat route (streaming)
+        .route(
+            "/api/v1/sessions/:id/chat",
+            post(chat::chat_sse),
+        )
+        // Tool routes
+        .route("/api/v1/tools", get(tools_api::list_tools))
+        .route("/api/v1/tools/:name", post(tools_api::execute_tool))
         // Agent routes
         .route("/api/v1/agents", get(agents::list_agents))
         .route("/api/v1/agents/:name", get(agents::get_agent))

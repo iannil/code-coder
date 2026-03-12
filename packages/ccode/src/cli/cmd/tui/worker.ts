@@ -5,24 +5,21 @@ import { InstanceBootstrap } from "@/project/bootstrap"
 import { Rpc } from "@/util/rpc"
 import { Bus } from "@/bus"
 import type { Event } from "@/types"
+import { MessageEvents, QuestionEvents } from "@/types"
 
 // Local API imports (for features not yet migrated to SDK)
-import { LocalSession, LocalPermission, LocalConfig, LocalFind } from "@/api"
-import { SessionPrompt } from "@/session/prompt"
-import { Command } from "@/agent/command"
+import { LocalSession, LocalPermission, LocalConfig, LocalFind, Command } from "@/api"
 import { LSP } from "@/lsp"
 import { Format } from "@/util/format"
 import { Skill } from "@/skill/skill"
 import { MCP } from "@/mcp"
 import { Vcs } from "@/project/vcs"
-import { Question } from "@/agent/question"
 import { Global } from "@/util/global"
 
 // SDK imports - primary API access
 import { getHttpClient, adaptSessionList, adaptSessionInfo } from "@/sdk"
 import { promptViaWebSocket, type WebSocketPromptInput } from "@/sdk"
 import type { AgentInfo, ProviderInfo } from "@/sdk"
-import { MessageV2 } from "@/session/message-v2"
 
 await Log.init({
   print: process.argv.includes("--print-logs"),
@@ -61,16 +58,16 @@ async function promptViaSdk(input: WebSocketPromptInput): Promise<{ messageID: s
   // Create publisher that bridges SDK events to Bus
   const publisher = {
     publishPartUpdated: (part: unknown, delta?: string) => {
-      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part, delta })
+      Bus.publish(MessageEvents.PartUpdated, { part: part as Record<string, unknown>, delta })
     },
     publishMessageUpdated: (info: unknown) => {
-      Bus.publish(MessageV2.Event.Updated, { info: info as MessageV2.Info })
+      Bus.publish(MessageEvents.Updated, { info: info as Record<string, unknown> })
     },
     publishStepStart: (part: unknown) => {
-      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part })
+      Bus.publish(MessageEvents.PartUpdated, { part: part as Record<string, unknown> })
     },
     publishStepFinish: (part: unknown) => {
-      Bus.publish(MessageV2.Event.PartUpdated, { part: part as MessageV2.Part })
+      Bus.publish(MessageEvents.PartUpdated, { part: part as Record<string, unknown> })
     },
     publishError: (error: { code: string; message: string }) => {
       Log.Default.error("SDK agent error", error)
@@ -188,7 +185,7 @@ const localApi = {
     messages: LocalSession.messages,
     diff: async () => [],
     abort: (input: { sessionID: string }) => {
-      SessionPrompt.cancel(input.sessionID)
+      LocalSession.abort(input.sessionID)
       return true
     },
   },
@@ -284,9 +281,23 @@ const localApi = {
   },
 
   question: {
-    reply: (input: { requestID: string; answers: string[][] }) =>
-      Question.reply({ requestID: input.requestID, answers: input.answers }),
-    reject: (input: { requestID: string }) => Question.reject(input.requestID),
+    reply: async (input: { requestID: string; answers: string[][] }) => {
+      // Publish reply event to Bus - the agent/question module subscribes to this
+      Bus.publish(QuestionEvents.Replied, {
+        sessionID: "", // Session ID is extracted by the subscriber from the request ID
+        requestID: input.requestID,
+        answers: input.answers,
+      })
+      return true
+    },
+    reject: async (input: { requestID: string }) => {
+      // Publish reject event to Bus
+      Bus.publish(QuestionEvents.Rejected, {
+        sessionID: "",
+        requestID: input.requestID,
+      })
+      return true
+    },
   },
 }
 

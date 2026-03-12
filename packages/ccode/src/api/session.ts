@@ -152,4 +152,15 @@ export namespace LocalSession {
     })
     return { messageID: messageID }
   }
+
+  /**
+   * Cancel/abort an ongoing session prompt.
+   * This aborts the current prompt execution for the given session.
+   *
+   * @param sessionID - The session ID to cancel
+   * @returns true if session was cancelled, undefined if no active session
+   */
+  export const abort = (sessionID: string) => {
+    return SessionPrompt.cancel(sessionID)
+  }
 }

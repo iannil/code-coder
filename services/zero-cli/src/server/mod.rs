@@ -198,6 +198,242 @@ async fn shutdown_signal() {
     }
 }
 
+/// Run the unified API server (simplified, no daemon overhead)
+///
+/// This function starts the unified API server with:
+/// - Session management
+/// - Agent dispatch
+/// - Tool execution
+/// - SSE streaming chat
+/// - WebSocket support
+///
+/// Unlike the daemon, this doesn't start background workers or manage
+/// external services. It's ideal for development or single-process deployment.
+pub async fn run_api_server(config: crate::config::Config, host: &str, port: u16) -> Result<()> {
+    use crate::memory::Memory;
+    use crate::security::SecurityPolicy;
+    use crate::session::store::SessionStore;
+    use crate::tools::ToolRegistry;
+    use crate::unified_api::state::{
+        AnthropicProvider, ApiConfig, GoogleProvider, OpenAIProvider, StreamingProvider,
+    };
+    use crate::unified_api::{build_router, UnifiedApiState};
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
+    use tower_http::cors::{Any, CorsLayer};
+
+    // Initialize security policy
+    let security = Arc::new(SecurityPolicy::from_config(
+        &config.autonomy,
+        &config.workspace_dir,
+    ));
+
+    // Initialize memory
+    let mem: Arc<dyn Memory> = Arc::from(crate::memory::create_memory(
+        &config.memory,
+        &config.workspace_dir,
+        config.api_key.as_deref(),
+    )?);
+
+    // Initialize tool registry
+    let vault_path = config
+        .config_path
+        .parent()
+        .map_or_else(|| config.workspace_dir.clone(), std::path::Path::to_path_buf);
+
+    let registry = ToolRegistry::with_native_tools(
+        &security,
+        mem.clone(),
+        &config.browser,
+        &config.codecoder,
+        &config.vault,
+        &vault_path,
+    );
+
+    // Connect MCP servers if configured
+    if !config.mcp.servers.is_empty() {
+        match registry.connect_mcp_servers(&config.mcp).await {
+            Ok(()) => {
+                let count = registry.mcp_tool_count().await;
+                if count > 0 {
+                    tracing::info!("MCP: {} tools loaded", count);
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to connect some MCP servers: {}", e);
+            }
+        }
+    }
+
+    let tools = Arc::new(RwLock::new(registry));
+
+    // Initialize session store
+    let db_path = config.workspace_dir.join("sessions.db");
+    let sessions = match SessionStore::new(&db_path) {
+        Ok(store) => Arc::new(store),
+        Err(e) => {
+            tracing::warn!("Failed to open session store: {}, using temp", e);
+            let temp_db = std::env::temp_dir().join("codecoder_sessions.db");
+            Arc::new(SessionStore::new(&temp_db)?)
+        }
+    };
+
+    // Find prompts directory
+    let prompts_dir = find_prompts_dir(&config.workspace_dir);
+    tracing::info!("Prompts directory: {}", prompts_dir.display());
+
+    // Create LLM provider if API key available
+    let llm_provider: Option<Arc<dyn StreamingProvider>> =
+        config.api_key.as_ref().map(|api_key| {
+            let provider_id = config
+                .default_provider
+                .as_ref()
+                .map(|s| s.to_lowercase())
+                .unwrap_or_else(|| detect_provider(api_key));
+
+            let provider: Arc<dyn StreamingProvider> = match provider_id.as_str() {
+                "openai" | "openai-compatible" => Arc::new(OpenAIProvider::new(api_key)),
+                "google" | "gemini" => Arc::new(GoogleProvider::new(api_key)),
+                _ => Arc::new(AnthropicProvider::new(api_key)),
+            };
+
+            tracing::info!("LLM provider: {} (streaming enabled)", provider.name());
+            provider
+        });
+
+    if llm_provider.is_none() {
+        tracing::warn!("No API key configured, agent dispatch will be unavailable");
+    }
+
+    // Create unified API state
+    let state = if let Some(provider) = llm_provider {
+        Arc::new(UnifiedApiState::with_provider(
+            sessions,
+            tools,
+            prompts_dir,
+            config.workspace_dir.clone(),
+            provider,
+        ))
+    } else {
+        Arc::new(UnifiedApiState::new(
+            sessions,
+            tools,
+            prompts_dir,
+            config.workspace_dir.clone(),
+        ))
+    };
+
+    // Initialize agent registry
+    {
+        let registry = zero_core::agent::init_global_registry();
+        let natives = zero_core::agent::create_builtin_agents();
+        registry.register_natives(natives).await;
+        tracing::info!(
+            "Agent registry: {} built-in agents",
+            registry.len().await
+        );
+    }
+
+    // Load agents from prompt files
+    if let Err(e) = state.load_agents().await {
+        tracing::warn!("Failed to load agents: {}", e);
+    }
+
+    // Load API configuration
+    let api_config = ApiConfig::load_from_config_dir();
+    if api_config.provider.is_some() || api_config.model.is_some() {
+        tracing::info!(
+            "Provider config: {} providers, default: {:?}",
+            api_config.provider.as_ref().map(|p| p.len()).unwrap_or(0),
+            api_config.model
+        );
+    }
+
+    // Apply config (need to reconstruct Arc)
+    let mut state_inner = Arc::try_unwrap(state).unwrap_or_else(|arc| (*arc).clone());
+    state_inner.set_config(api_config);
+    let state = Arc::new(state_inner);
+
+    // Build router
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    let router = build_router(state).layer(cors);
+
+    // Start server
+    let addr: SocketAddr = format!("{host}:{port}").parse()?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+
+    println!();
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║  🚀 CodeCoder API Server                                     ║");
+    println!("╠══════════════════════════════════════════════════════════════╣");
+    println!("║  API:       http://{:<43} ║", format!("{host}:{port}"));
+    println!("║  WebSocket: ws://{:<44} ║", format!("{host}:{port}/ws"));
+    println!("╠══════════════════════════════════════════════════════════════╣");
+    println!("║  Endpoints:                                                  ║");
+    println!("║    POST /api/v1/sessions/:id/chat  - SSE streaming chat      ║");
+    println!("║    GET  /api/v1/sessions           - List sessions           ║");
+    println!("║    GET  /api/v1/agents             - List agents             ║");
+    println!("║    GET  /api/v1/tools              - List tools              ║");
+    println!("║    POST /api/v1/tools/:name        - Execute tool            ║");
+    println!("╠══════════════════════════════════════════════════════════════╣");
+    println!("║  Press Ctrl+C to stop                                        ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+
+    // Serve with graceful shutdown
+    axum::serve(listener, router)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    println!("\n✅ Server stopped gracefully\n");
+
+    Ok(())
+}
+
+/// Find prompts directory
+fn find_prompts_dir(workspace: &std::path::Path) -> std::path::PathBuf {
+    let relative_path = std::path::Path::new("packages/ccode/src/agent/prompt");
+
+    if relative_path.exists() {
+        return relative_path.to_path_buf();
+    }
+
+    let workspace_prompts = workspace.join(relative_path);
+    if workspace_prompts.exists() {
+        return workspace_prompts;
+    }
+
+    let mut current = std::env::current_dir().unwrap_or_default();
+    for _ in 0..5 {
+        let candidate = current.join(relative_path);
+        if candidate.exists() {
+            return candidate;
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+
+    workspace.join("prompts")
+}
+
+/// Detect provider from API key format
+fn detect_provider(api_key: &str) -> String {
+    if api_key.starts_with("sk-ant-") || api_key.starts_with("sk-proj-") {
+        "anthropic".to_string()
+    } else if api_key.starts_with("sk-") {
+        "openai".to_string()
+    } else if api_key.starts_with("AIza") {
+        "google".to_string()
+    } else {
+        "anthropic".to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

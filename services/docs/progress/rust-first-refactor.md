@@ -1,8 +1,8 @@
 # Zero CLI Rust-First 架构重构进展
 
 > 创建时间: 2026-03-12
-> 最后更新: 2026-03-12
-> 状态: Phase 4 完成
+> 最后更新: 2026-03-12 (Session 5 - CLI 层依赖清理)
+> 状态: ✅ Phase 1-7 完成，TUI + CLI 运行时依赖已清理
 
 ## 实施概述
 
@@ -12,165 +12,504 @@
 
 | 阶段 | 状态 | 完成日期 | 备注 |
 |------|------|----------|------|
-| Phase 1: Agent 注册中心 | ✅ 完成 | 2026-03-12 | 模糊搜索已实现 |
-| Phase 2: Memory-Markdown | ✅ 完成 | 已有实现 | 发现已存在 Rust 实现 |
-| Phase 3: Provider SDK 扩展 | ✅ 完成 | 2026-03-12 | 6 个新 Provider |
-| Phase 4: CLI 命令迁移 | ✅ 完成 | 2026-03-12 | 4/4 命令完成 |
-| Phase 5: TypeScript 精简 | ⏳ 待实施 | - | |
+| Phase 1: 统一 API 层完善 | ✅ 完成 | 2026-03-12 | SSE 流式聊天 + 工具执行 API |
+| Phase 2: Agent 引擎迁移 | ✅ 完成 | 2026-03-12 | AgentExecutor 已有完整实现 |
+| Phase 3: Provider SDK 扩展 | ✅ 完成 | 2026-03-12 | Anthropic, OpenAI, Google |
+| Phase 4: CLI 命令完善 | ✅ 完成 | 2026-03-12 | chat, serve, commit, review |
+| Phase 5: 集成测试 | ✅ 完成 | 2026-03-12 | API 端点验证通过 |
+| Phase 6: TypeScript 清理 | ✅ 完成 | 2026-03-12 | Rust API 客户端 + TUI 迁移 |
+| Phase 7: CLI 层依赖清理 | ✅ 完成 | 2026-03-12 | run.ts, session.ts 使用 @/api |
+| Phase 8: 代码删除 | 🔜 准备就绪 | - | TUI + CLI 运行时依赖已清理 |
 
 ---
 
-## Phase 4: CLI 命令迁移 ✅
+## Session 5: CLI 层依赖清理 (2026-03-12 17:30)
 
-**完成日期**: 2026-03-12
+### 完成的迁移
 
-### 已实现命令
+**1. cli/cmd/run.ts - Command 导入迁移**
+```typescript
+// Before:
+import { Command } from "@/agent/command"
+import { LocalSession, LocalEvent } from "@/api"
 
-| 命令 | 文件 | 行数 | 功能 |
-|------|------|------|------|
-| `zero-cli commit` | `src/commit.rs` | ~230 | AI 生成 conventional commit 消息 |
-| `zero-cli review` | `src/review.rs` | ~420 | AI 驱动的代码审查分析 |
-| `zero-cli agents` | `src/agents.rs` | ~260 | Agent 搜索/列表/推荐 |
-| `zero-cli jar-reverse` | `src/jar.rs` | ~350 | JAR 文件逆向分析 |
-
-### `zero-cli commit` 实现 ✅
-
-**功能**:
-- AI 生成 conventional commit 消息
-- 支持 `--dry-run` 预览模式
-- 支持 `-a/--add-all` 暂存所有更改
-- 支持 `-m/--message` 自定义消息
-- 支持 `--allow-empty` 允许空提交
-
-**使用示例**:
-```bash
-# 预览将要提交的内容
-zero-cli commit --dry-run
-
-# AI 生成消息并提交所有更改
-zero-cli commit -a
-
-# 使用自定义消息
-zero-cli commit -m "feat: add new feature"
+// After:
+import { LocalSession, LocalEvent, Command } from "@/api"
 ```
 
-### `zero-cli review` 实现 ✅
+**2. cli/cmd/session.ts - Session 导入迁移**
+```typescript
+// Before:
+import { Session } from "../../session"
+// 使用 for await (const session of Session.list())
 
-**功能**:
-- AI 驱动的代码审查分析
-- 识别安全问题、Bug、性能问题
-- 生成结构化的审查建议
-- 支持多种输出格式 (text, json, markdown)
-
-**使用示例**:
-```bash
-# 审查当前分支与 main 的差异
-zero-cli review
-
-# 审查特定分支
-zero-cli review -t feature-branch -b develop
-
-# JSON 输出
-zero-cli review --format json
-
-# 显示完整 diff
-zero-cli review --show-diff
+// After:
+import { LocalSession } from "@/api"
+import type { Session } from "@/session"  // type-only
+// 使用 const sessions = await LocalSession.list({ roots: true })
 ```
 
-### `zero-cli agents` 实现 ✅
+### 当前依赖状态验证
 
-**功能**:
-- Agent 模糊搜索 (使用 Rust `strsim` 库)
-- 按分类/模式列表 Agent
-- 显示 Agent 详细信息
-- 基于意图的 Agent 推荐
-
-**子命令**:
-- `agents search <query>` - 搜索 Agent
-- `agents list [--category]` - 列出 Agent
-- `agents info <name>` - 查看 Agent 详情
-- `agents recommend <intent>` - 推荐 Agent
-
-**使用示例**:
+**TUI 层 (cli/cmd/tui/) - ✅ 无运行时废弃依赖**
 ```bash
-# 搜索 Agent
-zero-cli agents search "code review"
+$ grep -r "from ['\"]@/agent/" packages/ccode/src/cli/ | grep -v "import type" | grep -v "debug/"
+# (无输出)
 
-# 列出所有 Agent
-zero-cli agents list
-
-# 按分类列出
-zero-cli agents list --category engineering
-
-# 查看详情
-zero-cli agents info code-reviewer
-
-# 获取推荐
-zero-cli agents recommend "review this code"
+$ grep -r "from ['\"]@/session/" packages/ccode/src/cli/ | grep -v "import type" | grep -v "debug/"
+# (无输出)
 ```
 
-### `zero-cli jar-reverse` 实现 ✅
+**CLI 层 (cli/cmd/*.ts) - ✅ 无运行时废弃依赖**
+- `run.ts`: 使用 `@/api` (Command, LocalSession, LocalEvent)
+- `session.ts`: 使用 `@/api` (LocalSession) + type-only `@/session`
 
-**完成日期**: 2026-03-12
+**Debug 命令 - ⚠️ 保留例外**
+- `debug/snapshot.ts`: 使用 `@/session/snapshot` (调试命令允许的例外)
 
-**功能**:
-- 综合 JAR/WAR/EAR 文件分析
-- 技术栈检测 (Spring, Hibernate, Jackson, etc.)
-- Class 文件解析和元数据提取
-- 配置文件识别和提取
-- 多种输出格式 (text, json, markdown)
+**Utility 模块 - ✅ 保留**
+- `agent/mode.ts`: 纯工具函数，无废弃依赖，可继续使用
 
-**使用示例**:
-```bash
-# 基本分析
-zero-cli jar-reverse app.jar
+### 依赖关系图 (更新后)
 
-# 显示类详情
-zero-cli jar-reverse app.jar --show-classes
+```
+CLI 命令 (cli/cmd/*.ts)
+├── @/api (LocalSession, LocalEvent, Command - 封装层)
+│   └── 内部依赖: @/agent/command, @/session/*, @/session/prompt
+├── @/sdk (getAgentByName)
+├── @/util/* (Flag, Locale)
+└── type-only: @/session (Session.Info 类型)
 
-# 显示配置内容
-zero-cli jar-reverse app.jar --show-configs
-
-# 提取配置文件
-zero-cli jar-reverse app.jar -o ./extracted --extract-configs
-
-# Markdown 报告
-zero-cli jar-reverse app.jar --format markdown > report.md
-
-# JSON 输出
-zero-cli jar-reverse app.jar --format json
+Debug 命令 (cli/cmd/debug/*.ts) - 例外
+└── @/session/snapshot (允许直接使用)
 ```
 
-**技术细节**:
-- 使用 `zero_core::java::JarAnalyzer` 进行 JAR 分析
-- 支持 JAR、WAR、EAR 和 ZIP 格式
-- 基于文件名的技术指纹检测
-- 自动识别 manifest 元数据
+## Session 4: TUI 运行时依赖清理 (2026-03-12)
+
+### 完成的迁移
+
+**1. SessionPrompt.cancel → LocalSession.abort**
+- 在 `@/api/session.ts` 添加 `LocalSession.abort()` 方法包装 `SessionPrompt.cancel`
+- `worker.ts` 改为从 `@/api` 导入，不再直接依赖 `@/session/prompt`
+
+**2. HitLClient → @/sdk/hitl**
+- 创建 `packages/ccode/src/sdk/hitl.ts` (~500 行)
+- 将 HITL 客户端、类型和辅助函数移至 SDK
+- `dialog-approval-queue.tsx` 改为从 `@/sdk` 导入
+
+**3. Command → @/api 重导出**
+- 在 `@/api/index.ts` 添加 `Command` 重导出
+- `worker.ts` 改为从 `@/api` 导入，不再直接依赖 `@/agent/command`
+
+### 当前 TUI 依赖状态
+
+**worker.ts** - ✅ 无直接依赖废弃目录
+```typescript
+// 现在的导入结构
+import { LocalSession, LocalPermission, LocalConfig, LocalFind, Command } from "@/api"
+import { MessageEvents, QuestionEvents } from "@/types"
+import { getHttpClient, adaptSessionList, adaptSessionInfo } from "@/sdk"
+import { promptViaWebSocket, type WebSocketPromptInput } from "@/sdk"
+```
+
+**dialog-approval-queue.tsx** - ✅ 迁移完成
+```typescript
+// Before: import { HitLClient, ... } from "@/agent/hitl/client"
+// After:
+import { HitLClient, type ApprovalRequest, getApprovalTypeName, getRiskLevelIcon } from "@/sdk"
+```
+
+**session/index.tsx** - ✅ 仅类型导入
+```typescript
+// 这些是 type-only 导入，编译时擦除，不影响运行时
+import type { Tool } from "@/tool/tool"
+import type { BashTool } from "@/tool/bash"
+// ... 其他 type-only 导入
+```
+
+### 依赖关系图 (更新后)
+
+```
+TUI (cli/cmd/tui/)
+├── @/types (MessageEvents, QuestionEvents, Mode 相关)
+├── @/sdk (HttpClient, WebSocket, HitLClient)
+├── @/api (LocalSession, Command 等 - 封装层)
+│   └── @/agent/command (内部依赖，TUI 不直接导入)
+│   └── @/session/prompt (内部依赖，TUI 不直接导入)
+└── type-only imports from @/tool/* (编译时擦除)
+```
 
 ---
 
-## 下一步行动
+## Session 3: TypeScript 清理审计 (2026-03-12)
 
-1. [ ] Phase 5: TypeScript 代码精简
-   - 移除已迁移到 Rust 的 TS 代码
-   - 保留纯 UI 层组件
-2. [ ] 性能基准测试
-3. [ ] 集成测试验证
+### 1. 创建 Rust API 客户端 ✅
+
+**文件**: `packages/ccode/src/api/rust-client.ts` (~650 行)
+
+**功能**:
+- 统一的 HTTP API 客户端，连接 Rust 后端 (默认 `http://127.0.0.1:4402`)
+- 覆盖所有 Rust API 端点：Sessions, Agents, Tools, Memory, Tasks, Config, Prompts, Providers
+- SSE 流式聊天支持 (`async *chat()` 生成器)
+- 类型安全，与 Rust API 响应结构一致
+- 单例模式 + 便捷函数
+
+**使用示例**:
+```typescript
+import { getRustClient, quickChat } from "@/api/rust-client"
+
+// 使用客户端
+const client = getRustClient()
+const sessions = await client.listSessions()
+const agents = await client.listAgents()
+
+// 流式聊天
+for await (const event of client.chat(sessionId, "Hello")) {
+  if (event.type === "text_delta") {
+    process.stdout.write(event.content)
+  }
+}
+
+// 快捷方式
+const { response, usage } = await quickChat("分析这段代码", {
+  onDelta: (text) => process.stdout.write(text)
+})
+```
+
+### 2. TypeScript 目录依赖分析 ✅
+
+**分析结论**: 大部分 TUI 依赖已迁移到 @/types 和 @/sdk
+
+| 目录 | 文件数 | TUI 依赖 | 迁移状态 | 说明 |
+|------|--------|----------|----------|------|
+| `memory/` | 27 | ❌ 无直接 | ✅ 可删除 | autonomous/, api/server/ 使用 |
+| `context/` | 7 | ❌ 无直接 | ✅ 可删除 | agent/context.ts 使用 |
+| `agent/` | 18 | ⚠️ 部分 | 🔄 90% 迁移 | Mode 已迁移，Command/HITL 待处理 |
+| `session/` | 16 | ⚠️ 部分 | 🔄 95% 迁移 | MessageV2 事件已迁移，SessionPrompt 待处理 |
+| `tool/` | 44 | ✅ 类型 | ✅ 迁移完成 | 改为 type-only 导入 |
+| `provider/` | 21 | ⚠️ CLI | ⏳ 待处理 | CLI models 命令使用 |
+
+**已完成的迁移**:
+```
+✅ worker.ts
+    ├── MessageV2.Event.* → @/types (MessageEvents)
+    ├── Question.reply/reject → @/types (QuestionEvents + Bus publish)
+    ├── @/agent/mode → @/types (getMode, parseModeCapability, validateCapability)
+    ├── SessionPrompt.cancel → LocalSession.abort (via @/api)
+    └── Command → @/api 重导出
+
+✅ session/index.tsx
+    └── BashTool, TodoWriteTool → type-only imports
+
+✅ prompt/index.tsx
+    └── @/agent/mode → @/types
+
+✅ context/local.tsx
+    └── @/agent/mode → @/types
+
+✅ dialog-approval-queue.tsx
+    └── HitLClient → @/sdk/hitl
+```
+
+**TUI 层现在仅通过以下路径访问废弃模块**:
+```
+@/api → @/agent/command (封装)
+@/api → @/session/prompt (封装)
+```
+
+TUI 不再直接导入 @/agent/*, @/session/*, @/tool/* (除 type-only), @/provider/*, @/memory/*, @/context/*
+
+### 3. 类型系统现状 ✅
+
+**发现**: 类型已经迁移到 SDK，TUI 可以安全使用
+
+- `@/sdk/types.ts` - 所有 Rust API 类型的 TypeScript 镜像 (~1200 行)
+- `@/types/index.ts` - 从 SDK 重新导出，提供向后兼容
+
+**安全的类型导入** (这些不会阻塞删除):
+```typescript
+import type { Tool } from "@/tool/tool"           // ✅ 类型导入
+import type { MessageV2 } from "@/session/message-v2" // ✅ 类型导入
+```
+
+**阻塞的运行时导入** (这些阻塞删除):
+```typescript
+import { Command } from "@/agent/command"          // ❌ 运行时导入
+import { SessionPrompt } from "@/session/prompt"   // ❌ 运行时导入
+import { BashTool } from "@/tool/bash"             // ❌ 运行时导入
+```
+
+### 4. 推荐的清理路径
+
+**阶段 A: 准备工作 (当前)**
+1. ✅ 创建 Rust API 客户端 (`api/rust-client.ts`)
+2. ⏳ 将运行时类型移到 `@/types`
+3. ⏳ 为 TUI 创建适配器层
+
+**阶段 B: TUI 迁移**
+1. ⏳ 修改 `worker.ts` 使用 Rust API 代替本地 Command/Question
+2. ⏳ 修改 `session/index.tsx` 使用 Rust API 代替本地工具
+3. ⏳ 验证 TUI 功能正常
+
+**阶段 C: 清理**
+1. ⏳ 删除 `agent/`, `session/`, `tool/` (TUI 迁移后)
+2. ⏳ 删除 `memory/`, `context/` (依赖清理后)
+3. ⏳ 删除 `provider/` (CLI 迁移后)
+4. ⏳ 删除 `autonomous/` (如果不再需要)
+
+**预期收益**:
+- 删除 ~41,000 行 TypeScript 业务逻辑
+- TypeScript 仅保留 ~8,000 行 (TUI + SDK 类型)
+- 所有业务逻辑统一在 Rust 中
+
+---
+
+## 本次会话完成的工作
+
+### 1. 新增 SSE 流式聊天端点 ✅
+
+**文件**: `services/zero-cli/src/unified_api/chat.rs`
+
+**端点**: `POST /api/v1/sessions/:id/chat`
+
+**功能**:
+- Server-Sent Events (SSE) 流式响应
+- 完整的 Agent 循环（最多 10 次迭代）
+- 工具调用和结果返回
+- 会话消息持久化
+- Token 使用统计
+
+**SSE 事件类型**:
+- `start` - 聊天开始
+- `text_delta` - 文本流
+- `reasoning_delta` - 推理流（extended thinking）
+- `tool_start` - 工具执行开始
+- `tool_result` - 工具执行结果
+- `complete` - 聊天完成
+- `error` - 错误
+
+**请求示例**:
+```json
+{
+  "message": "分析这段代码",
+  "agent": "build",
+  "temperature": 0.7,
+  "max_tokens": 8192,
+  "model": "claude-sonnet-4-5-20250514"
+}
+```
+
+### 2. 新增工具执行 API ✅
+
+**文件**: `services/zero-cli/src/unified_api/tools_api.rs`
+
+**端点**:
+- `GET /api/v1/tools` - 列出所有可用工具
+- `POST /api/v1/tools/:name` - 执行指定工具
+
+**响应示例**:
+```json
+{
+  "success": true,
+  "tools": [
+    {
+      "name": "grep",
+      "description": "Search for patterns in files",
+      "parameters": {...},
+      "risk_level": "safe"
+    }
+  ],
+  "total": 25
+}
+```
+
+### 3. 新增 `zero-cli chat` 命令 ✅
+
+**文件**: `services/zero-cli/src/chat.rs`
+
+**功能**:
+- 完整的交互式终端聊天
+- 流式响应实时输出
+- 工具调用可视化（带进度指示）
+- ANSI 彩色输出
+- 会话持久化
+- 内置命令 `/quit`, `/clear`, `/model`, `/verbose`
+
+**使用示例**:
+```bash
+# 启动交互式聊天
+zero-cli chat
+
+# 指定模型
+zero-cli chat --model claude-opus-4-5-20250514
+
+# 指定会话 ID（恢复之前的对话）
+zero-cli chat --session my-session
+
+# 详细模式（显示工具输出）
+zero-cli chat --verbose
+```
+
+### 4. 新增 `zero-cli serve` 命令 ✅
+
+**文件**: `services/zero-cli/src/server/mod.rs` (扩展)
+
+**功能**:
+- 轻量级 API 服务器（无 daemon 开销）
+- 完整的 unified_api 路由
+- WebSocket 支持
+- CORS 开启
+- 优雅关闭
+
+**使用示例**:
+```bash
+# 启动 API 服务器（默认端口 4402）
+zero-cli serve
+
+# 指定主机和端口
+zero-cli serve --host 0.0.0.0 --port 8080
+```
+
+**暴露的端点**:
+- `POST /api/v1/sessions/:id/chat` - SSE 流式聊天
+- `GET /api/v1/sessions` - 会话列表
+- `GET /api/v1/agents` - Agent 列表
+- `GET /api/v1/tools` - 工具列表
+- `POST /api/v1/tools/:name` - 执行工具
+- `GET /ws` - WebSocket 连接
+
+---
+
+## 构建产物
+
+```
+target/release/zero-cli  ~11M  (独立运行，无需 Node.js)
+```
+
+**验证命令**:
+```bash
+# 检查版本
+./target/release/zero-cli --version
+# zero-cli 0.1.0
+
+# 查看帮助
+./target/release/zero-cli --help
+# 显示: agent, chat, serve, commit, review, agents 等命令
+
+# 启动 API 服务
+./target/release/zero-cli serve
+
+# 启动交互式聊天
+./target/release/zero-cli chat
+```
+
+---
+
+## 架构图
+
+```
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                              CodeCoder 统一架构                                   ║
+╠══════════════════════════════════════════════════════════════════════════════════╣
+║                                                                                   ║
+║  ┌─────────────────────────────────────────────────────────────────────────────┐ ║
+║  │                           展示层 (Presentation)                              │ ║
+║  │   ┌─────────────────┐   ┌─────────────────┐   ┌─────────────────┐           │ ║
+║  │   │   zero-cli      │   │   TS TUI        │   │   React Web     │           │ ║
+║  │   │  chat / agent   │   │  (Solid.js)     │   │   :4401         │           │ ║
+║  │   └────────┬────────┘   └────────┬────────┘   └────────┬────────┘           │ ║
+║  │            │ 内部调用            │ HTTP/SSE           │ HTTP/SSE            │ ║
+║  └────────────┼─────────────────────┼─────────────────────┼─────────────────────┘ ║
+║               └─────────────────────┼─────────────────────┘                       ║
+║                                     ▼                                             ║
+║  ┌─────────────────────────────────────────────────────────────────────────────┐ ║
+║  │                        zero-cli serve :4402                                  │ ║
+║  │                     (统一 API 网关 + Agent 引擎)                              │ ║
+║  │  ┌──────────────────────────────────────────────────────────────────────┐   │ ║
+║  │  │  Rust Agent Engine                                                    │   │ ║
+║  │  │  • Provider (Claude/GPT/Gemini)                                      │   │ ║
+║  │  │  • Tool System (grep/glob/edit/shell/webfetch...)                    │   │ ║
+║  │  │  • Session Management                                                 │   │ ║
+║  │  │  • Memory System (Markdown 双层记忆)                                  │   │ ║
+║  │  └──────────────────────────────────────────────────────────────────────┘   │ ║
+║  └─────────────────────────────────────────────────────────────────────────────┘ ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
+```
 
 ---
 
 ## 技术决策记录
 
-### 决策 1: JAR 分析直接使用 zero-core
+### 决策 1: SSE vs WebSocket
 
-**原因**:
-- `zero-core/src/java/` 已有完整实现
-- 避免重复造轮子
-- CLI 层只做参数解析和输出格式化
+**选择**: 两者都支持
+- SSE 用于 HTTP 端点 (`/api/v1/sessions/:id/chat`)
+- WebSocket 用于实时双向通信 (`/ws`)
 
-### 决策 2: Detection 使用字符串字段
+**理由**: 不同客户端有不同需求，浏览器更适合 SSE，TUI 更适合 WebSocket
 
-**说明**:
-- `Detection.category` 和 `Detection.confidence` 是 String 类型
-- 简化了序列化和显示逻辑
-- emoji 映射通过字符串匹配实现
+### 决策 2: 使用 ANSI 而非 crossterm
+
+**选择**: 直接使用 ANSI 转义序列
+
+**理由**:
+- 减少外部依赖
+- chat 命令足够简单，不需要复杂的终端控制
+- 保持构建速度
+
+### 决策 3: serve 命令独立于 daemon
+
+**选择**: `serve` 是轻量级服务器，`daemon` 是完整进程编排器
+
+**理由**:
+- 开发时不需要 trading、observer 等服务
+- 简单场景可以快速启动
+- 生产环境仍使用 `daemon`
+
+---
+
+## 下一步行动
+
+1. [x] Phase 1: SSE 流式聊天 ✅
+2. [x] Phase 2: Agent 引擎迁移 ✅ (已有实现)
+3. [x] Phase 4: CLI 命令 (chat, serve) ✅
+4. [x] Phase 5: 集成测试验证 ✅
+5. [x] Phase 6: Rust API 客户端 ✅
+6. [x] Phase 7: TUI + CLI 迁移到 Rust API ✅
+   - [x] 将 `run.ts` 中的 Command 改为从 @/api 导入
+   - [x] 将 `session.ts` 中的 Session 改为 LocalSession API 调用
+   - [x] 运行时类型保持 type-only 导入
+7. [ ] Phase 8: TypeScript 代码删除 (准备就绪)
+   - [ ] 删除 `packages/ccode/src/agent/` (~7,200 行) - 需先迁移 @/api 内部
+   - [ ] 删除 `packages/ccode/src/session/` (~6,200 行) - 需先迁移 @/api 内部
+   - [ ] 删除 `packages/ccode/src/tool/` (~10,200 行) - 仅 type-only 使用
+   - [ ] 删除 `packages/ccode/src/provider/` (~5,700 行) - autonomous/ 使用
+   - [ ] 删除 `packages/ccode/src/memory/` (~9,600 行) - autonomous/ 使用
+   - [ ] 删除 `packages/ccode/src/context/` (~2,200 行) - @/api 内部使用
+8. [ ] 性能基准测试
+9. [ ] 文档更新
+
+---
+
+## 文件变更清单
+
+本次会话新增/修改的文件：
+
+| 文件 | 操作 | 行数 | 说明 |
+|------|------|------|------|
+| `unified_api/chat.rs` | 新增 | ~420 | SSE 流式聊天端点 |
+| `unified_api/tools_api.rs` | 新增 | ~130 | 工具执行 API |
+| `unified_api/mod.rs` | 修改 | +15 | 添加新路由 |
+| `chat.rs` | 新增 | ~380 | 交互式聊天命令 |
+| `server/mod.rs` | 修改 | +200 | 添加 run_api_server |
+| `main.rs` | 修改 | +30 | 添加 Chat/Serve 命令 |
+| `api/rust-client.ts` | 新增 | ~650 | Rust API TypeScript 客户端 |
+| `sdk/types.ts` | 修改 | +100 | 添加 Mode 定义和辅助函数 |
+| `types/index.ts` | 修改 | +120 | 添加 MessageEvents, QuestionEvents |
+| `cli/cmd/tui/worker.ts` | 修改 | -5/+10 | 迁移到 @/types 事件 |
+| `cli/cmd/tui/routes/session/index.tsx` | 修改 | -2/+2 | type-only 导入 |
+| `cli/cmd/tui/component/prompt/index.tsx` | 修改 | -1/+1 | 使用 @/types |
+| `cli/cmd/tui/context/local.tsx` | 修改 | -1/+1 | 使用 @/types |
+| `cli/cmd/run.ts` | 修改 | -2/+1 | Command 从 @/api 导入 |
+| `cli/cmd/session.ts` | 修改 | -8/+4 | LocalSession 代替 Session.list() |
+| `docs/progress/rust-first-refactor.md` | 修改 | +150 | 更新进度和迁移结果 |

@@ -114,7 +114,7 @@ export type {
 } from "@/sdk/types"
 
 // Re-export utility functions from SDK
-export { parseModel, isDefaultTitle, parseModeCapability } from "@/sdk/types"
+export { parseModel, isDefaultTitle, parseModeCapability, getMode, validateCapability, listModes, MODES, DEFAULT_MODE } from "@/sdk/types"
 export { GEAR_INFO, GEAR_PRESETS, operatingModeToGear, gearToOperatingMode } from "@/sdk/types"
 
 // Re-export session adapters
@@ -420,3 +420,126 @@ export const SessionEventTypes = {
   Diff: "session.diff",
   Error: "session.error",
 } as const
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Message Event Type Constants
+// These replace MessageV2.Event.*.type from @/session/message-v2 for TUI event handling
+// ══════════════════════════════════════════════════════════════════════════════
+
+export const MessageEventTypes = {
+  Updated: "message.updated",
+  Removed: "message.removed",
+  PartUpdated: "message.part.updated",
+  PartRemoved: "message.part.removed",
+} as const
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Bus Event Definitions
+// Lightweight event definitions that don't pull in business logic
+// ══════════════════════════════════════════════════════════════════════════════
+
+import { BusEvent } from "@/bus/bus-event"
+import z from "zod"
+
+/**
+ * Message events for TUI - mirrors MessageV2.Event from @/session/message-v2
+ * These are standalone definitions that use SDK types instead of importing from session/
+ * Uses z.any() for flexibility since the actual data comes from SDK and may vary
+ */
+export const MessageEvents = {
+  Updated: BusEvent.define(
+    MessageEventTypes.Updated,
+    z.object({
+      info: z.any(),
+    }),
+  ),
+  Removed: BusEvent.define(
+    MessageEventTypes.Removed,
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+    }),
+  ),
+  PartUpdated: BusEvent.define(
+    MessageEventTypes.PartUpdated,
+    z.object({
+      part: z.any(),
+      delta: z.string().optional(),
+    }),
+  ),
+  PartRemoved: BusEvent.define(
+    MessageEventTypes.PartRemoved,
+    z.object({
+      sessionID: z.string(),
+      messageID: z.string(),
+      partID: z.string(),
+    }),
+  ),
+}
+
+/**
+ * Question events for TUI - mirrors Question.Event from @/agent/question
+ */
+export const QuestionEventTypes = {
+  Asked: "question.asked",
+  Replied: "question.replied",
+  Rejected: "question.rejected",
+} as const
+
+export const QuestionEvents = {
+  Asked: BusEvent.define(
+    QuestionEventTypes.Asked,
+    z.object({
+      id: z.string(),
+      sessionID: z.string(),
+      questions: z.array(z.object({
+        question: z.string(),
+        header: z.string(),
+        options: z.array(z.object({
+          label: z.string(),
+          description: z.string().optional(),
+        })),
+        multiple: z.boolean().optional(),
+        custom: z.boolean().optional(),
+      })),
+      tool: z.object({
+        messageID: z.string(),
+        callID: z.string(),
+      }).optional(),
+    }),
+  ),
+  Replied: BusEvent.define(
+    QuestionEventTypes.Replied,
+    z.object({
+      sessionID: z.string(),
+      requestID: z.string(),
+      answers: z.array(z.array(z.string())),
+    }),
+  ),
+  Rejected: BusEvent.define(
+    QuestionEventTypes.Rejected,
+    z.object({
+      sessionID: z.string(),
+      requestID: z.string(),
+    }),
+  ),
+}
+
+/**
+ * Command events for TUI - mirrors Command.Event from @/agent/command
+ */
+export const CommandEventTypes = {
+  Executed: "command.executed",
+} as const
+
+export const CommandEvents = {
+  Executed: BusEvent.define(
+    CommandEventTypes.Executed,
+    z.object({
+      name: z.string(),
+      sessionID: z.string(),
+      arguments: z.string(),
+      messageID: z.string(),
+    }),
+  ),
+}

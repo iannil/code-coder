@@ -11,7 +11,7 @@ import { useToast } from "../ui/toast"
 import { useArgs } from "./args"
 import { useSDK } from "./sdk"
 import { RGBA } from "@opentui/core"
-import { getMode } from "@/agent/mode"
+import { getMode } from "@/types"
 import { parseModel } from "@/sdk"
 
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({

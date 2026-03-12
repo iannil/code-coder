@@ -952,6 +952,82 @@ export interface Mode {
   icon?: string
 }
 
+/**
+ * Mode definitions (migrated from @/agent/mode)
+ */
+export const MODES: Record<string, Mode> = {
+  build: {
+    id: "build",
+    name: "Development",
+    description: "Software development, code review, architecture, and testing",
+    primaryAgent: "build",
+    alternativePrimaries: ["plan", "autonomous"],
+    capabilities: [
+      "code-reviewer", "security-reviewer", "tdd-guide", "architect",
+      "explore", "general", "code-reverse", "jar-code-reverse",
+      "verifier", "prd-generator", "feasibility-assess",
+    ],
+    color: "green",
+    icon: "🔨",
+  },
+  writer: {
+    id: "writer",
+    name: "Writing",
+    description: "Long-form content creation, editing, and proofreading",
+    primaryAgent: "writer",
+    alternativePrimaries: [],
+    capabilities: ["expander", "proofreader", "verifier"],
+    color: "blue",
+    icon: "✍️",
+  },
+  decision: {
+    id: "decision",
+    name: "Decision",
+    description: "Decision-making, analysis, and strategic advisory",
+    primaryAgent: "decision",
+    alternativePrimaries: ["observer"],
+    capabilities: [
+      "observer", "macro", "trader", "value-analyst",
+      "picker", "miniproduct", "ai-engineer", "synton-assistant",
+    ],
+    color: "magenta",
+    icon: "🎯",
+  },
+}
+
+/** Default mode ID */
+export const DEFAULT_MODE = "build"
+
+/**
+ * Get a mode by ID
+ */
+export function getMode(modeId: string): Mode | undefined {
+  return MODES[modeId]
+}
+
+/**
+ * Get the default mode
+ */
+export function getDefaultMode(): Mode {
+  return MODES[DEFAULT_MODE]
+}
+
+/**
+ * List all available modes
+ */
+export function listModes(): Mode[] {
+  return Object.values(MODES)
+}
+
+/**
+ * Validate that a capability is available in a mode
+ */
+export function validateCapability(modeId: string, capabilityName: string): boolean {
+  const mode = MODES[modeId]
+  if (!mode) return false
+  return mode.capabilities.includes(capabilityName)
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Utility Functions
 // ══════════════════════════════════════════════════════════════════════════════

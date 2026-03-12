@@ -16,6 +16,7 @@ mod agent;
 mod agents;
 mod alerts;
 mod channels;
+mod chat;
 mod commit;
 mod config;
 mod credential;
@@ -119,6 +120,36 @@ enum Commands {
         /// Temperature (0.0 - 2.0)
         #[arg(short, long, default_value = "0.7")]
         temperature: f64,
+    },
+
+    /// Interactive chat with full tool support (Rust-native, no Node.js required)
+    Chat {
+        /// Model to use (e.g., claude-sonnet-4-5-20250514)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Temperature (0.0 - 1.0)
+        #[arg(short, long, default_value = "0.7")]
+        temperature: f64,
+
+        /// Session ID for persistence
+        #[arg(short, long)]
+        session: Option<String>,
+
+        /// Verbose mode (show tool execution details)
+        #[arg(short, long)]
+        verbose: bool,
+    },
+
+    /// Start API server (unified API gateway for TUI/Web clients)
+    Serve {
+        /// Host to bind to
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Port to bind to
+        #[arg(short, long, default_value = "4402")]
+        port: u16,
     },
 
     /// Create a git commit with AI-generated message
@@ -530,6 +561,29 @@ async fn main() -> Result<()> {
             model,
             temperature,
         } => agent::run(config, message, provider, model, temperature).await,
+
+        Commands::Chat {
+            model,
+            temperature,
+            session,
+            verbose,
+        } => {
+            let chat_config = chat::ChatConfig {
+                model: model.unwrap_or_else(|| "claude-sonnet-4-5-20250514".to_string()),
+                temperature,
+                max_tokens: Some(8192),
+                session_id: session,
+                verbose,
+            };
+            chat::run_chat(config, chat_config).await
+        }
+
+        Commands::Serve { host, port } => {
+            info!("🚀 Starting Zero CLI API Server");
+            info!("   Unified API: http://{host}:{port}");
+            info!("   WebSocket:   ws://{host}:{port}/ws");
+            server::run_api_server(config, &host, port).await
+        }
 
         Commands::Commit {
             message,

@@ -31,7 +31,7 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { useTextareaKeybindings } from "../textarea-keybindings"
-import { parseModeCapability, getMode, validateCapability } from "@/agent/mode"
+import { parseModeCapability, getMode, validateCapability } from "@/types"
 
 export type PromptProps = {
   sessionID?: string
