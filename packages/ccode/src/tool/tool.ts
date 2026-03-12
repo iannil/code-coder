@@ -1,185 +1,42 @@
-import z from "zod"
-import type { MessageV2 } from "../session/message-v2"
-import type { AgentInfoType } from "@/sdk/agent-bridge"
-import type { PermissionNext } from "@/security/permission/next"
-import { Truncate } from "./truncation"
-import { Hook } from "../hook"
-import { NamedError } from "@codecoder-ai/core/util/error"
-import { AutonomousModeHook } from "../autonomous"
+/**
+ * Tool Type Stubs
+ * @deprecated Tools are now implemented in Rust.
+ */
 
-/** Extract optional hook-relevant fields from tool args safely */
-function extractHookFields(args: Record<string, unknown>): {
-  filePath?: string
-  command?: string
-} {
-  const filePath = typeof args.filePath === "string" ? args.filePath : typeof args.file_path === "string" ? args.file_path : undefined
-  const command = typeof args.command === "string" ? args.command : undefined
-  return { filePath, command }
+import type { z } from "zod"
+
+export interface ToolInfo {
+  name: string
+  description: string
+  input?: z.ZodType
+  output?: z.ZodType
+  metadata?: z.ZodType
 }
 
 export namespace Tool {
-  interface Metadata {
-    [key: string]: any
+  export interface Info extends ToolInfo {}
+
+  export type InferParameters<T> = T extends { input: z.ZodType<infer P> } ? P : Record<string, unknown>
+
+  export type InferMetadata<T> = T extends { metadata: z.ZodType<infer M> } ? M : Record<string, unknown>
+
+  export type InferOutput<T> = T extends { output: z.ZodType<infer O> } ? O : unknown
+
+  export type Permission = {
+    allowed: boolean
+    reason?: string
   }
 
-  export interface InitContext {
-    agent?: AgentInfoType
-  }
+  export type InputType<T> = InferParameters<T>
+  export type OutputType<T> = InferOutput<T>
 
-  export const HookBlockedError = NamedError.create(
-    "HookBlockedError",
-    z.object({
-      hookName: z.string(),
-      message: z.string(),
-      tool: z.string(),
-      lifecycle: z.string(),
-    }),
-  )
-
-  export type Context<M extends Metadata = Metadata> = {
+  export interface Context {
     sessionID: string
-    messageID: string
-    agent: string
-    abort: AbortSignal
-    callID?: string
-    extra?: { [key: string]: any }
-    metadata(input: { title?: string; metadata?: M }): void
-    ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>
-  }
-  export interface Info<Parameters extends z.ZodType = z.ZodType, M extends Metadata = Metadata> {
-    id: string
-    init: (ctx?: InitContext) => Promise<{
-      description: string
-      parameters: Parameters
-      execute(
-        args: z.infer<Parameters>,
-        ctx: Context,
-      ): Promise<{
-        title: string
-        metadata: M
-        output: string
-        attachments?: MessageV2.FilePart[]
-      }>
-      formatValidationError?(error: z.ZodError): string
-    }>
-  }
-
-  export type InferParameters<T extends Info> = T extends Info<infer P> ? z.infer<P> : never
-  export type InferMetadata<T extends Info> = T extends Info<any, infer M> ? M : never
-
-  export function define<Parameters extends z.ZodType, Result extends Metadata>(
-    id: string,
-    init: Info<Parameters, Result>["init"] | Awaited<ReturnType<Info<Parameters, Result>["init"]>>,
-  ): Info<Parameters, Result> {
-    return {
-      id,
-      init: async (initCtx) => {
-        const toolInfo = init instanceof Function ? await init(initCtx) : init
-        const execute = toolInfo.execute
-        toolInfo.execute = async (args, ctx) => {
-          try {
-            toolInfo.parameters.parse(args)
-          } catch (error) {
-            if (error instanceof z.ZodError && toolInfo.formatValidationError) {
-              throw new Error(toolInfo.formatValidationError(error), { cause: error })
-            }
-            throw new Error(
-              `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,
-              { cause: error },
-            )
-          }
-
-          // Run PreToolUse hooks
-          const hookFields = extractHookFields(args as Record<string, unknown>)
-          const preHookCtx: Hook.Context = {
-            tool: id,
-            input: args as Record<string, unknown>,
-            sessionID: ctx.sessionID,
-            filePath: hookFields.filePath,
-            command: hookFields.command,
-          }
-          const preResult = await Hook.run("PreToolUse", preHookCtx)
-          if (preResult.blocked) {
-            throw new HookBlockedError({
-              hookName: preResult.hookName ?? "unknown",
-              message: preResult.message ?? "Operation blocked by hook",
-              tool: id,
-              lifecycle: "PreToolUse",
-            })
-          }
-
-          // Autonomous Mode: Run CLOSE decision evaluation
-          let autonomousDecision: Awaited<ReturnType<typeof AutonomousModeHook.evaluateToolCall>> | undefined
-          if (ctx.agent === "autonomous") {
-            autonomousDecision = await AutonomousModeHook.evaluateToolCall({
-              sessionId: ctx.sessionID,
-              toolName: id,
-              toolInput: args as Record<string, unknown>,
-            })
-
-            if (!autonomousDecision.allowed) {
-              throw new HookBlockedError({
-                hookName: "AutonomousMode",
-                message: autonomousDecision.decision?.reasoning ?? "Blocked by CLOSE decision framework",
-                tool: id,
-                lifecycle: "PreToolUse",
-              })
-            }
-          }
-
-          const result = await execute(args, ctx)
-
-          // Add CLOSE decision info to result metadata for autonomous agent
-          if (autonomousDecision?.decision && ctx.agent === "autonomous") {
-            result.metadata = {
-              ...result.metadata,
-              closeDecision: {
-                action: autonomousDecision.decision.action,
-                score: autonomousDecision.decision.score,
-                reasoning: autonomousDecision.decision.reasoning,
-                tool: id,
-              },
-            }
-          }
-
-          // Run PostToolUse hooks
-          const postHookCtx: Hook.Context = {
-            tool: id,
-            input: args as Record<string, unknown>,
-            output: result.output,
-            sessionID: ctx.sessionID,
-            filePath: hookFields.filePath,
-            command: hookFields.command,
-            fileContent: result.metadata?.filediff?.after,
-            diff: result.metadata?.diff,
-          }
-          const postResult = await Hook.run("PostToolUse", postHookCtx)
-          if (postResult.blocked) {
-            throw new HookBlockedError({
-              hookName: postResult.hookName ?? "unknown",
-              message: postResult.message ?? "Operation blocked by post-execution hook",
-              tool: id,
-              lifecycle: "PostToolUse",
-            })
-          }
-
-          // skip truncation for tools that handle it themselves
-          if (result.metadata.truncated !== undefined) {
-            return result
-          }
-          const truncated = await Truncate.output(result.output, {}, initCtx?.agent)
-          return {
-            ...result,
-            output: truncated.content,
-            metadata: {
-              ...result.metadata,
-              truncated: truncated.truncated,
-              ...(truncated.truncated && { outputPath: truncated.outputPath }),
-            },
-          }
-        }
-        return toolInfo
-      },
-    }
+    messageID?: string
+    partID?: string
+    directory?: string
+    [key: string]: unknown
   }
 }
+
+export type Tool = ToolInfo

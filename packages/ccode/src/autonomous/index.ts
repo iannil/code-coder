@@ -1,335 +1,222 @@
 /**
- * Autonomous Mode - Autonomous Execution System
- *
- * A fully autonomous agent system that can:
- * - Plan complex tasks independently
- * - Make technical decisions using CLOSE framework
- * - Execute complete TDD cycles
- * - Self-correct when tests fail
- * - Manage checkpoints and rollbacks
- * - Score quality and "craziness"
- *
- * Based on the "祝融说" (ZhuRong Theory) philosophy of sustainable decision-making.
- *
- * @package autonomous
- *
- * @deprecated This module is scheduled for removal.
- * Use `sdk/` instead for Agent execution via Rust daemon.
- *
- * **Migration Guide:**
- * ```typescript
- * // Before (deprecated):
- * import { Orchestrator } from "@/autonomous"
- * const orchestrator = createOrchestrator(config)
- * await orchestrator.execute(task)
- *
- * // After (recommended):
- * import { getWebSocketClient } from "@/sdk"
- * const ws = getWebSocketClient()
- * await ws.connect()
- * await ws.executeAgent({
- *   session_id: "sess-1",
- *   agent: "autonomous",
- *   message: task
- * }, onEvent)
- * ```
- *
- * **Rust implementation:** `services/zero-cli/src/unified_api/agents.rs`
+ * Autonomous System Type Stubs
+ * @deprecated Autonomous functionality is being migrated to Rust.
  */
 
-import type { AutonomousModeConfig } from "./config/schema"
+import { z } from "zod"
+import { BusEvent } from "@/bus/bus-event"
 
-// State machine
-export {
-  AutonomousState,
-  StateMetadata,
-  VALID_TRANSITIONS,
-  isValidTransition,
-  isTerminal,
-  isRecoverable,
-} from "./state/states"
-export { StateMachine, createStateMachine } from "./state/state-machine"
-export type { TransitionOptions, StateMachineConfig } from "./state/state-machine"
-export {
-  resourceGuard,
-  errorGuard,
-  progressGuard,
-  OscillationGuard,
-  andGuard,
-  orGuard,
-  notGuard,
-  TransitionRecipes,
-} from "./state/transitions"
-export type { TransitionGuard, TransitionContext } from "./state/transitions"
+// Resource budget configuration
+export interface ResourceBudget {
+  maxTokens: number
+  maxCostUSD: number
+  maxDurationMinutes: number
+  maxFilesChanged: number
+  maxActions: number
+}
 
-// Events
-export { AutonomousEvent, AutonomousEventHelper } from "./events"
+// Session context for autonomous operations
+export interface SessionContext {
+  sessionId: string
+  requestId: string
+  request: string
+  startTime: number
+}
 
-// Decision system
-export { DecisionEngine, createDecisionEngine, evaluateDecision } from "./decision/engine"
-export type { DecisionEngineConfig, DecisionContext, DecisionResult, AutonomyLevel } from "./decision/engine"
-export { DecisionTemplates, buildCriteria, calculateCLOSEFromContext, validateCLOSEScore } from "./decision/criteria"
-export type {
-  AutonomousDecisionCriteria,
-  CLOSEScore,
-  DecisionType,
-  RiskLevel,
-  DecisionRecord,
-} from "./decision/criteria"
-export { DecisionHistory } from "./decision/history"
+// Orchestrator configuration
+export interface OrchestratorConfig {
+  mode: "code" | "research" | "decision" | "auto"
+  autonomyLevel: string
+  resourceBudget: ResourceBudget
+  unattended: boolean
+}
 
-// Orchestration
-export { Orchestrator, createOrchestrator } from "./orchestration/orchestrator"
-export type { OrchestratorConfig, SessionContext, TaskMode } from "./orchestration/orchestrator"
-export { PhaseRunner, createPhaseRunner, PhaseTemplates } from "./orchestration/phase-runner"
-export type { Phase, PhaseContext, PhaseResult, PhaseRunnerConfig } from "./orchestration/phase-runner"
-export { TaskQueue, createTaskQueue } from "./orchestration/task-queue"
-export type { Task, TaskPriority, TaskStatus, TaskQueueConfig } from "./orchestration/task-queue"
-
-// Planning
-export { RequirementTracker, createRequirementTracker } from "./planning/requirement-tracker"
-export type {
-  Requirement,
-  RequirementStatus,
-  AcceptanceCriterion,
-  ParseResult,
-  RequirementTrackerConfig,
-} from "./planning/requirement-tracker"
-export { NextStepPlanner, createNextStepPlanner } from "./planning/next-step-planner"
-export type {
-  CompletionCriteria,
-  NextStepPlan,
-  NextStepExecutionContext,
-  NextStepPlannerConfig,
-} from "./planning/next-step-planner"
-
-// Execution
-export { ContextManager, createExecutionContext } from "./execution/context"
-export type { ExecutionContext, ContextOptions } from "./execution/context"
-export { Executor, createExecutor } from "./execution/executor"
-export type { ExecutionConfig, TestResult, VerificationResult, TDDCycleResult, TDDPhase } from "./execution/executor"
-export { CheckpointManager, createCheckpointManager } from "./execution/checkpoint"
-export type { Checkpoint, CheckpointType } from "./execution/checkpoint"
-export { AgentInvoker } from "./execution/agent-invoker"
-export type { AgentInvocationRequest, AgentInvocationResult, InvocableAgent } from "./execution/agent-invoker"
-export { GitOps } from "./execution/git-ops"
-export type { GitCheckpoint, GitStatus, GitCommitResult } from "./execution/git-ops"
-export { TestRunner } from "./execution/test-runner"
-
-// Sandbox Execution (Phase 3)
-export { SandboxExecutor, createSandboxExecutor } from "./execution/sandbox"
-export type {
-  SandboxLanguage,
-  SandboxRequest,
-  ResourceLimits,
-  SandboxResult,
-  ReflectionResult,
-} from "./execution/sandbox"
-
-// Enhanced Web Search (Phase 3)
-export { EnhancedWebSearch, createEnhancedWebSearch } from "./execution/enhanced-web-search"
-export type { WebFetchResult, ExtractedDoc } from "./execution/enhanced-web-search"
-
-// Knowledge Sedimentation (Phase 3)
-export {
-  KnowledgeSedimentation,
-  getKnowledgeSedimentation,
-  createKnowledgeSedimentation,
-} from "./execution/knowledge-sedimentation"
-export type {
-  KnowledgeCategory,
-  KnowledgeEntry,
-  KnowledgeSource,
-  ExtractionContext,
-  KnowledgeSearchResult,
-} from "./execution/knowledge-sedimentation"
-
-// Evolution Loop (Phase 3)
-export { EvolutionLoop, createEvolutionLoop, evolveProblem } from "./execution/evolution-loop"
-export type {
-  AutonomousProblem,
-  SolutionAttempt,
-  EvolutionResult,
-  EvolutionConfig,
-} from "./execution/evolution-loop"
-
-// Research Loop
-export { createResearchLoop } from "./execution/research-loop"
-export type {
-  ResearchLoop,
-  ResearchProblem,
-  ResearchResult,
-  ResearchSource,
-  ResearchLoopConfig,
-} from "./execution/research-loop"
-export { createReportRenderer, renderReport } from "./execution/report-renderer"
-export type {
-  ReportRenderer,
-  ReportData,
-  RenderConfig,
-  RenderResult,
-} from "./execution/report-renderer"
-export { createResearchLearner } from "./execution/research-learner"
-export type {
-  ResearchLearner,
-  LearnedResearchPattern,
-  ResearchRecord,
-  HandSuggestion,
-} from "./execution/research-learner"
-
-// Acceptance Loop (PDCA: Check)
-export { createAcceptanceLoop } from "./execution/acceptance-loop"
-export type {
-  AcceptanceLoop,
-  AcceptanceProblem,
-  AcceptanceResult,
-  AcceptanceIssue,
-  AcceptanceLoopConfig,
-  CodeQualityReport,
-  RequirementReport,
-  ExpectationReport,
-} from "./execution/acceptance-loop"
-
-// Fix Loop (PDCA: Adjust)
-export { createFixLoop } from "./execution/fix-loop"
-export type {
-  FixLoop,
-  FixProblem,
-  FixResult,
-  FixAttempt,
-  FixStrategy,
-  FixLoopConfig,
-} from "./execution/fix-loop"
-
-// Classification
-export * from "./classification"
-
-// PDCA Framework
-export * from "./pdca"
-
-// LLM Solver (Phase 1 Enhancement)
-export { LLMSolver, getLLMSolver, createLLMSolver } from "./execution/llm-solver"
-export type {
-  CodeGenerationContext,
-  CodeGenerationResult,
-  ReflectionContext,
-  ReflectionAnalysis,
-  LLMSolverConfig,
-} from "./execution/llm-solver"
-
-// Memory Writer (Phase 1 Enhancement)
-export {
-  writeEvolutionToMemory,
-  sedimentEvolutionSuccess,
-  logEvolutionFailure,
-} from "./execution/memory-writer"
-export type {
-  EvolutionMemoryContext,
-  MemoryWriteOptions,
-} from "./execution/memory-writer"
-
-// Safety
-export { SafetyGuard, parseResourceBudget } from "./safety/constraints"
-export type { ResourceBudget, ResourceUsage, SafetyCheckResult, SafetyConfig } from "./safety/constraints"
-export { SafetyGuardrails, createGuardrails } from "./safety/guardrails"
-export type { GuardrailConfig, LoopPattern } from "./safety/guardrails"
-export { RollbackManager, createRollbackManager } from "./safety/rollback"
-export type { RollbackTrigger, RollbackOptions, RollbackResult } from "./safety/rollback"
-export {
-  SafetyIntegration,
-  createSafetyIntegration,
-  isDestructiveOperation,
-  getDestructiveRiskLevel,
-} from "./safety/integration"
-export type {
-  SafetyIntegrationConfig,
-  SafetyStatus,
-  DestructiveOperation,
-  DestructiveCategory,
-} from "./safety/integration"
-
-// Metrics
-export { MetricsCollector, createMetricsCollector, getSessionMetrics, getAllSessionMetrics } from "./metrics/metrics"
-export type { MetricType, MetricData, SessionMetrics, StoredSessionMetrics } from "./metrics/metrics"
-export { Scorer, createScorer, calculateScores } from "./metrics/scorer"
-export type { QualityScoreBreakdown, CrazinessScoreBreakdown, CrazinessLevel, ScoringWeights } from "./metrics/scorer"
-export {
-  Reporter,
-  createReporter,
-  generateSummaryReport,
-  generateFullReport,
-  getCrazinessDescription,
-} from "./metrics/reporter"
-export type { Report, ReportType, ReportOptions } from "./metrics/reporter"
-
-// Confidence Scoring (MiroFish-inspired)
-export {
-  ConfidenceScorer,
-  createConfidenceScorer,
-  scoreOutput,
-  isOutputConfident,
-  Confidence,
-} from "./confidence/index.js"
-export type {
-  ConfidenceScore,
-  ConfidenceDetails,
-  ConfidenceScorerConfig,
-  AgentOutput,
-  AgentContext,
-} from "./confidence/index.js"
-
-// Configuration
-export { AutonomousConfig, DEFAULT_AUTONOMOUS_MODE_CONFIG, mergeAutonomousModeConfig } from "./config/config"
-export {
-  AutonomousModeConfigSchema,
-  CloseWeightsSchema,
-  CheckpointConfigSchema,
-  LoopDetectionConfigSchema,
-  SessionConfigSchema,
-} from "./config/schema"
-export type {
-  AutonomyLevel as ConfigAutonomyLevel,
-  CloseWeights,
-  CheckpointConfig,
-  LoopDetectionConfig,
-  SessionConfig,
-} from "./config/schema"
-
-// Integration
-export { AutonomousModeHook } from "./integration/hook"
-export { DecisionReporter } from "./integration/reporter"
-export type { DecisionSummary } from "./integration/reporter"
-
-// NOTE: Autonomous Builder exports are intentionally NOT included here to avoid
-// circular dependencies. The chain was:
-//   tool/read.ts -> tool/tool.ts -> autonomous/index.ts -> builder/validation.ts -> @/memory/tools
-// Import builder types directly from "@/autonomous/builder" when needed.
-// The evolution-loop module uses lazy imports for builder to avoid triggering the cycle.
-
-// Validate autonomous mode config
-export const validateAutonomousModeConfig = (
-  config: unknown,
-): { success: boolean; data?: AutonomousModeConfig; errors?: string[] } => {
-  const { AutonomousModeConfigSchema } = require("./config/schema")
-  const result = AutonomousModeConfigSchema.safeParse(config)
-
-  if (result.success) {
-    return {
-      success: true,
-      data: result.data,
+// Orchestrator result
+export interface OrchestratorResult {
+  success: boolean
+  result?: {
+    success: boolean
+    mode?: "code" | "research" | "decision"
+    qualityScore?: number
+    crazinessScore?: number
+    iterationsCompleted?: number
+    topic?: string
+    report?: string
+    sources?: Array<{ url: string; title: string }>
+    insights?: string[]
+    research?: string
+    closeScore?: {
+      convergence: number
+      leverage: number
+      optionality: number
+      surplus: number
+      evolution: number
+      overall: number
     }
-  }
-
-  const zodError = result.error
-  return {
-    success: false,
-    errors: zodError.issues.map(
-      (e: { path: (string | number)[]; message: string }) => `${e.path.join(".")}: ${e.message}`,
-    ),
+    recommendation?: string
+    alternatives?: string[]
+    duration: number
+    tokensUsed: number
+    costUSD: number
   }
 }
 
-/**
- * Version of Autonomous Mode
- */
-export const AUTONOMOUS_VERSION = "0.1.0"
+// Orchestrator interface
+export interface Orchestrator {
+  start(request: string): Promise<void>
+  process(request: string): Promise<OrchestratorResult>
+  getState(): string
+}
+
+// Parse resource budget from string
+export function parseResourceBudget(budget: string): ResourceBudget {
+  const result: ResourceBudget = {
+    maxTokens: 500000,
+    maxCostUSD: 5.0,
+    maxDurationMinutes: 60,
+    maxFilesChanged: 50,
+    maxActions: 1000,
+  }
+
+  const parts = budget.split(",")
+  for (const part of parts) {
+    const [key, value] = part.split(":")
+    if (key === "tokens") result.maxTokens = parseInt(value, 10)
+    else if (key === "cost") result.maxCostUSD = parseFloat(value)
+    else if (key === "time") result.maxDurationMinutes = parseInt(value, 10) / 60
+  }
+
+  return result
+}
+
+// Create orchestrator stub
+export function createOrchestrator(_context: SessionContext, _config: OrchestratorConfig): Orchestrator {
+  console.warn("Autonomous orchestrator is deprecated. Use Rust implementation.")
+  return {
+    async start(_request: string): Promise<void> {
+      throw new Error("Deprecated: use Rust autonomous implementation")
+    },
+    async process(_request: string): Promise<OrchestratorResult> {
+      throw new Error("Deprecated: use Rust autonomous implementation")
+    },
+    getState(): string {
+      return "DEPRECATED"
+    },
+  }
+}
+
+// Autonomous event definitions using BusEvent.define
+export const AutonomousEvent = {
+  StateChanged: BusEvent.define(
+    "autonomous:state:changed",
+    z.object({
+      sessionId: z.string().optional(),
+      from: z.string().optional(),
+      to: z.string().optional(),
+    }),
+  ),
+  IterationStarted: BusEvent.define(
+    "autonomous:iteration:started",
+    z.object({
+      sessionId: z.string(),
+      iteration: z.number(),
+    }),
+  ),
+  TaskStarted: BusEvent.define(
+    "autonomous:task:started",
+    z.object({
+      sessionId: z.string(),
+      taskId: z.string(),
+    }),
+  ),
+  TaskCompleted: BusEvent.define(
+    "autonomous:task:completed",
+    z.object({
+      sessionId: z.string(),
+      taskId: z.string(),
+      success: z.boolean(),
+    }),
+  ),
+  DecisionMade: BusEvent.define(
+    "autonomous:decision:made",
+    z.object({
+      sessionId: z.string(),
+      type: z.string(),
+      approved: z.boolean(),
+    }),
+  ),
+  ResourceWarning: BusEvent.define(
+    "autonomous:resource:warning",
+    z.object({
+      sessionId: z.string(),
+      resource: z.string(),
+      percentage: z.number(),
+    }),
+  ),
+  SessionStarted: BusEvent.define(
+    "autonomous:session:started",
+    z.object({
+      sessionId: z.string(),
+      request: z.string().optional(),
+      mode: z.string().optional(),
+      autonomyLevel: z.string().optional(),
+    }),
+  ),
+  SessionCompleted: BusEvent.define(
+    "autonomous:session:completed",
+    z.object({
+      sessionId: z.string(),
+      success: z.boolean(),
+      duration: z.number().optional(),
+    }),
+  ),
+  SessionFailed: BusEvent.define(
+    "autonomous:session:failed",
+    z.object({
+      sessionId: z.string(),
+      error: z.string(),
+    }),
+  ),
+  MetricsUpdated: BusEvent.define(
+    "autonomous:metrics:updated",
+    z.object({
+      sessionId: z.string(),
+      tokensUsed: z.number().optional(),
+      costUSD: z.number().optional(),
+      filesChanged: z.number().optional(),
+      metrics: z
+        .object({
+          tokensUsed: z.number().optional(),
+          costUSD: z.number().optional(),
+        })
+        .optional(),
+    }),
+  ),
+  SafetyTriggered: BusEvent.define(
+    "autonomous:safety:triggered",
+    z.object({
+      sessionId: z.string(),
+      trigger: z.string(),
+      action: z.string().optional(),
+      severity: z.enum(["low", "medium", "high", "critical"]).optional(),
+    }),
+  ),
+  KnowledgeConsolidated: BusEvent.define(
+    "autonomous:knowledge:consolidated",
+    z.object({
+      sessionId: z.string().optional(),
+      topic: z.string().optional(),
+      entries: z.number().optional(),
+    }),
+  ),
+} as const
+
+export type AutonomousEventType = keyof typeof AutonomousEvent
+
+// Event helper
+export const AutonomousEventHelper = {
+  isStateChanged: (type: string) => type === AutonomousEvent.StateChanged.type,
+  isIterationStarted: (type: string) => type === AutonomousEvent.IterationStarted.type,
+  isTaskEvent: (type: string) =>
+    type === AutonomousEvent.TaskStarted.type || type === AutonomousEvent.TaskCompleted.type,
+}

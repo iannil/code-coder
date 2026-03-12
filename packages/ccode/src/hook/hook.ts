@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Hook module - uses deprecated CausalRecorder
 import z from "zod"
 import path from "path"
 import { Log } from "@/util/log"

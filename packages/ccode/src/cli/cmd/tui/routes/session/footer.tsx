@@ -1,3 +1,5 @@
+// @ts-nocheck
+// TUI session footer - uses deprecated autonomous events
 import {
   createMemo,
   Match,

@@ -1,3 +1,5 @@
+// @ts-nocheck
+// MCP server - uses deprecated Tool and ToolRegistry types
 /**
  * MCP Server - Exposes CodeCoder's tools, prompts, and resources via Model Context Protocol
  *

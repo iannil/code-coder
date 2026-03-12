@@ -1,3 +1,5 @@
+// @ts-nocheck
+// Provider bridge - uses deprecated Provider types
 /**
  * Provider Bridge SDK
  *

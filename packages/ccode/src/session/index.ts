@@ -1,507 +1,73 @@
 /**
- * Session Module
- *
- * @deprecated This module is scheduled for removal.
- * Session management has been migrated to the Rust daemon's SessionStore.
- *
- * **Migration Guide:**
- * ```typescript
- * // Before (deprecated):
- * import { Session } from "@/session"
- * const session = await Session.create()
- * const messages = await Session.messages({ sessionID })
- *
- * // After (recommended):
- * import { getHttpClient } from "@/sdk"
- * const http = getHttpClient()
- * const session = await http.createSession()
- * const messages = await http.getMessages(sessionID)
- * ```
- *
- * **Rust implementation:** `services/zero-cli/src/session/store.rs`
+ * Session Type Stubs
+ * @deprecated This module has been moved to Rust. Use @/api/session instead.
  */
-import { Slug } from "@codecoder-ai/core/util/slug"
-import path from "path"
-import { BusEvent } from "@/bus/bus-event"
-import { Bus } from "@/bus"
-import { Decimal } from "decimal.js"
-import z from "zod"
-import { type LanguageModelUsage, type ProviderMetadata } from "ai"
-import { Flag } from "@/util/flag/flag"
-import { Identifier } from "@/util/id/id"
-import { VERSION } from "../version"
-
-import { Storage } from "@/infrastructure/storage/storage"
-import { Log } from "@/util/log"
-import { MessageV2 } from "./message-v2"
-import { Instance } from "@/project/instance"
-import { SessionPrompt } from "./prompt"
-import { fn } from "@/util/fn"
-import { Command } from "@/agent/command"
-import { Snapshot } from "@/session/snapshot"
-
-import type { Provider } from "@/provider/provider"
-import { PermissionNext } from "@/security/permission/next"
-import { Global } from "@/util/global"
 
 export namespace Session {
-  const log = Log.create({ service: "session" })
-
-  const parentTitlePrefix = "New session - "
-  const childTitlePrefix = "Child session - "
-
-  function createDefaultTitle(isChild = false) {
-    return (isChild ? childTitlePrefix : parentTitlePrefix) + new Date().toISOString()
+  export interface Info {
+    id: string
+    title: string
+    projectID?: string
+    parentID?: string
+    directory?: string
+    permission?: Record<string, unknown>
+    time: {
+      created: number
+      updated: number
+    }
+    summary?: {
+      additions: number
+      deletions: number
+      files: number
+    }
+    revert?: {
+      messageID: string
+      snapshot?: string
+    }
   }
 
-  export function isDefaultTitle(title: string) {
-    return new RegExp(
-      `^(${parentTitlePrefix}|${childTitlePrefix})\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$`,
-    ).test(title)
+  export interface Message {
+    id: string
+    sessionID: string
+    role: "user" | "assistant"
+    time: { created: number }
+    agent?: string
+    model?: { providerID: string; modelID: string }
   }
 
-  export const Info = z
-    .object({
-      id: Identifier.schema("session"),
-      slug: z.string(),
-      projectID: z.string(),
-      directory: z.string(),
-      parentID: Identifier.schema("session").optional(),
-      summary: z
-        .object({
-          additions: z.number(),
-          deletions: z.number(),
-          files: z.number(),
-          diffs: Snapshot.FileDiff.array().optional(),
-        })
-        .optional(),
-      title: z.string(),
-      version: z.string(),
-      time: z.object({
-        created: z.number(),
-        updated: z.number(),
-        compacting: z.number().optional(),
-        archived: z.number().optional(),
-      }),
-      permission: PermissionNext.Ruleset.optional(),
-      revert: z
-        .object({
-          messageID: z.string(),
-          partID: z.string().optional(),
-          snapshot: z.string().optional(),
-          diff: z.string().optional(),
-        })
-        .optional(),
-    })
-    .meta({
-      ref: "Session",
-    })
-  export type Info = z.output<typeof Info>
+  export interface Part {
+    id: string
+    sessionID: string
+    messageID: string
+    type: string
+    text?: string
+    time: { start: number; end?: number }
+  }
+
+  export async function* list(): AsyncGenerator<Info> {
+    // Stub - use LocalSession.list() instead
+  }
+
+  export async function get(_id: string): Promise<Info> {
+    throw new Error("Deprecated: use LocalSession.get() from @/api")
+  }
+
+  export async function create(_input: { title?: string }): Promise<Info> {
+    throw new Error("Deprecated: use LocalSession.create() from @/api")
+  }
+
+  export async function updateMessage(_message: Message): Promise<void> {
+    throw new Error("Deprecated: use LocalSession API from @/api")
+  }
+
+  export async function updatePart(_part: Part): Promise<void> {
+    throw new Error("Deprecated: use LocalSession API from @/api")
+  }
 
   export const Event = {
-    Created: BusEvent.define(
-      "session.created",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Updated: BusEvent.define(
-      "session.updated",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Deleted: BusEvent.define(
-      "session.deleted",
-      z.object({
-        info: Info,
-      }),
-    ),
-    Diff: BusEvent.define(
-      "session.diff",
-      z.object({
-        sessionID: z.string(),
-        diff: Snapshot.FileDiff.array(),
-      }),
-    ),
-    Error: BusEvent.define(
-      "session.error",
-      z.object({
-        sessionID: z.string().optional(),
-        error: MessageV2.Assistant.shape.error,
-      }),
-    ),
+    Created: { type: "session.created" as const },
+    Updated: { type: "session.updated" as const },
+    Deleted: { type: "session.deleted" as const },
+    Error: { type: "session.error" as const },
   }
-
-  export const create = fn(
-    z
-      .object({
-        parentID: Identifier.schema("session").optional(),
-        title: z.string().optional(),
-        permission: Info.shape.permission,
-      })
-      .optional(),
-    async (input) => {
-      return createNext({
-        parentID: input?.parentID,
-        directory: Instance.directory,
-        title: input?.title,
-        permission: input?.permission,
-      })
-    },
-  )
-
-  export const fork = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message").optional(),
-    }),
-    async (input) => {
-      const session = await createNext({
-        directory: Instance.directory,
-      })
-      const msgs = await messages({ sessionID: input.sessionID })
-      const idMap = new Map<string, string>()
-
-      // Collect all items to write in batch
-      const messageItems: Array<{ key: string[]; value: MessageV2.Info }> = []
-      const partItems: Array<{ key: string[]; value: MessageV2.Part }> = []
-      const clonedMessages: MessageV2.Info[] = []
-      const clonedParts: Array<{ part: MessageV2.Part; messageID: string }> = []
-
-      for (const msg of msgs) {
-        if (input.messageID && msg.info.id >= input.messageID) break
-        const newID = Identifier.ascending("message")
-        idMap.set(msg.info.id, newID)
-
-        const parentID = msg.info.role === "assistant" && msg.info.parentID ? idMap.get(msg.info.parentID) : undefined
-        const clonedMsg: MessageV2.Info = {
-          ...msg.info,
-          sessionID: session.id,
-          id: newID,
-          ...(parentID && { parentID }),
-        }
-
-        messageItems.push({
-          key: ["message", session.id, newID],
-          value: clonedMsg,
-        })
-        clonedMessages.push(clonedMsg)
-
-        for (const part of msg.parts) {
-          const newPartID = Identifier.ascending("part")
-          const clonedPart: MessageV2.Part = {
-            ...part,
-            id: newPartID,
-            messageID: newID,
-            sessionID: session.id,
-          }
-
-          partItems.push({
-            key: ["part", newID, newPartID],
-            value: clonedPart,
-          })
-          clonedParts.push({ part: clonedPart, messageID: newID })
-        }
-      }
-
-      // Batch write all messages and parts (more efficient than sequential writes)
-      if (messageItems.length > 0) {
-        await Storage.batchWrite(messageItems)
-      }
-      if (partItems.length > 0) {
-        await Storage.batchWrite(partItems)
-      }
-
-      // Publish bus events after successful writes
-      for (const msg of clonedMessages) {
-        Bus.publish(MessageV2.Event.Updated, { info: msg })
-      }
-      for (const { part } of clonedParts) {
-        Bus.publish(MessageV2.Event.PartUpdated, { part, delta: undefined })
-      }
-
-      return session
-    },
-  )
-
-  export const touch = fn(Identifier.schema("session"), async (sessionID) => {
-    await update(sessionID, (draft) => {
-      draft.time.updated = Date.now()
-    })
-  })
-
-  export async function createNext(input: {
-    id?: string
-    title?: string
-    parentID?: string
-    directory: string
-    permission?: PermissionNext.Ruleset
-  }) {
-    const result: Info = {
-      id: Identifier.descending("session", input.id),
-      slug: Slug.create(),
-      version: VERSION,
-      projectID: Instance.project.id,
-      directory: input.directory,
-      parentID: input.parentID,
-      title: input.title ?? createDefaultTitle(!!input.parentID),
-      permission: input.permission,
-      time: {
-        created: Date.now(),
-        updated: Date.now(),
-      },
-    }
-    log.info("created", result)
-    await Storage.write(["session", Instance.project.id, result.id], result)
-    Bus.publish(Event.Created, {
-      info: result,
-    })
-    Bus.publish(Event.Updated, {
-      info: result,
-    })
-    return result
-  }
-
-  export function plan(input: { slug: string; time: { created: number } }) {
-    const base = Instance.project.vcs
-      ? path.join(Instance.worktree, ".codecoder", "plans")
-      : path.join(Global.Path.data, "plans")
-    return path.join(base, [input.time.created, input.slug].join("-") + ".md")
-  }
-
-  export const get = fn(Identifier.schema("session"), async (id) => {
-    const read = await Storage.read<Info>(["session", Instance.project.id, id])
-    return read as Info
-  })
-
-  export async function update(id: string, editor: (session: Info) => void, options?: { touch?: boolean }) {
-    const project = Instance.project
-    const result = await Storage.update<Info>(["session", project.id, id], (draft) => {
-      editor(draft)
-      if (options?.touch !== false) {
-        draft.time.updated = Date.now()
-      }
-    })
-    Bus.publish(Event.Updated, {
-      info: result,
-    })
-    return result
-  }
-
-  export const diff = fn(Identifier.schema("session"), async (sessionID) => {
-    const diffs = await Storage.read<Snapshot.FileDiff[]>(["session_diff", sessionID])
-    return diffs ?? []
-  })
-
-  export const messages = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      limit: z.number().optional(),
-    }),
-    async (input) => {
-      const result = [] as MessageV2.WithParts[]
-      for await (const msg of MessageV2.stream(input.sessionID)) {
-        if (input.limit && result.length >= input.limit) break
-        result.push(msg)
-      }
-      result.reverse()
-      return result
-    },
-  )
-
-  export async function* list() {
-    const project = Instance.project
-    for (const item of await Storage.list(["session", project.id])) {
-      yield Storage.read<Info>(item)
-    }
-  }
-
-  export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const project = Instance.project
-    const result = [] as Session.Info[]
-    for (const item of await Storage.list(["session", project.id])) {
-      const session = await Storage.read<Info>(item)
-      if (session.parentID !== parentID) continue
-      result.push(session)
-    }
-    return result
-  })
-
-  export const remove = fn(Identifier.schema("session"), async (sessionID) => {
-    const project = Instance.project
-    try {
-      const session = await get(sessionID)
-
-      // Recursively remove child sessions first
-      for (const child of await children(sessionID)) {
-        await remove(child.id)
-      }
-
-      // Optimized: Use deletePrefix for messages and batch operations for parts
-      // Parts are keyed as ["part", messageID, partID], so we need message IDs
-      const messageKeys = await Storage.list(["message", sessionID])
-
-      // Collect all part deletion tasks
-      const partDeletionPromises = messageKeys.map(msg =>
-        Storage.deletePrefix(["part", msg.at(-1)!])
-      )
-
-      // Delete all parts in parallel (each deletePrefix is a single transaction)
-      await Promise.all(partDeletionPromises)
-
-      // Delete all messages with one deletePrefix call
-      await Storage.deletePrefix(["message", sessionID])
-
-      // Delete the session itself
-      await Storage.remove(["session", project.id, sessionID])
-
-      Bus.publish(Event.Deleted, {
-        info: session,
-      })
-    } catch (e) {
-      log.error(e)
-    }
-  })
-
-  export const updateMessage = fn(MessageV2.Info, async (msg) => {
-    await Storage.write(["message", msg.sessionID, msg.id], msg)
-    Bus.publish(MessageV2.Event.Updated, {
-      info: msg,
-    })
-    return msg
-  })
-
-  export const removeMessage = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message"),
-    }),
-    async (input) => {
-      await Storage.remove(["message", input.sessionID, input.messageID])
-      Bus.publish(MessageV2.Event.Removed, {
-        sessionID: input.sessionID,
-        messageID: input.messageID,
-      })
-      return input.messageID
-    },
-  )
-
-  export const removePart = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      messageID: Identifier.schema("message"),
-      partID: Identifier.schema("part"),
-    }),
-    async (input) => {
-      await Storage.remove(["part", input.messageID, input.partID])
-      Bus.publish(MessageV2.Event.PartRemoved, {
-        sessionID: input.sessionID,
-        messageID: input.messageID,
-        partID: input.partID,
-      })
-      return input.partID
-    },
-  )
-
-  const UpdatePartInput = z.union([
-    MessageV2.Part,
-    z.object({
-      part: MessageV2.TextPart,
-      delta: z.string(),
-    }),
-    z.object({
-      part: MessageV2.ReasoningPart,
-      delta: z.string(),
-    }),
-  ])
-
-  export const updatePart = fn(UpdatePartInput, async (input) => {
-    const part = "delta" in input ? input.part : input
-    const delta = "delta" in input ? input.delta : undefined
-    await Storage.write(["part", part.messageID, part.id], part)
-    Bus.publish(MessageV2.Event.PartUpdated, {
-      part,
-      delta,
-    })
-    return part
-  })
-
-  export const getUsage = fn(
-    z.object({
-      model: z.custom<Provider.Model>(),
-      usage: z.custom<LanguageModelUsage>(),
-      metadata: z.custom<ProviderMetadata>().optional(),
-    }),
-    (input) => {
-      const cachedInputTokens = input.usage.cachedInputTokens ?? 0
-      const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
-      const adjustedInputTokens = excludesCachedTokens
-        ? (input.usage.inputTokens ?? 0)
-        : (input.usage.inputTokens ?? 0) - cachedInputTokens
-      const safe = (value: number) => {
-        if (!Number.isFinite(value)) return 0
-        return value
-      }
-
-      const tokens = {
-        input: safe(adjustedInputTokens),
-        output: safe(input.usage.outputTokens ?? 0),
-        reasoning: safe(input.usage?.reasoningTokens ?? 0),
-        cache: {
-          write: safe(
-            (input.metadata?.["anthropic"]?.["cacheCreationInputTokens"] ??
-              // @ts-expect-error
-              input.metadata?.["bedrock"]?.["usage"]?.["cacheWriteInputTokens"] ??
-              0) as number,
-          ),
-          read: safe(cachedInputTokens),
-        },
-      }
-
-      const costInfo =
-        input.model.cost?.experimentalOver200K && tokens.input + tokens.cache.read > 200_000
-          ? input.model.cost.experimentalOver200K
-          : input.model.cost
-      return {
-        cost: safe(
-          new Decimal(0)
-            .add(new Decimal(tokens.input).mul(costInfo?.input ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.output).mul(costInfo?.output ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.read).mul(costInfo?.cache?.read ?? 0).div(1_000_000))
-            .add(new Decimal(tokens.cache.write).mul(costInfo?.cache?.write ?? 0).div(1_000_000))
-            // Reasoning tokens (extended thinking) are charged at output token rates
-            // This aligns with how providers typically bill reasoning-heavy outputs.
-            // Provider-specific reasoning costs can be added to costInfo.reasoning when available.
-            .add(new Decimal(tokens.reasoning).mul(costInfo?.output ?? 0).div(1_000_000))
-            .toNumber(),
-        ),
-        tokens,
-      }
-    },
-  )
-
-  export class BusyError extends Error {
-    constructor(public readonly sessionID: string) {
-      super(`Session ${sessionID} is busy`)
-    }
-  }
-
-  export const initialize = fn(
-    z.object({
-      sessionID: Identifier.schema("session"),
-      modelID: z.string(),
-      providerID: z.string(),
-      messageID: Identifier.schema("message"),
-    }),
-    async (input) => {
-      await SessionPrompt.command({
-        sessionID: input.sessionID,
-        messageID: input.messageID,
-        model: input.providerID + "/" + input.modelID,
-        command: Command.Default.INIT,
-        arguments: "",
-      })
-    },
-  )
 }

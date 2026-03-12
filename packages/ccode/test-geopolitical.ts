@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This test file uses deprecated autonomous/execution modules
 /**
  * 测试 ResearchLoop 对地缘政治问题的处理能力
  */

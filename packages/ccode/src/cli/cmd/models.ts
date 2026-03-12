@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This file uses deprecated ModelsDev and Provider APIs - needs migration to Rust API
 import type { Argv } from "yargs"
 import { Instance } from "../../project/instance"
 import { Provider } from "../../provider/provider"

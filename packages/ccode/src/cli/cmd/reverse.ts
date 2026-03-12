@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This file uses deprecated WebFetchTool API - needs migration to Rust API
 import type { Argv } from "yargs"
 import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"

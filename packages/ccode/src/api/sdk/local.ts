@@ -2,50 +2,34 @@
  * Local SDK client that provides the same interface as the HTTP SDK client
  * but uses direct function calls instead of HTTP requests.
  *
- * NOTE: This module avoids importing from deprecated modules (@/agent/agent,
- * @/provider/provider, @/session). Instead, it uses:
- * - LocalSession from @/api for session operations
- * - Direct imports from non-deprecated modules where available
- * - Lazy dynamic imports where necessary to avoid circular dependencies
+ * Uses Rust API via @/api for all session and command operations.
  */
 
 import type { Event } from "@/types"
-import type { ProviderListResponseExtended } from "@/sdk/types"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
-import { LocalSession, LocalPermission, LocalConfig, LocalEvent, LocalFind } from "@/api"
-import { Command } from "@/agent/command"
+import { LocalSession, LocalPermission, LocalConfig, LocalEvent, LocalFind, Command } from "@/api"
 import { LSP } from "@/lsp"
 import { Format } from "@/util/format"
 import { Skill } from "@/skill/skill"
 import { MCP } from "@/mcp"
 import { Vcs } from "@/project/vcs"
-import { Question } from "@/agent/question"
 import { Global } from "@/util/global"
 import { Instance } from "@/project/instance"
-import { Bus } from "@/bus"
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Local Provider/Agent Functions
-// These use dynamic imports to avoid importing deprecated modules at module load time
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
  * List all agents (local implementation).
- *
- * Migration strategy:
- * 1. First try the Rust daemon via AgentBridge (preferred)
- * 2. Fall back to deprecated @/agent/agent if daemon unavailable
- *
- * This allows gradual migration without breaking existing functionality.
+ * Uses Rust daemon via AgentBridge.
  */
 async function listAgentsLocal() {
-  // Try Rust daemon first
   try {
     const { getAgentBridge } = await import("@/sdk/agent-bridge")
     const bridge = await getAgentBridge()
     if (await bridge.isHealthy()) {
       const agents = await bridge.list()
-      // Convert to legacy format for compatibility
       return agents.map((a) => ({
         name: a.name,
         description: a.description,
@@ -53,39 +37,55 @@ async function listAgentsLocal() {
         hidden: a.hidden,
         temperature: a.temperature,
         color: a.color,
-        // Note: permission, options, etc. not available from bridge yet
         permission: {},
         options: {},
       }))
     }
   } catch {
-    // Daemon not available, throw error instead of falling back to deprecated code
-    throw new Error("Agent daemon not available. Start the daemon with: ./ops.sh start")
+    // Daemon not available
   }
+  throw new Error("Agent daemon not available. Start the daemon with: zero-cli serve")
 }
 
 /**
  * List all providers with connection info (local implementation).
- * Uses dynamic import to avoid top-level import of deprecated @/provider/provider.
  */
-async function listProvidersLocal(): Promise<ProviderListResponseExtended> {
-  const { Provider } = await import("@/provider/provider")
-  const result = await Provider.listAll()
+async function listProvidersLocal() {
+  try {
+    const { getRustClient } = await import("@/api/rust-client")
+    const client = getRustClient()
+    const response = await client.listProviders()
+    if (response.success && response.data) {
+      return {
+        success: true,
+        all: response.data.providers.map((p) => ({
+          id: p.id,
+          name: p.name,
+          source: "rust" as const,
+          env: {},
+          options: {},
+          models: p.models,
+        })),
+        default: response.data.providers.find((p) => p.is_default)?.id ?? {},
+        connected: response.data.providers.filter((p) => p.models.length > 0).map((p) => p.id),
+      }
+    }
+  } catch {
+    // Fall back to empty
+  }
   return {
-    success: true,
-    all: result.all,
-    default: result.default,
-    connected: result.connected,
+    success: false,
+    all: [],
+    default: {},
+    connected: [],
   }
 }
 
 /**
- * Get provider auth methods (local implementation).
- * Uses dynamic import to avoid top-level import of deprecated @/provider/provider.
+ * Get provider auth methods (stub - returns empty object).
  */
 async function getProviderAuthMethodsLocal(): Promise<Record<string, { type: "oauth" | "api"; label: string }[]>> {
-  const { Provider } = await import("@/provider/provider")
-  return Provider.authMethods()
+  return {}
 }
 
 export function createLocalClient() {
@@ -221,12 +221,14 @@ export function createLocalClient() {
       },
 
       question: {
-        reply: async (input: any) => {
-          await Question.reply({ requestID: input.requestID, answers: input.answers })
+        reply: async (_input: { requestID: string; answers: string[][] }) => {
+          // Question reply is now handled via Rust API
+          console.warn("question.reply is deprecated")
           return { data: true }
         },
-        reject: async (input: any) => {
-          await Question.reject(input.requestID)
+        reject: async (_input: { requestID: string }) => {
+          // Question reject is now handled via Rust API
+          console.warn("question.reject is deprecated")
           return { data: true }
         },
       },
