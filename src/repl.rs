@@ -73,12 +73,12 @@ impl Repl {
             }
 
             // Send to background agent
-            cmd_tx.send(AgentCommand::ProcessMessage(input))?;
+            cmd_tx.send(AgentCommand::ProcessMessage { text: input })?;
 
             // Wait for response (with heartbeat display)
             loop {
                 match resp_rx.recv() {
-                    Ok(AgentResponse::MessageResult(resp)) => {
+                    Ok(AgentResponse::Text { text: resp }) => {
                         println!("\n{resp}\n");
                         break;
                     }
@@ -90,7 +90,7 @@ impl Repl {
                     Ok(AgentResponse::Shutdown) => {
                         return Ok(());
                     }
-                    Err(_) => break,
+                    _ => {}
                 }
             }
         }
@@ -107,9 +107,9 @@ impl Repl {
 
         if !input.is_empty() {
             bg.cmd_tx
-                .send(AgentCommand::ProcessMessage(input))?;
+                .send(AgentCommand::ProcessMessage { text: input })?;
             match bg.resp_rx.recv() {
-                Ok(AgentResponse::MessageResult(resp)) => println!("{}", resp),
+                Ok(AgentResponse::Text { text: resp }) => println!("{}", resp),
                 Ok(AgentResponse::Shutdown) => {}
                 _ => {}
             }
@@ -166,10 +166,10 @@ impl Repl {
             }
 
             "/history" => {
-                cmd_tx.send(AgentCommand::ProcessMessage(
-                    "How many messages are in our conversation history? Just tell me the count."
+                cmd_tx.send(AgentCommand::ProcessMessage {
+                    text: "How many messages are in our conversation history? Just tell me the count."
                         .into(),
-                ))?;
+                })?;
             }
 
             _ => {

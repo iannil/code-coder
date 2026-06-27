@@ -81,7 +81,9 @@ fn run_wasm_direct(code: &str) -> anyhow::Result<String> {
                 }
             })?;
 
-        let _ = std::fs::remove_dir_all(wasm_path.parent().unwrap());
+        if let Some(parent) = wasm_path.parent() {
+            let _ = std::fs::remove_dir_all(parent);
+        }
         Ok(format_output(output))
     }
 }

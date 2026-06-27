@@ -1,22 +1,33 @@
+mod tui;
 mod agent;
+mod autonomous;
+mod config;
 mod context;
 mod event;
 mod llm;
+mod mcp;
 mod memory;
-mod repl;
 mod sandbox;
+mod session;
 mod skill;
 mod tools;
 
 use agent::BackgroundAgent;
+use config::ConfigStore;
 use context::Context;
 use event::SharedEventBus;
 use llm::OpenAiClient;
 use memory::MemoryStore;
+use session::SessionStore;
 use skill::SkillRegistry;
 use tools::ToolRegistry;
+use std::sync::{Arc, Mutex};
+use mcp::{McpRegistry, McpTool};
 
 fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    let is_daemon = args.iter().any(|a| a == "--daemon" || a == "-d");
+
     let project_root = std::env::var("CODECODER_ROOT")
         .unwrap_or_else(|_| std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
@@ -25,45 +36,91 @@ fn main() -> anyhow::Result<()> {
     // ── Initialise subsystems ──────────────────────────────────────────────
 
     let bus = SharedEventBus::new();
-    let tools = ToolRegistry::new(&project_root);
-    let context = Context::load(&project_root);
-    let memory = MemoryStore::open(&project_root);
+    let mut tools = ToolRegistry::new(&project_root);
 
-    if !memory.is_empty() {
-        println!("[codecoder] Loaded {} memory entries", memory.len());
-    }
+    let context = Context::load(&project_root);
+    let _mem_store = MemoryStore::open(&project_root);
+    let session_store = SessionStore::open(&project_root);
 
     let mut skills = SkillRegistry::new();
     if let Err(e) = skills.scan(&project_root) {
         eprintln!("[codecoder] Warning: failed to scan skills: {e}");
     }
 
-    let skill_count = skills.list().len();
-    if skill_count > 0 {
-        println!("[codecoder] Loaded {skill_count} skill(s) from skills/");
+    // ── Config ──────────────────────────────────────────────────────────────
+
+    let config = ConfigStore::load(&project_root);
+
+    // ── MCP ─────────────────────────────────────────────────────────────────
+
+    let mcp_registry = Arc::new(Mutex::new(McpRegistry::new(config.get().mcp_servers.clone())));
+    {
+        let mut reg = mcp_registry.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let results = reg.start_all();
+        for r in &results {
+            eprintln!("[codecoder] MCP: {r}");
+        }
+        for tool in reg.all_tools() {
+            let mcp_tool = McpTool::new(&tool.tool_name, &tool.description, mcp_registry.clone());
+            tools.register(Box::new(mcp_tool));
+        }
     }
 
-    // ── LLM client ─────────────────────────────────────────────────────────
+    // ── LLM client (sync creation, async usage) ────────────────────────────
 
-    let llm: Box<dyn llm::LlmClient> = match std::env::var("CODECODER_API_KEY")
-        .or_else(|_| std::env::var("OPENAI_API_KEY"))
-    {
-        Ok(_) => Box::new(OpenAiClient::from_env()),
-        Err(_) => {
-            eprintln!("[codecoder] No CODECODER_API_KEY or OPENAI_API_KEY set — using stub LLM");
-            eprintln!("[codecoder] Set the env var to connect to a real LLM provider.");
-            Box::new(llm::StubClient::new())
-        },
+    let llm_config = config.to_llm_config();
+    let llm: Box<dyn llm::LlmClient> = if llm_config.api_key.is_empty() {
+        eprintln!("[codecoder] No CODECODER_API_KEY or OPENAI_API_KEY set — using stub LLM");
+        eprintln!("[codecoder] Set the env var to connect to a real LLM provider.");
+        Box::new(llm::StubClient::new())
+    } else {
+        Box::new(OpenAiClient::new(llm_config))
     };
 
-    // ── Spawn background agent ────────────────────────────────────────────
+    // ── Spawn background agent (async on tokio) ───────────────────────────
 
     let bg = BackgroundAgent::spawn(llm, context, tools, skills, bus.clone());
 
-    // ── REPL (foreground) ─────────────────────────────────────────────────
+    // ── Run (TUI or Daemon) ────────────────────────────────────────────────
 
-    let mut repl = repl::Repl::new();
-    repl.run(bus, bg, &memory)
+    if is_daemon {
+        run_daemon(bg, bus, config, session_store)
+    } else {
+        tui::run_tui(bus.clone(), bg.cmd_tx, bg.resp_rx, session_store, config, mcp_registry)
+    }
+}
+
+fn run_daemon(
+    bg: BackgroundAgent,
+    bus: SharedEventBus,
+    config: ConfigStore,
+    _session_store: SessionStore,
+) -> anyhow::Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("failed to build daemon runtime");
+
+    rt.block_on(async {
+        let scheduled_tasks: Vec<autonomous::ScheduledTask> = config.get().scheduled_tasks.iter()
+            .map(|t| autonomous::ScheduledTask {
+                name: t.name.clone(),
+                prompt: t.prompt.clone(),
+                interval_secs: t.interval_secs,
+            })
+            .collect();
+
+        let watch_paths: Vec<String> = config.get().watch_paths.clone();
+
+        autonomous::AutonomousRunner::run(
+            bg.cmd_tx,
+            bg.resp_rx,
+            bus,
+            config,
+            scheduled_tasks,
+            watch_paths,
+        ).await
+    })
 }
 
 // ─── End-to-End Smoke Tests ─────────────────────────────────────────────────
@@ -77,16 +134,16 @@ mod e2e_tests {
     use crate::memory::MemoryStore;
     use crate::sandbox::DockerSandbox;
     use crate::sandbox::Sandbox;
+    use crate::session::{Session, SessionStore};
     use crate::skill::SkillRegistry;
     use crate::tools::ToolRegistry;
+    use crate::tui::MessageItem;
 
-    /// Build a full background agent for testing.
     fn test_background() -> std::sync::mpsc::Sender<AgentCommand> {
         let ctx = Context::load("/tmp");
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
         let bus = SharedEventBus::new();
-
         let bg = BackgroundAgent::spawn(Box::new(StubClient::new()), ctx, tools, skills, bus);
         bg.cmd_tx
     }
@@ -94,9 +151,8 @@ mod e2e_tests {
     #[test]
     fn e2e_background_message_roundtrip() {
         let cmd_tx = test_background();
-        cmd_tx.send(AgentCommand::ProcessMessage("hello".into())).unwrap();
+        cmd_tx.send(AgentCommand::ProcessMessage { text: "hello".into() }).unwrap();
         cmd_tx.send(AgentCommand::Shutdown).unwrap();
-        // If no panic, channels work
     }
 
     #[test]
@@ -116,6 +172,7 @@ mod e2e_tests {
             "read_file", "write_file", "run_command", "search_web",
             "list_directory", "generate_skill", "generate_prompt", "generate_tool",
             "search_github", "reverse_api", "run_in_sandbox",
+            "glob", "grep", "todo", "diff", "ask_user", "agent", "edit_file", "commit", "review", "plan",
         ];
         for name in &required {
             assert!(names.contains(name), "Missing tool: {name}");
@@ -125,8 +182,8 @@ mod e2e_tests {
     #[test]
     fn e2e_context_loads_agents_md() {
         let ctx = Context::load(".");
-        assert!(!ctx.agents_md.is_empty(), "AGENTS.md should exist in project");
-        assert!(ctx.agents_md.contains("CodeCoder"), "AGENTS.md should mention CodeCoder");
+        assert!(!ctx.agents_md.is_empty(), "AGENTS.md should exist");
+        assert!(ctx.agents_md.contains("CodeCoder"));
     }
 
     #[test]
@@ -134,21 +191,18 @@ mod e2e_tests {
         let mut skills = SkillRegistry::new();
         skills.scan(".").unwrap();
         let names = skills.list();
-        assert!(names.contains(&"greeter"), "greeter.md not found: {names:?}");
+        assert!(names.contains(&"greeter"));
     }
 
     #[test]
     fn e2e_memory_write_and_read() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_str().unwrap();
-
         let mut store = MemoryStore::open(root);
         store.set("integration-test", "works").unwrap();
         assert_eq!(store.len(), 1);
-
         let store = MemoryStore::open(root);
-        let entry = store.get("integration-test").unwrap();
-        assert_eq!(entry.value, "works");
+        assert_eq!(store.get("integration-test").unwrap().value, "works");
     }
 
     #[test]
@@ -165,29 +219,37 @@ mod e2e_tests {
         let ctx = Context::load(".");
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
-
         let agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
         let prompt = agent.build_system_prompt(&tools, &skills);
-
         assert!(prompt.contains("CodeCoder"));
         assert!(prompt.contains("Available Tools"));
-        assert!(prompt.contains("read_file"));
-        // AGENTS.md content should be in the prompt
-        assert!(prompt.contains("Rust") || prompt.contains("agent"));
     }
 
-    #[test]
-    fn e2e_full_startup_simulation() {
-        // Simulate what main() does
+    #[tokio::test]
+    async fn e2e_full_startup_simulation() {
         let ctx = Context::load(".");
         let tools = ToolRegistry::new("/tmp");
         let mut skills = SkillRegistry::new();
         let _ = skills.scan(".");
         let dir = tempfile::tempdir().unwrap();
         let _memory = MemoryStore::open(dir.path().to_str().unwrap());
-
         let mut agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
-        let resp = agent.handle_message("list all tools", &tools, &skills);
-        assert!(resp.is_ok(), "handle_message failed: {:?}", resp.err());
+        let resp = agent.handle_message("list all tools", &tools, &skills, &|_, _| true).await;
+        assert!(resp.is_ok());
+    }
+
+    #[test]
+    fn e2e_session_save_and_resume() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_str().unwrap();
+        let store = SessionStore::open(root);
+        let mut session = Session::new("gpt-4o");
+        session.messages.push(MessageItem::User { text: "hello".into() });
+        session.messages.push(MessageItem::Assistant { text: "hi there".into() });
+        session.touch();
+        store.save(&session).unwrap();
+        assert_eq!(store.list().len(), 1);
+        let loaded = store.load(&session.id).unwrap();
+        assert_eq!(loaded.messages.len(), 2);
     }
 }

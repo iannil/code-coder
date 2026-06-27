@@ -7,10 +7,33 @@ description = "自主 AI agent 系统 — 事件驱动，文件系统即自我"
 [dependencies]
 anyhow = "1"
 atty = "0.2"
-reqwest = { version = "0.12", features = ["blocking", "json"] }
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
+ratatui = "0.29"
+crossterm = "0.28"
+pulldown-cmark = "0.13"
+syntect = { version = "5", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"] }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+async-trait = "0.1"
+futures-util = "0.3"
+
+# Grep & Glob tools
+ignore = "0.4"
+globset = "0.4"
+regex = "1"
+
+# AST-aware code search (tree-sitter)
+tree-sitter = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.23"
+
+# File system monitoring
+notify = "7"
 
 [dev-dependencies]
 # tempfile already in [dependencies] — no separate dev-deps needed

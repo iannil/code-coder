@@ -126,6 +126,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_image_for_language_python() {
+        let (img, file, cmd) = image_for_language("python");
+        assert_eq!(img, "python:alpine");
+        assert_eq!(file, "main.py");
+        assert!(cmd.contains("python"));
+    }
+
+    #[test]
+    fn test_image_for_language_rust() {
+        let (img, file, cmd) = image_for_language("rust");
+        assert_eq!(img, "rust:alpine");
+        assert_eq!(file, "main.rs");
+        assert!(cmd.contains("rustc"));
+    }
+
+    #[test]
+    fn test_image_for_language_javascript() {
+        let (img, _file, _cmd) = image_for_language("javascript");
+        assert_eq!(img, "node:alpine");
+        let (img2, _file2, _cmd2) = image_for_language("node");
+        assert_eq!(img2, "node:alpine");
+    }
+
+    #[test]
+    fn test_image_for_language_go() {
+        let (img, file, cmd) = image_for_language("go");
+        assert_eq!(img, "golang:alpine");
+        assert_eq!(file, "main.go");
+        assert!(cmd.contains("go run"));
+    }
+
+    #[test]
+    fn test_image_for_language_unknown() {
+        let (img, _file, cmd) = image_for_language("foobarlang");
+        assert!(cmd.contains("No image configured"));
+        assert_eq!(img, "alpine:latest");
+    }
+
+    #[test]
+    fn test_image_for_language_case_insensitive() {
+        let (img1, _f1, _c1) = image_for_language("Python");
+        let (img2, _f2, _c2) = image_for_language("RUST");
+        assert_eq!(img1, "python:alpine");
+        assert_eq!(img2, "rust:alpine");
+    }
+
+    #[test]
     fn test_docker_not_available() {
         // If Docker is not installed, the sandbox should give a clear error
         let sb = DockerSandbox::new();

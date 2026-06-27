@@ -1,23 +1,41 @@
 use std::collections::HashMap;
 
+mod ask_agent;
+mod commit;
+mod diff;
+mod edit_file;
 mod generate;
+mod glob;
+mod grep;
 mod list_dir;
+mod plan;
 mod read_file;
 mod reverse_api;
+mod review;
 mod run_command;
 mod run_in_sandbox;
 mod search_github;
 mod search_web;
+mod todo;
 mod write_file;
 
+pub use ask_agent::{AgentTool, AskUserTool};
+pub use commit::CommitTool;
+pub use diff::DiffTool;
+pub use edit_file::EditFileTool;
 pub use generate::{GeneratePrompt, GenerateSkill, GenerateTool};
+pub use glob::GlobTool;
+pub use grep::Grep;
 pub use list_dir::ListDir;
+pub use plan::PlanTool;
 pub use read_file::ReadFile;
 pub use reverse_api::ReverseApi;
+pub use review::ReviewTool;
 pub use run_command::RunCommand;
 pub use run_in_sandbox::RunInSandbox;
 pub use search_github::SearchGitHub;
 pub use search_web::SearchWeb;
+pub use todo::TodoTool;
 pub use write_file::WriteFile;
 
 /// ─── Tool trait ────────────────────────────────────────────────────────────
@@ -61,6 +79,18 @@ impl ToolRegistry {
         reg.register(Box::new(ReverseApi {
             project_root: project_root.into(),
         }));
+        // Code search tools
+        reg.register(Box::new(GlobTool));
+        reg.register(Box::new(Grep));
+        // Productivity tools
+        reg.register(Box::new(TodoTool));
+        reg.register(Box::new(DiffTool));
+        reg.register(Box::new(EditFileTool));
+        reg.register(Box::new(CommitTool));
+        reg.register(Box::new(ReviewTool));
+        reg.register(Box::new(PlanTool));
+        reg.register(Box::new(AskUserTool));
+        reg.register(Box::new(AgentTool));
         // Sandbox
         reg.register(Box::new(RunInSandbox));
         reg

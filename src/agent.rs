@@ -1,8 +1,20 @@
+/// ─── Agent ─────────────────────────────────────────────────────────────────
+///
+/// Async agent loop running on a tokio runtime.
+/// Communicates with the sync TUI via channel bridges.
+
 use crate::context::Context;
 use crate::event::{Event, Subscriber};
-use crate::llm::{LlmClient, Message};
+use crate::llm::{LlmClient, Message, StreamDelta};
 use crate::skill::SkillRegistry;
 use crate::tools::ToolRegistry;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static PERMISSION_ID: AtomicU64 = AtomicU64::new(1);
+
+fn rand_id() -> u64 {
+    PERMISSION_ID.fetch_add(1, Ordering::SeqCst)
+}
 
 /// ─── ToolCall ──────────────────────────────────────────────────────────────
 
@@ -16,24 +28,30 @@ pub struct ToolCall {
 
 #[allow(dead_code)]
 pub struct AgentLoop {
-    running: bool,
     llm: Box<dyn LlmClient>,
     history: Vec<Message>,
     base_system_prompt: String,
     context: Context,
     max_tool_rounds: usize,
+    /// Sender for streaming LLM deltas (sent to TUI)
+    delta_tx: Option<tokio::sync::mpsc::Sender<AgentResponse>>,
 }
 
 impl AgentLoop {
     pub fn new(llm: Box<dyn LlmClient>, context: Context) -> Self {
         Self {
-            running: false,
             llm,
             history: Vec::new(),
             base_system_prompt: Self::default_system_prompt(),
             context,
             max_tool_rounds: 10,
+            delta_tx: None,
         }
+    }
+
+    pub fn with_delta_tx(mut self, tx: tokio::sync::mpsc::Sender<AgentResponse>) -> Self {
+        self.delta_tx = Some(tx);
+        self
     }
 
     fn default_system_prompt() -> String {
@@ -71,33 +89,56 @@ tool, then summarise the result for the user."#
         let skill_list = skills.list();
         if !skill_list.is_empty() {
             prompt.push_str("\n## Loaded Skills\n\n");
-            prompt.push_str(&format!(
-                "You have the following skills available:\n\n{}",
-                skill_list
-                    .iter()
-                    .map(|s| format!("- `{}`", s))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ));
+            prompt.push_str(&skill_list.iter()
+                .map(|s| format!("- `{}`", s))
+                .collect::<Vec<_>>()
+                .join("\n"));
             prompt.push('\n');
         }
         prompt
     }
 
-    pub fn handle_message(
+    /// Process a user message synchronously, returning the final response text.
+    pub async fn handle_message(
         &mut self,
         text: &str,
         tools: &ToolRegistry,
         skills: &SkillRegistry,
+        permission_check: &dyn Fn(&str, &str) -> bool,
     ) -> anyhow::Result<String> {
         self.history.push(Message::user(text));
-        self.react_loop(tools, skills)
+        self.react_loop(tools, skills, permission_check).await
     }
 
-    fn react_loop(&mut self, tools: &ToolRegistry, skills: &SkillRegistry) -> anyhow::Result<String> {
+    async fn react_loop(
+        &mut self,
+        tools: &ToolRegistry,
+        skills: &SkillRegistry,
+        permission_check: &dyn Fn(&str, &str) -> bool,
+    ) -> anyhow::Result<String> {
         for _round in 0..self.max_tool_rounds {
             let messages = self.build_messages(tools, skills);
-            let response = self.llm.chat(&messages)?;
+
+            let response = if let Some(ref delta_tx) = self.delta_tx {
+                let tx = delta_tx.clone();
+                let (llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
+                // Forward deltas to TUI
+                let tx_clone = tx.clone();
+                tokio::spawn(async move {
+                    while let Some(delta) = rx.recv().await {
+                        if let Some(text) = delta.text {
+                            let _ = tx_clone.send(AgentResponse::LlmDelta { text }).await;
+                        }
+                        if let Some(reasoning) = delta.reasoning {
+                            let _ = tx_clone.send(AgentResponse::ReasoningDelta { text: reasoning }).await;
+                        }
+                    }
+                });
+                llm_resp
+            } else {
+                self.llm.chat(&messages).await?
+            };
+
             let tool_calls = parse_tool_calls(&response.text);
 
             if tool_calls.is_empty() {
@@ -106,15 +147,18 @@ tool, then summarise the result for the user."#
             }
 
             for tc in &tool_calls {
+                let allowed = permission_check(&tc.name, &tc.input);
+                if !allowed {
+                    self.history.push(Message::assistant(&response.text));
+                    self.history.push(Message::user(format!("[tool {} was denied by user]", tc.name)));
+                    continue;
+                }
                 let result = match tools.execute(&tc.name, &tc.input) {
                     Ok(out) => out,
                     Err(e) => format!("[tool error] {e}"),
                 };
                 self.history.push(Message::assistant(&response.text));
-                self.history.push(Message::user(format!(
-                    "[tool result for {}]\n{}",
-                    tc.name, result
-                )));
+                self.history.push(Message::user(format!("[tool result for {}]\n{}", tc.name, result)));
             }
         }
 
@@ -138,37 +182,41 @@ tool, then summarise the result for the user."#
         &self.context
     }
 
-    pub fn history(&self) -> &[Message] {
-        &self.history
-    }
-
     pub fn clear_history(&mut self) {
         self.history.clear();
     }
 
-    pub fn shutdown(&mut self) {
-        self.running = false;
+    pub fn set_model(&mut self, model: &str) {
+        let config = crate::llm::LlmConfig {
+            model: model.to_string(),
+            ..crate::llm::LlmConfig::from_env()
+        };
+        self.llm = Box::new(crate::llm::OpenAiClient::new(config));
     }
 }
 
 /// ─── BackgroundAgent ───────────────────────────────────────────────────────
 ///
-/// Wraps AgentLoop and runs it in a background thread.  The REPL sends
-/// messages via a channel, and the agent processes them independently.
-/// Progress is reported back via the event bus (heartbeat events) and
-/// final results via a response channel.
+/// Wraps AgentLoop and runs it on a tokio runtime.  The TUI sends commands
+/// via std::sync::mpsc (sync) bridged to the async agent.  Responses flow
+/// back via tokio::sync::mpsc (the TUI polls with try_recv).
 
 use crate::event::SharedEventBus;
 
 #[allow(dead_code)]
 pub struct BackgroundAgent {
     pub cmd_tx: std::sync::mpsc::Sender<AgentCommand>,
-    pub resp_rx: std::sync::mpsc::Receiver<AgentResponse>,
+    /// Responses flow through a tokio channel. TUI uses blocking_recv or try_recv.
+    pub resp_rx: tokio::sync::mpsc::Receiver<AgentResponse>,
     pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 pub enum AgentCommand {
-    ProcessMessage(String),
+    ProcessMessage { text: String },
+    SetModel { model: String },
+    PermissionResponse { request_id: u64, allowed: bool },
+    AskUserResponse { request_id: u64, answer: String },
+    PlanDecision { request_id: u64, decision: String },
     ReloadContext,
     ClearHistory,
     Shutdown,
@@ -176,13 +224,23 @@ pub enum AgentCommand {
 
 #[derive(Debug)]
 pub enum AgentResponse {
-    MessageResult(String),
+    Text { text: String },
+    LlmDelta { text: String },
+    ReasoningDelta { text: String },
+    ToolCall { name: String, input: String },
+    ToolResult { name: String, output: String, success: bool },
+    PermissionRequest { tool_name: String, tool_input: String, request_id: u64 },
+    /// Agent asked a question — user needs to answer
+    AskUser { question: String, request_id: u64 },
+    /// Agent presents a plan for user approval
+    PlanRequest { title: String, plan: String, request_id: u64 },
+    Error { message: String },
     Heartbeat { pending: usize },
     Shutdown,
 }
 
 impl BackgroundAgent {
-    /// Spawn the agent loop in a background thread.
+    /// Spawn the agent loop on a tokio runtime in a background thread.
     pub fn spawn(
         llm: Box<dyn LlmClient>,
         context: Context,
@@ -191,60 +249,123 @@ impl BackgroundAgent {
         bus: SharedEventBus,
     ) -> Self {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AgentCommand>();
-        let (resp_tx, resp_rx) = std::sync::mpsc::channel::<AgentResponse>();
+        let (resp_tx, resp_rx) = tokio::sync::mpsc::channel::<AgentResponse>(256);
 
         let handle = std::thread::Builder::new()
             .name("agent".into())
             .spawn(move || {
-                let mut agent = AgentLoop::new(llm, context);
-                let tools = tools;
-                let mut skills = skills;
-                let bus = bus; // owned clone
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_time()
+                    .build()
+                    .expect("failed to build tokio runtime");
 
-                // Heartbeat counter
-                let mut heartbeat_count = 0;
+                rt.block_on(async {
+                    let delta_tx = resp_tx.clone();
+                    let mut agent = AgentLoop::new(llm, context).with_delta_tx(delta_tx);
+                    let tools = tools;
+                    let mut skills = skills;
 
-                loop {
-                    // Check for commands (block with timeout so we can heartbeat)
-                    match cmd_rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                        Ok(AgentCommand::ProcessMessage(text)) => {
-                            let _ = bus.drain();
-                            match agent.handle_message(&text, &tools, &skills) {
-                                Ok(resp) => {
-                                    let _ = resp_tx.send(AgentResponse::MessageResult(resp));
-                                }
-                                Err(e) => {
-                                    let _ = resp_tx.send(AgentResponse::MessageResult(
-                                        format!("[error] {e}"),
-                                    ));
+                    // Set up AskUserTool and PlanTool response channels (shared sender)
+                    let (ask_tx, ask_rx) = std::sync::mpsc::channel::<AgentResponse>();
+                    crate::tools::AskUserTool::set_response_tx(ask_tx.clone());
+                    crate::tools::PlanTool::set_response_tx(ask_tx);
+                    // Forward ask_user messages to the tokio response channel
+                    let resp_tx_bridge = resp_tx.clone();
+                    tokio::spawn(async move {
+                        while let Ok(msg) = ask_rx.recv() {
+                            let _ = resp_tx_bridge.send(msg).await;
+                        }
+                    });
+
+                    // Heartbeat interval
+                    let mut heartbeat_count = 0;
+
+                    loop {
+                        // Check for commands (non-blocking, then heartbeat)
+                        match cmd_rx.try_recv() {
+                            Ok(AgentCommand::ProcessMessage { text }) => {
+                                let _ = bus.drain();
+                                let resp_tx2 = resp_tx.clone();
+                                let cmd_rx_ref = &cmd_rx;
+                                let permission_check = move |name: &str, input: &str| {
+                                    let id: u64 = rand_id();
+                                    let _ = resp_tx2.blocking_send(AgentResponse::PermissionRequest {
+                                        tool_name: name.to_string(),
+                                        tool_input: input.to_string(),
+                                        request_id: id,
+                                    });
+                                    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                                    while std::time::Instant::now() < deadline {
+                                        let remaining = deadline - std::time::Instant::now();
+                                        match cmd_rx_ref.recv_timeout(remaining) {
+                                            Ok(AgentCommand::PermissionResponse { request_id, allowed }) if request_id == id => return allowed,
+                                            Ok(AgentCommand::Shutdown) => return false,
+                                            _ => continue,
+                                        }
+                                    }
+                                    let _ = resp_tx2.blocking_send(AgentResponse::Text {
+                                        text: format!("[Permission timeout — tool '{name}' was denied after 30s]"),
+                                    });
+                                    false
+                                };
+                                match agent.handle_message(&text, &tools, &skills, &permission_check).await {
+                                    Ok(resp) => {
+                                        let _ = resp_tx.send(AgentResponse::Text { text: resp }).await;
+                                    }
+                                    Err(e) => {
+                                        let _ = resp_tx.send(AgentResponse::Error {
+                                            message: format!("{e}"),
+                                        }).await;
+                                    }
                                 }
                             }
-                        }
-                        Ok(AgentCommand::ReloadContext) => {
-                            agent.reload_context();
-                            let root = agent.context().project_root.clone();
-                            let _ = skills.scan(&root);
-                        }
-                        Ok(AgentCommand::ClearHistory) => {
-                            agent.clear_history();
-                        }
-                        Ok(AgentCommand::Shutdown) => {
-                            let _ = resp_tx.send(AgentResponse::Shutdown);
-                            break;
-                        }
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            // Heartbeat — report status every ~2 seconds
-                            heartbeat_count += 1;
-                            if heartbeat_count % 4 == 0 {
-                                let pending = bus.pending();
-                                let _ = resp_tx.send(AgentResponse::Heartbeat {
-                                    pending,
+                            Ok(AgentCommand::ReloadContext) => {
+                                agent.reload_context();
+                                let root = agent.context().project_root.clone();
+                                let _ = skills.scan(&root);
+                            }
+                            Ok(AgentCommand::ClearHistory) => {
+                                agent.clear_history();
+                            }
+                            Ok(AgentCommand::SetModel { model }) => {
+                                agent.set_model(&model);
+                                let _ = resp_tx.send(AgentResponse::Text {
+                                    text: format!("Switched model to {model}"),
+                                }).await;
+                            }
+                            Ok(AgentCommand::Shutdown) => {
+                                let _ = resp_tx.send(AgentResponse::Shutdown).await;
+                                break;
+                            }
+                            Ok(AgentCommand::PermissionResponse { .. }) => {
+                                // Handled inside permission_check closure
+                            }
+                            Ok(AgentCommand::AskUserResponse { request_id, answer }) => {
+                                tokio::task::block_in_place(|| {
+                                    crate::tools::AskUserTool::deliver_answer(request_id, answer);
                                 });
                             }
+                            Ok(AgentCommand::PlanDecision { request_id, decision }) => {
+                                tokio::task::block_in_place(|| {
+                                    crate::tools::PlanTool::deliver_decision(request_id, decision);
+                                });
+                            }
+                            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                // Heartbeat
+                                heartbeat_count += 1;
+                                if heartbeat_count % 4 == 0 {
+                                    let pending = bus.pending();
+                                    let _ = resp_tx.send(AgentResponse::Heartbeat {
+                                        pending,
+                                    }).await;
+                                }
+                                // Yield to runtime so async tasks can progress
+                                tokio::task::yield_now().await;
+                            }
                         }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     }
-                }
+                });
             })
             .expect("failed to spawn agent thread");
 
@@ -311,7 +432,6 @@ impl Subscriber for AgentBusSubscriber {
     fn name(&self) -> &str {
         "agent"
     }
-
     fn handle(&mut self, event: &Event) -> anyhow::Result<()> {
         if let Event::UserMessage { text, .. } = event {
             let _ = self.sender.send(text.clone());
@@ -354,24 +474,24 @@ Here is the content."#;
         assert!(calls.is_empty());
     }
 
-    #[test]
-    fn test_handle_message_with_stub() {
+    #[tokio::test]
+    async fn test_handle_message_with_stub() {
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
-        let resp = agent.handle_message("hello", &tools, &skills).unwrap();
+        let resp = agent.handle_message("hello", &tools, &skills, &|_, _| true).await.unwrap();
         assert!(resp.contains("hello"));
     }
 
-    #[test]
-    fn test_clear_history() {
+    #[tokio::test]
+    async fn test_clear_history() {
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
-        agent.handle_message("hello", &tools, &skills).unwrap();
-        assert!(agent.history().len() >= 2);
+        agent.handle_message("hello", &tools, &skills, &|_, _| true).await.unwrap();
+        assert!(agent.history.len() >= 2);
         agent.clear_history();
-        assert_eq!(agent.history().len(), 0);
+        assert_eq!(agent.history.len(), 0);
     }
 
     #[test]
@@ -379,9 +499,9 @@ Here is the content."#;
         let ctx = Context::load("/tmp");
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
-        let mut bus = SharedEventBus::new();
+        let bus = SharedEventBus::new();
 
-        let bg = BackgroundAgent::spawn(
+        let mut bg = BackgroundAgent::spawn(
             Box::new(StubClient::new()),
             ctx,
             tools,
@@ -389,13 +509,21 @@ Here is the content."#;
             bus,
         );
 
-        bg.cmd_tx.send(AgentCommand::Shutdown).unwrap();
-        match bg.resp_rx.recv_timeout(std::time::Duration::from_secs(2)) {
-            Ok(AgentResponse::Shutdown) => {} // expected
-            other => panic!("expected Shutdown, got {other:?}"),
-        }
+        let shutdown_sent = bg.cmd_tx.send(AgentCommand::Shutdown);
+        assert!(shutdown_sent.is_ok(), "shutdown send failed: {:?}", shutdown_sent.err());
 
-        // Ensure thread finishes
+        // Wait for shutdown response via tokio channel (use blocking_recv)
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut found = false;
+        while std::time::Instant::now() < deadline {
+            if let Ok(AgentResponse::Shutdown) = bg.resp_rx.try_recv() {
+                found = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(found, "Expected Shutdown response");
+
         if let Some(handle) = bg.thread_handle {
             handle.join().unwrap();
         }
