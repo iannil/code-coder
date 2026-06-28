@@ -16,6 +16,7 @@ pub mod message_list;
 pub mod input_area;
 pub mod dialogs;
 pub mod status_bar;
+#[allow(unused_imports)]
 pub(crate) use status_bar::{compact_cwd, format_context_bar};
 pub mod app;
 pub mod commands;

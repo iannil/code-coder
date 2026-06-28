@@ -257,7 +257,7 @@ fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: 
 
 /// Handle Y/N/A/Esc/Enter when a dialog is active.
 pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<crate::agent::AgentCommand>) {
-    use crossterm::event::{KeyCode, KeyModifiers};
+    use crossterm::event::KeyCode;
     use crate::agent::AgentCommand;
 
     match key.code {
@@ -350,7 +350,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
 
 /// Handle Esc to close help panel.
 pub fn handle_help_key(app: &mut TuiApp, key: crossterm::event::KeyEvent) {
-    use crossterm::event::{KeyCode, KeyModifiers};
+    use crossterm::event::KeyCode;
     if matches!(key.code, KeyCode::Esc) {
         app.help_active = false;
     }

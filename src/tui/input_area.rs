@@ -3,7 +3,7 @@
 /// 输入框渲染、光标管理、undo/redo、历史导航、搜索/反向搜索按键处理。
 
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::Frame;
@@ -396,7 +396,7 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
 
 /// Handle keys when in search or reverse-search mode.
 pub fn handle_search_key(app: &mut TuiApp, key: crossterm::event::KeyEvent) {
-    use crossterm::event::{KeyCode, KeyModifiers};
+    use crossterm::event::KeyCode;
 
     match key.code {
         KeyCode::Char(c) => {
