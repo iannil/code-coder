@@ -223,6 +223,8 @@ pub struct StatusData {
     pub elapsed_secs: u64,
     /// 当前工具调用轮次
     pub current_round: usize,
+    /// 当前 LLM streaming 是否已完成（用于消除 Text vs LlmDelta 竞态）
+    pub streaming_complete: bool,
 }
 
 impl Default for StatusData {
@@ -244,6 +246,7 @@ impl Default for StatusData {
             },
             elapsed_secs: 0,
             current_round: 0,
+            streaming_complete: false,
         }
     }
 }
@@ -1670,6 +1673,7 @@ fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>
     app.status.agent_busy = true;
     app.current_round = 0;
     app.status.current_tool = None;
+    app.status.streaming_complete = false;
     app.messages.push(MessageItem::System {
         text: "[send] Agent…".into(),
     });
@@ -1693,10 +1697,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             .unwrap_or(0.0);
                         // 移除流式阶段的过渡状态消息
                         app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[write]") || text.starts_with("[think]")));
-                        // 非空内容才追加 —— 仅在无流式传输（LlmDelta 未送达）时追加，
-                        // 否则内容已通过 LlmDelta 逐段 push 完成，再次追加会导致重复
-                        let already_streamed = matches!(app.messages.last(), Some(MessageItem::Assistant { .. }));
-                        if !text.is_empty() && !already_streamed {
+                        // 使用 streaming_complete 标记替代启发式 already_streamed 判断
+                        // 如果流已经完成（StreamComplete 已收到），说明内容已通过
+                        // LlmDelta 逐段送达，Text 仅用于确定性和元数据（耗时等）
+                        if !text.is_empty() && !app.status.streaming_complete {
                             app.messages.push(MessageItem::Assistant { text });
                         }
                         // 执行结束：插入结束标记 + 耗时提示
@@ -1706,6 +1710,7 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         // 停在 [end] 行，让用户阅读；下次输入时 send_message 会重新置回 true
                         app.auto_scroll = false;
                         app.status.agent_busy = false;
+                        app.status.streaming_complete = false;
                         app.status.current_tool = None;
                         app.status.current_round = 0;
                         auto_save_session(app);
@@ -1743,6 +1748,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         }
                         app.cached_msg_count = 0; // ToolCall output changed, force cache rebuild
                         app.status.current_tool = None;
+                    }
+                    AgentResponse::StreamComplete => {
+                        // 标记 LLM streaming 已完成 — Text 消息仅用于元数据，不插入正文
+                        app.status.streaming_complete = true;
                     }
                     AgentResponse::Heartbeat { pending } => {
                         app.status.agent_busy = pending > 0;
@@ -1800,6 +1809,7 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             text: format!("[error] ({took:.1}s): {message}"),
                         });
                         app.status.agent_busy = false;
+                        app.status.streaming_complete = false;
                         app.status.current_tool = None;
                         app.status.current_round = 0;
                     }
@@ -3768,6 +3778,7 @@ mod tests {
             connection_type: "OpenAI".into(),
             elapsed_secs: 5,
             current_round: 2,
+            streaming_complete: false,
         };
 
         let backend = ratatui::backend::TestBackend::new(80, 10);

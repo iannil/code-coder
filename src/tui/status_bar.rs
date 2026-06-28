@@ -217,6 +217,7 @@ mod tests {
             connection_type: "OpenAI".into(),
             elapsed_secs: 42,
             current_round: 3,
+            streaming_complete: false,
         };
 
         let mut app = crate::tui::TuiApp {
@@ -291,6 +292,7 @@ mod tests {
             connection_type: "api".into(),
             elapsed_secs: 0,
             current_round: 0,
+            streaming_complete: false,
         };
 
         let backend = ratatui::backend::TestBackend::new(60, 1);

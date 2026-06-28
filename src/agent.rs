@@ -169,6 +169,8 @@ tool, then summarise the result for the user."#
                         let _ = tx_clone.send(AgentResponse::ReasoningDelta { text: reasoning }).await;
                     }
                 }
+                // 显式标记流结束：TUI 不再依赖 fragile `already_streamed` 启发式判断
+                let _ = tx_clone.send(AgentResponse::StreamComplete).await;
                 _llm_resp
             } else {
                 self.llm.chat(&messages).await?
@@ -263,6 +265,9 @@ pub enum AgentResponse {
     Text { text: String },
     LlmDelta { text: String },
     ReasoningDelta { text: String },
+    /// Signals the end of a streaming sequence — TUI should expect Text next.
+    /// Eliminates the fragile `already_streamed` heuristic.
+    StreamComplete,
     ToolCall { name: String, input: String },
     ToolResult { name: String, output: String, success: bool },
     PermissionRequest { tool_name: String, tool_input: String, request_id: u64 },
