@@ -266,6 +266,19 @@ mod tests {
         _ = watcher;
     }
 
+    #[tokio::test]
+    async fn test_file_watcher_empty_paths_returns_immediately() {
+        let bus = SharedEventBus::new();
+        let watcher = FileWatcher::new(vec![]);
+        // Should return Ok(()) immediately without hanging
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            watcher.run(bus),
+        ).await;
+        assert!(result.is_ok(), "Empty watcher should return immediately");
+        assert!(result.unwrap().is_ok());
+    }
+
     // ─── AutonomousRunner ─────────────────────────────────────────────────
 
     #[test]
@@ -297,6 +310,45 @@ mod tests {
         assert!(event.is_some(), "Expected at least one event from scheduler after 1.1s");
 
         // Clean up
+        handle.abort();
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_multiple_tasks() {
+        let bus = SharedEventBus::new();
+        let bus_clone = bus.clone();
+
+        let tasks = vec![
+            ScheduledTask {
+                name: "fast".into(),
+                prompt: "fast task".into(),
+                interval_secs: 1,
+            },
+            ScheduledTask {
+                name: "slow".into(),
+                prompt: "slow task".into(),
+                interval_secs: 2,
+            },
+        ];
+
+        let scheduler = Scheduler::new(tasks);
+        let handle = tokio::spawn(async move {
+            scheduler.run(bus_clone).await;
+        });
+
+        // Let both fire at least once
+        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+
+        let mut found_fast = false;
+        let mut found_slow = false;
+        while let Some(event) = bus.drain_event() {
+            if let Event::UserMessage { text, .. } = &event {
+                if text.contains("fast") { found_fast = true; }
+                if text.contains("slow") { found_slow = true; }
+            }
+        }
+        assert!(found_fast, "Should have fired fast task");
+
         handle.abort();
     }
 }
