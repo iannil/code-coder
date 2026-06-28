@@ -656,6 +656,9 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
     let msg_height = msg_area.height.saturating_sub(1) as usize; // minus single border line
     let text_width = msg_area.width; // block 只有 TOP 边框，文本区等同全宽
 
+    // 计算显示行数（用于滚动条），必须在 rendered_lines 被 move 之前
+    let total_display_rows = count_display_rows(&rendered_lines, text_width);
+
     // 自动滚到底部：考虑折行后的实际显示行数
     if app.auto_scroll {
         app.scroll_offset = bottom_scroll_offset(&rendered_lines, text_width, msg_height);
@@ -667,13 +670,19 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         }
     }
 
-    // 计算显示行数（用于滚动条），必须在 rendered_lines 被 move 之前
-    let total_display_rows = count_display_rows(&rendered_lines, text_width);
-    let scrolled_display_rows = if app.scroll_offset > 0 {
-        count_display_rows(&rendered_lines[..app.scroll_offset], text_width)
-    } else {
-        0
-    };
+    // 计算需要跳过的显示行数，传给 Paragraph::scroll()
+    // auto_scroll 时直接用 total - visible 计算，不依赖 logical-line scroll_offset 转换，
+    // 避免单行折行超过 msg_height 时跳过头（此时 bottom_scroll_offset 返回 1 逻辑行，
+    // 但 count_display_rows(&rendered_lines[..1]) = 全部显示行数，导致屏幕空白）
+    let scrolled_display_rows =
+        if app.auto_scroll && total_display_rows > msg_height {
+            total_display_rows - msg_height
+        } else if app.scroll_offset > 0 {
+            let clamped = app.scroll_offset.min(rendered_lines.len());
+            count_display_rows(&rendered_lines[..clamped], text_width)
+        } else {
+            0
+        };
 
     let msg_block = Block::default()
         .borders(ratatui::widgets::Borders::TOP)
@@ -706,7 +715,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         .title_alignment(ratatui::layout::Alignment::Left);
     let msg_paragraph = Paragraph::new(rendered_lines)
         .block(msg_block)
-        .scroll((app.scroll_offset as u16, 0))
+        .scroll((scrolled_display_rows as u16, 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(msg_paragraph, msg_area);
 
@@ -1263,6 +1272,8 @@ fn handle_key(
                     });
                     app.input.clear();
                     app.cursor_pos = 0;
+                    app.auto_scroll = true;
+                    app.scroll_offset = 0;
                     return;
                 }
             }
@@ -1632,6 +1643,10 @@ fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>
 
     // 自动保存（用户消息发出时）
     auto_save_session(app);
+
+    // 跳到底部（参考 claude-code：每次 submit 都 repinScroll）
+    app.auto_scroll = true;
+    app.scroll_offset = 0;
 
     // 发送给 agent
     if let Err(e) = cmd_tx.send(AgentCommand::ProcessMessage { text: input }) {
