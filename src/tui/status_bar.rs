@@ -1,7 +1,9 @@
 /// ─── Status Bar ────────────────────────────────────────────────────────────
 ///
-/// 底部状态栏：模型名 / cwd / context 用量% / token 计数 / API key 状态
-/// 参考 Claude Code 的 StatusLine — 极简、紧凑、全 dimmed
+/// 底部三栏式状态栏（类 tmux）：
+///   左：模型名 (Cyan Bold)
+///   中：工具+耗时+轮次 (Gray)，仅 busy 时显示
+///   右：CWD+token (Dark Gray)
 
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
@@ -11,85 +13,102 @@ use ratatui::Frame;
 
 use super::StatusData;
 
-/// 渲染状态栏
+/// Render status bar as three-column tmux-style bar
 pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u64) {
     let spinner = if status.agent_busy {
         let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let idx = (frame_count / 3) as usize % frames.len();
-        format!(" {}", frames[idx])
+        frames[idx].to_string()
     } else {
         String::new()
     };
 
-    let context_bar = format_context_bar(status.context_pct);
-    let key_indicator = if status.api_key_set {
-        "key"
+    let total_width = area.width as usize;
+
+    // Left column: model name
+    let left = Span::styled(
+        &status.model,
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+    );
+
+    // Right column: cwd + token count
+    let cwd = compact_cwd(&status.cwd);
+    let right_str = if status.token_count > 0 {
+        format!("{}  {}t", cwd, status.token_count)
     } else {
-        "no-key"
+        cwd
     };
+    let right = Span::styled(
+        &right_str,
+        Style::default().fg(Color::DarkGray),
+    );
 
-    let mut spans: Vec<Span> = vec![
-        // Model name — cyan highlight
-        Span::styled(
-            &status.model,
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(" "),
-        // Connection type
-        Span::styled(
-            &status.connection_type,
-            Style::default().fg(if status.api_key_set { Color::Green } else { Color::Yellow }),
-        ),
-        Span::raw(" "),
-        Span::styled("·", Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        // CWD (compact: basename only)
-        Span::styled(
-            compact_cwd(&status.cwd),
-            Style::default().fg(Color::DarkGray),
-        ),
-        Span::raw(" "),
-        Span::styled("·", Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        // Context bar
-        Span::styled(context_bar, Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        Span::styled("·", Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        // Token count
-        Span::styled(
-            format!("{}t", status.token_count),
-            Style::default().fg(Color::DarkGray),
-        ),
-    ];
-
-    // Busy state: show elapsed time + round
-    if status.agent_busy {
-        spans.push(Span::raw(" "));
-        spans.push(Span::styled(
-            format!("{:.0}s", status.elapsed_secs),
-            Style::default().fg(Color::Yellow),
-        ));
-        if status.current_round > 0 {
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                format!("R{}", status.current_round),
-                Style::default().fg(Color::Magenta),
-            ));
+    // Center column: tool + elapsed + round (only when busy)
+    let center_str = if status.agent_busy {
+        let mut parts = Vec::new();
+        if !spinner.is_empty() {
+            parts.push(spinner);
         }
         if let Some(ref tool) = status.current_tool {
-            spans.push(Span::raw(" "));
-            spans.push(Span::styled(
-                format!("[{}]", tool),
-                Style::default().fg(Color::Blue),
-            ));
+            parts.push(format!("{}", tool));
         }
-    }
+        if status.elapsed_secs > 0 {
+            parts.push(format!("{}s", status.elapsed_secs));
+        }
+        if status.current_round > 0 {
+            parts.push(format!("R{}", status.current_round));
+        }
+        parts.join(" ")
+    } else {
+        String::new()
+    };
+    let center = Span::styled(
+        &center_str,
+        Style::default().fg(Color::DarkGray),
+    );
 
-    // API key / spinner at end
-    spans.push(Span::raw(" "));
-    spans.push(Span::styled(key_indicator, Style::default().fg(Color::DarkGray)));
-    spans.push(Span::styled(spinner, Style::default().fg(Color::DarkGray)));
+    // Build line with left/center/right alignment
+    let left_len = left.content.len();
+    let right_len = right.content.len();
+    let center_len = center.content.len();
+
+    let left_pad = 1;
+    let needed = left_len + left_pad + center_len + 2 + right_len;
+
+    let spans = if needed < total_width {
+        // Three columns with padding
+        let mid_gap = total_width - left_len - right_len;
+        let center_start = left_len + left_pad;
+        let fill_mid = if center_len > 0 {
+            let before = (mid_gap - center_len) / 2;
+            let after = mid_gap - center_len - before;
+            vec![
+                Span::raw(" ".repeat(before.saturating_sub(left_pad))),
+                center,
+                Span::raw(" ".repeat(after)),
+            ]
+        } else {
+            vec![Span::raw(" ".repeat(mid_gap.saturating_sub(left_pad)))]
+        };
+        vec![
+            left,
+            Span::raw(" "),
+        ]
+        .into_iter()
+        .chain(fill_mid)
+        .chain(vec![
+            Span::raw(" ".repeat(1)),
+            right,
+        ])
+        .collect()
+    } else {
+        // Overflow: just show left + truncated center
+        vec![
+            left,
+            Span::raw(" "),
+            center,
+        ]
+    };
 
     let line = Line::from(spans);
     let paragraph = Paragraph::new(line).style(Style::default().fg(Color::DarkGray));
@@ -285,11 +304,9 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
-        // Idle state should show model name and no-key indicator
+        // Idle state should show model name
         assert!(cell_text.contains("claude"), "Should show model: got {cell_text:?}");
-        // no-key indicator
-        assert!(cell_text.contains("no-key"), "Should show no-key: got {cell_text:?}");
-        // 25% bar
-        assert!(cell_text.contains("25%") || cell_text.contains("25 %"), "Should show 25%: got {cell_text:?}");
+        // Should show cwd path
+        assert!(cell_text.contains("tmp"), "Should show cwd: got {cell_text:?}");
     }
 }

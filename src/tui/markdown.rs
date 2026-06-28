@@ -72,24 +72,24 @@ pub fn render_markdown_with_highlight(text: &str, highlight: Option<&str>) -> Ve
 
         // Headings
         if raw_line.starts_with("### ") {
-            render_inline(&raw_line[4..], &mut current_line, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), hl);
+            render_inline(&raw_line[4..], &mut current_line, Style::default().fg(Color::White).add_modifier(Modifier::BOLD), hl);
             lines.push(Line::from(std::mem::take(&mut current_line)));
             continue;
         }
         if raw_line.starts_with("## ") {
-            render_inline(&raw_line[3..], &mut current_line, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), hl);
+            render_inline(&raw_line[3..], &mut current_line, Style::default().fg(Color::White).add_modifier(Modifier::BOLD), hl);
             lines.push(Line::from(std::mem::take(&mut current_line)));
             continue;
         }
         if raw_line.starts_with("# ") {
-            render_inline(&raw_line[2..], &mut current_line, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD), hl);
+            render_inline(&raw_line[2..], &mut current_line, Style::default().fg(Color::White).add_modifier(Modifier::BOLD), hl);
             lines.push(Line::from(std::mem::take(&mut current_line)));
             continue;
         }
 
         // Unordered list
         if raw_line.starts_with("- ") || raw_line.starts_with("* ") {
-            current_line.push(Span::styled("  • ", Style::default().fg(Color::Yellow)));
+            current_line.push(Span::styled("  - ", Style::default().fg(Color::White)));
             render_inline(&raw_line[2..], &mut current_line, Style::default(), hl);
             lines.push(Line::from(std::mem::take(&mut current_line)));
             continue;
@@ -99,7 +99,7 @@ pub fn render_markdown_with_highlight(text: &str, highlight: Option<&str>) -> Ve
         if let Some(rest) = raw_line.strip_prefix(|c: char| c.is_ascii_digit())
             .and_then(|s| s.strip_prefix(". "))
         {
-            current_line.push(Span::styled("  1. ", Style::default().fg(Color::Yellow)));
+            current_line.push(Span::styled("  1. ", Style::default().fg(Color::White)));
             render_inline(rest, &mut current_line, Style::default(), hl);
             lines.push(Line::from(std::mem::take(&mut current_line)));
             continue;
@@ -220,28 +220,15 @@ fn render_code_block(
     lang: &str,
     content: &str,
 ) {
-    let header = if lang.is_empty() {
-        " ┌─ code ".to_string()
-    } else if lang == "diff" {
-        " ┌─ diff ".to_string()
-    } else {
-        format!(" ┌─ {lang} ")
-    };
-    lines.push(Line::styled(header, Style::default().fg(Color::DarkGray)));
-
     // Check if this is a diff block
     if lang == "diff" {
         let diff_lines = render_diff_text(content);
         if !diff_lines.is_empty() {
             for dl in diff_lines {
-                let mut spans = vec![Span::raw(" │ ")];
+                let mut spans = vec![Span::raw("  ")];
                 spans.extend(dl.spans);
                 lines.push(Line::from(spans));
             }
-            lines.push(Line::styled(
-                " └─",
-                Style::default().fg(Color::DarkGray),
-            ));
             return;
         }
     }
@@ -266,11 +253,11 @@ fn render_code_block(
                 .unwrap_or_else(|_| Vec::new());
 
             let mut spans: Vec<Span<'static>> = Vec::new();
-            spans.push(Span::raw(" │ "));
+            spans.push(Span::raw("  "));
 
             for (style, text) in ranges {
                 let fg = syntect_color_to_ratatui(style.foreground);
-                let mut ratatui_style = Style::default().fg(fg);
+                let mut ratatui_style = Style::default().fg(fg).add_modifier(Modifier::DIM);
 
                 if style.font_style.contains(FontStyle::BOLD) {
                     ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
@@ -288,20 +275,14 @@ fn render_code_block(
             lines.push(Line::from(spans));
         }
     } else {
-        // No syntax found — plain dim style
+        // No syntax found — plain dim style, no borders
         for line in content.lines() {
             lines.push(Line::styled(
-                format!(" │ {}", line),
-                Style::default().fg(Color::DarkGray),
+                format!("  {}", line),
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
             ));
         }
     }
-
-    // Code block footer
-    lines.push(Line::styled(
-        " └─",
-        Style::default().fg(Color::DarkGray),
-    ));
 }
 
 /// Convert syntect Color to ratatui Color
@@ -421,14 +402,14 @@ fn render_table_row(
 
         let style = if is_header {
             Style::default()
-                .fg(Color::Cyan)
+                .fg(Color::White)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
 
         spans.push(Span::styled(padded, style));
-        spans.push(Span::raw(" │ ".to_string()));
+        spans.push(Span::raw(" │ "));
     }
 
     lines.push(Line::from(spans));
@@ -438,7 +419,7 @@ fn render_table_row(
         let total_width: usize = widths.iter().sum::<usize>() + widths.len() * 3 + 1;
         let underline = "─".repeat(total_width.min(80));
         lines.push(Line::styled(
-            format!(" ├{underline}┤"),
+            format!(" ├{}┤", underline),
             Style::default().fg(Color::DarkGray),
         ));
     }
@@ -473,14 +454,12 @@ fn push_highlighted_text(
         if abs_pos > start {
             spans.push(Span::styled(text[start..abs_pos].to_string(), style));
         }
-        // Push matching text with highlight
+        // Push matching text with highlight (反色)
         let end = abs_pos + hl.len();
         spans.push(Span::styled(
             text[abs_pos..end].to_string(),
             Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+                .add_modifier(Modifier::REVERSED),
         ));
         start = end;
     }
@@ -512,7 +491,7 @@ fn render_inline(text: &str, spans: &mut Vec<Span<'static>>, base_style: Style, 
             spans.push(Span::styled(
                 code_text,
                 base_style
-                    .fg(Color::Green)
+                    .fg(Color::Cyan)
                     .add_modifier(Modifier::DIM),
             ));
             if i < chars.len() {
@@ -585,7 +564,7 @@ fn render_inline(text: &str, spans: &mut Vec<Span<'static>>, base_style: Style, 
                 spans.push(Span::styled(
                     link_text,
                     base_style
-                        .fg(Color::Blue)
+                        .fg(Color::Cyan)
                         .add_modifier(Modifier::UNDERLINED),
                 ));
             } else {
@@ -638,20 +617,20 @@ mod tests {
     #[test]
     fn test_render_code_block() {
         let lines = render_markdown("```rust\nfn main() {}\n```");
-        assert_eq!(lines.len(), 3, "code block: header + content + footer");
+        assert_eq!(lines.len(), 1, "code block: content only (no header/footer)");
     }
 
     #[test]
     fn test_render_code_block_without_lang() {
         let lines = render_markdown("```\nplain code\n```");
-        assert_eq!(lines.len(), 3);
+        assert_eq!(lines.len(), 1);
     }
 
     #[test]
     fn test_render_code_block_empty() {
         let lines = render_markdown("```\n```");
-        // Should not panic; empty code block content is valid
-        assert!(!lines.is_empty(), "empty code block should produce at least one line");
+        // Should not panic; empty code block content produces no lines
+        assert!(lines.is_empty(), "empty code block should produce no lines");
     }
 
     #[test]

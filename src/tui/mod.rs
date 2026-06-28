@@ -545,118 +545,83 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
     let mut lines = Vec::new();
     for (msg_idx, m) in app.messages.iter().enumerate() {
         let is_selected = app.selected_msg == Some(msg_idx);
+        let prefix_style = if is_selected {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Cyan)
+        };
         match m {
             MessageItem::User { text } => {
-                if is_selected {
+                let prefix = if is_selected { "▸ " } else { "▶ " };
+                lines.push(Line::styled(
+                    format!("{}{}", prefix, text.lines().next().unwrap_or("")),
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                ));
+                // Remaining lines if multi-line
+                for line in text.lines().skip(1) {
                     lines.push(Line::styled(
-                        " ▸ you >",
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
-                    ));
-                } else {
-                    lines.push(Line::styled(
-                        "  you >",
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::DIM),
+                        format!("  {}", line),
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                     ));
                 }
-                lines.extend(
-                    markdown::render_markdown_with_highlight(text, highlight)
-                        .into_iter()
-                        .map(|l| {
-                            let mut line = l;
-                            line.spans.insert(0, Span::raw("    "));
-                            line
-                        }),
-                );
             }
             MessageItem::Assistant { text } => {
-                lines.push(Line::styled(
-                    " CodeCoder >",
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ));
-                lines.extend(
-                    markdown::render_markdown_with_highlight(text, highlight)
-                        .into_iter()
-                        .map(|l| {
-                            let mut line = l;
-                            line.spans.insert(0, Span::raw("    "));
-                            line
-                        }),
-                );
-            }
-            MessageItem::Reasoning { text, expanded } => {
-                if *expanded {
-                    lines.push(Line::styled(
-                        " [think]".to_string(),
-                        Style::default().fg(Color::Magenta),
-                    ));
-                    for line in text.lines() {
-                        lines.push(Line::styled(
-                            format!(" │ {}", line),
-                            Style::default().fg(Color::Magenta).add_modifier(Modifier::DIM),
-                        ));
-                    }
-                    lines.push(Line::styled(
-                        " └─",
-                        Style::default().fg(Color::Magenta),
-                    ));
-                } else {
-                    lines.push(Line::styled(
-                        format!(" [think] ({} chars)", text.len()),
-                        Style::default().fg(Color::Magenta),
+                let prefix = if is_selected { "▸ " } else { "▷ " };
+                // Use markdown rendering but no indent
+                let md_lines = markdown::render_markdown_with_highlight(text, highlight);
+                if let Some(first) = md_lines.first() {
+                    let mut styled_line = Line::from(
+                        std::iter::once(Span::styled(prefix, prefix_style))
+                            .chain(first.spans.iter().cloned())
+                            .collect::<Vec<_>>(),
+                    );
+                    lines.push(styled_line);
+                }
+                for line in md_lines.iter().skip(1) {
+                    lines.push(Line::from(
+                        std::iter::once(Span::raw("  "))
+                            .chain(line.spans.iter().cloned())
+                            .collect::<Vec<_>>(),
                     ));
                 }
             }
-            MessageItem::ToolCall {
-                name,
-                output,
-                expanded,
-                show_full,
-                ..
-            } => {
-                if *expanded {
-                    lines.push(Line::styled(
-                        format!(" {} {}:", "▼".yellow(), name),
-                        Style::default().fg(Color::Yellow),
-                    ));
-                    let output_lines: Vec<&str> = output.lines().collect();
-                    let max_preview = 20;
-                    let total = output_lines.len();
-
-                    let visible_lines: Vec<&&str> = if *show_full || total <= max_preview {
-                        output_lines.iter().collect()
+            MessageItem::Reasoning { text, .. } => {
+                // Always fully expanded, Dim Gray, wrapped in prefix
+                for (i, line) in text.lines().enumerate() {
+                    if i == 0 {
+                        lines.push(Line::styled(
+                            format!("· {}", line),
+                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                        ));
                     } else {
-                        output_lines[..max_preview].iter().collect()
-                    };
-
-                    for line in visible_lines {
                         lines.push(Line::styled(
-                            format!("   {}", line),
-                            Style::default().fg(Color::DarkGray),
+                            format!("  {}", line),
+                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
                         ));
                     }
-
-                    if total > max_preview && !*show_full {
+                }
+            }
+            MessageItem::ToolCall { name, input, output, .. } => {
+                // Always fully expanded, no fold
+                lines.push(Line::styled(
+                    format!("⚙ {}", name),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                ));
+                if !input.is_empty() {
+                    for line in input.lines() {
                         lines.push(Line::styled(
-                            format!("   ... ({} more lines — press Enter to expand)", total - max_preview),
-                            Style::default().fg(Color::Blue).add_modifier(Modifier::ITALIC),
-                        ));
-                    } else if total > max_preview {
-                        lines.push(Line::styled(
-                            format!("   ... (showing all {} lines)", total),
-                            Style::default().fg(Color::Blue).add_modifier(Modifier::ITALIC),
+                            format!("  {}", line),
+                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
                         ));
                     }
-                } else {
-                    lines.push(Line::styled(
-                        format!(" {} {}", "▶".yellow(), name),
-                        Style::default().fg(Color::Yellow),
-                    ));
+                }
+                if !output.is_empty() {
+                    for line in output.lines() {
+                        lines.push(Line::styled(
+                            format!("  {}", line),
+                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                        ));
+                    }
                 }
             }
             MessageItem::System { text } => {
@@ -673,12 +638,12 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
 fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
     let area = frame.area();
 
-    // 三段 Flex 布局：消息区（flex_grow=1）+ 输入区（3行）+ 状态栏（1行）
+    // 三段 Flex 布局：消息区（flex_grow=1）+ 输入区（2行）+ 状态栏（1行）
     let [msg_area, input_area, status_area] = ratatui::layout::Layout::new(
         ratatui::layout::Direction::Vertical,
         [
             ratatui::layout::Constraint::Min(1),
-            ratatui::layout::Constraint::Length(3),
+            ratatui::layout::Constraint::Length(2),
             ratatui::layout::Constraint::Length(1),
         ],
     )
@@ -744,13 +709,8 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         .wrap(Wrap { trim: false });
     frame.render_widget(msg_paragraph, msg_area);
 
-    // 右侧视觉滚动条 — 仅在内容超出可视区域时显示（基于实际显示行数）
+    // 右侧极简滚动条 — 仅 `··` 点状滑块，无轨道
     if total_display_rows > msg_height {
-        let scrollbar_color = if app.dark_mode {
-            Color::DarkGray
-        } else {
-            Color::DarkGray
-        };
         let thumb_color = if app.dark_mode {
             Color::White
         } else {
@@ -758,12 +718,12 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         };
 
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓"))
-            .track_style(Style::default().fg(scrollbar_color))
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_style(Style::default())
             .thumb_style(Style::default().fg(thumb_color))
-            .begin_style(Style::default().fg(scrollbar_color))
-            .end_style(Style::default().fg(scrollbar_color));
+            .begin_style(Style::default())
+            .end_style(Style::default());
 
         let mut scrollbar_state = ScrollbarState::new(total_display_rows)
             .position(scrolled_display_rows)
@@ -780,39 +740,24 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         );
     }
 
-    // 输入区（带光标显示）— 使用细分割线风格
+    // 输入区（带光标显示）— 极简 `>` 前缀，无边框，2行
     let cursor_pos = app.cursor_pos.min(app.input.len());
+    let prefix_span = Span::styled("> ", Style::default().fg(Color::Cyan));
     let input_display = if app.input.is_empty() {
-        if app.status.agent_busy {
-            " Agent is thinking...".to_string()
-        } else {
-            " Send a message... (Alt+Enter)".to_string()
-        }
+        Line::from(prefix_span)
     } else {
-        app.input.clone()
+        let mut line = Line::from(vec![prefix_span]);
+        line.spans.push(Span::raw(&app.input));
+        line
     };
     let input_paragraph = Paragraph::new(input_display)
-        .block(
-            Block::default()
-                .borders(ratatui::widgets::Borders::TOP)
-                .border_type(BorderType::Plain)
-                .border_style(Style::default().fg(Color::DarkGray)),
-        )
-        .style(Style::default().fg(if app.input.is_empty() {
-            Color::DarkGray
-        } else {
-            Color::White
-        }))
-        .wrap(Wrap { trim: false });
+        .style(Style::default().fg(Color::White));
     frame.render_widget(input_paragraph, input_area);
 
     // 设置光标位置
-    // 计算光标在 input 区域内的行内偏移
-    // Safety: cursor_pos must be at a valid char boundary
     let safe_cursor = if app.input.is_char_boundary(cursor_pos) {
         cursor_pos
     } else {
-        // Fallback: find the nearest char boundary
         let mut i = cursor_pos.min(app.input.len());
         while i > 0 && !app.input.is_char_boundary(i) {
             i -= 1;
@@ -830,13 +775,12 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
             .map(|(i, _)| i + 1)
             .unwrap_or(0)
     };
-    let col_offset = cursor_pos - last_line_start;
+    let col_offset = safe_cursor - last_line_start;
     let row_offset = input_lines;
 
-    // ratatui 自动处理光标的 set_cursor
     frame.set_cursor_position(ratatui::layout::Position {
-        x: input_area.x + col_offset as u16 + 1, // +1 for border left
-        y: input_area.y + row_offset as u16 + 1, // +1 for border top
+        x: input_area.x + col_offset as u16 + 2, // +2 for "> "
+        y: input_area.y + row_offset as u16,
     });
 
     // 斜杠命令补全弹出列表
@@ -872,8 +816,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         let popup_block = Paragraph::new(items)
             .block(
-                Block::bordered()
-                    .border_type(BorderType::Plain)
+                Block::default()
                     .title(" Commands ")
                     .title_alignment(ratatui::layout::Alignment::Left),
             );
@@ -913,8 +856,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         frame.render_widget(ratatui::widgets::Clear, popup_area);
         let popup_block = Paragraph::new(items)
             .block(
-                Block::bordered()
-                    .border_type(BorderType::Plain)
+                Block::default()
                     .title(" Model ")
                     .title_alignment(ratatui::layout::Alignment::Left),
             );
@@ -931,139 +873,71 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         let panel_area = Rect::new(panel_x, panel_y, panel_width, panel_height);
 
         let help_lines = vec![
-            Line::styled(" Keyboard Shortcuts ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Line::from(""),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Enter           ", Style::default().fg(Color::Green)),
-                Span::raw("Send message"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("S+Enter         ", Style::default().fg(Color::Green)),
-                Span::raw("New line in input"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("↑/↓             ", Style::default().fg(Color::Green)),
-                Span::raw("Input history / navigate lists"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("←/→/Home/End    ", Style::default().fg(Color::Green)),
-                Span::raw("Cursor movement"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("PgUp/PgDn       ", Style::default().fg(Color::Green)),
-                Span::raw("Scroll messages"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Tab             ", Style::default().fg(Color::Green)),
-                Span::raw("Cycle completions"),
-            ]),
-            Line::from(""),
             Line::styled(" Shortcuts ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Line::from(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Ctrl+F          ", Style::default().fg(Color::Green)),
-                Span::raw("Search messages"),
+                Span::styled("Enter         ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Send"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Ctrl+R          ", Style::default().fg(Color::Green)),
+                Span::styled("↑/↓           ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("History / navigate"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("PgUp/PgDn     ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Scroll"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Ctrl+F        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Search"),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled("Ctrl+R        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::raw("Reverse search"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Ctrl+P          ", Style::default().fg(Color::Green)),
+                Span::styled("Ctrl+P        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
                 Span::raw("Switch model"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("Ctrl+H          ", Style::default().fg(Color::Green)),
-                Span::raw("This help panel"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+A/E        ", Style::default().fg(Color::Green)),
-                Span::raw("Line start/end"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+W          ", Style::default().fg(Color::Green)),
-                Span::raw("Delete word backward"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+U          ", Style::default().fg(Color::Green)),
-                Span::raw("Delete to line start"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+K          ", Style::default().fg(Color::Green)),
-                Span::raw("Delete to line end"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+L          ", Style::default().fg(Color::Green)),
-                Span::raw("Clear screen"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+Z/Y        ", Style::default().fg(Color::Green)),
-                Span::raw("Undo / Redo"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+T          ", Style::default().fg(Color::Green)),
-                Span::raw("Toggle dark/light theme"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("Ctrl+C/Q/D/Esc  ", Style::default().fg(Color::Green)),
-                Span::raw("Quit"),
+                Span::styled("Alt+Enter     ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("New line"),
             ]),
             Line::from(""),
             Line::styled(" Commands ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
             Line::from(""),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("/help           ", Style::default().fg(Color::Green)),
-                Span::raw("Show this help"),
+                Span::styled("/help /exit   ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Help / Quit"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("/exit /quit     ", Style::default().fg(Color::Green)),
-                Span::raw("Exit application"),
+                Span::styled("/clear        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Clear chat"),
             ]),
             Line::from(vec![
                 Span::raw("  "),
-                Span::styled("/reload         ", Style::default().fg(Color::Green)),
-                Span::raw("Reload skills & context"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("/clear          ", Style::default().fg(Color::Green)),
-                Span::raw("Clear conversation"),
-            ]),
-            Line::from(vec![
-                Span::raw("  "),
-                Span::styled("/tools /skills  ", Style::default().fg(Color::Green)),
-                Span::raw("List tools/skills"),
+                Span::styled("/model /tools ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+                Span::raw("Model / Tools"),
             ]),
             Line::from(""),
-            Line::styled(" Press Esc to close ", Style::default().fg(Color::DarkGray)),
+            Line::styled(" Esc to close ", Style::default().fg(Color::DarkGray)),
         ];
 
         frame.render_widget(ratatui::widgets::Clear, panel_area);
         let panel = Paragraph::new(help_lines)
             .block(
-                Block::bordered()
-                    .border_type(BorderType::Plain)
-                    .border_style(Style::default().fg(Color::Cyan)),
+                Block::default()
+                    .title(" Help ")
+                    .title_alignment(ratatui::layout::Alignment::Left),
             );
         frame.render_widget(panel, panel_area);
         return;
@@ -3728,7 +3602,7 @@ mod tests {
         let lines = build_message_lines(&mut app);
         // User messages have a "you >" prefix
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(rendered.contains("you"), "user messages should show 'you' prefix");
+        assert!(rendered.contains("▶"), "user messages should show ▶ prefix");
         assert!(rendered.contains("hello"), "user message text should appear");
     }
 
@@ -3762,7 +3636,8 @@ mod tests {
         });
         let lines = build_message_lines(&mut app);
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(rendered.contains("▶"), "collapsed tool call should show ▶");
+        assert!(rendered.contains("⚙"), "tool call should show ⚙ prefix");
+        assert!(rendered.contains("file contents"), "tool output should be visible");
     }
 
     #[test]
@@ -3777,7 +3652,7 @@ mod tests {
         });
         let lines = build_message_lines(&mut app);
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(rendered.contains("▼"), "expanded tool call should show ▼");
+        assert!(rendered.contains("⚙"), "expanded tool call should show ⚙ prefix");
         assert!(rendered.contains("file contents"), "expanded tool output should be visible");
     }
 
@@ -3787,8 +3662,8 @@ mod tests {
         app.messages.push(MessageItem::Reasoning { text: "thinking...".into(), expanded: false });
         let lines = build_message_lines(&mut app);
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(rendered.contains("[think]"), "collapsed reasoning should show [think] marker");
-        assert!(rendered.contains("[think]"), "reasoning should have [think] marker");
+        assert!(rendered.contains("·"), "reasoning should show · prefix");
+        assert!(rendered.contains("thinking..."), "reasoning text should be visible");
     }
 
     #[test]
@@ -3797,7 +3672,7 @@ mod tests {
         app.messages.push(MessageItem::Reasoning { text: "thinking...".into(), expanded: true });
         let lines = build_message_lines(&mut app);
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
-        assert!(rendered.contains("[think]"), "expanded reasoning should show [think] marker");
+        assert!(rendered.contains("·"), "reasoning should show · prefix");
         assert!(rendered.contains("thinking..."), "reasoning text should be visible");
     }
 
@@ -3905,8 +3780,10 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
-        // Input area should show "Agent is thinking..."
-        assert!(cell_text.contains("thinking"), "Should show thinking: got {cell_text:.80}");
+        // Input area should be minimal
+        assert!(cell_text.contains("CodeCoder"), "Should show message: got {cell_text:.80}");
+        // Status bar should show model
+        assert!(cell_text.contains("gpt-4o"), "Should show model: got {cell_text:.80}");
     }
 
     #[test]
