@@ -3810,4 +3810,423 @@ mod tests {
         let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
         assert!(rendered.contains("▸"), "selected message should have ▸ indicator");
     }
+
+    #[test]
+    fn test_render_empty_tui() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::System { text: "CodeCoder initialized".into() });
+        app.status = StatusData {
+            model: "gpt-4o".into(),
+            cwd: "/tmp".into(),
+            context_pct: 0.0,
+            token_count: 0,
+            api_key_set: true,
+            agent_busy: true,
+            current_tool: None,
+            connection_type: "OpenAI".into(),
+            elapsed_secs: 5,
+            current_round: 2,
+        };
+
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Should show the system message
+        assert!(cell_text.contains("CodeCoder"), "Should show message: got {cell_text:.80}");
+        // Status bar should show model
+        assert!(cell_text.contains("gpt-4o"), "Should show model: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_search_active() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello world".into() });
+        app.search_active = true;
+        app.search_query = "hello".into();
+        app.search_match_count = 1;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("hello"), "Should show query: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_help_active() {
+        let mut app = TuiApp::default();
+        app.help_active = true;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 24);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("CodeCoder"), "Should still render base UI: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_agent_busy() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "list all tools".into() });
+        app.status.agent_busy = true;
+        app.status.elapsed_secs = 10;
+        app.status.current_round = 3;
+        app.status.current_tool = Some("search_web".into());
+        app.status.api_key_set = true;
+
+        let backend = ratatui::backend::TestBackend::new(80, 15);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Input area should show "Agent is thinking..."
+        assert!(cell_text.contains("thinking"), "Should show thinking: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_model_picker() {
+        let mut app = TuiApp::default();
+        app.model_picker_active = true;
+        app.model_picker_selected = 0;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 24);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Model picker overlay should show model names
+        assert!(cell_text.contains("gpt-4o"), "Should show model picker: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_reverse_search() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "find me".into() });
+        app.messages.push(MessageItem::Assistant { text: "result".into() });
+        app.reverse_search_active = true;
+        app.reverse_search_query = "find".into();
+        app.reverse_search_results = vec![0];
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 15);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("find"), "Should show reverse search: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_permission_pending() {
+        let mut app = TuiApp::default();
+        app.permission_pending = Some(PendingPermission {
+            tool_name: "write_file".into(),
+            tool_input: "test.txt".into(),
+            request_id: 1,
+        });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("write_file"), "Should show permission: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_manual_scroll() {
+        let mut app = TuiApp::default();
+        for i in 0..20 {
+            app.messages.push(MessageItem::User { text: format!("message {}", i) });
+            app.messages.push(MessageItem::Assistant { text: format!("response {}", i) });
+        }
+        app.auto_scroll = false;
+        app.scroll_offset = 5;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("scroll"), "Should show scroll indicator: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_tool_call_expanded() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "search".into() });
+        app.messages.push(MessageItem::ToolCall {
+            name: "search_web".into(),
+            input: "rust".into(),
+            output: "file contents".into(),
+            expanded: true,
+            show_full: false,
+        });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("file contents"), "Should show tool output: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_light_mode() {
+        let mut app = TuiApp::default();
+        app.dark_mode = false;
+        app.messages.push(MessageItem::System { text: "hello".into() });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Light mode should still render
+        assert!(cell_text.contains("hello"), "Should show message: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_many_messages_scrollbar() {
+        let mut app = TuiApp::default();
+        for i in 0..30 {
+            app.messages.push(MessageItem::User { text: format!("long message number {} with some extra text", i) });
+            app.messages.push(MessageItem::Assistant { text: format!("response to message {} with additional details", i) });
+        }
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(60, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("CodeCoder"), "Should render base UI");
+    }
+
+    #[test]
+    fn test_render_with_reasoning_message() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "think step by step".into() });
+        app.messages.push(MessageItem::Reasoning { text: "First, I need to analyze the problem...".into(), expanded: true });
+        app.messages.push(MessageItem::Assistant { text: "Here is the answer.".into() });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("analyze"), "Should show reasoning: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_mixed_message_types() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::System { text: "Session started".into() });
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: "src/main.rs".into(),
+            output: "file contents here".into(),
+            expanded: false,
+            show_full: false,
+        });
+        app.messages.push(MessageItem::Assistant { text: "Done reading.".into() });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("Session"), "Should show system message: got {cell_text:.80}");
+        assert!(cell_text.contains("hello"), "Should show user message");
+    }
+
+    #[test]
+    fn test_render_tool_call_full_expanded() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "search_web".into(),
+            input: "query".into(),
+            output: "a very long output that should be displayed in full when show_full is true".into(),
+            expanded: true,
+            show_full: true,
+        });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 15);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Should show the output content in full mode
+        assert!(cell_text.contains("very long"), "Should show full output: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_with_elapsed_time() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        app.status = StatusData::default();
+        app.status.agent_busy = true;
+        app.status.elapsed_secs = 120;
+
+        let backend = ratatui::backend::TestBackend::new(80, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 3);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Busy indicator in title
+        assert!(cell_text.contains("•"), "Should have busy indicator: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_search_active_with_results() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "search term".into() });
+        app.messages.push(MessageItem::Assistant { text: "containing search term result".into() });
+        app.search_active = true;
+        app.search_query = "search".into();
+        app.search_match_count = 2;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 15);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("search"), "Should show search state: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_render_input_with_long_text() {
+        let mut app = TuiApp::default();
+        app.input = "a very long input message that exceeds the width of the terminal and should wrap to the next line or be truncated depending on the implementation".into();
+        app.cursor_pos = app.input.len();
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(40, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        assert!(buffer.content.len() > 0, "Should render with long input");
+    }
+
+    #[test]
+    fn test_render_multiple_system_messages() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::System { text: "System initialized".into() });
+        app.messages.push(MessageItem::System { text: "Skills loaded: 5".into() });
+        app.messages.push(MessageItem::System { text: "MCP connected: 2 servers".into() });
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(80, 12);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("initialized"), "Should show system messages: got {cell_text:.80}");
+    }
 }

@@ -197,11 +197,7 @@ mod tests {
 
     #[test]
     fn test_repl_new() {
-        let repl = Repl::new();
-        // prompt should default to "cc> "
-        // We can't inspect private fields, so we just check it constructs
-        assert!(std::mem::discriminant(&()) == std::mem::discriminant(&()));
-        _ = repl;
+        let _repl = Repl::new();
     }
 
     #[test]

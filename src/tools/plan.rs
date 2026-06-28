@@ -116,3 +116,69 @@ impl Tool for PlanTool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_plan_tool_name() {
+        let tool = PlanTool;
+        assert_eq!(tool.name(), "plan");
+    }
+
+    #[test]
+    fn test_plan_tool_description_not_empty() {
+        let tool = PlanTool;
+        assert!(!tool.description().is_empty());
+        assert!(tool.description().contains("plan"));
+    }
+
+    #[test]
+    fn test_plan_tool_execute_invalid_json() {
+        let tool = PlanTool;
+        let result = tool.execute("not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_plan_tool_execute_missing_title() {
+        let tool = PlanTool;
+        let result = tool.execute(r#"{"steps":["do X"]}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_plan_tool_deliver_decision_nonexistent() {
+        let result = PlanTool::deliver_decision(99999, "yes".into());
+        assert!(!result, "delivering to non-existent request should return false");
+    }
+
+    #[test]
+    fn test_plan_tool_set_response_tx_and_deliver() {
+        let (tx, rx) = mpsc::channel();
+        PlanTool::set_response_tx(tx);
+
+        // Execute a plan — it will block on rx.recv_timeout, so we need to deliver in parallel
+        let tool = PlanTool;
+        let input = r#"{"title":"Test Plan","steps":["Step 1","Step 2"]}"#;
+
+        // Spawn a thread to deliver the decision
+        let handle = std::thread::spawn(move || {
+            // First wait for the plan request to arrive at the TUI
+            let response = rx.recv().unwrap();
+            match response {
+                crate::agent::AgentResponse::PlanRequest { request_id, .. } => {
+                    PlanTool::deliver_decision(request_id, "approved".into());
+                }
+                _ => panic!("Expected PlanRequest"),
+            }
+        });
+
+        let result = tool.execute(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "approved");
+
+        handle.join().unwrap();
+    }
+}

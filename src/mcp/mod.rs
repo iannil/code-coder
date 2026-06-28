@@ -367,4 +367,74 @@ mod tests {
         assert!(reg.all_tools().is_empty());
         assert!(!reg.has_tool("nonexistent"));
     }
+
+    #[test]
+    fn test_mcp_registry_next_id_increments() {
+        let mut reg = McpRegistry::new(vec![]);
+        // next_id starts at 1
+        assert_eq!(reg.next_id(), 1);
+        assert_eq!(reg.next_id(), 2);
+        assert_eq!(reg.next_id(), 3);
+    }
+
+    #[test]
+    fn test_mcp_tool_metadata() {
+        let reg = Arc::new(Mutex::new(McpRegistry::new(vec![])));
+        let tool = McpTool::new("test-tool", "A test tool", reg);
+        assert_eq!(tool.name(), "test-tool");
+        assert!(tool.description().contains("A test tool"));
+        assert!(tool.description().contains("[MCP]"));
+    }
+
+    #[test]
+    fn test_mcp_tool_execute_on_empty_registry() {
+        let reg = Arc::new(Mutex::new(McpRegistry::new(vec![])));
+        let tool = McpTool::new("nonexistent", "N/A", reg);
+        let result = tool.execute("{}");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_mcp_server_config_defaults() {
+        let json = r#"{"name": "simple", "command": "echo"}"#;
+        let config: McpServerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.name, "simple");
+        assert!(config.args.is_empty());
+        assert!(config.env.is_empty());
+    }
+
+    #[test]
+    fn test_mcp_registry_stop_all_empty() {
+        let mut reg = McpRegistry::new(vec![]);
+        reg.stop_all(); // should not panic
+        assert!(reg.list_servers().is_empty());
+    }
+
+    #[test]
+    fn test_tool_info_struct() {
+        let info = ToolInfo {
+            server_name: "server1".into(),
+            tool_name: "tool1".into(),
+            description: "desc".into(),
+        };
+        assert_eq!(info.server_name, "server1");
+        assert_eq!(info.tool_name, "tool1");
+    }
+
+    #[test]
+    fn test_server_status_struct() {
+        let info = ServerInfo {
+            name: "srv".into(),
+            version: "1.0".into(),
+        };
+        let status = ServerStatus {
+            name: "test".into(),
+            server_info: info,
+            tool_count: 3,
+        };
+        assert_eq!(status.name, "test");
+        assert_eq!(status.server_info.name, "srv");
+        assert_eq!(status.tool_count, 3);
+    }
 }

@@ -196,6 +196,14 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_name_content_with_crlf() {
+        let input = "my-skill\r\n---\r\ncontent here";
+        let (name, content) = parse_name_content(input).unwrap();
+        assert_eq!(name, "my-skill");
+        assert_eq!(content, "content here");
+    }
+
+    #[test]
     fn test_parse_missing_separator() {
         assert!(parse_name_content("no-separator-here").is_err());
     }
@@ -207,10 +215,17 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_empty_content() {
+        let input = "name\n---\n";
+        assert!(parse_name_content(input).is_err());
+    }
+
+    #[test]
     fn test_sanitize_filename() {
         assert_eq!(sanitize_filename("hello world"), "hello_world");
         assert_eq!(sanitize_filename("my-skill_v2"), "my-skill_v2");
         assert_eq!(sanitize_filename("../evil"), "_._evil");
+        assert_eq!(sanitize_filename(".hidden"), "_hidden");
     }
 
     #[test]
@@ -229,6 +244,21 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_skill_adds_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = GenerateSkill {
+            project_root: dir.path().to_string_lossy().to_string(),
+        };
+        // Content without # should get a header added
+        let input = "my-task\n---\njust some plain text";
+        let result = tool.execute(input).unwrap();
+        assert!(result.contains("my-task"));
+        let path = dir.path().join("skills/my-task.md");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("# my-task"));
+    }
+
+    #[test]
     fn test_generate_tool_executable() {
         let dir = tempfile::tempdir().unwrap();
         let tool = GenerateTool {
@@ -244,5 +274,52 @@ mod tests {
             let meta = std::fs::metadata(dir.path().join("tools/hello")).unwrap();
             assert!(meta.permissions().mode() & 0o111 != 0);
         }
+    }
+
+    #[test]
+    fn test_generate_tool_with_shebang() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = GenerateTool {
+            project_root: dir.path().to_string_lossy().to_string(),
+        };
+        let input = "script\n---\n#!/usr/bin/env bash\necho hi";
+        let result = tool.execute(input).unwrap();
+        assert!(result.contains("executable"));
+        let path = dir.path().join("tools/script");
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.starts_with("#!/usr/bin/env bash"));
+    }
+
+    #[test]
+    fn test_generate_prompt() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = GeneratePrompt {
+            project_root: dir.path().to_string_lossy().to_string(),
+        };
+        let input = "review-prompt\n---\nReview this code for bugs.";
+        let result = tool.execute(input).unwrap();
+        assert!(result.contains("review-prompt"));
+
+        let path = dir.path().join("prompts/review-prompt.md");
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_generate_skill_empty_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = GenerateSkill {
+            project_root: dir.path().to_string_lossy().to_string(),
+        };
+        let result = tool.execute("\n---\ncontent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_generate_tool_empty_content() {
+        let tool = GenerateTool {
+            project_root: "/tmp".into(),
+        };
+        let result = tool.execute("foo\n---\n");
+        assert!(result.is_err());
     }
 }

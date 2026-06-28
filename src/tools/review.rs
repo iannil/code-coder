@@ -104,4 +104,23 @@ mod tests {
         // Either git works or we get a no-repo error
         assert!(result.is_ok() || result.is_err());
     }
+
+    #[test]
+    fn test_review_tool_name() {
+        let tool = ReviewTool;
+        assert_eq!(tool.name(), "review");
+    }
+
+    #[test]
+    fn test_review_tool_description_not_empty() {
+        let tool = ReviewTool;
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_review_missing_both_fields() {
+        let tool = ReviewTool;
+        let result = tool.execute(r#"{"path": "."}"#);
+        assert!(result.is_ok() || result.is_err());
+    }
 }

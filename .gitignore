@@ -2,3 +2,5 @@
 /archived
 /sessions
 /.reasonix/skills
+*.log
+/coverage_report

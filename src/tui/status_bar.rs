@@ -136,3 +136,160 @@ pub(crate) fn format_context_bar(pct: f32) -> String {
 
     format!("[{}] {:.0}%", bar, pct * 100.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_context_bar_zero() {
+        let bar = format_context_bar(0.0);
+        assert_eq!(bar, "[░░░░░░░░] 0%");
+    }
+
+    #[test]
+    fn test_format_context_bar_full() {
+        let bar = format_context_bar(1.0);
+        assert_eq!(bar, "[▓▓▓▓▓▓▓▓] 100%");
+    }
+
+    #[test]
+    fn test_format_context_bar_half() {
+        let bar = format_context_bar(0.5);
+        assert_eq!(bar, "[▓▓▓▓░░░░] 50%");
+    }
+
+    #[test]
+    fn test_format_context_bar_quarter() {
+        let bar = format_context_bar(0.25);
+        assert_eq!(bar, "[▓▓░░░░░░] 25%");
+    }
+
+    #[test]
+    fn test_format_context_bar_overflow() {
+        let bar = format_context_bar(1.5);
+        assert_eq!(bar, "[▓▓▓▓▓▓▓▓] 150%");
+    }
+
+    #[test]
+    fn test_format_context_bar_tiny() {
+        let bar = format_context_bar(0.01);
+        assert_eq!(bar, "[░░░░░░░░] 1%");
+    }
+
+    #[test]
+    fn test_format_context_bar_rounding_boundary() {
+        let bar = format_context_bar(0.125);
+        // 0.125 * 8 = 1.0 → 1 filled
+        assert!(bar.contains("▓"));
+        assert_eq!(bar, "[▓░░░░░░░] 12%");
+    }
+
+    #[test]
+    fn test_render_status_bar_busy() {
+        let status = StatusData {
+            model: "gpt-4o".into(),
+            cwd: "/home/user/project".into(),
+            context_pct: 0.5,
+            token_count: 1234,
+            api_key_set: true,
+            agent_busy: true,
+            current_tool: Some("search_web".into()),
+            connection_type: "OpenAI".into(),
+            elapsed_secs: 42,
+            current_round: 3,
+        };
+
+        let mut app = crate::tui::TuiApp {
+            status,
+            messages: Vec::new(),
+            input: String::new(),
+            cursor_pos: 0,
+            input_history: Vec::new(),
+            history_pos: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            scroll_offset: 0,
+            auto_scroll: true,
+            completion: crate::tui::CompletionState::default(),
+            search_active: false,
+            search_query: String::new(),
+            search_match_count: 0,
+            search_current_match: 0,
+            reverse_search_active: false,
+            reverse_search_query: String::new(),
+            reverse_search_results: Vec::new(),
+            reverse_search_idx: 0,
+            model_picker_active: false,
+            model_picker_selected: 0,
+            available_models: vec![],
+            permission_pending: None,
+            dark_mode: true,
+            selected_msg: None,
+            slash_completion: crate::tui::SlashCompletionState::default(),
+            help_active: false,
+            cached_lines: Vec::new(),
+            cached_msg_count: 0,
+            cached_search_query: String::new(),
+            thinking_start_time: None,
+            current_round: 0,
+            should_quit: false,
+            session_store: None,
+            current_session_id: None,
+            config_store: None,
+            mcp_registry: None,
+        };
+
+        let backend = ratatui::backend::TestBackend::new(80, 1);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = ratatui::layout::Rect::new(0, 0, 80, 1);
+                render(f, area, &app.status, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_count = buffer.content.len();
+        assert!(cell_count > 0);
+        // Busy state should show elapsed time
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("42s"), "Should show elapsed time: got {cell_text:?}");
+        assert!(cell_text.contains("R3"), "Should show round: got {cell_text:?}");
+        assert!(cell_text.contains("search_web"), "Should show current tool: got {cell_text:?}");
+    }
+
+    #[test]
+    fn test_render_status_bar_idle() {
+        let status = StatusData {
+            model: "claude-sonnet-4".into(),
+            cwd: "/tmp".into(),
+            context_pct: 0.25,
+            token_count: 500,
+            api_key_set: false,
+            agent_busy: false,
+            current_tool: None,
+            connection_type: "api".into(),
+            elapsed_secs: 0,
+            current_round: 0,
+        };
+
+        let backend = ratatui::backend::TestBackend::new(60, 1);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                let area = ratatui::layout::Rect::new(0, 0, 60, 1);
+                render(f, area, &status, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // Idle state should show model name and no-key indicator
+        assert!(cell_text.contains("claude"), "Should show model: got {cell_text:?}");
+        // no-key indicator
+        assert!(cell_text.contains("no-key"), "Should show no-key: got {cell_text:?}");
+        // 25% bar
+        assert!(cell_text.contains("25%") || cell_text.contains("25 %"), "Should show 25%: got {cell_text:?}");
+    }
+}

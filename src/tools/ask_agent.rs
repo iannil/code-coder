@@ -167,3 +167,97 @@ impl Tool for AgentTool {
         Ok(result)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── AskUserTool ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_ask_user_tool_name() {
+        let tool = AskUserTool;
+        assert_eq!(tool.name(), "ask_user");
+    }
+
+    #[test]
+    fn test_ask_user_tool_description_not_empty() {
+        let tool = AskUserTool;
+        assert!(!tool.description().is_empty());
+        assert!(tool.description().contains("user"));
+    }
+
+    #[test]
+    fn test_ask_user_tool_execute_invalid_json() {
+        let tool = AskUserTool;
+        let result = tool.execute("not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ask_user_tool_execute_missing_question() {
+        let tool = AskUserTool;
+        let result = tool.execute(r#"{}"#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ask_user_deliver_answer_nonexistent() {
+        let result = AskUserTool::deliver_answer(99999, "answer".into());
+        assert!(!result, "delivering to non-existent request should return false");
+    }
+
+    #[test]
+    fn test_ask_user_tool_set_response_tx_and_answer() {
+        let (tx, rx) = mpsc::channel();
+        AskUserTool::set_response_tx(tx);
+
+        let tool = AskUserTool;
+        let input = r#"{"question":"What is your name?"}"#;
+
+        let handle = std::thread::spawn(move || {
+            let response = rx.recv().unwrap();
+            match response {
+                crate::agent::AgentResponse::AskUser { request_id, .. } => {
+                    AskUserTool::deliver_answer(request_id, "Alice".into());
+                }
+                _ => panic!("Expected AskUser"),
+            }
+        });
+
+        let result = tool.execute(input);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "Alice");
+
+        handle.join().unwrap();
+    }
+
+    // ─── AgentTool ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_agent_tool_new() {
+        let tool = AgentTool::new();
+        assert_eq!(tool.name(), "agent");
+    }
+
+    #[test]
+    fn test_agent_tool_description_not_empty() {
+        let tool = AgentTool::new();
+        assert!(!tool.description().is_empty());
+        assert!(tool.description().contains("sub-agent"));
+    }
+
+    #[test]
+    fn test_agent_tool_execute_invalid_json() {
+        let tool = AgentTool::new();
+        let result = tool.execute("not json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_agent_tool_execute_missing_task() {
+        let tool = AgentTool::new();
+        let result = tool.execute(r#"{}"#);
+        assert!(result.is_err());
+    }
+}

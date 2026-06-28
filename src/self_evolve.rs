@@ -513,6 +513,55 @@ mod tests {
     }
 
     #[test]
+    fn test_gap_analysis_docker() {
+        let ctx = "I need a Docker tool to deploy containers.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "docker-helper");
+    }
+
+    #[test]
+    fn test_gap_analysis_script() {
+        let ctx = "I cannot run Python scripts — I don't have that capability.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "script-runner");
+    }
+
+    #[test]
+    fn test_gap_analysis_data() {
+        let ctx = "I cannot analyze this dataset — I lack the tools.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "data-analyzer");
+    }
+
+    #[test]
+    fn test_gap_analysis_npm() {
+        let ctx = "I don't have a Node.js tool.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "js-helper");
+    }
+
+    #[test]
+    fn test_gap_analysis_generic() {
+        let ctx = "I lack the necessary capability to do this thing.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "custom-helper");
+    }
+
+    #[test]
+    fn test_gap_analysis_level2() {
+        let ctx = "Tool error with git — could not connect.";
+        let gap = analyze_gap(&[], 2, ctx).unwrap();
+        assert_eq!(gap.name, "git-helper");
+    }
+
+    #[test]
+    fn test_gap_analysis_level3() {
+        let ctx = "This is completely wrong.";
+        let gap = analyze_gap(&[], 3, ctx).unwrap();
+        assert_eq!(gap.name, "feedback-helper");
+    }
+
+    #[test]
     fn test_skill_file_generated() {
         let tmp = tempfile::tempdir().unwrap();
         let mut ev = SelfEvolve::new(IntrospectConfig::default());
@@ -556,6 +605,22 @@ mod tests {
         // Third should get -3
         let (p3, n3) = unique_file_path(dir.path(), "test");
         assert_eq!(n3, "test-3");
+    }
+
+    #[test]
+    fn test_unique_file_naming_full_100() {
+        let dir = tempfile::tempdir().unwrap();
+        // Fill up slots 1-99 — the 100th should get a timestamp suffix
+        for i in 1..=100 {
+            let (p, _) = unique_file_path(dir.path(), "full");
+            if i == 100 {
+                // 100th attempt: all "full.md" to "full-99.md" exist
+                assert!(p.to_string_lossy().contains("full-"));
+                assert!(!p.to_string_lossy().ends_with(".md")
+                    || p.to_string_lossy().contains("-"));
+            }
+            let _ = std::fs::write(&p, "dummy");
+        }
     }
 
     #[test]
@@ -616,5 +681,41 @@ mod tests {
         let result = ev.evaluate(&history, &tools, &mut skills, tmp.path().to_str().unwrap(), 10);
         assert!(matches!(result, IntrospectResult::None),
             "Should skip generation when skill already exists");
+    }
+
+    #[test]
+    fn test_truncate_short() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_long() {
+        let s = truncate("hello world this is a long string", 15);
+        assert!(s.ends_with("..."));
+        assert_eq!(s.len(), 15);
+    }
+
+    #[test]
+    fn test_config_defaults() {
+        let cfg = IntrospectConfig::default();
+        assert_eq!(cfg.cooldown_rounds, 5);
+        assert_eq!(cfg.activation_threshold, 3);
+        assert_eq!(cfg.max_per_session, 3);
+    }
+
+    #[test]
+    fn test_build_frontmatter() {
+        let meta = SkillMeta {
+            name: "test-skill".into(),
+            description: "A test".into(),
+            version: "1.0.0".into(),
+            status: SkillStatus::Draft,
+            source: SkillSource::SelfGenerated,
+            trigger: "test".into(),
+            usage_count: 0,
+        };
+        let fm = build_skill_frontmatter(&meta);
+        assert!(fm.contains("name: test-skill"));
+        assert!(fm.contains("status: draft"));
     }
 }

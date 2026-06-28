@@ -395,4 +395,237 @@ mod tests {
         assert_eq!(Message::user("x").role, "user");
         assert_eq!(Message::assistant("x").role, "assistant");
     }
+
+    #[test]
+    fn test_llm_config_direct_construction() {
+        let config = LlmConfig {
+            api_base: "https://test.example.com/v1".into(),
+            model: "test-model".into(),
+            api_key: "test-key".into(),
+            max_tokens: 2048,
+            temperature: 0.5,
+        };
+        assert_eq!(config.api_base, "https://test.example.com/v1");
+        assert_eq!(config.model, "test-model");
+        assert_eq!(config.api_key, "test-key");
+        assert_eq!(config.max_tokens, 2048);
+        assert_eq!(config.temperature, 0.5);
+    }
+
+    #[test]
+    fn test_llm_response_construction() {
+        let resp = LlmResponse {
+            text: "Hello".into(),
+            tokens_in: 10,
+            tokens_out: 5,
+        };
+        assert_eq!(resp.text, "Hello");
+        assert_eq!(resp.tokens_in, 10);
+        assert_eq!(resp.tokens_out, 5);
+    }
+
+    #[test]
+    fn test_stream_delta_text() {
+        let delta = StreamDelta {
+            text: Some("hello".into()),
+            reasoning: None,
+        };
+        assert_eq!(delta.text.as_deref(), Some("hello"));
+        assert!(delta.reasoning.is_none());
+    }
+
+    #[test]
+    fn test_stream_delta_reasoning() {
+        let delta = StreamDelta {
+            text: None,
+            reasoning: Some("thinking...".into()),
+        };
+        assert!(delta.text.is_none());
+        assert_eq!(delta.reasoning.as_deref(), Some("thinking..."));
+    }
+
+    #[test]
+    fn test_stream_delta_both() {
+        let delta = StreamDelta {
+            text: Some("answer".into()),
+            reasoning: Some("step by step".into()),
+        };
+        assert_eq!(delta.text.as_deref(), Some("answer"));
+        assert_eq!(delta.reasoning.as_deref(), Some("step by step"));
+    }
+
+    #[test]
+    fn test_message_content() {
+        let msg = Message::user("hello world");
+        assert_eq!(msg.content, "hello world");
+    }
+
+    #[test]
+    fn test_openai_client_new() {
+        let config = LlmConfig {
+            api_base: "http://localhost:8080".into(),
+            model: "test-model".into(),
+            api_key: "key".into(),
+            max_tokens: 100,
+            temperature: 0.5,
+        };
+        let client = OpenAiClient::new(config);
+        // config getter
+        assert_eq!(client.config.api_base, "http://localhost:8080");
+        assert_eq!(client.config.model, "test-model");
+    }
+
+    #[test]
+    fn test_stub_client_config() {
+        let client = StubClient::new();
+        let config = client.config();
+        assert_eq!(config.model, "stub");
+        assert_eq!(config.api_key, "stub");
+    }
+
+    #[test]
+    fn test_chat_request_serialization() {
+        let req = ChatRequest {
+            model: "gpt-4".into(),
+            messages: vec![
+                ChatMessage { role: "user".into(), content: "hello".into() },
+            ],
+            max_tokens: 100,
+            temperature: 0.5,
+            stream: false,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["model"], "gpt-4");
+        assert_eq!(json["messages"][0]["role"], "user");
+        assert_eq!(json["messages"][0]["content"], "hello");
+        assert_eq!(json["max_tokens"], 100);
+        assert_eq!(json["temperature"], 0.5);
+        // stream: false is skipped due to skip_serializing_if
+        assert!(json.get("stream").is_none() || json["stream"] == false);
+    }
+
+    #[test]
+    fn test_chat_request_stream_serialization() {
+        let req = ChatRequest {
+            model: "gpt-4".into(),
+            messages: vec![],
+            max_tokens: 100,
+            temperature: 0.5,
+            stream: true,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["stream"], true);
+    }
+
+    #[test]
+    fn test_chat_request_skip_serialization_when_not_stream() {
+        // stream: false should skip the "stream" field
+        let req = ChatRequest {
+            model: "gpt-4".into(),
+            messages: vec![],
+            max_tokens: 100,
+            temperature: 0.5,
+            stream: false,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        // When stream=false, the field should be omitted due to skip_serializing_if
+        assert!(json.get("stream").is_none() || json["stream"] == false);
+    }
+
+    #[test]
+    fn test_chat_response_deserialize() {
+        let json = r#"{
+            "choices": [{"message": {"content": "Hello world"}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 20}
+        }"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.choices.len(), 1);
+        assert_eq!(resp.choices[0].message.content.as_deref(), Some("Hello world"));
+        assert!(resp.usage.is_some());
+        assert_eq!(resp.usage.as_ref().unwrap().prompt_tokens, 10);
+    }
+
+    #[test]
+    fn test_chat_response_no_usage() {
+        let json = r#"{"choices": [{"message": {"content": "test"}}]}"#;
+        let resp: ChatResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.usage.is_none());
+    }
+
+    #[test]
+    fn test_stream_chunk_deserialize() {
+        let json = r#"{"choices": [{"delta": {"content": "Hello"}, "finish_reason": null}]}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        assert_eq!(chunk.choices.len(), 1);
+        assert_eq!(chunk.choices[0].delta.content.as_deref(), Some("Hello"));
+    }
+
+    #[test]
+    fn test_stream_chunk_with_reasoning() {
+        let json = r#"{"choices": [{"delta": {"content": "answer", "reasoning_content": "thinking step"}}]}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        let delta = &chunk.choices[0].delta;
+        assert_eq!(delta.content.as_deref(), Some("answer"));
+        assert_eq!(delta.reasoning_content.as_deref(), Some("thinking step"));
+    }
+
+    #[test]
+    fn test_stream_chunk_empty_delta() {
+        let json = r#"{"choices": [{"delta": {}}]}"#;
+        let chunk: StreamChunk = serde_json::from_str(json).unwrap();
+        assert!(chunk.choices[0].delta.content.is_none());
+        assert!(chunk.choices[0].delta.reasoning_content.is_none());
+    }
+
+    #[test]
+    fn test_choice_message_with_content() {
+        let json = r#"{"message": {"content": "test response"}}"#;
+        let choice: Choice = serde_json::from_str(json).unwrap();
+        assert_eq!(choice.message.content.as_deref(), Some("test response"));
+    }
+
+    #[test]
+    fn test_choice_message_null_content() {
+        let json = r#"{"message": {}}"#;
+        let choice: Choice = serde_json::from_str(json).unwrap();
+        assert!(choice.message.content.is_none());
+    }
+
+    #[test]
+    fn test_usage_deserialize() {
+        let json = r#"{"prompt_tokens": 50, "completion_tokens": 100}"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.prompt_tokens, 50);
+        assert_eq!(usage.completion_tokens, 100);
+    }
+
+    #[test]
+    fn test_usage_defaults() {
+        let json = r#"{}"#;
+        let usage: Usage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.prompt_tokens, 0);
+        assert_eq!(usage.completion_tokens, 0);
+    }
+
+    #[test]
+    fn test_chat_message_serialize() {
+        let msg = ChatMessage { role: "user".into(), content: "hello".into() };
+        let json = serde_json::to_value(&msg).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(json["content"], "hello");
+    }
+
+    #[tokio::test]
+    async fn test_stub_client_chat_returns_response() {
+        let client = StubClient::new();
+        let resp = client.chat(&[Message::user("test message")]).await.unwrap();
+        assert!(resp.text.contains("test message"));
+    }
+
+    #[tokio::test]
+    async fn test_stub_client_chat_empty_messages() {
+        let client = StubClient::new();
+        let resp = client.chat(&[]).await.unwrap();
+        assert!(!resp.text.is_empty()); // should still produce a response
+    }
 }

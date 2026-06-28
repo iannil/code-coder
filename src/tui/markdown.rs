@@ -730,4 +730,170 @@ mod tests {
         let lines = render_markdown_with_highlight("hello world", Some(""));
         assert!(!lines.is_empty());
     }
+
+    // ─── render_diff_text ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_render_diff_text_detects_diff_start() {
+        let diff = "diff --git a/src/main.rs b/src/main.rs\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1,3 +1,4 @@\n line1\n+new line\n-old line";
+        let lines = render_diff_text(diff);
+        assert!(!lines.is_empty(), "Should detect diff");
+        assert!(lines.len() >= 4, "Should have multiple styled lines");
+    }
+
+    #[test]
+    fn test_render_diff_text_not_a_diff() {
+        let lines = render_diff_text("just some text\nwith multiple lines");
+        assert!(lines.is_empty(), "Non-diff text should return empty");
+    }
+
+    #[test]
+    fn test_render_diff_text_additions_removals() {
+        let diff = "--- a/file\n+++ b/file\n@@ -1 +1,2 @@\n-removed\n+added\n context";
+        let lines = render_diff_text(diff);
+        assert!(!lines.is_empty());
+        // Verify we have a mix of line types
+        let count = lines.len();
+        assert!(count >= 4, "Should have diff lines, got {count}");
+    }
+
+    #[test]
+    fn test_render_diff_text_chunk_header() {
+        let diff = "--- a\n+++ b\n@@ -1,5 +1,6 @@";
+        let lines = render_diff_text(diff);
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_diff_text_context_lines() {
+        let diff = "--- a\n+++ b\n@@ -1 +1 @@\n context line\n same here";
+        let lines = render_diff_text(diff);
+        assert!(!lines.is_empty());
+    }
+
+    // ─── push_highlighted_text ─────────────────────────────────────────────
+
+    #[test]
+    fn test_push_highlighted_text_no_highlight() {
+        let mut buf = "hello".to_string();
+        let mut spans = Vec::new();
+        let style = Style::default();
+        push_highlighted_text(&mut buf, &mut spans, style, None);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].content, "hello");
+    }
+
+    #[test]
+    fn test_push_highlighted_text_empty_buf() {
+        let mut buf = String::new();
+        let mut spans = Vec::new();
+        push_highlighted_text(&mut buf, &mut spans, Style::default(), Some("x"));
+        assert!(spans.is_empty());
+    }
+
+    #[test]
+    fn test_push_highlighted_text_with_match() {
+        let mut buf = "find me".to_string();
+        let mut spans = Vec::new();
+        push_highlighted_text(&mut buf, &mut spans, Style::default(), Some("find"));
+        assert_eq!(spans.len(), 2, "Should split into 2 spans: {}", spans.len());
+        assert_eq!(spans[0].content, "find", "First span should be matched text");
+        assert_eq!(spans[1].content, " me", "Second span should be remainder");
+    }
+
+    #[test]
+    fn test_push_highlighted_text_case_insensitive() {
+        let mut buf = "Find Me".to_string();
+        let mut spans = Vec::new();
+        push_highlighted_text(&mut buf, &mut spans, Style::default(), Some("find"));
+        assert_eq!(spans.len(), 2);
+        assert_eq!(spans[0].content, "Find");
+    }
+
+    // ─── syntect_color_to_ratatui ──────────────────────────────────────────
+
+    #[test]
+    fn test_syntect_color_to_ratatui_rgb() {
+        let sc = syntect::highlighting::Color { r: 255, g: 128, b: 64, a: 255 };
+        let rc = syntect_color_to_ratatui(sc);
+        assert_eq!(rc, ratatui::style::Color::Rgb(255, 128, 64));
+    }
+
+    // ─── render_table ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_render_table_empty_rows() {
+        let mut lines = Vec::new();
+        render_table(&mut lines, &[]);
+        assert!(lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_table_basic() {
+        let mut lines = Vec::new();
+        let rows = vec![
+            "| Name | Age |".into(),
+            "|------|-----|".into(),
+            "| Alice | 30 |".into(),
+        ];
+        render_table(&mut lines, &rows);
+        assert!(!lines.is_empty(), "Should render table");
+        // Should produce at least 3 lines (header, separator, data)
+        assert!(lines.len() >= 3, "Expected at least 3 table lines, got {}", lines.len());
+    }
+
+    // ─── set_dark_mode / is_dark_mode ──────────────────────────────────────
+
+    #[test]
+    fn test_set_dark_mode_toggle() {
+        set_dark_mode(true);
+        assert!(is_dark_mode());
+        set_dark_mode(false);
+        assert!(!is_dark_mode());
+        set_dark_mode(true);
+        assert!(is_dark_mode());
+    }
+
+    // ─── render_markdown: diff code block ──────────────────────────────────
+
+    #[test]
+    fn test_render_markdown_diff_block() {
+        let input = "```diff\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-old\n+new\n```";
+        let lines = render_markdown(input);
+        assert!(!lines.is_empty(), "diff block should render");
+        // Should have header + diff content + footer
+        assert!(lines.len() >= 4, "diff block: {}+ lines", lines.len());
+    }
+
+    // ─── render_markdown: table ────────────────────────────────────────────
+
+    #[test]
+    fn test_render_markdown_table() {
+        let input = "| H1 | H2 |\n|---|---|\n| A | B |";
+        let lines = render_markdown(input);
+        assert!(!lines.is_empty(), "table should render");
+    }
+
+    // ─── render_markdown: mixed inline formatting ──────────────────────────
+
+    #[test]
+    fn test_render_markdown_bold_inline_code() {
+        let input = "**bold** and `code` together";
+        let lines = render_markdown(input);
+        assert!(!lines.is_empty());
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<String>();
+        assert!(rendered.contains("bold"), "bold should appear");
+        assert!(rendered.contains("code"), "code should appear");
+    }
+
+    // ─── render_markdown: link with title ──────────────────────────────────
+
+    #[test]
+    fn test_render_markdown_link_with_title() {
+        let input = "[CodeCoder](https://github.com/user/codecoder) is great";
+        let lines = render_markdown(input);
+        assert!(!lines.is_empty());
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<String>();
+        assert!(rendered.contains("CodeCoder"), "link text should appear");
+    }
 }

@@ -75,4 +75,24 @@ mod tests {
         let result = RunInSandbox.execute("python\n---\n");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_docker_check_runs() {
+        // This tests that docker_available check and select_sandbox don't panic
+        let result = RunInSandbox.execute("python\n---\nprint('hello')");
+        // May succeed if Docker is available, or fail gracefully
+        if let Err(e) = result {
+            let msg = e.to_string();
+            // Should be a sandbox/docker error, not a parse error
+            assert!(msg.contains("Docker") || msg.contains("sandbox") || msg.contains("not") || msg.contains("error"));
+        }
+    }
+
+    #[test]
+    fn test_select_sandbox_for_python() {
+        let sb = select_sandbox("python", false);
+        assert_eq!(sb.name(), "none");
+        let sb2 = select_sandbox("python", true);
+        assert_eq!(sb2.name(), "docker");
+    }
 }

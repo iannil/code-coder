@@ -401,3 +401,502 @@ fn extract_node_name<'a>(node: &tree_sitter::Node, source: &'a str) -> Option<&'
 fn extract_line<'a>(source: &'a str, row: usize) -> &'a str {
     source.lines().nth(row).unwrap_or("")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    // ─── Grep tool metadata ───────────────────────────────────────────────
+
+    #[test]
+    fn test_grep_name() {
+        let grep = Grep;
+        assert_eq!(grep.name(), "grep");
+    }
+
+    #[test]
+    fn test_grep_description_not_empty() {
+        let grep = Grep;
+        assert!(!grep.description().is_empty());
+        assert!(grep.description().contains("Search"));
+    }
+
+    // ─── execute with invalid input ────────────────────────────────────────
+
+    #[test]
+    fn test_execute_invalid_json() {
+        let grep = Grep;
+        let result = grep.execute("not valid json");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_execute_empty_input() {
+        let grep = Grep;
+        let result = grep.execute(r#"{}"#);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("pattern") || err.contains("ast_query"));
+    }
+
+    // ─── parse_ast_query ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_ast_query_valid() {
+        let (kind, name) = parse_ast_query("function:main").unwrap();
+        assert_eq!(kind, "function");
+        assert_eq!(name, "main");
+    }
+
+    #[test]
+    fn test_parse_ast_query_wildcard() {
+        let (kind, name) = parse_ast_query("struct:*").unwrap();
+        assert_eq!(kind, "struct");
+        assert_eq!(name, "*");
+    }
+
+    #[test]
+    fn test_parse_ast_query_multi_colon() {
+        let (kind, name) = parse_ast_query("fn:foo::bar").unwrap();
+        assert_eq!(kind, "fn");
+        assert_eq!(name, "foo::bar");
+    }
+
+    #[test]
+    fn test_parse_ast_query_no_colon() {
+        let result = parse_ast_query("function");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ast_query_empty_kind() {
+        let result = parse_ast_query(":main");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ast_query_empty_name() {
+        let result = parse_ast_query("function:");
+        assert!(result.is_err());
+    }
+
+    // ─── relative_path ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_relative_path_strips_prefix() {
+        let p = Path::new("/home/user/project/src/main.rs");
+        let rel = relative_path(p, "/home/user/project");
+        assert_eq!(rel, "src/main.rs");
+    }
+
+    #[test]
+    fn test_relative_path_no_prefix_match() {
+        let p = Path::new("/other/path/file.rs");
+        let rel = relative_path(p, "/home/user/project");
+        assert_eq!(rel, "/other/path/file.rs");
+    }
+
+    #[test]
+    fn test_relative_path_current_dir() {
+        let p = Path::new("file.rs");
+        let rel = relative_path(p, ".");
+        assert_eq!(rel, "file.rs");
+    }
+
+    // ─── is_text_file ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_text_file_rs() {
+        assert!(is_text_file(Path::new("main.rs")));
+    }
+
+    #[test]
+    fn test_is_text_file_py() {
+        assert!(is_text_file(Path::new("script.py")));
+    }
+
+    #[test]
+    fn test_is_text_file_md() {
+        assert!(is_text_file(Path::new("README.md")));
+    }
+
+    #[test]
+    fn test_is_text_file_no_extension() {
+        assert!(!is_text_file(Path::new("Makefile")));
+    }
+
+    #[test]
+    fn test_is_text_file_binary_ext() {
+        assert!(!is_text_file(Path::new("image.png")));
+        assert!(!is_text_file(Path::new("binary.bin")));
+        assert!(!is_text_file(Path::new("archive.zip")));
+    }
+
+    #[test]
+    fn test_is_text_file_mjs() {
+        assert!(is_text_file(Path::new("module.mjs")));
+    }
+
+    // ─── file_extensions_for_language ──────────────────────────────────────
+
+    #[test]
+    fn test_extensions_rust() {
+        let exts = file_extensions_for_language("rust");
+        assert_eq!(exts, vec!["rs"]);
+    }
+
+    #[test]
+    fn test_extensions_rust_alias() {
+        let exts = file_extensions_for_language("rs");
+        assert_eq!(exts, vec!["rs"]);
+    }
+
+    #[test]
+    fn test_extensions_typescript() {
+        let exts = file_extensions_for_language("typescript");
+        assert_eq!(exts, vec!["ts", "tsx", "mts", "cts"]);
+    }
+
+    #[test]
+    fn test_extensions_javascript() {
+        let exts = file_extensions_for_language("javascript");
+        assert_eq!(exts, vec!["js", "jsx", "mjs", "cjs"]);
+    }
+
+    #[test]
+    fn test_extensions_python() {
+        let exts = file_extensions_for_language("python");
+        assert_eq!(exts, vec!["py"]);
+    }
+
+    #[test]
+    fn test_extensions_go() {
+        let exts = file_extensions_for_language("go");
+        assert_eq!(exts, vec!["go"]);
+    }
+
+    #[test]
+    fn test_extensions_unknown() {
+        let exts = file_extensions_for_language("unknown");
+        assert_eq!(exts, vec!["rs", "ts", "tsx", "js", "jsx", "py", "go"]);
+    }
+
+    #[test]
+    fn test_extensions_case_insensitive() {
+        let exts = file_extensions_for_language("Rust");
+        assert_eq!(exts, vec!["rs"]);
+    }
+
+    // ─── ast_node_types ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_ast_node_types_function() {
+        let types = ast_node_types("function");
+        assert!(types.contains(&"function_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_fn_alias() {
+        let types = ast_node_types("fn");
+        assert!(types.contains(&"function_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_struct() {
+        let types = ast_node_types("struct");
+        assert!(types.contains(&"struct_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_trait() {
+        let types = ast_node_types("trait");
+        assert!(types.contains(&"trait_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_impl() {
+        let types = ast_node_types("impl");
+        assert!(types.contains(&"impl_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_enum() {
+        let types = ast_node_types("enum");
+        assert!(types.contains(&"enum_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_class() {
+        let types = ast_node_types("class");
+        assert!(types.contains(&"class_declaration"));
+    }
+
+    #[test]
+    fn test_ast_node_types_type() {
+        let types = ast_node_types("type");
+        assert!(types.contains(&"type_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_const() {
+        let types = ast_node_types("const");
+        assert!(types.contains(&"const_item"));
+    }
+
+    #[test]
+    fn test_ast_node_types_macro() {
+        let types = ast_node_types("macro");
+        assert!(types.contains(&"macro_definition"));
+    }
+
+    #[test]
+    fn test_ast_node_types_module() {
+        let types = ast_node_types("module");
+        assert!(types.contains(&"module"));
+    }
+
+    #[test]
+    fn test_ast_node_types_unknown() {
+        let types = ast_node_types("nonexistent");
+        assert!(types.is_empty());
+    }
+
+    #[test]
+    fn test_ast_node_types_mod_alias() {
+        let types = ast_node_types("mod");
+        assert!(types.contains(&"module"));
+    }
+
+    // ─── extract_node_name ────────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_node_name_from_function() {
+        let source = "fn hello() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root = tree.root_node();
+        // Walk children to find the function item
+        let mut cursor = root.walk();
+        let found = root.children(&mut cursor).find(|child| {
+            child.kind() == "function_item"
+        });
+        if let Some(fn_node) = found {
+            let name = extract_node_name(&fn_node, source);
+            assert_eq!(name, Some("hello"));
+        } else {
+            panic!("Expected to find function_item node");
+        }
+    }
+
+    #[test]
+    fn test_extract_node_name_no_name() {
+        // A numeric literal node has no "name" child
+        let source = "let x = 42;";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let root = tree.root_node();
+        // The source_file node has no name — this is expected
+        let name = extract_node_name(&root, source);
+        assert!(name.is_none());
+    }
+
+    // ─── extract_line ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_extract_line_first() {
+        assert_eq!(extract_line("hello\nworld\nfoo", 0), "hello");
+    }
+
+    #[test]
+    fn test_extract_line_middle() {
+        assert_eq!(extract_line("a\nb\nc\n", 1), "b");
+    }
+
+    #[test]
+    fn test_extract_line_last() {
+        assert_eq!(extract_line("a\nb\nc", 2), "c");
+    }
+
+    #[test]
+    fn test_extract_line_out_of_bounds() {
+        assert_eq!(extract_line("hello\nworld", 10), "");
+    }
+
+    #[test]
+    fn test_extract_line_empty_source() {
+        assert_eq!(extract_line("", 0), "");
+    }
+
+    #[test]
+    fn test_extract_line_single_line() {
+        assert_eq!(extract_line("only line", 0), "only line");
+    }
+
+    // ─── load_grammar ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_load_grammar_rust() {
+        let lang = load_grammar("rust");
+        let rust_lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        assert_eq!(lang, rust_lang);
+    }
+
+    #[test]
+    fn test_load_grammar_rs_alias() {
+        let lang = load_grammar("rs");
+        let rust_lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        assert_eq!(lang, rust_lang);
+    }
+
+    #[test]
+    fn test_load_grammar_python() {
+        let lang = load_grammar("python");
+        let py_lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
+        assert_eq!(lang, py_lang);
+    }
+
+    #[test]
+    fn test_load_grammar_typescript() {
+        let lang = load_grammar("typescript");
+        let ts_lang: tree_sitter::Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
+        assert_eq!(lang, ts_lang);
+    }
+
+    #[test]
+    fn test_load_grammar_unknown_falls_back_to_rust() {
+        let lang = load_grammar("nonexistent");
+        let rust_lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        assert_eq!(lang, rust_lang);
+    }
+
+    #[test]
+    fn test_load_grammar_case_insensitive() {
+        let lang = load_grammar("RUST");
+        let rust_lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+        assert_eq!(lang, rust_lang);
+    }
+
+    // ─── find_ast_matches ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_find_ast_matches_function_in_rust() {
+        let source = "fn hello() {}\nfn world() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("function", "hello", source, &tree.root_node());
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].line_number, 1);
+        assert_eq!(matches[0].match_type, "function");
+    }
+
+    #[test]
+    fn test_find_ast_matches_wildcard() {
+        let source = "fn a() {}\nfn b() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("function", "*", source, &tree.root_node());
+        assert_eq!(matches.len(), 2);
+    }
+
+    #[test]
+    fn test_find_ast_matches_no_match() {
+        let source = "fn hello() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("function", "nonexistent", source, &tree.root_node());
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn test_find_ast_matches_struct() {
+        let source = "struct Point { x: i32, y: i32 }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("struct", "Point", source, &tree.root_node());
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].match_type, "struct");
+    }
+
+    #[test]
+    fn test_find_ast_matches_trait() {
+        let source = "trait Display { fn fmt(); }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("trait", "Display", source, &tree.root_node());
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn test_find_ast_matches_impl() {
+        // `impl S { ... }` in tree-sitter-rust does not have a "name" field
+        // (it has a "type" field), so extract_node_name returns None and
+        // no matches are found. This test documents that behavior.
+        let source = "struct S;\nimpl S { fn method() {} }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        // Named query: no match because impl_item lacks a "name" field
+        let matches = find_ast_matches("impl", "S", source, &tree.root_node());
+        assert_eq!(matches.len(), 0);
+    }
+
+    #[test]
+    fn test_find_ast_matches_enum() {
+        let source = "enum Color { Red, Blue }";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("enum", "Color", source, &tree.root_node());
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn test_find_ast_matches_const() {
+        let source = "const MAX: usize = 100;";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("const", "MAX", source, &tree.root_node());
+        assert_eq!(matches.len(), 1);
+    }
+
+    #[test]
+    fn test_find_ast_matches_unknown_kind_returns_empty() {
+        let source = "fn foo() {}";
+        let mut parser = tree_sitter::Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .unwrap();
+        let tree = parser.parse(source, None).unwrap();
+        let matches = find_ast_matches("bogus", "*", source, &tree.root_node());
+        assert!(matches.is_empty());
+    }
+}

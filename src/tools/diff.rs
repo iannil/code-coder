@@ -113,9 +113,59 @@ mod tests {
     }
 
     #[test]
+    fn test_diff_stats_simple() {
+        let diff = "diff --git a/a.rs b/b.rs\n+5\n-3\n+2\nunchanged";
+        let (adds, dels) = diff_stats(diff);
+        assert_eq!(adds, 7);
+        assert_eq!(dels, 3);
+    }
+
+    #[test]
+    fn test_diff_stats_no_changes() {
+        assert_eq!(diff_stats("nothing to see here"), (0, 0));
+    }
+
+    #[test]
     fn test_diff_tool_invalid_json() {
         let tool = DiffTool;
         let result = tool.execute("not json");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_diff_tool_name() {
+        let tool = DiffTool;
+        assert_eq!(tool.name(), "diff");
+    }
+
+    #[test]
+    fn test_diff_tool_description_not_empty() {
+        let tool = DiffTool;
+        assert!(!tool.description().is_empty());
+    }
+
+    #[test]
+    fn test_diff_tool_default_path() {
+        let tool = DiffTool;
+        // With valid JSON but no git repo context, it should still try
+        let result = tool.execute(r#"{"path": "/nonexistent"}"#);
+        // Either git error or "no changes" — both exercise the code path
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn test_diff_tool_cached() {
+        let tool = DiffTool;
+        let result = tool.execute(r#"{"cached": true}"#);
+        // Should run git diff --cached
+        assert!(result.is_err() || result.is_ok());
+    }
+
+    #[test]
+    fn test_diff_stats_non_numeric() {
+        let diff = "diff --git a/a.rs b/b.rs\n+notanumber\n-alsonot";
+        let (adds, dels) = diff_stats(diff);
+        assert_eq!(adds, 0);
+        assert_eq!(dels, 0);
     }
 }

@@ -210,4 +210,74 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_format_output_stdout_only() {
+        let output = std::process::Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: b"hello world\n".to_vec(),
+            stderr: b"".to_vec(),
+        };
+        let result = format_output(output);
+        assert_eq!(result, "hello world\n");
+    }
+
+    #[test]
+    fn test_format_output_stderr_only() {
+        let output = std::process::Output {
+            status: std::process::Command::new("false").status().unwrap(),
+            stdout: b"".to_vec(),
+            stderr: b"error: something failed\n".to_vec(),
+        };
+        let result = format_output(output);
+        assert_eq!(result, "stderr: error: something failed\n");
+    }
+
+    #[test]
+    fn test_format_output_both() {
+        let output = std::process::Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: b"output\n".to_vec(),
+            stderr: b"warning\n".to_vec(),
+        };
+        let result = format_output(output);
+        assert!(result.contains("output"));
+        assert!(result.contains("warning"));
+    }
+
+    #[test]
+    fn test_format_output_failure_no_output() {
+        let output = std::process::Output {
+            status: std::process::Command::new("false").status().unwrap(),
+            stdout: b"".to_vec(),
+            stderr: b"".to_vec(),
+        };
+        let result = format_output(output);
+        assert!(result.contains("exit code"));
+    }
+
+    #[test]
+    fn test_format_output_failure_with_stderr() {
+        let output = std::process::Output {
+            status: std::process::Command::new("false").status().unwrap(),
+            stdout: b"".to_vec(),
+            stderr: b"oops\n".to_vec(),
+        };
+        let result = format_output(output);
+        assert!(result.contains("stderr: oops"));
+        // When there's stderr, we show the stderr, not the exit code
+        assert!(!result.contains("exit code"));
+    }
+
+    #[test]
+    fn test_wasm_name() {
+        let sb = WasmSandbox::new();
+        assert_eq!(sb.name(), "wasm");
+    }
+
+    #[test]
+    fn test_run_wasm_direct_empty() {
+        let result = run_wasm_direct("");
+        assert!(result.is_err());
+    }
 }

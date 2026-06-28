@@ -159,4 +159,60 @@ mod tests {
         let result = tool.execute(r#"{"action": "bad"}"#);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_todo_update() {
+        use std::sync::atomic::Ordering;
+        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
+        drop(tasks);
+
+        let tool = TodoTool;
+        tool.execute(r#"{"action": "create", "task": "old task"}"#).unwrap();
+        let r = tool.execute(r#"{"action": "update", "id": 1, "task": "updated task"}"#).unwrap();
+        assert!(r.contains("Updated"));
+        let list = tool.execute(r#"{"action": "list"}"#).unwrap();
+        assert!(list.contains("updated task"));
+    }
+
+    #[test]
+    fn test_todo_delete() {
+        use std::sync::atomic::Ordering;
+        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
+        drop(tasks);
+
+        let tool = TodoTool;
+        tool.execute(r#"{"action": "create", "task": "delete me"}"#).unwrap();
+        let r = tool.execute(r#"{"action": "delete", "id": 1}"#).unwrap();
+        assert!(r.contains("Deleted"));
+        let list = tool.execute(r#"{"action": "list"}"#).unwrap();
+        assert!(list.contains("No tasks"));
+    }
+
+    #[test]
+    fn test_todo_not_found() {
+        use std::sync::atomic::Ordering;
+        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
+        drop(tasks);
+
+        let tool = TodoTool;
+        let r = tool.execute(r#"{"action": "complete", "id": 999}"#);
+        assert!(r.is_err());
+        let r2 = tool.execute(r#"{"action": "delete", "id": 999}"#);
+        assert!(r2.is_err());
+        let r3 = tool.execute(r#"{"action": "update", "id": 999}"#);
+        assert!(r3.is_err());
+    }
+
+    #[test]
+    fn test_todo_create_empty_task() {
+        let tool = TodoTool;
+        let r = tool.execute(r#"{"action": "create", "task": ""}"#);
+        assert!(r.is_err());
+    }
 }

@@ -119,6 +119,22 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_html_all_entities() {
+        assert_eq!(strip_html_tags("&lt;code&gt;"), "<code>");
+        assert_eq!(strip_html_tags("&quot;str&quot;"), "\"str\"");
+        assert_eq!(strip_html_tags("&apos;x&apos;"), "'x'");
+        assert_eq!(strip_html_tags("a&nbsp;b"), "a b");
+        assert_eq!(strip_html_tags("&unknown;val"), "unknownval");
+        // incomplete entity (no semicolon) — characters are consumed but not output
+        assert_eq!(strip_html_tags("text&amp"), "text");
+    }
+
+    #[test]
+    fn test_strip_html_no_tags() {
+        assert_eq!(strip_html_tags("plain text"), "plain text");
+    }
+
+    #[test]
     fn test_empty_url() {
         assert!(SearchWeb.execute("").is_err());
     }

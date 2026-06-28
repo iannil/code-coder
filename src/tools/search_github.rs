@@ -156,4 +156,83 @@ mod tests {
     fn test_empty_input() {
         assert!(SearchGitHub.execute("").is_err());
     }
+
+    #[test]
+    fn test_urlencoding_basic() {
+        assert_eq!(urlencoding("hello"), "hello");
+        assert_eq!(urlencoding("a b"), "a%20b");
+        assert_eq!(urlencoding("foo/bar"), "foo%2Fbar");
+    }
+
+    #[test]
+    fn test_urlencoding_special_chars() {
+        assert_eq!(urlencoding("a+b"), "a%2Bb");
+        assert_eq!(urlencoding("100%"), "100%25");
+    }
+
+    #[test]
+    fn test_format_repos_basic() {
+        let json = serde_json::json!({
+            "total_count": 42,
+            "items": [
+                {
+                    "full_name": "user/repo",
+                    "description": "A test repo",
+                    "stargazers_count": 100,
+                    "language": "Rust",
+                    "html_url": "https://github.com/user/repo"
+                }
+            ]
+        });
+        let result = format_repos(&json).unwrap();
+        assert!(result.contains("user/repo"));
+        assert!(result.contains("100"));
+        assert!(result.contains("A test repo"));
+        assert!(result.contains("Rust"));
+    }
+
+    #[test]
+    fn test_format_repos_no_items() {
+        let json = serde_json::json!({"total_count": 0});
+        let result = format_repos(&json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_format_code_basic() {
+        let json = serde_json::json!({
+            "total_count": 5,
+            "items": [
+                {
+                    "name": "main.rs",
+                    "repository": {"full_name": "user/repo"},
+                    "path": "src/main.rs",
+                    "html_url": "https://github.com/user/repo/src/main.rs"
+                }
+            ]
+        });
+        let result = format_code(&json).unwrap();
+        assert!(result.contains("user/repo/src/main.rs"));
+    }
+
+    #[test]
+    fn test_format_code_no_items() {
+        let json = serde_json::json!({"total_count": 0});
+        let result = format_code(&json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_search_github_name_and_description() {
+        let tool = SearchGitHub;
+        assert_eq!(tool.name(), "search_github");
+        assert!(tool.description().contains("GitHub"));
+    }
+
+    #[test]
+    fn test_search_github_code_mode_invalid() {
+        let tool = SearchGitHub;
+        let result = tool.execute("code:");
+        assert!(result.is_err());
+    }
 }

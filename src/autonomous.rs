@@ -210,3 +210,93 @@ impl AutonomousRunner {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── ScheduledTask ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_scheduled_task_construction() {
+        let task = ScheduledTask {
+            name: "health-check".into(),
+            prompt: "Check system health".into(),
+            interval_secs: 60,
+        };
+        assert_eq!(task.name, "health-check");
+        assert_eq!(task.prompt, "Check system health");
+        assert_eq!(task.interval_secs, 60);
+    }
+
+    // ─── Scheduler ────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_scheduler_new_empty() {
+        let _scheduler = Scheduler::new(vec![]);
+    }
+
+    #[test]
+    fn test_scheduler_new_with_tasks() {
+        let tasks = vec![
+            ScheduledTask {
+                name: "task1".into(),
+                prompt: "Do thing 1".into(),
+                interval_secs: 30,
+            },
+            ScheduledTask {
+                name: "task2".into(),
+                prompt: "Do thing 2".into(),
+                interval_secs: 120,
+            },
+        ];
+        let _scheduler = Scheduler::new(tasks);
+    }
+
+    // ─── FileWatcher ──────────────────────────────────────────────────────
+
+    #[test]
+    fn test_file_watcher_new_empty() {
+        let _watcher = FileWatcher::new(vec![]);
+    }
+
+    #[test]
+    fn test_file_watcher_new_with_paths() {
+        let watcher = FileWatcher::new(vec!["/tmp".into(), "/var/log".into()]);
+        _ = watcher;
+    }
+
+    // ─── AutonomousRunner ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_autonomous_runner_exists() {
+        let _runner = AutonomousRunner;
+    }
+
+    #[tokio::test]
+    async fn test_scheduler_fires_timer_event() {
+        let bus = SharedEventBus::new();
+        let bus_clone = bus.clone();
+
+        let task = ScheduledTask {
+            name: "test-task".into(),
+            prompt: "test prompt".into(),
+            interval_secs: 1, // fire every second
+        };
+
+        let scheduler = Scheduler::new(vec![task]);
+        let handle = tokio::spawn(async move {
+            scheduler.run(bus_clone).await;
+        });
+
+        // Wait for the first timer to fire (interval is 1 second)
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+
+        // Drain events — should have a Timer or UserMessage
+        let event = bus.drain_event();
+        assert!(event.is_some(), "Expected at least one event from scheduler after 1.1s");
+
+        // Clean up
+        handle.abort();
+    }
+}

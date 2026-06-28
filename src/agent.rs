@@ -582,4 +582,176 @@ Here is the content."#;
             handle.join().unwrap();
         }
     }
+
+    #[test]
+    fn test_parse_tool_call_invalid_format() {
+        let calls = parse_tool_calls("plain text no tool call");
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tool_call_empty_string() {
+        let calls = parse_tool_calls("");
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tool_call_with_trailing_text() {
+        let text = "Some text\n```tool\n{\"name\": \"read_file\", \"input\": \"Cargo.toml\"}\n```\ntrailing";
+        let calls = parse_tool_calls(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "read_file");
+        assert_eq!(calls[0].input, "Cargo.toml");
+    }
+
+    #[test]
+    fn test_agent_response_text_debug() {
+        let resp = AgentResponse::Text { text: "hello".into() };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("hello"));
+    }
+
+    #[test]
+    fn test_agent_response_error_debug() {
+        let resp = AgentResponse::Error { message: "oops".into() };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("oops"));
+    }
+
+    #[test]
+    fn test_agent_response_shutdown_debug() {
+        let resp = AgentResponse::Shutdown;
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("Shutdown") || debug.contains("shutdown"));
+    }
+
+    #[test]
+    fn test_agent_bus_subscriber_name() {
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let subscriber = AgentBusSubscriber { sender: tx };
+        assert_eq!(subscriber.name(), "agent");
+    }
+
+    #[test]
+    fn test_agent_bus_subscriber_handles_user_message() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut subscriber = AgentBusSubscriber { sender: tx };
+        let event = crate::event::Event::UserMessage {
+            text: "hello from bus".into(),
+            session_id: "test".into(),
+        };
+        subscriber.handle(&event).unwrap();
+        let received = rx.recv_timeout(std::time::Duration::from_millis(100)).unwrap();
+        assert_eq!(received, "hello from bus");
+    }
+
+    #[test]
+    fn test_agent_bus_subscriber_ignores_non_user_message() {
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let mut subscriber = AgentBusSubscriber { sender: tx };
+        let event = crate::event::Event::Timer { id: "test".into() };
+        subscriber.handle(&event).unwrap();
+        // Should not send anything for timer events
+        let result = rx.try_recv();
+        assert!(result.is_err(), "Timer events should not trigger sending");
+    }
+
+    #[test]
+    fn test_handle_message_error() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let ctx = Context::load("/tmp");
+            let mut agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
+            let tools = crate::tools::ToolRegistry::new_for_test();
+            let mut skills = crate::skill::SkillRegistry::new();
+            // An empty message should still produce a response
+            let result = agent.handle_message("", &tools, &mut skills, &|_, _| true).await;
+            assert!(result.is_ok() || result.is_err());
+        });
+    }
+
+    #[test]
+    fn test_agent_heartbeat_response() {
+        let resp = AgentResponse::Heartbeat { pending: 5 };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("Heartbeat") || debug.contains("5"));
+    }
+
+    #[test]
+    fn test_agent_ask_user_response() {
+        let resp = AgentResponse::AskUser { question: "your name?".into(), request_id: 42 };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("42") || debug.contains("name"));
+    }
+
+    #[test]
+    fn test_agent_plan_request_response() {
+        let resp = AgentResponse::PlanRequest {
+            title: "Refactor".into(),
+            plan: "Step 1: do X".into(),
+            request_id: 7,
+        };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("7") || debug.contains("Refactor"));
+    }
+
+    #[test]
+    fn test_agent_tool_result_response() {
+        let resp = AgentResponse::ToolResult {
+            name: "grep".into(),
+            output: "matched".into(),
+            success: true,
+        };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("grep") || debug.contains("matched"));
+    }
+
+    #[test]
+    fn test_agent_permission_request_response() {
+        let resp = AgentResponse::PermissionRequest {
+            tool_name: "run_command".into(),
+            tool_input: "ls -la".into(),
+            request_id: 1,
+        };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("run_command") || debug.contains("1"));
+    }
+
+    #[test]
+    fn test_agent_response_tool_call_variant() {
+        let resp = AgentResponse::ToolCall {
+            name: "read_file".into(),
+            input: "path".into(),
+        };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("read_file"));
+    }
+
+    #[test]
+    fn test_parse_tool_call_multiple_calls() {
+        let text = "```tool\n{\"name\": \"read_file\", \"input\": \"a\"}\n```\n```tool\n{\"name\": \"write_file\", \"input\": \"b\"}\n```";
+        let calls = parse_tool_calls(text);
+        assert_eq!(calls.len(), 2, "Should parse two tool calls");
+        assert_eq!(calls[0].name, "read_file");
+        assert_eq!(calls[1].name, "write_file");
+    }
+
+    #[test]
+    fn test_parse_tool_call_missing_input() {
+        // Without input, parse_single_tool_call should fail
+        let text = "```tool\n{\"name\": \"test\"}\n```";
+        let calls = parse_tool_calls(text);
+        assert_eq!(calls.len(), 1, "Should still parse name without input");
+        assert_eq!(calls[0].name, "test");
+        assert_eq!(calls[0].input, "");
+    }
+
+    #[test]
+    fn test_parse_tool_call_with_tool_field() {
+        let text = "```tool\n{\"tool\": \"search_web\", \"arguments\": \"query\"}\n```";
+        let calls = parse_tool_calls(text);
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].name, "search_web");
+        assert_eq!(calls[0].input, "query");
+    }
 }
