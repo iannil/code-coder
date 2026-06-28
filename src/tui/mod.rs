@@ -311,6 +311,16 @@ fn handle_key(
             }
             return;
         }
+        KeyCode::End => {
+            app.scroll_offset = 0;
+            app.auto_scroll = true;
+            return;
+        }
+        KeyCode::Home => {
+            app.auto_scroll = false;
+            app.scroll_offset = 0;
+            return;
+        }
         _ => {}
     }
 
