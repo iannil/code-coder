@@ -1326,6 +1326,9 @@ fn handle_key(
                     *show_full = !*show_full;
                     return;
                 }
+                // 输入框为空 + 无特殊操作 → 跳转到最后一行输出
+                app.auto_scroll = true;
+                app.scroll_offset = 0;
                 return;
             }
             // Shift+Enter or Alt+Enter → 换行
