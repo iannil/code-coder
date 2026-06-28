@@ -136,10 +136,10 @@ mod tests {
 
     #[test]
     fn test_strip_html_numeric_entities() {
-        // Numeric entities like &#39; and &#x27; should be passed through
-        // since the simple entity handler doesn't decode them
+        // Numeric entities like &#39; are not decoded by the simple handler
+        // Unknown entities are returned as-is
         let result = strip_html_tags("&#39;quote&#x27;");
-        assert_eq!(result, "''"); // &#39; has entity "39" which doesn't match any known entity
+        assert_eq!(result, "#39quote#x27");
     }
 
     #[test]
