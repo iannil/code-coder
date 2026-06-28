@@ -1711,6 +1711,7 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                                 *e = !success;
                             }
                         }
+                        app.cached_msg_count = 0; // ToolCall output changed, force cache rebuild
                         app.status.current_tool = None;
                     }
                     AgentResponse::Heartbeat { pending } => {
