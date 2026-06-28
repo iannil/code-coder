@@ -1694,6 +1694,8 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         app.messages.push(MessageItem::System {
                             text: format!("[end] ({took:.1}s)"),
                         });
+                        // 停在 [end] 行，让用户阅读；下次输入时 send_message 会重新置回 true
+                        app.auto_scroll = false;
                         app.status.agent_busy = false;
                         app.status.current_tool = None;
                         app.status.current_round = 0;
