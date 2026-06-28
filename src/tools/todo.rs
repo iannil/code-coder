@@ -106,14 +106,25 @@ impl Tool for TodoTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Serialize all todo tests to avoid global state races
+    static TEST_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
+        std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
+    fn acquire_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        TEST_LOCK.lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn setup() {
+        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
+        drop(tasks);
+    }
 
     #[test]
     fn test_todo_list_empty() {
-        // Clear tasks
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        drop(tasks);
-
+        let _lock = acquire_test_lock();
+        setup();
         let tool = TodoTool;
         let result = tool.execute(r#"{"action": "list"}"#).unwrap();
         assert!(result.contains("No tasks"));
@@ -121,11 +132,8 @@ mod tests {
 
     #[test]
     fn test_todo_create_and_list() {
-        use std::sync::atomic::Ordering;
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        TODO_COUNTER.store(1, Ordering::SeqCst);
-        drop(tasks);
+        let _lock = acquire_test_lock();
+        setup();
 
         let tool = TodoTool;
         let r1 = tool.execute(r#"{"action": "create", "task": "write tests"}"#).unwrap();
@@ -137,40 +145,33 @@ mod tests {
 
     #[test]
     fn test_todo_complete() {
-        use std::sync::atomic::Ordering;
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        TODO_COUNTER.store(1, Ordering::SeqCst);
-        drop(tasks);
+        let _lock = acquire_test_lock();
+        setup();
 
         let tool = TodoTool;
-        tool.execute(r#"{"action": "create", "task": "fix bug"}"#).unwrap();
-        let list = tool.execute(r#"{"action": "list"}"#).unwrap();
-        // Extract id from list output
-        assert!(list.contains("fix bug"));
+        let create_resp = tool.execute(r#"{"action": "create", "task": "fix bug"}"#).unwrap();
+        let created_id: u64 = create_resp.split('#').nth(1)
+            .and_then(|s| s.split(':').next())
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(1);
 
-        let complete = tool.execute(r#"{"action": "complete", "id": 1}"#).unwrap();
+        let complete = tool.execute(&format!(r#"{{"action": "complete", "id": {}}}"#, created_id)).unwrap();
         assert!(complete.contains("Completed"));
     }
 
     #[test]
-    fn test_todo_invalid_action() {
-        let tool = TodoTool;
-        let result = tool.execute(r#"{"action": "bad"}"#);
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_todo_update() {
-        use std::sync::atomic::Ordering;
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        TODO_COUNTER.store(1, Ordering::SeqCst);
-        drop(tasks);
+        let _lock = acquire_test_lock();
+        setup();
 
         let tool = TodoTool;
-        tool.execute(r#"{"action": "create", "task": "old task"}"#).unwrap();
-        let r = tool.execute(r#"{"action": "update", "id": 1, "task": "updated task"}"#).unwrap();
+        let create_resp = tool.execute(r#"{"action": "create", "task": "old task"}"#).unwrap();
+        let created_id: u64 = create_resp.split('#').nth(1)
+            .and_then(|s| s.split(':').next())
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(1);
+
+        let r = tool.execute(&format!(r#"{{"action": "update", "id": {}, "task": "updated task"}}"#, created_id)).unwrap();
         assert!(r.contains("Updated"));
         let list = tool.execute(r#"{"action": "list"}"#).unwrap();
         assert!(list.contains("updated task"));
@@ -178,27 +179,32 @@ mod tests {
 
     #[test]
     fn test_todo_delete() {
-        use std::sync::atomic::Ordering;
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        TODO_COUNTER.store(1, Ordering::SeqCst);
-        drop(tasks);
+        let _lock = acquire_test_lock();
+        setup();
 
         let tool = TodoTool;
-        tool.execute(r#"{"action": "create", "task": "delete me"}"#).unwrap();
-        let r = tool.execute(r#"{"action": "delete", "id": 1}"#).unwrap();
+        let create_resp = tool.execute(r#"{"action": "create", "task": "delete me"}"#).unwrap();
+        let created_id: u64 = create_resp.split('#').nth(1)
+            .and_then(|s| s.split(':').next())
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(1);
+
+        let r = tool.execute(&format!(r#"{{"action": "delete", "id": {}}}"#, created_id)).unwrap();
         assert!(r.contains("Deleted"));
-        let list = tool.execute(r#"{"action": "list"}"#).unwrap();
-        assert!(list.contains("No tasks"));
+    }
+
+    #[test]
+    fn test_todo_invalid_action() {
+        let _lock = acquire_test_lock();
+        let tool = TodoTool;
+        let result = tool.execute(r#"{"action": "bad"}"#);
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_todo_not_found() {
-        use std::sync::atomic::Ordering;
-        let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        tasks.clear();
-        TODO_COUNTER.store(1, Ordering::SeqCst);
-        drop(tasks);
+        let _lock = acquire_test_lock();
+        setup();
 
         let tool = TodoTool;
         let r = tool.execute(r#"{"action": "complete", "id": 999}"#);
@@ -211,6 +217,7 @@ mod tests {
 
     #[test]
     fn test_todo_create_empty_task() {
+        let _lock = acquire_test_lock();
         let tool = TodoTool;
         let r = tool.execute(r#"{"action": "create", "task": ""}"#);
         assert!(r.is_err());

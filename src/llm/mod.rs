@@ -476,9 +476,9 @@ mod tests {
     }
 
     #[test]
-    fn test_openai_client_from_env_sets_env_vars() {
-        // Temporarily set env vars to test from_env
+    fn test_openai_client_from_env_vars() {
         unsafe {
+            // Test CODECODER_ prefixed vars first
             std::env::set_var("CODECODER_API_KEY", "test-key-from-env");
             std::env::set_var("CODECODER_API_BASE", "https://custom.example.com/v1");
             std::env::set_var("CODECODER_MODEL", "custom-model");
@@ -493,10 +493,8 @@ mod tests {
 
         let client = OpenAiClient::from_env();
         assert_eq!(client.config.model, "custom-model");
-    }
 
-    #[test]
-    fn test_openai_client_from_env_fallback_to_openai_vars() {
+        // Now test fallback to OPENAI_ prefixed vars
         unsafe {
             std::env::remove_var("CODECODER_API_KEY");
             std::env::remove_var("CODECODER_API_BASE");
@@ -505,10 +503,10 @@ mod tests {
             std::env::set_var("OPENAI_API_BASE", "https://openai.example.com/v1");
             std::env::set_var("OPENAI_MODEL", "gpt-4o");
         }
-        let config = LlmConfig::from_env();
-        assert_eq!(config.api_key, "openai-fallback-key");
-        assert_eq!(config.api_base, "https://openai.example.com/v1");
-        assert_eq!(config.model, "gpt-4o");
+        let config2 = LlmConfig::from_env();
+        assert_eq!(config2.api_key, "openai-fallback-key");
+        assert_eq!(config2.api_base, "https://openai.example.com/v1");
+        assert_eq!(config2.model, "gpt-4o");
     }
 
     #[test]
