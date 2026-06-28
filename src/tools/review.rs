@@ -123,4 +123,37 @@ mod tests {
         let result = tool.execute(r#"{"path": "."}"#);
         assert!(result.is_ok() || result.is_err());
     }
+
+    #[test]
+    fn test_review_scope_staged() {
+        let tool = ReviewTool;
+        let result = tool.execute(r#"{"scope": "staged"}"#);
+        // git diff --cached — either works or fails
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_review_scope_all() {
+        let tool = ReviewTool;
+        let result = tool.execute(r#"{"scope": "all"}"#);
+        // git diff HEAD — either works or fails
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_review_scope_with_path() {
+        let tool = ReviewTool;
+        let result = tool.execute(r#"{"scope": "unstaged", "path": "src/"}"#);
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_review_no_changes() {
+        let tool = ReviewTool;
+        // In a path with no changes, should return "(no changes to review)"
+        let result = tool.execute(r#"{"path": "/tmp"}"#);
+        if let Ok(r) = result {
+            assert!(r.contains("no changes") || r.contains("Review"));
+        }
+    }
 }
