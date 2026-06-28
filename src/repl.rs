@@ -180,3 +180,143 @@ impl Repl {
         Ok(false)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent::{BackgroundAgent, ToolCall};
+    use crate::event::{EventBus, SharedEventBus};
+    use crate::memory::MemoryStore;
+    use std::sync::mpsc;
+
+    fn make_bg() -> (BackgroundAgent, mpsc::Receiver<AgentCommand>) {
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (_resp_tx, resp_rx) = mpsc::channel();
+        (BackgroundAgent { cmd_tx, resp_rx }, cmd_rx)
+    }
+
+    #[test]
+    fn test_repl_new() {
+        let repl = Repl::new();
+        // prompt should default to "cc> "
+        // We can't inspect private fields, so we just check it constructs
+        assert!(std::mem::discriminant(&()) == std::mem::discriminant(&()));
+        _ = repl;
+    }
+
+    #[test]
+    fn test_handle_command_exit() {
+        let repl = Repl::new();
+        let (bg, _rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/exit", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "/exit should return true");
+    }
+
+    #[test]
+    fn test_handle_command_quit() {
+        let repl = Repl::new();
+        let (bg, _rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/quit", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "/quit should return true");
+    }
+
+    #[test]
+    fn test_handle_command_help() {
+        let repl = Repl::new();
+        let (bg, _rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/help", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "/help should return false");
+    }
+
+    #[test]
+    fn test_handle_command_reload() {
+        let repl = Repl::new();
+        let (bg, rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/reload", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "/reload should return false");
+        // Should send ReloadContext command
+        let cmd = rx.recv();
+        assert!(cmd.is_ok());
+        assert!(matches!(cmd.unwrap(), AgentCommand::ReloadContext));
+    }
+
+    #[test]
+    fn test_handle_command_clear() {
+        let repl = Repl::new();
+        let (bg, rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/clear", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "/clear should return false");
+        // Should send ClearHistory command
+        let cmd = rx.recv();
+        assert!(cmd.is_ok());
+        assert!(matches!(cmd.unwrap(), AgentCommand::ClearHistory));
+    }
+
+    #[test]
+    fn test_handle_command_history() {
+        let repl = Repl::new();
+        let (bg, rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/history", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "/history should return false");
+        // Should send ProcessMessage
+        let cmd = rx.recv();
+        assert!(cmd.is_ok());
+        match cmd.unwrap() {
+            AgentCommand::ProcessMessage { text } => {
+                assert!(text.contains("conversation history"));
+            }
+            _ => panic!("Expected ProcessMessage"),
+        }
+    }
+
+    #[test]
+    fn test_handle_command_unknown() {
+        let repl = Repl::new();
+        let (bg, rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/xyzzy", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(!result.unwrap(), "unknown command should return false");
+        // No command should be sent for unknown commands
+        let cmd = rx.try_recv();
+        assert!(cmd.is_err(), "no command should be sent for unknown input");
+    }
+
+    #[test]
+    fn test_handle_command_case_insensitive() {
+        let repl = Repl::new();
+        let (bg, rx) = make_bg();
+        let mut bus = SharedEventBus::new(64);
+        let result = repl.handle_command("/EXIT", &bg.cmd_tx, &mut bus);
+        assert!(result.is_ok());
+        assert!(result.unwrap(), "/EXIT (uppercase) should also exit");
+        _ = rx;
+    }
+
+    #[test]
+    fn test_handle_command_tools_skills_memory() {
+        for cmd in &["/tools", "/skills", "/memory"] {
+            let repl = Repl::new();
+            let (bg, rx) = make_bg();
+            let mut bus = SharedEventBus::new(64);
+            let result = repl.handle_command(cmd, &bg.cmd_tx, &mut bus);
+            assert!(result.is_ok());
+            assert!(!result.unwrap(), "{cmd} should return false");
+            // No agent command sent for these
+            let cmd_recv = rx.try_recv();
+            assert!(cmd_recv.is_err(), "{cmd} should not send an agent command");
+        }
+    }
+}

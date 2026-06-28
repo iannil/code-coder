@@ -23,19 +23,24 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
 
     let context_bar = format_context_bar(status.context_pct);
     let key_indicator = if status.api_key_set {
-        "🔑"
+        "key"
     } else {
-        "⚠"
+        "no-key"
     };
 
-    let line = Line::from(vec![
+    let mut spans: Vec<Span> = vec![
         // Model name — cyan highlight
         Span::styled(
             &status.model,
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
-        // Separator
+        // Connection type
+        Span::styled(
+            &status.connection_type,
+            Style::default().fg(if status.api_key_set { Color::Green } else { Color::Yellow }),
+        ),
+        Span::raw(" "),
         Span::styled("·", Style::default().fg(Color::DarkGray)),
         Span::raw(" "),
         // CWD (compact: basename only)
@@ -56,20 +61,43 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
             format!("{}t", status.token_count),
             Style::default().fg(Color::DarkGray),
         ),
-        Span::raw(" "),
-        Span::styled("·", Style::default().fg(Color::DarkGray)),
-        Span::raw(" "),
-        // API key / spinner (pushed by filler)
-        Span::styled(key_indicator, Style::default().fg(Color::DarkGray)),
-        Span::styled(spinner, Style::default().fg(Color::DarkGray)),
-    ]);
+    ];
 
+    // Busy state: show elapsed time + round
+    if status.agent_busy {
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(
+            format!("{:.0}s", status.elapsed_secs),
+            Style::default().fg(Color::Yellow),
+        ));
+        if status.current_round > 0 {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                format!("R{}", status.current_round),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+        if let Some(ref tool) = status.current_tool {
+            spans.push(Span::raw(" "));
+            spans.push(Span::styled(
+                format!("[{}]", tool),
+                Style::default().fg(Color::Blue),
+            ));
+        }
+    }
+
+    // API key / spinner at end
+    spans.push(Span::raw(" "));
+    spans.push(Span::styled(key_indicator, Style::default().fg(Color::DarkGray)));
+    spans.push(Span::styled(spinner, Style::default().fg(Color::DarkGray)));
+
+    let line = Line::from(spans);
     let paragraph = Paragraph::new(line).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(paragraph, area);
 }
 
 /// Compact cwd: show only basename, or full path if it's short
-fn compact_cwd(cwd: &str) -> String {
+pub(crate) fn compact_cwd(cwd: &str) -> String {
     if cwd.len() <= 20 {
         return cwd.to_string();
     }
@@ -94,7 +122,7 @@ fn compact_cwd(cwd: &str) -> String {
 }
 
 /// 格式化 context 用量进度条
-fn format_context_bar(pct: f32) -> String {
+pub(crate) fn format_context_bar(pct: f32) -> String {
     let bar_width = 8;
     let filled = (pct * bar_width as f32).round() as usize;
     let filled = filled.min(bar_width);

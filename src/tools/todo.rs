@@ -121,8 +121,10 @@ mod tests {
 
     #[test]
     fn test_todo_create_and_list() {
+        use std::sync::atomic::Ordering;
         let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
         drop(tasks);
 
         let tool = TodoTool;
@@ -135,8 +137,10 @@ mod tests {
 
     #[test]
     fn test_todo_complete() {
+        use std::sync::atomic::Ordering;
         let mut tasks = TASKS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         tasks.clear();
+        TODO_COUNTER.store(1, Ordering::SeqCst);
         drop(tasks);
 
         let tool = TodoTool;

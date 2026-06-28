@@ -160,7 +160,8 @@ pub struct OpenAiClient {
 impl OpenAiClient {
     pub fn new(config: LlmConfig) -> Self {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .timeout(std::time::Duration::from_secs(15))
+            .connect_timeout(std::time::Duration::from_secs(5))
             .build()
             .expect("failed to create HTTP client");
         Self { config, client }
@@ -203,11 +204,15 @@ impl LlmClient for OpenAiClient {
 
         let resp = self.build_request(&request)
             .send().await
-            .map_err(|e| anyhow::anyhow!("LLM API request failed: {e}"))?;
+            .map_err(|e| {
+                crate::log(&format!("[codecoder] LLM 请求失败: {e}"));
+                anyhow::anyhow!("LLM API request failed: {e}")
+            })?;
 
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
+            crate::log(&format!("[codecoder] LLM HTTP {status}: {body}"));
             anyhow::bail!("LLM API returned {status}: {body}");
         }
 
@@ -237,13 +242,24 @@ impl LlmClient for OpenAiClient {
             stream: true,
         };
 
+        let url = format!(
+            "{}/chat/completions",
+            self.config.api_base.trim_end_matches('/')
+        );
+        crate::log(&format!("[codecoder] LLM 请求: POST {}", url));
+        crate::log(&format!("[codecoder] 模型: {}", self.config.model));
+
         let response = self.build_request(&request)
             .send().await
-            .map_err(|e| anyhow::anyhow!("LLM stream request failed: {e}"))?;
+            .map_err(|e| {
+                crate::log(&format!("[codecoder] LLM 请求失败: {e}"));
+                anyhow::anyhow!("LLM stream request failed: {e}")
+            })?;
 
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
+            crate::log(&format!("[codecoder] LLM 流请求 HTTP {status}: {body}"));
             anyhow::bail!("LLM stream returned {status}: {body}");
         }
 

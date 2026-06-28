@@ -156,10 +156,11 @@ impl Tool for AgentTool {
         };
 
         // Run the sub-agent using the current tokio runtime
+        let mut sub_skills = crate::skill::SkillRegistry::new();
         let result = tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
-                sub_agent.handle_message(&task, &sub_tools, &crate::skill::SkillRegistry::new(), &|_, _| true).await
+                sub_agent.handle_message(&task, &sub_tools, &mut sub_skills, &|_, _| true).await
             })
         })?;
 

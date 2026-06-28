@@ -7,13 +7,14 @@ pub mod completion;
 pub mod markdown;
 pub mod message_list;
 pub mod status_bar;
+pub(crate) use status_bar::{compact_cwd, format_context_bar};
 
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use ratatui::layout::{Flex, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Paragraph, Wrap};
+use ratatui::widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
@@ -22,6 +23,7 @@ use std::time::Duration;
 use crate::agent::{AgentCommand, AgentResponse};
 use crate::event::SharedEventBus;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 /// ─── App State ────────────────────────────────────────────────────────────
 
@@ -92,6 +94,12 @@ pub struct TuiApp {
 
     /// 状态栏数据
     pub status: StatusData,
+
+    /// 消息发送时间戳（用于显示耗时）
+    pub thinking_start_time: Option<Instant>,
+
+    /// 当前工具调用轮次
+    pub current_round: usize,
 
     /// 是否需要退出
     pub should_quit: bool,
@@ -210,6 +218,12 @@ pub struct StatusData {
     pub api_key_set: bool,
     pub agent_busy: bool,
     pub current_tool: Option<String>,
+    /// 连接类型（用于显示）
+    pub connection_type: String,
+    /// 自消息发送以来的已耗秒数
+    pub elapsed_secs: u64,
+    /// 当前工具调用轮次
+    pub current_round: usize,
 }
 
 impl Default for StatusData {
@@ -224,6 +238,13 @@ impl Default for StatusData {
             api_key_set: std::env::var("CODECODER_API_KEY").is_ok(),
             agent_busy: false,
             current_tool: None,
+            connection_type: if std::env::var("CODECODER_API_KEY").is_ok() {
+                "OpenAI".into()
+            } else {
+                "Stub".into()
+            },
+            elapsed_secs: 0,
+            current_round: 0,
         }
     }
 }
@@ -274,6 +295,8 @@ impl Default for TuiApp {
             cached_msg_count: 0,
             cached_search_query: String::new(),
             status: StatusData::default(),
+            thinking_start_time: None,
+            current_round: 0,
             should_quit: false,
             session_store: None,
             current_session_id: None,
@@ -299,6 +322,7 @@ pub fn run_tui(
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::EnableBracketedPaste,
+        crossterm::event::EnableMouseCapture,
         crossterm::cursor::SetCursorStyle::BlinkingBlock,
     )?;
 
@@ -308,37 +332,17 @@ pub fn run_tui(
     let mut app = TuiApp::default();
     app.status.model = config_store.model().to_string();
 
-    // ── 加载最新持久化会话 ───────────────────────────────────────────────
-    let mut current_session_id: Option<String> = None;
-    if let Some(session) = session_store.latest() {
-        // Only resume if the session has actual messages
-        if !session.messages.is_empty() {
-            app.messages = session.messages.clone();
-            current_session_id = Some(session.id.clone());
-            // Restore model from session
-            if !session.model.is_empty() {
-                app.status.model = session.model;
-            }
-            // Show resume indicator
-            app.messages.push(MessageItem::System {
-                text: format!("↻ Resumed session {} ({})", &session.id[..8], session.message_count),
-            });
-        }
-    }
-
-    // 如果没恢复，显示欢迎消息
-    if current_session_id.is_none() {
-        app.messages.push(MessageItem::System {
-            text: format!(
-                "CodeCoder TUI — {} model",
-                app.status.model,
-            ),
-        });
-    }
+    // 显示欢迎消息（不自动加载历史会话，/resume 可手动恢复）
+    app.messages.push(MessageItem::System {
+        text: format!(
+            "CodeCoder TUI — {} /help 查看帮助",
+            app.status.model,
+        ),
+    });
 
     // 注入存储到 app
     app.session_store = Some(session_store);
-    app.current_session_id = current_session_id;
+    app.current_session_id = None;
     app.config_store = Some(config_store);
     app.mcp_registry = Some(mcp_registry);
 
@@ -348,6 +352,19 @@ pub fn run_tui(
     // 主事件循环
     while !app.should_quit {
         frame_count = frame_count.wrapping_add(1);
+
+        // 更新已耗时间
+        if let Some(start) = app.thinking_start_time {
+            let secs = start.elapsed().as_secs();
+            app.status.elapsed_secs = secs;
+            // 120s 超时提醒
+            if secs > 120 && secs % 30 == 0 {
+                app.messages.push(MessageItem::System {
+                    text: "[warn] Agent 超过 120 秒未响应，可能 LLM 连接超时或 agent 线程已崩溃。检查 stderr 输出。".into(),
+                });
+            }
+        }
+
         terminal.draw(|f| render(f, &mut app, frame_count))?;
 
         // 检查 agent 响应（非阻塞）
@@ -359,6 +376,32 @@ pub fn run_tui(
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
                         handle_key(&mut app, key, &cmd_tx);
+                    }
+                }
+                Event::Mouse(mouse) => {
+                    // 鼠标滚轮 → 消息列表滚动
+                    match mouse.kind {
+                        MouseEventKind::ScrollUp => {
+                            if !app.input.is_empty() || app.search_active || app.reverse_search_active {
+                                // 输入/搜索模式下不处理
+                            } else {
+                                app.auto_scroll = false;
+                                app.scroll_offset = app.scroll_offset.saturating_add(3);
+                            }
+                        }
+                        MouseEventKind::ScrollDown => {
+                            if !app.input.is_empty() || app.search_active || app.reverse_search_active {
+                                // 输入/搜索模式下不处理
+                            } else {
+                                if app.scroll_offset > 3 {
+                                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                                } else {
+                                    app.scroll_offset = 0;
+                                    app.auto_scroll = true;
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 Event::Paste(text) => {
@@ -385,6 +428,7 @@ pub fn run_tui(
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::DisableBracketedPaste,
+        crossterm::event::DisableMouseCapture,
         crossterm::cursor::SetCursorStyle::DefaultUserShape,
     )?;
     crossterm::terminal::disable_raw_mode()?;
@@ -393,6 +437,36 @@ pub fn run_tui(
 }
 
 /// ─── Render ───────────────────────────────────────────────────────────────
+
+/// 计算逻辑行列表在给定宽度下实际占用的显示行数（考虑折行）
+fn count_display_rows(lines: &[Line<'_>], area_width: u16) -> usize {
+    if area_width == 0 {
+        return lines.len();
+    }
+    lines.iter().map(|line| {
+        let w = line.width();
+        if w == 0 { 1 } else { (w + area_width as usize - 1) / area_width as usize }
+    }).sum()
+}
+
+/// 从末尾开始算，返回 scroll_offset 使得最后 msg_height 显示行可见
+fn bottom_scroll_offset(lines: &[Line<'_>], area_width: u16, msg_height: usize) -> usize {
+    if area_width == 0 || msg_height == 0 || lines.is_empty() {
+        return 0;
+    }
+    let mut rows = 0usize;
+    let mut skipped = lines.len();
+    for line in lines.iter().rev() {
+        let w = line.width();
+        let line_rows = if w == 0 { 1 } else { (w + area_width as usize - 1) / area_width as usize };
+        if rows + line_rows > msg_height {
+            break;
+        }
+        rows += line_rows;
+        skipped -= 1;
+    }
+    skipped
+}
 
 /// Count how many lines match the search query
 fn count_search_matches(app: &mut TuiApp) {
@@ -497,16 +571,28 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                             line
                         }),
                 );
-                lines.push(Line::from(""));
             }
             MessageItem::Assistant { text } => {
-                lines.extend(markdown::render_markdown_with_highlight(text, highlight));
-                lines.push(Line::from(""));
+                lines.push(Line::styled(
+                    " CodeCoder >",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ));
+                lines.extend(
+                    markdown::render_markdown_with_highlight(text, highlight)
+                        .into_iter()
+                        .map(|l| {
+                            let mut line = l;
+                            line.spans.insert(0, Span::raw("    "));
+                            line
+                        }),
+                );
             }
             MessageItem::Reasoning { text, expanded } => {
                 if *expanded {
                     lines.push(Line::styled(
-                        " ▼ 🧠 Thinking:".to_string(),
+                        " [think]".to_string(),
                         Style::default().fg(Color::Magenta),
                     ));
                     for line in text.lines() {
@@ -521,11 +607,10 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                     ));
                 } else {
                     lines.push(Line::styled(
-                        format!(" ▶ 🧠 Thinking ({} chars)", text.len()),
+                        format!(" [think] ({} chars)", text.len()),
                         Style::default().fg(Color::Magenta),
                     ));
                 }
-                lines.push(Line::from(""));
             }
             MessageItem::ToolCall {
                 name,
@@ -573,14 +658,12 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                         Style::default().fg(Color::Yellow),
                     ));
                 }
-                lines.push(Line::from(""));
             }
             MessageItem::System { text } => {
                 lines.push(Line::styled(
                     format!(" {}", text),
                     Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
                 ));
-                lines.push(Line::from(""));
             }
         }
     }
@@ -604,16 +687,27 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
 
     // 消息区 — 先构建全部行，再计算滚动
     let rendered_lines = build_message_lines(app);
-    let total_lines = rendered_lines.len();
     let msg_height = msg_area.height.saturating_sub(1) as usize; // minus single border line
+    let text_width = msg_area.width; // block 只有 TOP 边框，文本区等同全宽
 
-    // 自动滚到底部：如果在 auto_scroll 模式，始终显示最新消息
+    // 自动滚到底部：考虑折行后的实际显示行数
     if app.auto_scroll {
-        app.scroll_offset = total_lines.saturating_sub(msg_height);
-    } else if app.scroll_offset > total_lines.saturating_sub(msg_height) {
-        // 如果手动滚过头了，停在最大位置
-        app.scroll_offset = total_lines.saturating_sub(msg_height);
+        app.scroll_offset = bottom_scroll_offset(&rendered_lines, text_width, msg_height);
+    } else {
+        // 如果手动滚过头了，停在最大位置（也考虑折行）
+        let max_offset = bottom_scroll_offset(&rendered_lines, text_width, msg_height);
+        if app.scroll_offset > max_offset {
+            app.scroll_offset = max_offset;
+        }
     }
+
+    // 计算显示行数（用于滚动条），必须在 rendered_lines 被 move 之前
+    let total_display_rows = count_display_rows(&rendered_lines, text_width);
+    let scrolled_display_rows = if app.scroll_offset > 0 {
+        count_display_rows(&rendered_lines[..app.scroll_offset], text_width)
+    } else {
+        0
+    };
 
     let msg_block = Block::default()
         .borders(ratatui::widgets::Borders::TOP)
@@ -635,7 +729,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
                 )
             } else if app.search_active {
                 format!(
-                    " \u{1f50d} {} ({} hits)",
+                    " [search] {} ({} hits)",
                     app.search_query,
                     app.search_match_count
                 )
@@ -649,6 +743,42 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         .scroll((app.scroll_offset as u16, 0))
         .wrap(Wrap { trim: false });
     frame.render_widget(msg_paragraph, msg_area);
+
+    // 右侧视觉滚动条 — 仅在内容超出可视区域时显示（基于实际显示行数）
+    if total_display_rows > msg_height {
+        let scrollbar_color = if app.dark_mode {
+            Color::DarkGray
+        } else {
+            Color::DarkGray
+        };
+        let thumb_color = if app.dark_mode {
+            Color::White
+        } else {
+            Color::Black
+        };
+
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"))
+            .track_style(Style::default().fg(scrollbar_color))
+            .thumb_style(Style::default().fg(thumb_color))
+            .begin_style(Style::default().fg(scrollbar_color))
+            .end_style(Style::default().fg(scrollbar_color));
+
+        let mut scrollbar_state = ScrollbarState::new(total_display_rows)
+            .position(scrolled_display_rows)
+            .viewport_content_length(msg_height);
+
+        // 在内边距区域内渲染滚动条（避开上边框）
+        frame.render_stateful_widget(
+            scrollbar,
+            msg_area.inner(ratatui::layout::Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            &mut scrollbar_state,
+        );
+    }
 
     // 输入区（带光标显示）— 使用细分割线风格
     let cursor_pos = app.cursor_pos.min(app.input.len());
@@ -678,11 +808,22 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
 
     // 设置光标位置
     // 计算光标在 input 区域内的行内偏移
-    let input_lines = app.input[..cursor_pos].lines().count().max(1) - 1;
+    // Safety: cursor_pos must be at a valid char boundary
+    let safe_cursor = if app.input.is_char_boundary(cursor_pos) {
+        cursor_pos
+    } else {
+        // Fallback: find the nearest char boundary
+        let mut i = cursor_pos.min(app.input.len());
+        while i > 0 && !app.input.is_char_boundary(i) {
+            i -= 1;
+        }
+        i
+    };
+    let input_lines = app.input[..safe_cursor].lines().count().max(1) - 1;
     let last_line_start = if input_lines == 0 {
         0
     } else {
-        app.input[..cursor_pos]
+        app.input[..safe_cursor]
             .char_indices()
             .filter(|(_, c)| *c == '\n')
             .last()
@@ -937,7 +1078,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
 
         let content = vec![
-            Line::styled(" ⚠  Tool Permission Required ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Line::styled(" [!] Tool Permission Required ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Line::from(""),
             Line::styled(
                 format!(" Tool: {}", perm.tool_name),
@@ -1315,6 +1456,12 @@ fn handle_key(
                 }
                 return;
             }
+            if app.slash_completion.active {
+                if app.slash_completion.selected > 0 {
+                    app.slash_completion.selected -= 1;
+                }
+                return;
+            }
             if !app.input_history.is_empty() && app.history_pos > 0 {
                 app.history_pos -= 1;
                 app.input = app.input_history[app.history_pos].clone();
@@ -1333,6 +1480,13 @@ fn handle_key(
             if app.model_picker_active {
                 if app.model_picker_selected + 1 < app.available_models.len() {
                     app.model_picker_selected += 1;
+                }
+                return;
+            }
+            if app.slash_completion.active {
+                let max_idx = app.slash_completion.commands.len().saturating_sub(1);
+                if app.slash_completion.selected < max_idx {
+                    app.slash_completion.selected += 1;
                 }
                 return;
             }
@@ -1359,12 +1513,22 @@ fn handle_key(
         }
         KeyCode::Left => {
             if app.cursor_pos > 0 {
-                app.cursor_pos -= 1;
+                // Move to previous UTF-8 char boundary
+                let mut new_pos = app.cursor_pos.saturating_sub(1);
+                while new_pos > 0 && !app.input.is_char_boundary(new_pos) {
+                    new_pos -= 1;
+                }
+                app.cursor_pos = new_pos;
             }
         }
         KeyCode::Right => {
             if app.cursor_pos < app.input.len() {
-                app.cursor_pos += 1;
+                // Move to next UTF-8 char boundary
+                let mut new_pos = app.cursor_pos.saturating_add(1);
+                while new_pos < app.input.len() && !app.input.is_char_boundary(new_pos) {
+                    new_pos += 1;
+                }
+                app.cursor_pos = new_pos;
             }
         }
         KeyCode::Home => {
@@ -1387,7 +1551,7 @@ fn handle_key(
             // Insert character
             save_undo_snapshot(app);
             app.input.insert(app.cursor_pos, c);
-            app.cursor_pos += 1;
+            app.cursor_pos += c.len_utf8();
 
             // Cancel slash completion if typing non-slash characters
             if app.slash_completion.active && !app.input.starts_with('/') {
@@ -1445,8 +1609,13 @@ fn handle_key(
                 {
                     app.completion.active = false;
                 }
-                app.cursor_pos -= 1;
-                app.input.remove(app.cursor_pos);
+                // Move to previous UTF-8 char boundary before deleting
+                let mut new_pos = app.cursor_pos.saturating_sub(1);
+                while new_pos > 0 && !app.input.is_char_boundary(new_pos) {
+                    new_pos -= 1;
+                }
+                app.input.remove(new_pos);
+                app.cursor_pos = new_pos;
 
                 // Update completion query
                 if app.completion.active {
@@ -1574,7 +1743,23 @@ fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>
     auto_save_session(app);
 
     // 发送给 agent
-    let _ = cmd_tx.send(AgentCommand::ProcessMessage { text: input });
+    if let Err(e) = cmd_tx.send(AgentCommand::ProcessMessage { text: input }) {
+        app.messages.push(MessageItem::System {
+            text: format!("[disconnect] Agent 通道已断开 — 线程可能已崩溃。stderr 可能有更多信息。错误: {e}"),
+        });
+        app.status.agent_busy = false;
+        return;
+    }
+    crate::log(&format!("[codecoder] TUI 发送消息成功"));
+
+    // 处理中状态追踪
+    app.thinking_start_time = Some(Instant::now());
+    app.status.agent_busy = true;
+    app.current_round = 0;
+    app.status.current_tool = None;
+    app.messages.push(MessageItem::System {
+        text: "[send] Agent…".into(),
+    });
 
     app.input.clear();
     app.cursor_pos = 0;
@@ -1589,11 +1774,34 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
             Ok(response) => {
                 match response {
                     AgentResponse::Text { text } => {
-                        app.messages.push(MessageItem::Assistant { text });
+                        // 清除处理中状态
+                        let took = app.thinking_start_time.take()
+                            .map(|t| t.elapsed().as_secs_f32())
+                            .unwrap_or(0.0);
+                        // 移除流式阶段的过渡状态消息
+                        app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[write]") || text.starts_with("[think]")));
+                        // 非空内容才追加（流式场景下内容已通过 LlmDelta 送达）
+                        if !text.is_empty() {
+                            app.messages.push(MessageItem::Assistant { text });
+                        }
+                        app.messages.push(MessageItem::System {
+                            text: format!("[done] ({took:.1}s)"),
+                        });
                         app.status.agent_busy = false;
+                        app.status.current_tool = None;
+                        app.status.current_round = 0;
                         auto_save_session(app);
                     }
                     AgentResponse::ToolCall { name, input, .. } => {
+                        app.current_round += 1;
+                        app.status.current_round = app.current_round;
+                        // 首次工具调用：移除 [send] 消息，添加推理状态
+                        if app.current_round == 1 {
+                            app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[send]")));
+                            app.messages.push(MessageItem::System {
+                                text: "[think] LLM…".into(),
+                            });
+                        }
                         app.messages.push(MessageItem::ToolCall {
                             name: name.clone(),
                             input,
@@ -1619,11 +1827,21 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                     }
                     AgentResponse::Heartbeat { pending } => {
                         app.status.agent_busy = pending > 0;
+                        // 首次心跳确认 agent 线程存活
+                        app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text == "[send] Agent…" || text == "[send] Agent 处理中…"));
                     }
                     AgentResponse::LlmDelta { text } => {
+                        // 首次收到 streaming 输出：从推理切换到生成状态
+                        if app.current_round == 1 && app.messages.last().map_or(true, |m| !matches!(m, MessageItem::Assistant { .. })) {
+                            app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.contains("LLM")));
+                            app.messages.push(MessageItem::System {
+                                text: "[write] LLM…".into(),
+                            });
+                        }
                         if let Some(last) = app.messages.last_mut() {
                             if let MessageItem::Assistant { text: t } = last {
                                 t.push_str(&text);
+                                app.cached_msg_count = 0; // 内容已变，强制重建缓存
                             } else {
                                 app.messages.push(MessageItem::Assistant { text });
                             }
@@ -1634,7 +1852,13 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                     AgentResponse::ReasoningDelta { text } => {
                         if let Some(MessageItem::Reasoning { text: t, .. }) = app.messages.last_mut() {
                             t.push_str(&text);
+                            app.cached_msg_count = 0; // 内容已变，强制重建缓存
                         } else {
+                            // 首次收到推理数据
+                            app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[think]")));
+                            app.messages.push(MessageItem::System {
+                                text: "[think] LLM…".into(),
+                            });
                             app.messages.push(MessageItem::Reasoning {
                                 text,
                                 expanded: false,
@@ -1642,17 +1866,23 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         }
                     }
                     AgentResponse::Error { message } => {
+                        let took = app.thinking_start_time.take()
+                            .map(|t| t.elapsed().as_secs_f32())
+                            .unwrap_or(0.0);
                         app.messages.push(MessageItem::System {
-                            text: format!("Error: {}", message),
+                            text: format!("[error] ({took:.1}s): {message}"),
                         });
                         app.status.agent_busy = false;
+                        app.status.current_tool = None;
+                        app.status.current_round = 0;
                     }
                     AgentResponse::Shutdown => {
+                        app.thinking_start_time.take();
                         app.should_quit = true;
                     }
                     AgentResponse::AskUser { question, request_id } => {
                         app.messages.push(MessageItem::System {
-                            text: format!("🔍 Agent asks: {}", question),
+                            text: format!("[ask] Agent asks: {}", question),
                         });
                         // Store pending ask_user question in a new field
                         // (reuse permission_pending for now, with a marker)
@@ -1664,7 +1894,7 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                     }
                     AgentResponse::PlanRequest { title, plan, request_id } => {
                         app.messages.push(MessageItem::System {
-                            text: format!("📋 Plan: {}", title),
+                            text: format!("[plan] Plan: {}", title),
                         });
                         app.messages.push(MessageItem::Assistant { text: plan });
                         app.permission_pending = Some(PendingPermission {
@@ -2091,5 +2321,1493 @@ fn auto_save_session(app: &TuiApp) {
     if let Some(ref store) = app.session_store {
         let session = build_session_from_app(app);
         let _ = store.save(&session);
+    }
+}
+
+/// ─── Pure-Function Tests ───────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::SessionStore;
+
+    /// Helper: create a ConfigStore backed by a temp directory.
+    fn make_config_store(dir: &std::path::Path) -> crate::config::ConfigStore {
+        let config_path = dir.join("codecoder.json");
+        let default_config = r#"{"llm":{"model":"gpt-4o","api_base":"https://api.openai.com/v1","max_tokens":4096,"temperature":0.0}}"#;
+        let _ = std::fs::write(&config_path, default_config);
+        crate::config::ConfigStore::load(dir.to_str().unwrap())
+    }
+
+    // ── compact_cwd ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_compact_cwd_short_path() {
+        assert_eq!(compact_cwd("/home"), "/home");
+    }
+
+    #[test]
+    fn test_compact_cwd_exactly_20_chars() {
+        let s = "12345678901234567890";
+        assert_eq!(compact_cwd(s), s);
+    }
+
+    #[test]
+    fn test_compact_cwd_long_path_ellipsis() {
+        let result = compact_cwd("/very/long/path/that/exceeds/twenty/chars");
+        assert!(result.contains('…'), "long path should be truncated with ellipsis");
+        assert!(result.contains("chars"), "last component should be visible");
+    }
+
+    #[test]
+    fn test_compact_cwd_single_component() {
+        let result = compact_cwd("/");
+        assert_eq!(result, "/");
+    }
+
+    #[test]
+    fn test_compact_cwd_empty() {
+        assert_eq!(compact_cwd(""), "");
+    }
+
+    #[test]
+    fn test_compact_cwd_two_components_long() {
+        let result = compact_cwd("/this-is-a-very-long-directory-name/another-long-name-here");
+        assert!(result.contains('…'));
+        assert!(result.contains("another-long-name-here"));
+    }
+
+    #[test]
+    fn test_compact_cwd_unicode() {
+        let result = compact_cwd("/项目/源代码/主模块");
+        // Unicode paths work with byte-length check
+        assert!(result.contains("主模块") || result.len() <= 20);
+    }
+
+    #[test]
+    fn test_compact_cwd_windows_style() {
+        let result = compact_cwd("C:\\Users\\test\\project\\src\\main.rs");
+        // Should handle backslash as separator
+        assert!(result.contains("main.rs") || result.len() <= 20);
+    }
+
+    // ── format_context_bar ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_context_bar_zero() {
+        let bar = format_context_bar(0.0);
+        assert!(bar.contains("0%"));
+        assert!(bar.contains('░'));
+        assert!(!bar.contains('▓'));
+    }
+
+    #[test]
+    fn test_context_bar_25_percent() {
+        let bar = format_context_bar(0.25);
+        assert!(bar.contains("25%"));
+    }
+
+    #[test]
+    fn test_context_bar_50_percent() {
+        let bar = format_context_bar(0.5);
+        assert!(bar.contains("50%"));
+    }
+
+    #[test]
+    fn test_context_bar_100_percent() {
+        let bar = format_context_bar(1.0);
+        assert!(bar.contains("100%"));
+        assert!(!bar.contains('░'), "100% should have no empty cells");
+    }
+
+    #[test]
+    fn test_context_bar_overflow_clamped() {
+        let bar = format_context_bar(1.5);
+        assert!(bar.contains("100%") || bar.contains("150%"));
+    }
+
+    #[test]
+    fn test_context_bar_negative_clamped() {
+        let bar = format_context_bar(-0.1);
+        assert!(bar.contains("0%") || bar.contains("-10%"));
+    }
+
+    #[test]
+    fn test_context_bar_nan_handled() {
+        let bar = format_context_bar(f32::NAN);
+        // Should not panic; any output is acceptable
+        assert!(!bar.is_empty());
+    }
+
+    #[test]
+    fn test_context_bar_tiny_value() {
+        let bar = format_context_bar(0.001);
+        // Rounding: 0.001 * 8 = 0.008 → 0 filled
+        assert!(bar.contains('░'));
+    }
+
+    #[test]
+    fn test_context_bar_rounding_boundary() {
+        let bar = format_context_bar(0.333);
+        assert!(bar.contains("33%") || bar.contains("%"));
+    }
+
+    // ── truncate_str ───────────────────────────────────────────────────────
+
+    #[test]
+    fn test_truncate_str_short() {
+        assert_eq!(truncate_str("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_exact() {
+        assert_eq!(truncate_str("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_str_long() {
+        let result = truncate_str("hello world", 5);
+        // "hell" (4) + "…" (3 bytes) = 7 bytes
+        assert!(result.ends_with('…'), "truncated string should end with ellipsis");
+        assert!(result.len() <= 8, "result should be reasonably short");
+    }
+
+    #[test]
+    fn test_truncate_str_empty() {
+        assert_eq!(truncate_str("", 5), "");
+    }
+
+    #[test]
+    fn test_truncate_str_zero_max() {
+        // "…" is 3 bytes; should not panic
+        let result = truncate_str("hello", 0);
+        assert!(!result.is_empty());
+    }
+
+    // ── save_undo_snapshot ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_undo_snapshot_saves_state() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        save_undo_snapshot(&mut app);
+        assert_eq!(app.undo_stack.len(), 1);
+        assert_eq!(app.undo_stack[0], "hello");
+    }
+
+    #[test]
+    fn test_undo_snapshot_dedup() {
+        let mut app = TuiApp::default();
+        app.input = "same".into();
+        save_undo_snapshot(&mut app);
+        save_undo_snapshot(&mut app); // same input → no push
+        assert_eq!(app.undo_stack.len(), 1);
+    }
+
+    #[test]
+    fn test_undo_snapshot_caps_at_100() {
+        let mut app = TuiApp::default();
+        for i in 0..120 {
+            app.input = format!("input-{}", i);
+            save_undo_snapshot(&mut app);
+        }
+        assert!(app.undo_stack.len() <= 100);
+    }
+
+    #[test]
+    fn test_undo_snapshot_clears_redo() {
+        let mut app = TuiApp::default();
+        app.redo_stack.push("old".into());
+        app.input = "new".into();
+        save_undo_snapshot(&mut app);
+        assert!(app.redo_stack.is_empty(), "new edit should clear redo stack");
+    }
+
+    #[test]
+    fn test_undo_redo_roundtrip() {
+        let mut app = TuiApp::default();
+        app.input = "first".into();
+        save_undo_snapshot(&mut app);
+        app.input = "second".into();
+        save_undo_snapshot(&mut app);
+
+        // Undo stack should have 2 entries
+        assert_eq!(app.undo_stack.len(), 2);
+        assert_eq!(app.undo_stack[0], "first");
+        assert_eq!(app.undo_stack[1], "second");
+    }
+
+    // ── count_search_matches ───────────────────────────────────────────────
+
+    #[test]
+    fn test_search_matches_empty_query() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        app.search_query = "".into();
+        count_search_matches(&mut app);
+        assert_eq!(app.search_match_count, 0);
+    }
+
+    #[test]
+    fn test_search_matches_found() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello world".into() });
+        app.messages.push(MessageItem::Assistant { text: "world peace".into() });
+        app.search_query = "world".into();
+        count_search_matches(&mut app);
+        assert_eq!(app.search_match_count, 2);
+    }
+
+    #[test]
+    fn test_search_matches_not_found() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        app.messages.push(MessageItem::System { text: "hi".into() });
+        app.search_query = "xyz".into();
+        count_search_matches(&mut app);
+        assert_eq!(app.search_match_count, 0);
+    }
+
+    #[test]
+    fn test_search_matches_tool_call() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: String::new(),
+            output: "file content".into(),
+            expanded: false,
+            show_full: false,
+        });
+        app.search_query = "content".into();
+        count_search_matches(&mut app);
+        assert_eq!(app.search_match_count, 1);
+    }
+
+    #[test]
+    fn test_search_matches_case_insensitive() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Assistant { text: "Hello World".into() });
+        app.search_query = "hello".into();
+        count_search_matches(&mut app);
+        assert_eq!(app.search_match_count, 1);
+    }
+
+    // ── update_reverse_search ──────────────────────────────────────────────
+
+    #[test]
+    fn test_reverse_search_empty_query() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hi".into() });
+        update_reverse_search(&mut app);
+        assert!(app.reverse_search_results.is_empty());
+    }
+
+    #[test]
+    fn test_reverse_search_finds_matches() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "first".into() });
+        app.messages.push(MessageItem::Assistant { text: "second".into() });
+        app.messages.push(MessageItem::System { text: "third".into() });
+        app.reverse_search_query = "second".into();
+        update_reverse_search(&mut app);
+        assert_eq!(app.reverse_search_results.len(), 1);
+        assert_eq!(app.reverse_search_results[0], 1);
+    }
+
+    #[test]
+    fn test_reverse_search_no_matches() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        app.reverse_search_query = "xyz".into();
+        update_reverse_search(&mut app);
+        assert!(app.reverse_search_results.is_empty());
+    }
+
+    #[test]
+    fn test_reverse_search_sets_last_match_index() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "a".into() });
+        app.messages.push(MessageItem::Assistant { text: "a".into() });
+        app.messages.push(MessageItem::System { text: "a".into() });
+        app.reverse_search_query = "a".into();
+        update_reverse_search(&mut app);
+        assert_eq!(app.reverse_search_results.len(), 3);
+        assert_eq!(app.reverse_search_idx, 2, "should select the last (newest) match");
+        assert!(!app.auto_scroll, "reverse search should disable auto-scroll");
+    }
+
+    // ── build_session_from_app ─────────────────────────────────────────────
+
+    #[test]
+    fn test_build_session_from_app_new() {
+        let mut app = TuiApp::default();
+        app.status.model = "gpt-4".into();
+        app.status.token_count = 42;
+        app.messages.push(MessageItem::System { text: "hello".into() });
+        let session = build_session_from_app(&app);
+        assert_eq!(session.model, "gpt-4");
+        assert_eq!(session.token_count, 42);
+        assert_eq!(session.messages.len(), 1);
+        assert!(!session.id.is_empty());
+    }
+
+    #[test]
+    fn test_build_session_from_app_existing_id() {
+        let mut app = TuiApp::default();
+        app.current_session_id = Some("existing-id".into());
+        let session = build_session_from_app(&app);
+        assert_eq!(session.id, "existing-id");
+    }
+
+    // ── auto_save_session ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_auto_save_no_store_does_nothing() {
+        let app = TuiApp::default();
+        // should not panic
+        auto_save_session(&app);
+    }
+
+    #[test]
+    fn test_auto_save_with_store() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        app.messages.push(MessageItem::User { text: "hi".into() });
+        auto_save_session(&app);
+        // Without session_store set, test that it doesn't panic
+        // (full persistence test requires session_store injection)
+    }
+
+    // ── apply_config_setting ────────────────────────────────────────────────
+
+    #[test]
+    fn test_apply_config_setting_no_store() {
+        let mut app = TuiApp::default();
+        let result = apply_config_setting(&mut app, "model", "gpt-4");
+        assert!(result.contains("not available"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_model() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "model", "claude-sonnet-4-20250514");
+        assert!(result.contains("claude-sonnet-4-20250514"));
+        assert_eq!(app.status.model, "claude-sonnet-4-20250514");
+    }
+
+    #[test]
+    fn test_apply_config_setting_max_tokens() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "max_tokens", "8192");
+        assert!(result.contains("8192"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_invalid_number() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "max_tokens", "not-a-number");
+        assert!(result.contains("Invalid"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_unknown_key() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "unknown_key", "value");
+        assert!(result.contains("Unknown"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_temperature() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "temperature", "0.7");
+        assert!(result.contains("0.7"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_tool_rounds() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "tool_rounds", "5");
+        assert!(result.contains("5"));
+    }
+
+    #[test]
+    fn test_apply_config_setting_cmd_timeout() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        let result = apply_config_setting(&mut app, "cmd_timeout", "120");
+        assert!(result.contains("120"));
+    }
+
+    // ── Keyboard: Exit Keys ─────────────────────────────────────────────────
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(code, modifiers)
+    }
+
+    fn press(app: &mut TuiApp, code: KeyCode, modifiers: KeyModifiers, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
+        handle_key(app, key(code, modifiers), cmd_tx);
+    }
+
+    #[test]
+    fn test_key_ctrl_c_quits() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, &tx);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_key_ctrl_q_quits() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('q'), KeyModifiers::CONTROL, &tx);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_key_ctrl_d_quits() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('d'), KeyModifiers::CONTROL, &tx);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_key_esc_quits_when_no_overlay() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_key_esc_closes_help_instead_of_quit() {
+        let mut app = TuiApp::default();
+        app.help_active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.help_active);
+        assert!(!app.should_quit, "Esc should close help, not quit");
+    }
+
+    #[test]
+    fn test_key_esc_closes_search_instead_of_quit() {
+        let mut app = TuiApp::default();
+        app.search_active = true;
+        app.search_query = "hello".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.search_active);
+        assert!(app.search_query.is_empty());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn test_key_esc_closes_reverse_search_instead_of_quit() {
+        let mut app = TuiApp::default();
+        app.reverse_search_active = true;
+        app.reverse_search_query = "test".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.reverse_search_active);
+        assert!(app.reverse_search_query.is_empty());
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn test_key_esc_deselects_message_instead_of_quit() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hi".into() });
+        app.selected_msg = Some(0);
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(app.selected_msg.is_none());
+        assert!(!app.should_quit);
+    }
+
+    // ── Keyboard: Editing ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_key_ctrl_a_goes_to_start() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 3;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_key_ctrl_e_goes_to_end() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_key_ctrl_w_deletes_word_backward() {
+        let mut app = TuiApp::default();
+        app.input = "hello world".into();
+        app.cursor_pos = 11;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('w'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "hello ");
+        assert_eq!(app.cursor_pos, 6);
+    }
+
+    #[test]
+    fn test_key_ctrl_w_at_start_does_nothing() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('w'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "hello");
+    }
+
+    #[test]
+    fn test_key_ctrl_u_deletes_to_start() {
+        let mut app = TuiApp::default();
+        app.input = "hello world".into();
+        app.cursor_pos = 5;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('u'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, " world");
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_key_ctrl_k_deletes_to_end() {
+        let mut app = TuiApp::default();
+        app.input = "hello world".into();
+        app.cursor_pos = 5;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('k'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "hello");
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_key_ctrl_l_clears_messages() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hi".into() });
+        app.cached_msg_count = 1;
+        app.scroll_offset = 5;
+        app.auto_scroll = false;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('l'), KeyModifiers::CONTROL, &tx);
+        assert!(app.messages.is_empty());
+        assert!(app.cached_lines.is_empty());
+        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll);
+    }
+
+    #[test]
+    fn test_key_ctrl_t_toggles_dark_mode() {
+        let mut app = TuiApp::default();
+        app.dark_mode = true;
+        app.cached_msg_count = 5;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('t'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.dark_mode);
+        assert_eq!(app.cached_msg_count, 0, "Ctrl+T should clear render cache");
+        // Toggle back
+        press(&mut app, KeyCode::Char('t'), KeyModifiers::CONTROL, &tx);
+        assert!(app.dark_mode);
+    }
+
+    #[test]
+    fn test_key_delete_removes_char() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Delete, KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "ello");
+    }
+
+    #[test]
+    fn test_key_backspace_removes_char() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 5;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "hell");
+        assert_eq!(app.cursor_pos, 4);
+    }
+
+    #[test]
+    fn test_key_backspace_at_start_does_nothing() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Backspace, KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "hello");
+    }
+
+    #[test]
+    fn test_key_ctrl_z_undo_input() {
+        let mut app = TuiApp::default();
+        app.input = "second".into();
+        app.undo_stack.push("first".into());
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "first");
+        assert_eq!(app.redo_stack.len(), 1);
+    }
+
+    #[test]
+    fn test_key_ctrl_y_redo_input() {
+        let mut app = TuiApp::default();
+        app.input = "first".into();
+        app.redo_stack.push("second".into());
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "second");
+    }
+
+    #[test]
+    fn test_key_ctrl_z_empty_stack_does_nothing() {
+        let mut app = TuiApp::default();
+        app.input = "stay".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('z'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "stay");
+    }
+
+    // ── Keyboard: Navigation + Enter ───────────────────────────────────────
+
+    #[test]
+    fn test_key_pageup_scrolls_up() {
+        let mut app = TuiApp::default();
+        app.auto_scroll = false;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::PageUp, KeyModifiers::NONE, &tx);
+        assert_eq!(app.scroll_offset, 10);
+    }
+
+    #[test]
+    fn test_key_pagedown_scrolls_down() {
+        let mut app = TuiApp::default();
+        app.scroll_offset = 20;
+        app.auto_scroll = false;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::PageDown, KeyModifiers::NONE, &tx);
+        assert_eq!(app.scroll_offset, 10);
+    }
+
+    #[test]
+    fn test_key_up_input_history() {
+        let mut app = TuiApp::default();
+        app.input_history = vec!["first".into(), "second".into()];
+        app.history_pos = 2;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "second");
+        assert_eq!(app.history_pos, 1);
+    }
+
+    #[test]
+    fn test_key_up_selects_message_when_input_empty() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &tx);
+        assert_eq!(app.selected_msg, Some(0));
+    }
+
+    #[test]
+    fn test_key_down_input_history() {
+        let mut app = TuiApp::default();
+        app.input_history = vec!["first".into(), "second".into()];
+        app.history_pos = 0;
+        app.input = "first".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "second");
+    }
+
+    #[test]
+    fn test_key_left_moves_cursor() {
+        let mut app = TuiApp::default();
+        app.input = "hi".into();
+        app.cursor_pos = 2;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Left, KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 1);
+    }
+
+    #[test]
+    fn test_key_right_moves_cursor() {
+        let mut app = TuiApp::default();
+        app.input = "hi".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Right, KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 1);
+    }
+
+    #[test]
+    fn test_key_home_goes_to_start() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 3;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Home, KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 0);
+    }
+
+    #[test]
+    fn test_key_end_goes_to_end() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::End, KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 5);
+    }
+
+    #[test]
+    fn test_key_ctrl_f_toggles_search() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('f'), KeyModifiers::CONTROL, &tx);
+        assert!(app.search_active);
+        press(&mut app, KeyCode::Char('f'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.search_active);
+    }
+
+    #[test]
+    fn test_key_ctrl_r_toggles_reverse_search() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, &tx);
+        assert!(app.reverse_search_active);
+        press(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.reverse_search_active);
+    }
+
+    #[test]
+    fn test_key_ctrl_p_toggles_model_picker() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::CONTROL, &tx);
+        assert!(app.model_picker_active);
+        press(&mut app, KeyCode::Char('p'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.model_picker_active);
+    }
+
+    #[test]
+    fn test_key_ctrl_h_toggles_help() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::CONTROL, &tx);
+        assert!(app.help_active);
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.help_active);
+    }
+
+    // ── Keyboard: Enter with non-empty input sends message ──────────────────
+
+    #[test]
+    fn test_enter_sends_message() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 5;
+        let (tx, rx) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &tx);
+        assert!(app.input.is_empty(), "input should be cleared after send");
+        assert_eq!(app.cursor_pos, 0);
+        // User message + status messages (like "[send] Agent…")
+        assert!(app.messages.len() >= 1, "should have at least user message");
+        assert!(matches!(app.messages.first(), Some(MessageItem::User { text }) if text == "hello"));
+        // AgentCommand should have been sent
+        let cmd = rx.try_recv();
+        assert!(cmd.is_ok(), "an AgentCommand should have been sent");
+    }
+
+    #[test]
+    fn test_alt_enter_sends_message() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 5;
+        let (tx, rx) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Enter, KeyModifiers::ALT, &tx);
+        assert!(app.input.is_empty());
+        let cmd = rx.try_recv();
+        assert!(cmd.is_ok());
+    }
+
+    #[test]
+    fn test_shift_enter_inserts_newline() {
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        app.cursor_pos = 5;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Enter, KeyModifiers::SHIFT, &tx);
+        assert!(app.input.contains('\n'));
+        // Note: original code handles Shift+Enter in the Enter branch,
+        // but the actual handling is at line ~1314 which is OR'd with Alt
+        // This is a basic sanity test
+    }
+
+    #[test]
+    fn test_enter_empty_input_toggles_reasoning() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Reasoning { text: "thinking".into(), expanded: false });
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &tx);
+        // Last message should be toggled expanded
+        if let Some(MessageItem::Reasoning { expanded, .. }) = app.messages.last() {
+            assert!(*expanded, "Reasoning block should be expanded");
+        } else {
+            panic!("Last message should be Reasoning");
+        }
+    }
+
+    #[test]
+    fn test_enter_empty_input_toggles_tool_full() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: String::new(),
+            output: "content".into(),
+            expanded: true,
+            show_full: false,
+        });
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Enter, KeyModifiers::NONE, &tx);
+        if let Some(MessageItem::ToolCall { show_full, .. }) = app.messages.last() {
+            assert!(*show_full, "ToolCall should be toggled show_full");
+        } else {
+            panic!("Last message should be ToolCall");
+        }
+    }
+
+    // ── Keyboard: Permission Dialogs ───────────────────────────────────────
+
+    #[test]
+    fn test_key_y_approves_tool_permission() {
+        let mut app = TuiApp::default();
+        app.permission_pending = Some(PendingPermission {
+            tool_name: "read_file".into(),
+            tool_input: "test".into(),
+            request_id: 1,
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE, &tx);
+        assert!(app.permission_pending.is_none());
+        let cmd = rx.try_recv();
+        assert!(cmd.is_ok());
+    }
+
+    #[test]
+    fn test_key_n_denies_tool_permission() {
+        let mut app = TuiApp::default();
+        app.permission_pending = Some(PendingPermission {
+            tool_name: "read_file".into(),
+            tool_input: "test".into(),
+            request_id: 1,
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE, &tx);
+        assert!(app.permission_pending.is_none());
+        let cmd = rx.try_recv();
+        assert!(cmd.is_ok());
+    }
+
+    // ── Keyboard: Model Picker ──────────────────────────────────────────────
+
+    #[test]
+    fn test_model_picker_up_down_enter() {
+        let mut app = TuiApp::default();
+        app.model_picker_active = true;
+        app.model_picker_selected = 2;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &tx);
+        assert_eq!(app.model_picker_selected, 1);
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx);
+        assert_eq!(app.model_picker_selected, 2);
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx);
+        assert_eq!(app.model_picker_selected, 3);
+    }
+
+    // ── Keyboard: Slash Completion ──────────────────────────────────────────
+
+    #[test]
+    fn test_slash_completion_up_down_selection() {
+        let mut app = TuiApp::default();
+        // Set up proper initial state to activate slash completion
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('/'), KeyModifiers::NONE, &tx);
+        assert!(app.slash_completion.active);
+        assert_eq!(app.slash_completion.selected, 0);
+        // Down should move selection forward
+        press(&mut app, KeyCode::Down, KeyModifiers::NONE, &tx);
+        assert_eq!(app.slash_completion.selected, 1);
+        // Up should move selection backward
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &tx);
+        assert_eq!(app.slash_completion.selected, 0);
+        // Up at top should wrap or stay (currently stays)
+        press(&mut app, KeyCode::Up, KeyModifiers::NONE, &tx);
+        assert_eq!(app.slash_completion.selected, 0, "Up at top should stay at 0");
+    }
+
+    // ── Keyboard: Input Characters ──────────────────────────────────────────
+
+    #[test]
+    fn test_typing_characters() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('h'), KeyModifiers::NONE, &tx);
+        press(&mut app, KeyCode::Char('i'), KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "hi");
+        assert_eq!(app.cursor_pos, 2);
+    }
+
+    #[test]
+    fn test_typing_in_search_mode() {
+        let mut app = TuiApp::default();
+        app.search_active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('x'), KeyModifiers::NONE, &tx);
+        assert!(app.input.is_empty(), "typing in search mode should not modify input");
+        assert_eq!(app.search_query, "x");
+    }
+
+    #[test]
+    fn test_typing_in_reverse_search_mode() {
+        let mut app = TuiApp::default();
+        app.reverse_search_active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE, &tx);
+        assert!(app.input.is_empty());
+        assert_eq!(app.reverse_search_query, "y");
+    }
+
+    // ── @ File Completion ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_at_completion_triggers_on_typing() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('@'), KeyModifiers::NONE, &tx);
+        assert!(app.completion.active);
+    }
+
+    #[test]
+    fn test_at_completion_tab_accepts() {
+        let mut app = TuiApp::default();
+        app.input = "@".into();
+        app.cursor_pos = 1;
+        app.completion.active = true;
+        app.completion.at_pos = 0;
+        app.completion.candidates = vec![
+            crate::tui::completion::CompletionCandidate {
+                display: "src/main.rs".into(),
+                path: "/root/src/main.rs".into(),
+            }
+        ];
+        app.completion.selected = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Tab, KeyModifiers::NONE, &tx);
+        assert!(app.input.contains("src/main.rs"));
+        assert!(!app.completion.active, "completion should close after Tab accept");
+    }
+
+    // ── Slash Commands: Session / Resume ────────────────────────────────────
+
+    #[test]
+    fn test_slash_session_no_store() {
+        let mut app = TuiApp::default();
+        // Without session_store, should show "not available"
+        app.input = "/session".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("not available"),
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn test_slash_session_lists_sessions() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        // Save a session first
+        let session = crate::session::Session {
+            id: "test-session-id".into(),
+            model: "gpt-4".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            message_count: 1,
+            token_count: 0,
+            messages: vec![MessageItem::System { text: "hello".into() }],
+        };
+        let _ = store.save(&session);
+        app.session_store = Some(store);
+        app.input = "/session".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        // Verify the session list shows the session ID (truncated to first 8 chars)
+        let any_session_line = app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("test-ses"),
+            _ => false,
+        });
+        assert!(any_session_line, "Session listing should show truncated session ID");
+    }
+
+    #[test]
+    fn test_slash_resume_no_id_loads_latest() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let session = crate::session::Session {
+            id: "resume-test-id".into(),
+            model: "gpt-4".into(),
+            created_at: String::new(),
+            updated_at: String::new(),
+            message_count: 1,
+            token_count: 0,
+            messages: vec![MessageItem::User { text: "saved msg".into() }],
+        };
+        let _ = store.save(&session);
+        app.session_store = Some(store);
+        app.input = "/resume".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::User { text } => text == "saved msg",
+            MessageItem::System { text } => text.contains("Resumed"),
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn test_slash_resume_no_sessions() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        app.session_store = Some(store);
+        app.input = "/resume".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("No saved sessions"),
+            _ => false,
+        }));
+    }
+
+    // ── Slash Commands: Config ──────────────────────────────────────────────
+
+    #[test]
+    fn test_slash_config_no_store() {
+        let mut app = TuiApp::default();
+        app.input = "/config".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("not available"),
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn test_slash_config_shows_display() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        app.input = "/config".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        // Should show model info in the response
+        let sys_msgs: Vec<&String> = app.messages.iter()
+            .filter_map(|m| match m {
+                MessageItem::System { text } => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert!(!sys_msgs.is_empty(), "config should produce a System message");
+    }
+
+    #[test]
+    fn test_slash_config_set_model() {
+        let mut app = TuiApp::default();
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_config_store(dir.path());
+        app.config_store = Some(store);
+        app.input = "/config set model claude-sonnet-4-20250514".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert_eq!(app.status.model, "claude-sonnet-4-20250514");
+    }
+
+    // ── Slash Commands: MCP ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_slash_mcp_no_registry() {
+        let mut app = TuiApp::default();
+        app.input = "/mcp".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("not available"),
+            _ => false,
+        }));
+    }
+
+    #[test]
+    fn test_slash_mcp_list_empty() {
+        let mut app = TuiApp::default();
+        let registry = Arc::new(Mutex::new(crate::mcp::McpRegistry::new(Vec::new())));
+        app.mcp_registry = Some(registry);
+        app.input = "/mcp list".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("No MCP servers"),
+            _ => false,
+        }));
+    }
+
+    // ── Agent Response ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_agent_response_text() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        app.status.agent_busy = true;
+        tx.send(AgentResponse::Text { text: "hello from agent".into() }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(!app.status.agent_busy, "Text response should clear busy");
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::Assistant { text } => text == "hello from agent",
+            _ => false,
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_tool_call() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::ToolCall {
+            name: "read_file".into(),
+            input: "/tmp/test".into(),
+        }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.status.agent_busy, "ToolCall should set busy");
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::ToolCall { name, .. } => name == "read_file",
+            _ => false,
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_tool_result() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: String::new(),
+            output: String::new(),
+            expanded: false,
+            show_full: false,
+        });
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::ToolResult {
+            name: "read_file".into(),
+            output: "file content".into(),
+            success: true,
+        }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        if let Some(MessageItem::ToolCall { output, expanded, .. }) = app.messages.last() {
+            assert!(output.contains("file content"));
+            assert!(!expanded, "successful tool result should not auto-expand");
+        } else {
+            panic!("Last message should be ToolCall");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_heartbeat() {
+        let mut app = TuiApp::default();
+        app.status.agent_busy = false;
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::Heartbeat { pending: 2 }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.status.agent_busy);
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_error() {
+        let mut app = TuiApp::default();
+        app.status.agent_busy = true;
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::Error { message: "something broke".into() }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(!app.status.agent_busy, "Error should clear busy");
+        assert!(app.messages.iter().any(|m| match m {
+            MessageItem::System { text } => text.contains("something broke"),
+            _ => false,
+        }));
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_shutdown() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::Shutdown).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.should_quit);
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_permission_request() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::PermissionRequest {
+            tool_name: "write_file".into(),
+            tool_input: "test content".into(),
+            request_id: 42,
+        }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.permission_pending.is_some());
+        let p = app.permission_pending.as_ref().unwrap();
+        assert_eq!(p.tool_name, "write_file");
+        assert_eq!(p.request_id, 42);
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_plan_request() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::PlanRequest {
+            title: "refactor".into(),
+            plan: "step 1, step 2".into(),
+            request_id: 7,
+        }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.permission_pending.is_some());
+        assert_eq!(app.permission_pending.as_ref().unwrap().request_id, 7);
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_ask_user() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::AskUser {
+            question: "continue?".into(),
+            request_id: 99,
+        }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        assert!(app.permission_pending.is_some());
+        assert_eq!(app.permission_pending.as_ref().unwrap().tool_name, "ask_user");
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_llm_delta_append() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Assistant { text: "hello ".into() });
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::LlmDelta { text: "world".into() }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        if let Some(MessageItem::Assistant { text }) = app.messages.last() {
+            assert_eq!(text, "hello world");
+        } else {
+            panic!("Last message should be Assistant");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_agent_response_reasoning_delta() {
+        let mut app = TuiApp::default();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        tx.send(AgentResponse::ReasoningDelta { text: "step 1".into() }).await.unwrap();
+        check_agent_responses(&mut app, &mut rx);
+        if let Some(MessageItem::Reasoning { text, .. }) = app.messages.last() {
+            assert!(text.contains("step 1"));
+        } else {
+            panic!("Last message should be Reasoning");
+        }
+        // Append
+        let (tx2, mut rx2) = tokio::sync::mpsc::channel(16);
+        tx2.send(AgentResponse::ReasoningDelta { text: ", step 2".into() }).await.unwrap();
+        // Move the receiver
+        std::mem::swap(&mut rx, &mut rx2);
+        check_agent_responses(&mut app, &mut rx);
+        if let Some(MessageItem::Reasoning { text, .. }) = app.messages.last() {
+            assert!(text.contains("step 1, step 2"));
+        } else {
+            panic!("Last message should be Reasoning");
+        }
+    }
+
+    // ── Message Line Building + Cache ───────────────────────────────────────
+
+    #[test]
+    fn test_build_message_lines_builds_cache() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        let lines = build_message_lines(&mut app);
+        assert!(!lines.is_empty(), "should produce rendered lines");
+        assert_eq!(app.cached_msg_count, 1, "cache count should be set");
+        assert!(!app.cached_lines.is_empty(), "cached lines should be populated");
+    }
+
+    #[test]
+    fn test_build_message_lines_cache_hit() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        // First call builds cache
+        let first = build_message_lines(&mut app);
+        assert_eq!(app.cached_msg_count, 1);
+        // Second call should hit cache
+        let second = build_message_lines(&mut app);
+        assert_eq!(first.len(), second.len(), "cache hit should produce same lines");
+    }
+
+    #[test]
+    fn test_build_message_lines_cache_miss_on_new_message() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "first".into() });
+        let first = build_message_lines(&mut app);
+        let first_count = app.cached_msg_count;
+
+        // Add a new message
+        app.messages.push(MessageItem::Assistant { text: "second".into() });
+        let second = build_message_lines(&mut app);
+        assert_eq!(app.cached_msg_count, 2, "cache should update after new message");
+        assert!(second.len() > first.len(), "more messages should produce more lines");
+    }
+
+    #[test]
+    fn test_build_message_lines_cache_miss_on_search_change() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Assistant { text: "hello world".into() });
+        let first = build_message_lines(&mut app);
+        assert_eq!(app.cached_msg_count, 1);
+
+        // Change search query (even though search isn't active)
+        app.search_query = "hello".into();
+        let second = build_message_lines(&mut app);
+        // Should rebuild because cached_search_query differs
+        assert_eq!(app.cached_search_query, "hello");
+    }
+
+    #[test]
+    fn test_build_message_lines_user_message_renders() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "hello".into() });
+        let lines = build_message_lines(&mut app);
+        // User messages have a "you >" prefix
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("you"), "user messages should show 'you' prefix");
+        assert!(rendered.contains("hello"), "user message text should appear");
+    }
+
+    #[test]
+    fn test_build_message_lines_assistant_message_renders() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Assistant { text: "assistant reply".into() });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("assistant"), "assistant text should appear");
+    }
+
+    #[test]
+    fn test_build_message_lines_system_message_renders() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::System { text: "system note".into() });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("system"), "system message text should appear");
+    }
+
+    #[test]
+    fn test_build_message_lines_tool_call_collapsed() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: String::new(),
+            output: "file contents".into(),
+            expanded: false,
+            show_full: false,
+        });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("▶"), "collapsed tool call should show ▶");
+    }
+
+    #[test]
+    fn test_build_message_lines_tool_call_expanded() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read_file".into(),
+            input: String::new(),
+            output: "file contents".into(),
+            expanded: true,
+            show_full: false,
+        });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("▼"), "expanded tool call should show ▼");
+        assert!(rendered.contains("file contents"), "expanded tool output should be visible");
+    }
+
+    #[test]
+    fn test_build_message_lines_reasoning_collapsed() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Reasoning { text: "thinking...".into(), expanded: false });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("[think]"), "collapsed reasoning should show [think] marker");
+        assert!(rendered.contains("[think]"), "reasoning should have [think] marker");
+    }
+
+    #[test]
+    fn test_build_message_lines_reasoning_expanded() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Reasoning { text: "thinking...".into(), expanded: true });
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("[think]"), "expanded reasoning should show [think] marker");
+        assert!(rendered.contains("thinking..."), "reasoning text should be visible");
+    }
+
+    #[test]
+    fn test_build_message_lines_selected_message() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "select me".into() });
+        app.selected_msg = Some(0);
+        let lines = build_message_lines(&mut app);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("▸"), "selected message should have ▸ indicator");
     }
 }

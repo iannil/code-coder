@@ -412,10 +412,11 @@ fn render_table_row(
 
     for (i, cell) in cells.iter().enumerate() {
         let width = widths.get(i).copied().unwrap_or(0);
-        let padded = if cell.len() >= width {
-            cell[..width].to_string()
+        let padded = if cell.chars().count() >= width {
+            cell.chars().take(width).collect::<String>()
         } else {
-            format!("{}{}", cell, " ".repeat(width - cell.len()))
+            let padding = " ".repeat(width - cell.chars().count());
+            format!("{}{}", cell, padding)
         };
 
         let style = if is_header {
@@ -617,27 +618,63 @@ mod tests {
     }
 
     #[test]
-    fn test_render_heading() {
+    fn test_render_heading_h1() {
         let lines = render_markdown("# Title");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn test_render_heading_h2() {
+        let lines = render_markdown("## Section");
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn test_render_heading_h3() {
+        let lines = render_markdown("### Subsection");
         assert_eq!(lines.len(), 1);
     }
 
     #[test]
     fn test_render_code_block() {
         let lines = render_markdown("```rust\nfn main() {}\n```");
-        // Should have header + code line + footer
         assert_eq!(lines.len(), 3, "code block: header + content + footer");
+    }
+
+    #[test]
+    fn test_render_code_block_without_lang() {
+        let lines = render_markdown("```\nplain code\n```");
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[test]
+    fn test_render_code_block_empty() {
+        let lines = render_markdown("```\n```");
+        // Should not panic; empty code block content is valid
+        assert!(!lines.is_empty(), "empty code block should produce at least one line");
     }
 
     #[test]
     fn test_render_bold_italic() {
         let lines = render_markdown("**bold** and *italic*");
         assert!(!lines.is_empty());
+        let rendered = lines[0].to_string();
+        assert!(rendered.contains("bold"), "bold text should appear");
+        assert!(rendered.contains("italic"), "italic text should appear");
     }
 
     #[test]
-    fn test_render_list() {
+    fn test_render_unordered_list() {
         let lines = render_markdown("- item one\n- item two");
+        assert!(lines.len() >= 2);
+        let rendered = lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n");
+        assert!(rendered.contains("item one"));
+        assert!(rendered.contains("item two"));
+    }
+
+    #[test]
+    fn test_render_ordered_list() {
+        let lines = render_markdown("1. first\n2. second");
         assert!(lines.len() >= 2);
     }
 
@@ -645,11 +682,52 @@ mod tests {
     fn test_render_inline_code() {
         let lines = render_markdown("use `std::collections`");
         assert!(!lines.is_empty());
+        let rendered = lines[0].to_string();
+        assert!(rendered.contains("std::collections"));
     }
 
     #[test]
     fn test_render_link() {
         let lines = render_markdown("[click here](https://example.com)");
+        assert!(!lines.is_empty());
+        let rendered = lines[0].to_string();
+        assert!(rendered.contains("click here"));
+    }
+
+    #[test]
+    fn test_render_empty_string() {
+        let lines = render_markdown("");
+        assert!(lines.is_empty() || lines.len() == 1);
+    }
+
+    #[test]
+    fn test_render_whitespace_only() {
+        let lines = render_markdown("   \n  ");
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_mixed_elements() {
+        let md = "# Title\n\n- list item\n\n```\ncode\n```\n\n**bold**";
+        let lines = render_markdown(md);
+        assert!(lines.len() >= 5, "mixed content should produce multiple lines");
+    }
+
+    #[test]
+    fn test_render_highlight_basic() {
+        let lines = render_markdown_with_highlight("hello world", Some("world"));
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_highlight_no_match() {
+        let lines = render_markdown_with_highlight("hello world", Some("xyz"));
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_highlight_empty_query() {
+        let lines = render_markdown_with_highlight("hello world", Some(""));
         assert!(!lines.is_empty());
     }
 }

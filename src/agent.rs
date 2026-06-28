@@ -6,6 +6,7 @@
 use crate::context::Context;
 use crate::event::{Event, Subscriber};
 use crate::llm::{LlmClient, Message, StreamDelta};
+use crate::self_evolve::{IntrospectConfig, IntrospectResult, SelfEvolve};
 use crate::skill::SkillRegistry;
 use crate::tools::ToolRegistry;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -35,6 +36,10 @@ pub struct AgentLoop {
     max_tool_rounds: usize,
     /// Sender for streaming LLM deltas (sent to TUI)
     delta_tx: Option<tokio::sync::mpsc::Sender<AgentResponse>>,
+    /// Self-evolution engine (Phase 7)
+    self_evolve: SelfEvolve,
+    /// Monotonic round counter for cooldown tracking
+    round_counter: u32,
 }
 
 impl AgentLoop {
@@ -46,6 +51,8 @@ impl AgentLoop {
             context,
             max_tool_rounds: 10,
             delta_tx: None,
+            self_evolve: SelfEvolve::new(IntrospectConfig::default()),
+            round_counter: 0,
         }
     }
 
@@ -103,11 +110,40 @@ tool, then summarise the result for the user."#
         &mut self,
         text: &str,
         tools: &ToolRegistry,
-        skills: &SkillRegistry,
+        skills: &mut SkillRegistry,
         permission_check: &dyn Fn(&str, &str) -> bool,
     ) -> anyhow::Result<String> {
         self.history.push(Message::user(text));
-        self.react_loop(tools, skills, permission_check).await
+        self.round_counter += 1;
+        let mut response = self.react_loop(tools, skills, permission_check).await?;
+
+        // Self-evolution: evaluate after each turn
+        let project_root = self.context.project_root.clone();
+        let result = self.self_evolve.evaluate(
+            &self.history,
+            tools,
+            skills,
+            &project_root,
+            self.round_counter,
+        );
+
+        match result {
+            IntrospectResult::SkillGenerated { skill_name, .. } => {
+                // Re-scan so the new skill is available immediately
+                let _ = skills.scan(&project_root);
+                response.push_str(&format!(
+                    "\n\n[auto] 检测到能力缺口，已生成草稿 skill: `{skill_name}`（已自动加载）"
+                ));
+            }
+            IntrospectResult::SkillPromoted { skill_name } => {
+                response.push_str(&format!(
+                    "\n\n[auto] Skill `{skill_name}` 已验证有效，已激活"
+                ));
+            }
+            IntrospectResult::None => {}
+        }
+
+        Ok(response)
     }
 
     async fn react_loop(
@@ -184,6 +220,7 @@ tool, then summarise the result for the user."#
 
     pub fn clear_history(&mut self) {
         self.history.clear();
+        self.self_evolve.reset_session();
     }
 
     pub fn set_model(&mut self, model: &str) {
@@ -254,36 +291,49 @@ impl BackgroundAgent {
         let handle = std::thread::Builder::new()
             .name("agent".into())
             .spawn(move || {
+                crate::log("[codecoder] Agent 线程已启动");
                 let rt = tokio::runtime::Builder::new_current_thread()
                     .enable_time()
+                    .enable_io()
                     .build()
                     .expect("failed to build tokio runtime");
 
-                rt.block_on(async {
-                    let delta_tx = resp_tx.clone();
-                    let mut agent = AgentLoop::new(llm, context).with_delta_tx(delta_tx);
-                    let tools = tools;
-                    let mut skills = skills;
+                let agent_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    crate::log("[codecoder] Agent 事件循环开始");
+                    rt.block_on(async {
+                        // 发送初始心跳确认 agent 存活
+                        let _ = resp_tx.send(AgentResponse::Heartbeat { pending: 0 }).await;
 
-                    // Set up AskUserTool and PlanTool response channels (shared sender)
-                    let (ask_tx, ask_rx) = std::sync::mpsc::channel::<AgentResponse>();
-                    crate::tools::AskUserTool::set_response_tx(ask_tx.clone());
-                    crate::tools::PlanTool::set_response_tx(ask_tx);
-                    // Forward ask_user messages to the tokio response channel
-                    let resp_tx_bridge = resp_tx.clone();
-                    tokio::spawn(async move {
-                        while let Ok(msg) = ask_rx.recv() {
-                            let _ = resp_tx_bridge.send(msg).await;
-                        }
-                    });
+                        let delta_tx = resp_tx.clone();
+                        let mut agent = AgentLoop::new(llm, context).with_delta_tx(delta_tx);
 
-                    // Heartbeat interval
-                    let mut heartbeat_count = 0;
+                        let tools = tools;
+                        let mut skills = skills;
+
+                        let (ask_tx, ask_rx) = std::sync::mpsc::channel::<AgentResponse>();
+                        crate::tools::AskUserTool::set_response_tx(ask_tx.clone());
+                        crate::tools::PlanTool::set_response_tx(ask_tx);
+
+                        let resp_tx_bridge = resp_tx.clone();
+                        tokio::spawn(async move {
+                            loop {
+                                match ask_rx.try_recv() {
+                                    Ok(msg) => {
+                                        let _ = resp_tx_bridge.send(msg).await;
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                    }
+                                    Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
+                                }
+                            }
+                        });
 
                     loop {
-                        // Check for commands (non-blocking, then heartbeat)
+                        // Non-blocking poll
                         match cmd_rx.try_recv() {
                             Ok(AgentCommand::ProcessMessage { text }) => {
+                                crate::log(&format!("[codecoder] Agent 收到消息: {:?}", &text[..text.len().min(50)]));
                                 let _ = bus.drain();
                                 let resp_tx2 = resp_tx.clone();
                                 let cmd_rx_ref = &cmd_rx;
@@ -308,7 +358,7 @@ impl BackgroundAgent {
                                     });
                                     false
                                 };
-                                match agent.handle_message(&text, &tools, &skills, &permission_check).await {
+                                match agent.handle_message(&text, &tools, &mut skills, &permission_check).await {
                                     Ok(resp) => {
                                         let _ = resp_tx.send(AgentResponse::Text { text: resp }).await;
                                     }
@@ -352,20 +402,24 @@ impl BackgroundAgent {
                             }
                             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                             Err(std::sync::mpsc::TryRecvError::Empty) => {
-                                // Heartbeat
-                                heartbeat_count += 1;
-                                if heartbeat_count % 4 == 0 {
-                                    let pending = bus.pending();
-                                    let _ = resp_tx.send(AgentResponse::Heartbeat {
-                                        pending,
-                                    }).await;
-                                }
-                                // Yield to runtime so async tasks can progress
+                                // Yield to runtime so other tasks can progress
+                                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                                 tokio::task::yield_now().await;
                             }
                         }
                     }
                 });
+                }));
+                if let Err(panic) = agent_result {
+                    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else if let Some(s) = panic.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "agent thread panicked (unknown cause)".into()
+                    };
+                    crate::log(&format!("[codecoder] Agent thread panicked: {msg}"));
+                }
             })
             .expect("failed to spawn agent thread");
 
@@ -478,8 +532,8 @@ Here is the content."#;
     async fn test_handle_message_with_stub() {
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
-        let skills = SkillRegistry::new();
-        let resp = agent.handle_message("hello", &tools, &skills, &|_, _| true).await.unwrap();
+        let mut skills = SkillRegistry::new();
+        let resp = agent.handle_message("hello", &tools, &mut skills, &|_, _| true).await.unwrap();
         assert!(resp.contains("hello"));
     }
 
@@ -487,8 +541,8 @@ Here is the content."#;
     async fn test_clear_history() {
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
-        let skills = SkillRegistry::new();
-        agent.handle_message("hello", &tools, &skills, &|_, _| true).await.unwrap();
+        let mut skills = SkillRegistry::new();
+        agent.handle_message("hello", &tools, &mut skills, &|_, _| true).await.unwrap();
         assert!(agent.history.len() >= 2);
         agent.clear_history();
         assert_eq!(agent.history.len(), 0);
@@ -498,7 +552,7 @@ Here is the content."#;
     fn test_background_agent_spawn_and_shutdown() {
         let ctx = Context::load("/tmp");
         let tools = ToolRegistry::new_for_test();
-        let skills = SkillRegistry::new();
+        let mut skills = SkillRegistry::new();
         let bus = SharedEventBus::new();
 
         let mut bg = BackgroundAgent::spawn(

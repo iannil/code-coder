@@ -28,38 +28,41 @@ cargo run
 cargo test
 ```
 
+## Design Docs
+
+- [[codecoder-design]] — Phase 1-6 核心架构（Event Bus / Agent Loop / LLM / Tools / Sandbox）
+- [[phase-7-self-evolution]] — Phase 7: 自我进化型 Agent 设计（14 项决策树）
+
 ## Architecture
 
-设计共识（详见 [[codecoder-design]]）：
+设计共识（详见 [[codecoder-design]]，当前实现见源码 `src/`）：
 
 | 层 | 职责 |
 |---|------|
 | **Event Bus** | 核心骨架 — 统一事件路由（用户消息 / 定时器 / 文件事件） |
 | **Agent Loop** | 事件驱动的感知-思考-行动循环 |
+| **Self-Evolve** | 失败驱动的自省循环，自动生成 skill 补足能力缺口 |
 | **Skill System** | 分层能力：markdown skill → Rust/WASM 插件 |
 | **LLM Layer** | 分层 LLM：微 LLM（本地）处理常规事件，大 LLM（云端）处理复杂推理 |
-| **Tools** | 内置六件套：read_file, write_file, run_command, llm_call, search_web, list_directory |
-| **Sandbox** | 分级：L0 纯数据 → L1 WASM → L2 Docker → L3 VM |
-| **REPL** | 零配置交互式终端 |
-
-源码目录计划：
-```
-src/
-├── main.rs       # 入口：启动事件循环
-├── event.rs      # Event enum + EventBus trait
-├── agent.rs      # AgentLoop 骨架
-├── skill/        # Skill trait + 发现/加载
-├── llm/          # 分层 LLM 封装
-├── tools/        # 内置工具
-└── repl.rs       # 交互式终端
-```
+| **Tools** | 21 个内置工具（含 MCP 扩展工具） |
+| **Sandbox** | 分级：L0 纯数据 → L1 WASM → L2 Docker |
+| **REPL** | 零配置交互式终端 + TUI |
 
 ## Conventions
 
 - **先设计后编码** — 重大架构决策先走 /grill-me 充分讨论
 - **纯 markdown 优先** — 能力扩展优先用 markdown skill，不够用时再写 Rust
 - **文件系统即 API** — `skills/`、`memory/`、`tools/` 目录是系统的"自我"，不要硬编码能力列表
-- **渐进式增强** — MVP 先跑通 Event Bus + Agent Loop，不要一开始做全功能
+- **渐进式增强** — Phase 7 从失败驱动的自省 MVP 开始，后续逐步加入 Rust 工具生成和文件系统 watcher
+- **分层失败检测** — LLM 自我声明 → 工具错误累积 → 用户反馈，逐级升级
+
+## Phase Status
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| 1-6 | ✅ 完成 | Event Bus / Agent Loop / LLM / Tools / Sandbox / TUI |
+| 7 | 📐 设计完成 | 自我进化型 Agent — 见 docs/phase-7-self-evolution.md |
+| 8+ | 📋 待设计 | Rust 工具生成、文件系统 watcher、跨会话学习 |
 
 ## Notes
 

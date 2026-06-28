@@ -8,9 +8,29 @@ mod llm;
 mod mcp;
 mod memory;
 mod sandbox;
+mod self_evolve;
 mod session;
 mod skill;
 mod tools;
+
+use std::io::Write;
+
+/// Print a log message to codecoder.log AND stderr (stderr works in non-TUI mode).
+/// In TUI raw mode, stderr shares the same terminal as the rendered UI, so a file
+/// is the primary medium for persistent logs. Use `tail -f codecoder.log` alongside
+/// the TUI session.
+pub(crate) fn log(msg: &str) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("codecoder.log")
+    {
+        let _ = writeln!(f, "{}", msg);
+        let _ = f.flush();
+    }
+    let _ = writeln!(std::io::stderr(), "{}", msg);
+    let _ = std::io::stderr().flush();
+}
 
 use agent::BackgroundAgent;
 use config::ConfigStore;
@@ -39,10 +59,11 @@ fn main() -> anyhow::Result<()> {
     let mut tools = ToolRegistry::new(&project_root);
 
     let context = Context::load(&project_root);
-    let _mem_store = MemoryStore::open(&project_root);
     let session_store = SessionStore::open(&project_root);
 
     let mut skills = SkillRegistry::new();
+    let mem_store = MemoryStore::open(&project_root);
+    skills.set_memory_store(mem_store);
     if let Err(e) = skills.scan(&project_root) {
         eprintln!("[codecoder] Warning: failed to scan skills: {e}");
     }
@@ -50,6 +71,18 @@ fn main() -> anyhow::Result<()> {
     // ── Config ──────────────────────────────────────────────────────────────
 
     let config = ConfigStore::load(&project_root);
+
+    // ── 启动配置打印 ──────────────────────────────────────────────────────────
+
+    let llm_cfg = config.to_llm_config();
+    log("[codecoder] 启动配置:");
+    log(&format!("[codecoder]   模型:     {}", llm_cfg.model));
+    log(&format!("[codecoder]   API Base: {}", llm_cfg.api_base));
+    log(&format!("[codecoder]   API Key:  {}", if llm_cfg.api_key.is_empty() { "(空 — 将使用 StubClient)" } else { "✓ 已设置" }));
+    log(&format!("[codecoder]   环境变量: CODECODER_API_KEY={}", std::env::var("CODECODER_API_KEY").map(|_| "✓".to_string()).unwrap_or("✗".into())));
+    log(&format!("[codecoder]   OPENAI_API_KEY={}", std::env::var("OPENAI_API_KEY").map(|_| "✓".to_string()).unwrap_or("✗".into())));
+    log(&format!("[codecoder]   CODECODER_API_BASE={}", std::env::var("CODECODER_API_BASE").unwrap_or("(未设置)".into())));
+    log(&format!("[codecoder]   CODECODER_MODEL={}", std::env::var("CODECODER_MODEL").unwrap_or("(未设置)".into())));
 
     // ── MCP ─────────────────────────────────────────────────────────────────
 
@@ -70,8 +103,8 @@ fn main() -> anyhow::Result<()> {
 
     let llm_config = config.to_llm_config();
     let llm: Box<dyn llm::LlmClient> = if llm_config.api_key.is_empty() {
-        eprintln!("[codecoder] No CODECODER_API_KEY or OPENAI_API_KEY set — using stub LLM");
-        eprintln!("[codecoder] Set the env var to connect to a real LLM provider.");
+        crate::log("[codecoder] No CODECODER_API_KEY or OPENAI_API_KEY set — using stub LLM");
+        crate::log("[codecoder] Set the env var to connect to a real LLM provider.");
         Box::new(llm::StubClient::new())
     } else {
         Box::new(OpenAiClient::new(llm_config))
@@ -98,6 +131,7 @@ fn run_daemon(
 ) -> anyhow::Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_time()
+        .enable_io()
         .build()
         .expect("failed to build daemon runtime");
 
@@ -234,7 +268,7 @@ mod e2e_tests {
         let dir = tempfile::tempdir().unwrap();
         let _memory = MemoryStore::open(dir.path().to_str().unwrap());
         let mut agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
-        let resp = agent.handle_message("list all tools", &tools, &skills, &|_, _| true).await;
+        let resp = agent.handle_message("list all tools", &tools, &mut skills, &|_, _| true).await;
         assert!(resp.is_ok());
     }
 
