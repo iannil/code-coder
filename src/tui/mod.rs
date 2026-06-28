@@ -370,8 +370,9 @@ pub fn run_tui(
         // 检查 agent 响应（非阻塞）
         check_agent_responses(&mut app, &mut resp_rx);
 
-        // 处理键盘事件（阻塞 100ms 以便同时轮询 agent）
-        if event::poll(Duration::from_millis(100))? {
+        // 非阻塞事件轮询 + 16ms sleep 保底以实现 ≈60fps
+        // 用 while 排空所有待处理事件，不会阻塞
+        while event::poll(Duration::from_millis(0))? {
             match event::read()? {
                 Event::Key(key) => {
                     if key.kind == KeyEventKind::Press {
@@ -413,6 +414,9 @@ pub fn run_tui(
                 _ => {}
             }
         }
+
+        // 保底 sleep 实现 ≈60fps（当没有事件要处理时让出 CPU）
+        std::thread::sleep(Duration::from_millis(16));
     }
 
     // 发送 shutdown
