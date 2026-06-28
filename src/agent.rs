@@ -157,23 +157,19 @@ tool, then summarise the result for the user."#
 
             let response = if let Some(ref delta_tx) = self.delta_tx {
                 let tx = delta_tx.clone();
-                let (llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
-                // Forward deltas to TUI
+                let (_llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
+                // 顺序转发 delta 到 TUI（不 spawn 独立任务，避免竞态导致
+                // Text 先于最后一批 delta 到达 TUI 而出现 [end] 错位）
                 let tx_clone = tx.clone();
-                let delta_handle = tokio::spawn(async move {
-                    while let Some(delta) = rx.recv().await {
-                        if let Some(text) = delta.text {
-                            let _ = tx_clone.send(AgentResponse::LlmDelta { text }).await;
-                        }
-                        if let Some(reasoning) = delta.reasoning {
-                            let _ = tx_clone.send(AgentResponse::ReasoningDelta { text: reasoning }).await;
-                        }
+                while let Some(delta) = rx.recv().await {
+                    if let Some(text) = delta.text {
+                        let _ = tx_clone.send(AgentResponse::LlmDelta { text }).await;
                     }
-                });
-                // 确保所有 delta 都已发送到 channel 后再返回，
-                // 否则后续的 Text 可能先于最后一批 delta 到达 TUI
-                let _ = delta_handle.await;
-                llm_resp
+                    if let Some(reasoning) = delta.reasoning {
+                        let _ = tx_clone.send(AgentResponse::ReasoningDelta { text: reasoning }).await;
+                    }
+                }
+                _llm_resp
             } else {
                 self.llm.chat(&messages).await?
             };
