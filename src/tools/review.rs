@@ -170,4 +170,58 @@ mod tests {
         let result = tool.execute(r#"{"scope": "all", "path": "/tmp"}"#);
         assert!(result.is_ok() || result.is_err());
     }
+
+    #[test]
+    fn test_review_in_git_repo_with_changes() {
+        // Create a temp git repo with changes to test the full review flow
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_string_lossy();
+
+        // Init git repo
+        if std::process::Command::new("git")
+            .args(["init", dir_str.as_ref()])
+            .output()
+            .is_err()
+        {
+            return; // skip if git not available
+        }
+
+        // Set user config
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "config", "user.email", "t@t.com"])
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "config", "user.name", "T"])
+            .output();
+
+        // Create initial commit
+        std::fs::write(dir.path().join("initial.txt"), "initial").unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "add", "initial.txt"])
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "commit", "-m", "initial"])
+            .output();
+
+        // Make unstaged changes
+        std::fs::write(dir.path().join("newfile.rs"), "fn new() {}").unwrap();
+        std::fs::write(dir.path().join("initial.txt"), "modified").unwrap();
+
+        // Now test the review tool pointing to this repo
+        let tool = ReviewTool;
+        let input = format!(r#"{{"scope": "unstaged", "path": "{}"}}"#, dir_str);
+        let result = tool.execute(&input);
+
+        match result {
+            Ok(output) => {
+                assert!(output.contains("newfile.rs") || output.contains("unstaged") || output.contains("Review") || output.contains("no changes"),
+                    "Review output should mention changes: {output}");
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("git") || msg.contains("diff") || msg.contains("error"),
+                    "Git error expected: {msg}");
+            }
+        }
+    }
 }

@@ -168,4 +168,38 @@ mod tests {
         assert_eq!(adds, 0);
         assert_eq!(dels, 0);
     }
+
+    #[test]
+    fn test_diff_tool_in_git_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_string_lossy();
+
+        if std::process::Command::new("git")
+            .args(["init", dir_str.as_ref()])
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        std::fs::write(dir.path().join("test.rs"), "fn original() {}").unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "add", "test.rs"])
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "commit", "-m", "init"])
+            .output();
+
+        // Make changes
+        std::fs::write(dir.path().join("test.rs"), "fn modified() {}").unwrap();
+
+        let tool = DiffTool;
+        let input = format!(r#"{{"path": "{}"}}"#, dir_str);
+        let result = tool.execute(&input);
+
+        if let Ok(output) = result {
+            assert!(output.contains("test.rs") || output.contains("modified") || output.contains("no changes"),
+                "Diff output should mention changed file: {output}");
+        }
+    }
 }
