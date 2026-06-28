@@ -3436,6 +3436,11 @@ mod tests {
             expanded: false,
             show_full: false,
         });
+        // Prime the render cache
+        let lines = build_message_lines(&mut app);
+        assert_eq!(app.cached_msg_count, 1, "cache should be primed");
+        assert!(!lines.iter().any(|l| l.to_string().contains("file content")));
+
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         tx.send(AgentResponse::ToolResult {
             name: "read_file".into(),
@@ -3443,12 +3448,19 @@ mod tests {
             success: true,
         }).await.unwrap();
         check_agent_responses(&mut app, &mut rx);
+        assert_eq!(app.cached_msg_count, 0, "ToolResult should invalidate cache");
+
         if let Some(MessageItem::ToolCall { output, expanded, .. }) = app.messages.last() {
             assert!(output.contains("file content"));
             assert!(!expanded, "successful tool result should not auto-expand");
         } else {
             panic!("Last message should be ToolCall");
         }
+
+        // Cache rebuild should now include the output
+        let rebuilt = build_message_lines(&mut app);
+        assert!(rebuilt.iter().any(|l| l.to_string().contains("file content")),
+            "rebuilt cache should contain tool output");
     }
 
     #[tokio::test]
