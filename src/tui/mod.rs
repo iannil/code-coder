@@ -4155,4 +4155,58 @@ mod tests {
         let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
         assert!(cell_text.contains("initialized"), "Should show system messages: got {cell_text:.80}");
     }
+
+    #[test]
+    fn test_auto_scroll_shows_bottom_content() {
+        // auto_scroll=true 时，内容超出屏幕后应显示底部最新内容
+        let mut app = TuiApp::default();
+        // 添加 30 条消息，远超视口高度
+        for i in 0..30 {
+            app.messages.push(MessageItem::User { text: format!("top message {}", i) });
+            app.messages.push(MessageItem::Assistant { text: format!("response {}", i) });
+        }
+        app.auto_scroll = true; // 默认就是 true，显式设置以明确语义
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(60, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // 应显示最后一条消息（底部内容）
+        assert!(cell_text.contains("response 29"), "auto_scroll should show latest message 'response 29': got {cell_text:.80}");
+        // 不应显示最早的消息（顶部内容被跳过）
+        assert!(!cell_text.contains("top message 0"), "auto_scroll should NOT show earliest message: got {cell_text:.80}");
+    }
+
+    #[test]
+    fn test_manual_scroll_shows_scroll_indicator() {
+        // 手动滚动后 auto_scroll=false，应显示 scroll 指示器
+        let mut app = TuiApp::default();
+        for i in 0..20 {
+            app.messages.push(MessageItem::User { text: format!("msg {}", i) });
+            app.messages.push(MessageItem::Assistant { text: format!("ans {}", i) });
+        }
+        app.auto_scroll = false;
+        app.scroll_offset = 0;
+        app.status = StatusData::default();
+
+        let backend = ratatui::backend::TestBackend::new(60, 10);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal
+            .draw(|f| {
+                super::render(f, &mut app, 0);
+            })
+            .unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        // 手动滚动时应显示 (↑ scroll) 指示器
+        assert!(cell_text.contains("scroll"), "manual scroll should show scroll indicator: got {cell_text:.80}");
+    }
 }
