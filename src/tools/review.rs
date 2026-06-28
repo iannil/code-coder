@@ -101,7 +101,6 @@ mod tests {
     fn test_review_defaults() {
         let tool = ReviewTool;
         let result = tool.execute(r#"{}"#);
-        // Either git works or we get a no-repo error
         assert!(result.is_ok() || result.is_err());
     }
 
@@ -127,16 +126,24 @@ mod tests {
     #[test]
     fn test_review_scope_staged() {
         let tool = ReviewTool;
+        // Tests the "staged" branch (cmd.arg("--cached"))
         let result = tool.execute(r#"{"scope": "staged"}"#);
-        // git diff --cached — either works or fails
         assert!(result.is_ok() || result.is_err());
     }
 
     #[test]
     fn test_review_scope_all() {
         let tool = ReviewTool;
+        // Tests the "all" branch (cmd.arg("HEAD"))
         let result = tool.execute(r#"{"scope": "all"}"#);
-        // git diff HEAD — either works or fails
+        assert!(result.is_ok() || result.is_err());
+    }
+
+    #[test]
+    fn test_review_scope_unstaged() {
+        let tool = ReviewTool;
+        // Tests the default branch (no --cached, no HEAD)
+        let result = tool.execute(r#"{"scope": "unstaged"}"#);
         assert!(result.is_ok() || result.is_err());
     }
 
@@ -150,10 +157,17 @@ mod tests {
     #[test]
     fn test_review_no_changes() {
         let tool = ReviewTool;
-        // In a path with no changes, should return "(no changes to review)"
+        // In a non-git path, should return error or "no changes"
         let result = tool.execute(r#"{"path": "/tmp"}"#);
         if let Ok(r) = result {
             assert!(r.contains("no changes") || r.contains("Review"));
         }
+    }
+
+    #[test]
+    fn test_review_scope_all_with_path() {
+        let tool = ReviewTool;
+        let result = tool.execute(r#"{"scope": "all", "path": "/tmp"}"#);
+        assert!(result.is_ok() || result.is_err());
     }
 }

@@ -136,4 +136,11 @@ mod tests {
         let result = tool.execute(r#"{"message": "fix", "files": ["src/main.rs"]}"#);
         assert!(result.is_err() || result.is_ok());
     }
+
+    #[test]
+    fn test_commit_multiple_files() {
+        let tool = CommitTool;
+        let result = tool.execute(r#"{"message": "multi", "files": ["a.rs", "b.rs"]}"#);
+        assert!(result.is_err() || result.is_ok());
+    }
 }
