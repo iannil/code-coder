@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn test_count_display_rows_multi_line() {
         let lines = vec![Line::raw("short"), Line::raw("a very long line indeed")];
-        assert_eq!(count_display_rows(&lines, 10), 3);
+        assert_eq!(count_display_rows(&lines, 10), 4);
     }
 
     #[test]
