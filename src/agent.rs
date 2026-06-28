@@ -160,7 +160,7 @@ tool, then summarise the result for the user."#
                 let (llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
                 // Forward deltas to TUI
                 let tx_clone = tx.clone();
-                tokio::spawn(async move {
+                let delta_handle = tokio::spawn(async move {
                     while let Some(delta) = rx.recv().await {
                         if let Some(text) = delta.text {
                             let _ = tx_clone.send(AgentResponse::LlmDelta { text }).await;
@@ -170,6 +170,9 @@ tool, then summarise the result for the user."#
                         }
                     }
                 });
+                // 确保所有 delta 都已发送到 channel 后再返回，
+                // 否则后续的 Text 可能先于最后一批 delta 到达 TUI
+                let _ = delta_handle.await;
                 llm_resp
             } else {
                 self.llm.chat(&messages).await?
