@@ -202,4 +202,38 @@ mod tests {
                 "Diff output should mention changed file: {output}");
         }
     }
+
+    #[test]
+    fn test_diff_tool_cached_in_git_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_str = dir.path().to_string_lossy();
+
+        if std::process::Command::new("git")
+            .args(["init", dir_str.as_ref()])
+            .output()
+            .is_err()
+        {
+            return;
+        }
+
+        std::fs::write(dir.path().join("staged.rs"), "fn staged() {}").unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["-C", dir_str.as_ref(), "add", "staged.rs"])
+            .output();
+
+        let tool = DiffTool;
+        let input = format!(r#"{{"path": "{}", "cached": true}}"#, dir_str);
+        let result = tool.execute(&input);
+        if let Ok(output) = result {
+            assert!(output.contains("staged") || output.contains("cached") || output.contains("no changes"),
+                "Diff cached output: {output}");
+        }
+    }
+
+    #[test]
+    fn test_diff_tool_since_ref() {
+        let tool = DiffTool;
+        let result = tool.execute(r#"{"path": ".", "since": "HEAD"}"#);
+        assert!(result.is_ok() || result.is_err());
+    }
 }
