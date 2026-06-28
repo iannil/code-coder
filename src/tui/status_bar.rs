@@ -31,10 +31,16 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
         Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
     );
 
-    // Right column: cwd + token count
+    // Right column: cwd + token count + cost estimate
     let cwd = compact_cwd(&status.cwd);
     let right_str = if status.token_count > 0 {
-        format!("{}  {}t", cwd, status.token_count)
+        // Rough cost estimate: ~$5/M tokens blended (GPT-4o pricing)
+        let est_cost = status.token_count as f64 * 5.0 / 1_000_000.0;
+        if est_cost >= 0.01 {
+            format!("{}  {}t  ~${:.2}", cwd, status.token_count, est_cost)
+        } else {
+            format!("{}  {}t", cwd, status.token_count)
+        }
     } else {
         cwd
     };

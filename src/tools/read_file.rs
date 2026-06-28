@@ -1,4 +1,4 @@
-use super::Tool;
+use super::{Tool, try_extract_json_field};
 
 /// Read a file from the filesystem.
 pub struct ReadFile;
@@ -9,16 +9,21 @@ impl Tool for ReadFile {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a file. Input: file path."
+        "Read the contents of a file. Input: file path or JSON object with 'path' field."
+    }
+
+    fn input_schema(&self) -> &'static str {
+        r#"{"type":"object","properties":{"path":{"type":"string","description":"File path to read"}},"required":["path"]}"#
     }
 
     fn execute(&self, input: &str) -> anyhow::Result<String> {
-        let path = input.trim();
+        let path = try_extract_json_field(input, "path").unwrap_or_else(|| input.trim().to_string());
+        let path_clone = path.clone();
         if path.is_empty() {
             anyhow::bail!("read_file requires a file path");
         }
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| anyhow::anyhow!("cannot read {path}: {e}"))?;
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| anyhow::anyhow!("cannot read {path_clone}: {e}"))?;
         Ok(content)
     }
 }

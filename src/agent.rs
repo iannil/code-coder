@@ -40,6 +40,9 @@ pub struct AgentLoop {
     self_evolve: SelfEvolve,
     /// Monotonic round counter for cooldown tracking
     round_counter: u32,
+    /// Accumulated token usage across react_loop rounds
+    acc_tokens_in: u32,
+    acc_tokens_out: u32,
 }
 
 impl AgentLoop {
@@ -53,6 +56,8 @@ impl AgentLoop {
             delta_tx: None,
             self_evolve: SelfEvolve::new(IntrospectConfig::default()),
             round_counter: 0,
+            acc_tokens_in: 0,
+            acc_tokens_out: 0,
         }
     }
 
@@ -157,9 +162,8 @@ tool, then summarise the result for the user."#
 
             let response = if let Some(ref delta_tx) = self.delta_tx {
                 let tx = delta_tx.clone();
-                let (_llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
-                // 顺序转发 delta 到 TUI（不 spawn 独立任务，避免竞态导致
-                // Text 先于最后一批 delta 到达 TUI 而出现 [end] 错位）
+                let (llm_resp, mut rx) = self.llm.chat_stream(&messages).await?;
+                // 顺序转发 delta 到 TUI
                 let tx_clone = tx.clone();
                 while let Some(delta) = rx.recv().await {
                     if let Some(text) = delta.text {
@@ -169,11 +173,17 @@ tool, then summarise the result for the user."#
                         let _ = tx_clone.send(AgentResponse::ReasoningDelta { text: reasoning }).await;
                     }
                 }
-                // 显式标记流结束：TUI 不再依赖 fragile `already_streamed` 启发式判断
+                // 显式标记流结束
                 let _ = tx_clone.send(AgentResponse::StreamComplete).await;
-                _llm_resp
+                // 累加 token 用量
+                self.acc_tokens_in += llm_resp.tokens_in;
+                self.acc_tokens_out += llm_resp.tokens_out;
+                llm_resp
             } else {
-                self.llm.chat(&messages).await?
+                let llm_resp = self.llm.chat(&messages).await?;
+                self.acc_tokens_in += llm_resp.tokens_in;
+                self.acc_tokens_out += llm_resp.tokens_out;
+                llm_resp
             };
 
             let tool_calls = parse_tool_calls(&response.text);
@@ -222,6 +232,12 @@ tool, then summarise the result for the user."#
     pub fn clear_history(&mut self) {
         self.history.clear();
         self.self_evolve.reset_session();
+        self.acc_tokens_in = 0;
+        self.acc_tokens_out = 0;
+    }
+
+    pub fn token_usage(&self) -> (u32, u32) {
+        (self.acc_tokens_in, self.acc_tokens_out)
     }
 
     pub fn set_model(&mut self, model: &str) {
@@ -262,7 +278,7 @@ pub enum AgentCommand {
 
 #[derive(Debug)]
 pub enum AgentResponse {
-    Text { text: String },
+    Text { text: String, tokens_in: u32, tokens_out: u32 },
     LlmDelta { text: String },
     ReasoningDelta { text: String },
     /// Signals the end of a streaming sequence — TUI should expect Text next.
@@ -270,7 +286,7 @@ pub enum AgentResponse {
     StreamComplete,
     ToolCall { name: String, input: String },
     ToolResult { name: String, output: String, success: bool },
-    PermissionRequest { tool_name: String, tool_input: String, request_id: u64 },
+    PermissionRequest { tool_name: String, tool_input: String, request_id: u64, risk: String },
     /// Agent asked a question — user needs to answer
     AskUser { question: String, request_id: u64 },
     /// Agent presents a plan for user approval
@@ -342,11 +358,27 @@ impl BackgroundAgent {
                                 let resp_tx2 = resp_tx.clone();
                                 let cmd_rx_ref = &cmd_rx;
                                 let permission_check = move |name: &str, input: &str| {
+                                    // 1. Auto-evaluate via PermissionEngine
+                                    let engine = crate::permission::PermissionEngine::new();
+                                    let decision = engine.evaluate(name, input);
+                                    match decision {
+                                        crate::permission::PermissionDecision::Allowed => return true,
+                                        crate::permission::PermissionDecision::Denied { reason: _ } => {
+                                            return false;
+                                        }
+                                        crate::permission::PermissionDecision::NeedsApproval { .. } => {
+                                            // Fall through to user prompt
+                                        }
+                                    }
+
+                                    // 2. Prompt user for approval
                                     let id: u64 = rand_id();
+                                    let risk_str = format!("{:?}", decision);
                                     let _ = resp_tx2.blocking_send(AgentResponse::PermissionRequest {
                                         tool_name: name.to_string(),
                                         tool_input: input.to_string(),
                                         request_id: id,
+                                        risk: risk_str,
                                     });
                                     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
                                     while std::time::Instant::now() < deadline {
@@ -359,12 +391,19 @@ impl BackgroundAgent {
                                     }
                                     let _ = resp_tx2.blocking_send(AgentResponse::Text {
                                         text: format!("[Permission timeout — tool '{name}' was denied after 30s]"),
+                                        tokens_in: 0,
+                                        tokens_out: 0,
                                     });
                                     false
                                 };
                                 match agent.handle_message(&text, &tools, &mut skills, &permission_check).await {
                                     Ok(resp) => {
-                                        let _ = resp_tx.send(AgentResponse::Text { text: resp }).await;
+                                        let (tin, tout) = agent.token_usage();
+                                        let _ = resp_tx.send(AgentResponse::Text {
+                                            text: resp,
+                                            tokens_in: tin,
+                                            tokens_out: tout,
+                                        }).await;
                                     }
                                     Err(e) => {
                                         let _ = resp_tx.send(AgentResponse::Error {
@@ -385,6 +424,8 @@ impl BackgroundAgent {
                                 agent.set_model(&model);
                                 let _ = resp_tx.send(AgentResponse::Text {
                                     text: format!("Switched model to {model}"),
+                                    tokens_in: 0,
+                                    tokens_out: 0,
                                 }).await;
                             }
                             Ok(AgentCommand::Shutdown) => {
@@ -441,10 +482,21 @@ fn parse_tool_calls(text: &str) -> Vec<ToolCall> {
     let mut calls = Vec::new();
     let mut rest = text;
     loop {
-        let start = match rest.find("```tool") {
-            Some(pos) => pos + 7,
+        // Support both ```tool (legacy) and ```tool_use (new standard) block markers
+        let (tag_start, tag_len) = match rest.find("```tool") {
+            Some(pos) => {
+                let after = &rest[pos + 7..];
+                if after.starts_with("_use") {
+                    (pos, 12) // ```tool_use
+                } else if after.starts_with('`') || after.starts_with('\n') || after.starts_with(' ') {
+                    (pos, 7) // ```tool
+                } else {
+                    (pos, 7) // ```tool
+                }
+            }
             None => break,
         };
+        let start = tag_start + tag_len;
         let end = match rest[start..].find("```") {
             Some(pos) => start + pos,
             None => break,
@@ -468,11 +520,19 @@ fn parse_single_tool_call(json: &str) -> anyhow::Result<ToolCall> {
         #[serde(default)]
         tool: String,
         #[serde(default)]
-        arguments: Option<String>,
+        arguments: Option<serde_json::Value>,
     }
     let raw: RawCall = serde_json::from_str(json)?;
     let name = if !raw.tool.is_empty() { raw.tool } else { raw.name };
-    let input = raw.arguments.unwrap_or(raw.input);
+    let input = match raw.arguments {
+        Some(serde_json::Value::Object(map)) => {
+            // New format: structured arguments → serialize back to JSON string
+            serde_json::to_string(&map).unwrap_or_default()
+        }
+        Some(serde_json::Value::String(s)) => s,
+        Some(_) => raw.arguments.unwrap().to_string(),
+        None => raw.input,
+    };
     if name.is_empty() {
         anyhow::bail!("tool call missing name");
     }
@@ -610,7 +670,7 @@ Here is the content."#;
 
     #[test]
     fn test_agent_response_text_debug() {
-        let resp = AgentResponse::Text { text: "hello".into() };
+        let resp = AgentResponse::Text { text: "hello".into(), tokens_in: 0, tokens_out: 0 };
         let debug = format!("{resp:?}");
         assert!(debug.contains("hello"));
     }
@@ -716,6 +776,7 @@ Here is the content."#;
             tool_name: "run_command".into(),
             tool_input: "ls -la".into(),
             request_id: 1,
+            risk: "".into(),
         };
         let debug = format!("{resp:?}");
         assert!(debug.contains("run_command") || debug.contains("1"));

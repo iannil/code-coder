@@ -176,7 +176,7 @@ impl AutonomousRunner {
             // Check for agent responses
             loop {
                 match resp_rx.try_recv() {
-                    Ok(AgentResponse::Text { text }) => {
+                    Ok(AgentResponse::Text { text, .. }) => {
                         eprintln!("[agent] {text}");
                         agent_busy = false;
                     }

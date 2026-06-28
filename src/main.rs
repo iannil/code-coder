@@ -7,6 +7,7 @@ mod event;
 mod llm;
 mod mcp;
 mod memory;
+mod permission;
 mod sandbox;
 mod self_evolve;
 mod session;

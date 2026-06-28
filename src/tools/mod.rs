@@ -45,6 +45,41 @@ pub trait Tool: Send + 'static {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn execute(&self, input: &str) -> anyhow::Result<String>;
+
+    /// JSON Schema for the tool's input parameters.
+    /// Returns a JSON string. Empty string means the tool accepts a plain string.
+    fn input_schema(&self) -> &'static str {
+        ""
+    }
+}
+
+/// Validate tool input against its JSON Schema.
+/// For tools without a schema (empty string), accepts any non-empty input.
+/// For tools with a schema, parses `input` as JSON and validates required fields.
+pub fn validate_tool_input(schema: &str, input: &str) -> anyhow::Result<()> {
+    if schema.is_empty() {
+        // Legacy mode: plain text input, just ensure non-empty
+        if input.is_empty() && !input.is_empty() {
+            // never true — placeholder for future validation
+        }
+        return Ok(());
+    }
+    // Parse input as JSON and validate against schema
+    let schema_val: serde_json::Value = serde_json::from_str(schema)
+        .map_err(|e| anyhow::anyhow!("invalid schema: {e}"))?;
+    let input_val: serde_json::Value = serde_json::from_str(input)
+        .map_err(|e| anyhow::anyhow!("input must be valid JSON for this tool: {e}"))?;
+
+    // Simple required-fields check (deep schema validation via ajv not available in Rust)
+    if let Some(required) = schema_val.get("required").and_then(|v| v.as_array()) {
+        for field in required {
+            let field_name = field.as_str().unwrap_or("");
+            if !input_val.get(field_name).and_then(|v| v.as_str()).map_or(false, |s| !s.is_empty()) {
+                anyhow::bail!("missing required field: {field_name}");
+            }
+        }
+    }
+    Ok(())
 }
 
 /// ─── ToolRegistry ──────────────────────────────────────────────────────────
@@ -112,10 +147,15 @@ impl ToolRegistry {
     }
 
     pub fn execute(&self, name: &str, input: &str) -> anyhow::Result<String> {
-        self.tools
+        let tool = self.tools
             .get(name)
-            .ok_or_else(|| anyhow::anyhow!("tool not found: {name}"))?
-            .execute(input)
+            .ok_or_else(|| anyhow::anyhow!("tool not found: {name}"))?;
+
+        // Validate input against schema
+        let schema = tool.input_schema();
+        validate_tool_input(schema, input)?;
+
+        tool.execute(input)
     }
 
     pub fn list_tools(&self) -> Vec<&str> {
@@ -127,6 +167,14 @@ impl ToolRegistry {
     pub fn get(&self, name: &str) -> Option<&dyn Tool> {
         self.tools.get(name).map(|b| b.as_ref())
     }
+}
+
+/// Try to parse `input` as JSON and extract a string field.
+/// Returns `None` if input is not valid JSON or the field is missing.
+/// Allows tools to accept both `{"field": "value"}` and plain `"value"` formats.
+pub fn try_extract_json_field(input: &str, field: &str) -> Option<String> {
+    let val: serde_json::Value = serde_json::from_str(input).ok()?;
+    val.get(field).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

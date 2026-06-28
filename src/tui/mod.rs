@@ -8,6 +8,10 @@ pub mod markdown;
 pub mod message_list;
 pub mod status_bar;
 pub(crate) use status_bar::{compact_cwd, format_context_bar};
+pub mod app;
+pub mod commands;
+pub use app::*;
+pub use commands::*;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
@@ -24,291 +28,6 @@ use crate::event::SharedEventBus;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-/// ─── App State ────────────────────────────────────────────────────────────
-
-pub struct TuiApp {
-    /// 消息历史（纯文本，后续升级为富文本）
-    pub messages: Vec<MessageItem>,
-
-    /// 当前输入缓冲区
-    pub input: String,
-
-    /// 光标位置（字符索引）
-    pub cursor_pos: usize,
-
-    /// 输入历史（↑↓ 导航）
-    pub input_history: Vec<String>,
-    pub history_pos: usize,
-
-    /// 撤销/重做栈
-    pub undo_stack: Vec<String>,
-    pub redo_stack: Vec<String>,
-
-    /// 消息列表滚动偏移（0 = 顶部，正数 = 向下滚动行数）
-    pub scroll_offset: usize,
-
-    /// 是否自动跟随底部（新消息时保持在最下方）
-    pub auto_scroll: bool,
-
-    /// @ 文件补全状态
-    pub completion: CompletionState,
-
-    /// Ctrl+F 搜索状态
-    pub search_active: bool,
-    pub search_query: String,
-    pub search_match_count: usize,
-    pub search_current_match: usize,
-
-    /// Ctrl+R 反向搜索状态
-    pub reverse_search_active: bool,
-    pub reverse_search_query: String,
-    pub reverse_search_results: Vec<usize>,  // indices into messages
-    pub reverse_search_idx: usize,           // current result position
-
-    /// 斜杠命令补全状态
-    pub slash_completion: SlashCompletionState,
-
-    /// 帮助面板状态
-    pub help_active: bool,
-
-    /// 模型切换器状态
-    pub model_picker_active: bool,
-    pub model_picker_selected: usize,
-    pub available_models: Vec<String>,
-
-    /// 权限对话框状态
-    pub permission_pending: Option<PendingPermission>,
-
-    /// 主题切换（暗/亮模式）
-    pub dark_mode: bool,
-
-    /// 消息选择模式 —选中消息的索引
-    pub selected_msg: Option<usize>,
-
-    /// 渲染缓存（避免每帧重新解析 Markdown）
-    pub cached_lines: Vec<Line<'static>>,
-    pub cached_msg_count: usize,
-    /// 搜索查询的缓存键（用于缓存失效）
-    pub cached_search_query: String,
-
-    /// 状态栏数据
-    pub status: StatusData,
-
-    /// 消息发送时间戳（用于显示耗时）
-    pub thinking_start_time: Option<Instant>,
-
-    /// 当前工具调用轮次
-    pub current_round: usize,
-
-    /// 是否需要退出
-    pub should_quit: bool,
-
-    /// 会话持久化存储
-    pub session_store: Option<crate::session::SessionStore>,
-    /// 当前会话 ID（None = 新会话）
-    pub current_session_id: Option<String>,
-    /// 配置存储
-    pub config_store: Option<crate::config::ConfigStore>,
-    /// MCP 注册表
-    pub mcp_registry: Option<Arc<Mutex<crate::mcp::McpRegistry>>>,
-}
-
-/// 消息列表中的一条
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum MessageItem {
-    User { text: String },
-    Assistant { text: String },
-    ToolCall { name: String, input: String, output: String, expanded: bool, show_full: bool },
-    System { text: String },
-    /// Collapsible reasoning/thinking block (CoT)
-    Reasoning { text: String, expanded: bool },
-}
-
-/// 待用户确认的权限请求
-#[derive(Debug, Clone)]
-pub struct PendingPermission {
-    pub tool_name: String,
-    pub tool_input: String,
-    pub request_id: u64,
-}
-
-/// 斜杠命令补全状态
-#[derive(Debug, Clone)]
-pub struct SlashCompletionState {
-    pub active: bool,
-    pub selected: usize,
-    pub commands: Vec<&'static str>,
-    pub descriptions: Vec<&'static str>,
-}
-
-impl Default for SlashCompletionState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            selected: 0,
-            commands: vec![
-                "/help",
-                "/exit",
-                "/quit",
-                "/reload",
-                "/clear",
-                "/history",
-                "/session",
-                "/resume",
-                "/config",
-                "/mcp",
-                "/tools",
-                "/skills",
-                "/memory",
-            ],
-            descriptions: vec![
-                "Show help and shortcuts",
-                "Exit the application",
-                "Exit the application",
-                "Reload context and skills",
-                "Clear conversation history",
-                "Show message count",
-                "List saved sessions",
-                "Resume a previous session",
-                "View or change settings (model, api_base, etc.)",
-                "Manage MCP servers (list, start, stop)",
-                "List available tools",
-                "List loaded skills",
-                "List memory entries",
-            ],
-        }
-    }
-}
-
-/// @ 文件补全状态
-#[derive(Debug, Clone)]
-pub struct CompletionState {
-    /// 是否正在补全模式（刚输入了 @）
-    pub active: bool,
-    /// @ 后面的查询文本
-    pub query: String,
-    /// 候选文件列表
-    pub candidates: Vec<completion::CompletionCandidate>,
-    /// 当前选中的候选索引
-    pub selected: usize,
-    /// @ 在 input 中的位置（用于替换）
-    pub at_pos: usize,
-}
-
-impl Default for CompletionState {
-    fn default() -> Self {
-        Self {
-            active: false,
-            query: String::new(),
-            candidates: Vec::new(),
-            selected: 0,
-            at_pos: 0,
-        }
-    }
-}
-
-/// 状态栏数据
-#[derive(Debug, Clone)]
-pub struct StatusData {
-    pub model: String,
-    pub cwd: String,
-    pub context_pct: f32,
-    pub token_count: usize,
-    pub api_key_set: bool,
-    pub agent_busy: bool,
-    pub current_tool: Option<String>,
-    /// 连接类型（用于显示）
-    pub connection_type: String,
-    /// 自消息发送以来的已耗秒数
-    pub elapsed_secs: u64,
-    /// 当前工具调用轮次
-    pub current_round: usize,
-    /// 当前 LLM streaming 是否已完成（用于消除 Text vs LlmDelta 竞态）
-    pub streaming_complete: bool,
-}
-
-impl Default for StatusData {
-    fn default() -> Self {
-        Self {
-            model: "gpt-4o".into(),
-            cwd: std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            context_pct: 0.0,
-            token_count: 0,
-            api_key_set: std::env::var("CODECODER_API_KEY").is_ok(),
-            agent_busy: false,
-            current_tool: None,
-            connection_type: if std::env::var("CODECODER_API_KEY").is_ok() {
-                "OpenAI".into()
-            } else {
-                "Stub".into()
-            },
-            elapsed_secs: 0,
-            current_round: 0,
-            streaming_complete: false,
-        }
-    }
-}
-
-impl Default for TuiApp {
-    fn default() -> Self {
-        Self {
-            messages: Vec::new(),
-            input: String::new(),
-            cursor_pos: 0,
-            input_history: Vec::new(),
-            history_pos: 0,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
-            scroll_offset: 0,
-            auto_scroll: true,
-            completion: CompletionState::default(),
-            search_active: false,
-            search_query: String::new(),
-            search_match_count: 0,
-            search_current_match: 0,
-            reverse_search_active: false,
-            reverse_search_query: String::new(),
-            reverse_search_results: Vec::new(),
-            reverse_search_idx: 0,
-            model_picker_active: false,
-            model_picker_selected: 0,
-            available_models: vec![
-                "gpt-4o".into(),
-                "gpt-4o-mini".into(),
-                "gpt-4.1".into(),
-                "gpt-4.1-mini".into(),
-                "gpt-4.1-nano".into(),
-                "o3".into(),
-                "o4-mini".into(),
-                "claude-sonnet-4-20250514".into(),
-                "claude-haiku-3-5".into(),
-                "deepseek-chat".into(),
-                "llama3.2".into(),
-                "gemini-2.5-flash".into(),
-            ],
-            permission_pending: None,
-            dark_mode: true,
-            selected_msg: None,
-            slash_completion: SlashCompletionState::default(),
-            help_active: false,
-            cached_lines: Vec::new(),
-            cached_msg_count: 0,
-            cached_search_query: String::new(),
-            status: StatusData::default(),
-            thinking_start_time: None,
-            current_round: 0,
-            should_quit: false,
-            session_store: None,
-            current_session_id: None,
-            config_store: None,
-            mcp_registry: None,
-        }
-    }
-}
-
-/// ─── Main Entry ───────────────────────────────────────────────────────────
 
 /// Run the TUI event loop. Blocks until exit.
 pub fn run_tui(
@@ -334,6 +53,16 @@ pub fn run_tui(
 
     let mut app = TuiApp::default();
     app.status.model = config_store.model().to_string();
+
+    // 从 API 获取可用模型列表（失败则回退到硬编码列表）
+    let cfg = config_store.get();
+    let api_key = std::env::var("CODECODER_API_KEY")
+        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+        .unwrap_or_default();
+    let models = commands::fetch_available_models(&cfg.llm.api_base, &api_key);
+    if !models.is_empty() {
+        app.available_models = models;
+    }
 
     // 显示欢迎消息（不自动加载历史会话，/resume 可手动恢复）
     app.messages.push(MessageItem::System {
@@ -975,26 +704,57 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
 
     // 权限确认对话框
     if let Some(ref perm) = app.permission_pending {
-        let dialog_width = area.width.min(60).max(30);
-        let dialog_height = 8;
+        let dialog_width = area.width.min(70).max(40);
+        // Dynamic height based on input length (3 base + up to 8 extra for long input)
+        let input_lines = perm.tool_input.lines().count().min(6).max(1);
+        let dialog_height = (5 + input_lines as u16).min(12).max(7);
         let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
         let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
         let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
 
-        let content = vec![
-            Line::styled(" [!] Tool Permission Required ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        let risk_style = if perm.risk.contains("suspicious") || perm.risk.contains("outside") {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::DarkGray)
+        };
+
+        let mut content = vec![
+            Line::styled(" [!] Tool Permission ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Line::from(""),
             Line::styled(
                 format!(" Tool: {}", perm.tool_name),
                 Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             ),
-            Line::styled(
-                format!(" Input: {}", perm.tool_input.chars().take(80).collect::<String>()),
-                Style::default().fg(Color::DarkGray),
-            ),
-            Line::from(""),
-            Line::styled(" Press  Y  to allow     N  to deny ", Style::default().fg(Color::Cyan)),
         ];
+
+        // Show risk assessment if available
+        if !perm.risk.is_empty() {
+            content.push(Line::styled(
+                format!(" Risk: {}", perm.risk),
+                risk_style,
+            ));
+        }
+
+        // Show tool input (full, not truncated)
+        let input_display: String = perm.tool_input.chars().take(400).collect();
+        for line in input_display.lines().take(6) {
+            content.push(Line::styled(
+                format!("  {}", line),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+        if perm.tool_input.len() > 400 {
+            content.push(Line::styled(
+                "  …(truncated)",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+
+        content.push(Line::from(""));
+        content.push(Line::styled(
+            " Y=allow  N=deny  A=always-allow  Esc=cancel ",
+            Style::default().fg(Color::Cyan),
+        ));
 
         frame.render_widget(ratatui::widgets::Clear, dialog_area);
         let dialog = Paragraph::new(content)
@@ -1236,6 +996,19 @@ fn handle_key(
                         });
                     }
                 }
+            }
+            return;
+        }
+        // A / a — always allow this tool (in current session)
+        KeyCode::Char('a') | KeyCode::Char('A') if app.permission_pending.is_some() => {
+            if let Some(p) = app.permission_pending.take() {
+                let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                    request_id: p.request_id,
+                    allowed: true,
+                });
+                app.messages.push(MessageItem::System {
+                    text: format!("✓ {} will be allowed without prompting for this session", p.tool_name),
+                });
             }
             return;
         }
@@ -1570,6 +1343,16 @@ fn handle_key(
             }
         }
         KeyCode::Esc => {
+            // Cancel pending permission dialog
+            if app.permission_pending.is_some() {
+                if let Some(p) = app.permission_pending.take() {
+                    let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                        request_id: p.request_id,
+                        allowed: false,
+                    });
+                }
+                return;
+            }
             if app.help_active {
                 app.help_active = false;
                 return;
@@ -1690,11 +1473,15 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
         match resp_rx.try_recv() {
             Ok(response) => {
                 match response {
-                    AgentResponse::Text { text } => {
+                    AgentResponse::Text { text, tokens_in, tokens_out, .. } => {
                         // 清除处理中状态
                         let took = app.thinking_start_time.take()
                             .map(|t| t.elapsed().as_secs_f32())
                             .unwrap_or(0.0);
+                        // 累加 token 用量到状态栏
+                        if tokens_in > 0 || tokens_out > 0 {
+                            app.status.token_count = (app.status.token_count as u32).saturating_add(tokens_in).saturating_add(tokens_out) as usize;
+                        }
                         // 移除流式阶段的过渡状态消息
                         app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[write]") || text.starts_with("[think]")));
                         // 使用 streaming_complete 标记替代启发式 already_streamed 判断
@@ -1827,6 +1614,7 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             tool_name: "ask_user".into(),
                             tool_input: question,
                             request_id,
+                            risk: "user question".into(),
                         });
                     }
                     AgentResponse::PlanRequest { title, plan, request_id } => {
@@ -1838,13 +1626,15 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             tool_name: "plan".into(),
                             tool_input: title,
                             request_id,
+                            risk: "plan approval".into(),
                         });
                     }
-                    AgentResponse::PermissionRequest { tool_name, tool_input, request_id } => {
+                    AgentResponse::PermissionRequest { tool_name, tool_input, request_id, risk } => {
                         app.permission_pending = Some(PendingPermission {
                             tool_name,
                             tool_input,
                             request_id,
+                            risk,
                         });
                     }
                 }
@@ -1852,412 +1642,6 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
         }
-    }
-}
-
-/// ─── Slash Command Handlers ───────────────────────────────────────────────
-
-/// Handle `/session` — list all saved sessions.
-fn handle_session_cmd(app: &mut TuiApp) {
-    let store = match app.session_store {
-        Some(ref store) => store,
-        None => {
-            app.messages.push(MessageItem::System {
-                text: "Session store not available.".into(),
-            });
-            return;
-        }
-    };
-
-    let headers = store.list();
-    if headers.is_empty() {
-        app.messages.push(MessageItem::System {
-            text: "No saved sessions.".into(),
-        });
-        return;
-    }
-
-    let current = app.current_session_id.as_deref().unwrap_or("");
-    let mut lines = vec!["── Saved Sessions ──".to_string()];
-    for h in &headers {
-        let marker = if h.id == current { " ◀ (current)" } else { "" };
-        let preview = h.previews.first()
-            .map(|p| format!(" — {}", truncate_str(p, 60)))
-            .unwrap_or_default();
-        lines.push(format!(
-            "  #{}{}{}",
-            &h.id[..8],
-            marker,
-            preview,
-        ));
-    }
-    lines.push(format!("Use /resume <id> to load a session."));
-
-    app.messages.push(MessageItem::System {
-        text: lines.join("\n"),
-    });
-}
-
-/// Handle `/resume <id>` — load a saved session.
-fn handle_resume_cmd(app: &mut TuiApp, input: &str) {
-    let parts: Vec<&str> = input.splitn(2, ' ').collect();
-    if parts.len() < 2 || parts[1].trim().is_empty() {
-        // Show latest session if no id given
-        let store = match app.session_store {
-            Some(ref store) => store,
-            None => {
-                app.messages.push(MessageItem::System {
-                    text: "Session store not available.".into(),
-                });
-                return;
-            }
-        };
-
-        match store.latest() {
-            Some(session) => {
-                app.messages = session.messages.clone();
-                app.current_session_id = Some(session.id.clone());
-                app.messages.push(MessageItem::System {
-                    text: format!("↻ Resumed session {} ({} msgs)", &session.id[..8], session.message_count),
-                });
-            }
-            None => {
-                app.messages.push(MessageItem::System {
-                    text: "No saved sessions to resume.".into(),
-                });
-            }
-        }
-        return;
-    }
-
-    let partial_id = parts[1].trim();
-    let store = match app.session_store {
-        Some(ref store) => store,
-        None => {
-            app.messages.push(MessageItem::System {
-                text: "Session store not available.".into(),
-            });
-            return;
-        }
-    };
-
-    // Match by prefix (first 8+ chars)
-    let headers = store.list();
-    let matched: Vec<_> = headers.iter()
-        .filter(|h| h.id.starts_with(partial_id))
-        .collect();
-
-    match matched.len() {
-        0 => {
-            app.messages.push(MessageItem::System {
-                text: format!("No session found matching '{}'. Use /session to list.", partial_id),
-            });
-        }
-        1 => {
-            match store.load(&matched[0].id) {
-                Ok(session) => {
-                    app.messages = session.messages.clone();
-                    app.current_session_id = Some(session.id.clone());
-                    app.messages.push(MessageItem::System {
-                        text: format!("↻ Resumed session {} ({} msgs)", &session.id[..8], session.message_count),
-                    });
-                }
-                Err(e) => {
-                    app.messages.push(MessageItem::System {
-                        text: format!("Error loading session: {e}"),
-                    });
-                }
-            }
-        }
-        _ => {
-            app.messages.push(MessageItem::System {
-                text: format!("Multiple sessions match '{}'. Be more specific.", partial_id),
-            });
-        }
-    }
-}
-
-/// Truncate a string to max_len chars, appending "…" if truncated.
-fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max_len.saturating_sub(1)])
-    }
-}
-
-/// ─── Config Command ───────────────────────────────────────────────────────
-
-/// Handle `/config` and `/config set <key> <value>`.
-fn handle_config_cmd(app: &mut TuiApp, input: &str) {
-    let store = match app.config_store {
-        Some(ref store) => store,
-        None => {
-            app.messages.push(MessageItem::System {
-                text: "Config store not available.".into(),
-            });
-            return;
-        }
-    };
-
-    let parts: Vec<&str> = input.splitn(4, ' ').collect();
-
-    if parts.len() < 2 || parts[1].trim().is_empty() {
-        // /config — show current config
-        app.messages.push(MessageItem::System {
-            text: store.format_display(),
-        });
-        return;
-    }
-
-    if parts[1] == "set" && parts.len() >= 4 {
-        let key = parts[2].to_lowercase();
-        let value = parts[3];
-        let result = apply_config_setting(app, &key, value);
-        app.messages.push(MessageItem::System { text: result });
-        return;
-    }
-
-    app.messages.push(MessageItem::System {
-        text: format!("Unknown config subcommand: {}. Use /config to view, /config set <key> <value> to change.", parts[1]),
-    });
-}
-
-/// Apply a single config change.
-fn apply_config_setting(app: &mut TuiApp, key: &str, value: &str) -> String {
-    let store = match app.config_store {
-        Some(ref mut store) => store,
-        None => return "Config store not available.".into(),
-    };
-
-    match key {
-        "model" => {
-            store.set_model(value);
-            app.status.model = value.to_string();
-            // Also notify the background agent via set_model command
-            if let Err(e) = store.save() {
-                return format!("Changed model to {value}, but failed to save: {e}");
-            }
-            format!("Model set to {value} (saved to codecoder.json). Use /reload to apply in current agent.")
-        }
-        "api_base" => {
-            store.get_mut().llm.api_base = value.to_string();
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("API Base set to {value}. Restart to apply.")
-        }
-        "max_tokens" => {
-            let n: u32 = match value.parse() {
-                Ok(n) => n,
-                Err(_) => return format!("Invalid number: {value}"),
-            };
-            store.get_mut().llm.max_tokens = n;
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("Max tokens set to {n}. Restart to apply.")
-        }
-        "temperature" => {
-            let t: f32 = match value.parse() {
-                Ok(t) => t,
-                Err(_) => return format!("Invalid number: {value}"),
-            };
-            store.get_mut().llm.temperature = t;
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("Temperature set to {t}. Restart to apply.")
-        }
-        "tool_rounds" | "max_tool_rounds" => {
-            let n: usize = match value.parse() {
-                Ok(n) => n,
-                Err(_) => return format!("Invalid number: {value}"),
-            };
-            store.get_mut().features.max_tool_rounds = n;
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("Max tool rounds set to {n}. Restart to apply.")
-        }
-        "cmd_timeout" | "command_timeout_secs" => {
-            let n: u64 = match value.parse() {
-                Ok(n) => n,
-                Err(_) => return format!("Invalid number: {value}"),
-            };
-            store.get_mut().features.command_timeout_secs = n;
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("Command timeout set to {n}s. Restart to apply.")
-        }
-        "sandbox_memory" | "sandbox_memory_limit" => {
-            store.get_mut().features.sandbox_memory_limit = value.to_string();
-            if let Err(e) = store.save() {
-                return format!("Failed to save: {e}");
-            }
-            format!("Sandbox memory limit set to '{value}'. Restart to apply.")
-        }
-        _ => {
-            format!("Unknown config key: {key}. Supported: model, api_base, max_tokens, temperature, tool_rounds, cmd_timeout, sandbox_memory")
-        }
-    }
-}
-
-/// ─── MCP Command ──────────────────────────────────────────────────────────
-
-/// Handle `/mcp`, `/mcp list`, `/mcp start <name>`, `/mcp stop <name>`.
-fn handle_mcp_cmd(app: &mut TuiApp, input: &str) {
-    let registry = match app.mcp_registry {
-        Some(ref reg) => reg,
-        None => {
-            app.messages.push(MessageItem::System {
-                text: "MCP not available.".into(),
-            });
-            return;
-        }
-    };
-
-    let parts: Vec<&str> = input.splitn(3, ' ').collect();
-    let sub = parts.get(1).copied().unwrap_or("");
-
-    match sub {
-        "list" | "" => {
-            let reg = registry.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let servers = reg.list_servers();
-            let tools = reg.all_tools();
-
-            let mut lines = vec!["── MCP Servers ──".to_string()];
-            if servers.is_empty() {
-                lines.push("  No MCP servers running.".into());
-                lines.push("  Configure servers in codecoder.json under 'mcp_servers'.".into());
-            } else {
-                for s in &servers {
-                    lines.push(format!("  ✓ {} (v{}, {} tools)", s.name, s.server_info.version, s.tool_count));
-                }
-            }
-
-            if !tools.is_empty() {
-                lines.push(String::new());
-                lines.push("── MCP Tools ──".to_string());
-                for t in &tools {
-                    let desc = if t.description.len() > 60 {
-                        format!("{}…", &t.description[..57])
-                    } else {
-                        t.description.clone()
-                    };
-                    lines.push(format!("  · {} [{}] {}", t.tool_name, t.server_name, desc));
-                }
-            }
-
-            app.messages.push(MessageItem::System {
-                text: lines.join("\n"),
-            });
-        }
-        "start" => {
-            let name = parts.get(2).unwrap_or(&"");
-            if name.is_empty() {
-                app.messages.push(MessageItem::System {
-                    text: "Usage: /mcp start <server-name>".into(),
-                });
-                return;
-            }
-
-            // Find config from config_store
-            let config = match app.config_store {
-                Some(ref store) => store.get().clone(),
-                None => {
-                    app.messages.push(MessageItem::System {
-                        text: "Config not available.".into(),
-                    });
-                    return;
-                }
-            };
-
-            let server_config = config.mcp_servers.iter()
-                .find(|s| s.name == *name)
-                .cloned();
-
-            match server_config {
-                Some(cfg) => {
-                    let mut reg = registry.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                    match reg.start_server(cfg) {
-                        Ok(name) => {
-                            // Register tools
-                            let tools = reg.all_tools();
-                            let count = tools.iter().filter(|t| t.server_name == name).count();
-                            app.messages.push(MessageItem::System {
-                                text: format!("✓ MCP server '{name}' started ({} tools)", count),
-                            });
-                        }
-                        Err(e) => {
-                            app.messages.push(MessageItem::System {
-                                text: format!("✗ Failed to start MCP server '{name}': {e}"),
-                            });
-                        }
-                    }
-                }
-                None => {
-                    app.messages.push(MessageItem::System {
-                        text: format!("No MCP server named '{name}' in config. Use /config to see configured servers."),
-                    });
-                }
-            }
-        }
-        "stop" => {
-            let name = parts.get(2).unwrap_or(&"");
-            if name.is_empty() {
-                app.messages.push(MessageItem::System {
-                    text: "Usage: /mcp stop <server-name>".into(),
-                });
-                return;
-            }
-            let mut reg = registry.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            match reg.stop_server(name) {
-                Ok(()) => {
-                    app.messages.push(MessageItem::System {
-                        text: format!("✓ MCP server '{name}' stopped."),
-                    });
-                }
-                Err(e) => {
-                    app.messages.push(MessageItem::System {
-                        text: format!("✗ Failed to stop server '{name}': {e}"),
-                    });
-                }
-            }
-        }
-        _ => {
-            app.messages.push(MessageItem::System {
-                text: format!("Unknown MCP subcommand: '{sub}'. Use /mcp list, /mcp start, /mcp stop."),
-            });
-        }
-    }
-}
-
-/// ─── Session Persistence ──────────────────────────────────────────────────
-
-/// Build a Session from the current TuiApp state.
-fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
-    let id = app.current_session_id.clone()
-        .unwrap_or_else(|| crate::session::Session::new(&app.status.model).id);
-    let mut session = crate::session::Session {
-        id,
-        model: app.status.model.clone(),
-        created_at: String::new(),  // preserve original on resume
-        updated_at: String::new(),
-        message_count: 0,
-        token_count: app.status.token_count,
-        messages: app.messages.clone(),
-    };
-    session.touch();
-    session
-}
-
-/// Auto-save the current session (best-effort).
-fn auto_save_session(app: &TuiApp) {
-    if let Some(ref store) = app.session_store {
-        let session = build_session_from_app(app);
-        let _ = store.save(&session);
     }
 }
 
@@ -3156,6 +2540,7 @@ mod tests {
             tool_name: "read_file".into(),
             tool_input: "test".into(),
             request_id: 1,
+            risk: "test".into(),
         });
         let (tx, rx) = std::sync::mpsc::channel();
         press(&mut app, KeyCode::Char('y'), KeyModifiers::NONE, &tx);
@@ -3171,6 +2556,7 @@ mod tests {
             tool_name: "read_file".into(),
             tool_input: "test".into(),
             request_id: 1,
+            risk: "test".into(),
         });
         let (tx, rx) = std::sync::mpsc::channel();
         press(&mut app, KeyCode::Char('n'), KeyModifiers::NONE, &tx);
@@ -3442,7 +2828,7 @@ mod tests {
         let mut app = TuiApp::default();
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         app.status.agent_busy = true;
-        tx.send(AgentResponse::Text { text: "hello from agent".into() }).await.unwrap();
+        tx.send(AgentResponse::Text { text: "hello from agent".into(), tokens_in: 0, tokens_out: 0 }).await.unwrap();
         check_agent_responses(&mut app, &mut rx);
         assert!(!app.status.agent_busy, "Text response should clear busy");
         assert!(app.messages.iter().any(|m| match m {
@@ -3545,6 +2931,7 @@ mod tests {
             tool_name: "write_file".into(),
             tool_input: "test content".into(),
             request_id: 42,
+            risk: "NeedsApproval".into(),
         }).await.unwrap();
         check_agent_responses(&mut app, &mut rx);
         assert!(app.permission_pending.is_some());
@@ -3915,6 +3302,7 @@ mod tests {
             tool_name: "write_file".into(),
             tool_input: "test.txt".into(),
             request_id: 1,
+            risk: "test".into(),
         });
         app.status = StatusData::default();
 
