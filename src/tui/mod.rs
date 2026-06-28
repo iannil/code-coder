@@ -17,7 +17,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap};
 use ratatui::Frame;
 use serde::{Deserialize, Serialize};
-use std::sync::mpsc;
 use std::time::Duration;
 
 use crate::agent::{AgentCommand, AgentResponse};
@@ -314,11 +313,12 @@ pub fn run_tui(
     cmd_tx: std::sync::mpsc::Sender<AgentCommand>,
     mut resp_rx: tokio::sync::mpsc::Receiver<AgentResponse>,
     session_store: crate::session::SessionStore,
-    mut config_store: crate::config::ConfigStore,
+    config_store: crate::config::ConfigStore,
     mcp_registry: Arc<Mutex<crate::mcp::McpRegistry>>,
 ) -> Result<()> {
     // Enable raw mode and bracketed paste
     crossterm::terminal::enable_raw_mode()?;
+    crate::TUI_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::EnableBracketedPaste,
@@ -425,6 +425,7 @@ pub fn run_tui(
     }
 
     // Restore terminal
+    crate::TUI_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
     crossterm::execute!(
         std::io::stdout(),
         crossterm::event::DisableBracketedPaste,
@@ -570,7 +571,7 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                 // Use markdown rendering but no indent
                 let md_lines = markdown::render_markdown_with_highlight(text, highlight);
                 if let Some(first) = md_lines.first() {
-                    let mut styled_line = Line::from(
+                    let styled_line = Line::from(
                         std::iter::once(Span::styled(prefix, prefix_style))
                             .chain(first.spans.iter().cloned())
                             .collect::<Vec<_>>(),
@@ -740,7 +741,18 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         );
     }
 
-    // 输入区（带光标显示）— 极简 `>` 前缀，无边框，2行
+    // 输入区 — 2行：顶部分隔线 + `>` 前缀
+    let separator_line = Line::from(Span::styled(
+        "─".repeat(area.width.saturating_sub(1) as usize),
+        Style::default().fg(Color::DarkGray),
+    ));
+    frame.render_widget(
+        Paragraph::new(separator_line),
+        Rect::new(input_area.x, input_area.y, input_area.width, 1),
+    );
+
+    // 输入内容在第2行
+    let input_content_y = input_area.y + 1;
     let cursor_pos = app.cursor_pos.min(app.input.len());
     let prefix_span = Span::styled("> ", Style::default().fg(Color::Cyan));
     let input_display = if app.input.is_empty() {
@@ -750,11 +762,13 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
         line.spans.push(Span::raw(&app.input));
         line
     };
+    // 输入内容区（第2行开始，可多行）
+    let input_content_area = Rect::new(input_area.x, input_content_y, input_area.width, 1);
     let input_paragraph = Paragraph::new(input_display)
         .style(Style::default().fg(Color::White));
-    frame.render_widget(input_paragraph, input_area);
+    frame.render_widget(input_paragraph, input_content_area);
 
-    // 设置光标位置
+    // 设置光标位置（在输入内容行）
     let safe_cursor = if app.input.is_char_boundary(cursor_pos) {
         cursor_pos
     } else {
@@ -780,7 +794,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
 
     frame.set_cursor_position(ratatui::layout::Position {
         x: input_area.x + col_offset as u16 + 2, // +2 for "> "
-        y: input_area.y + row_offset as u16,
+        y: input_content_y + row_offset as u16,
     });
 
     // 斜杠命令补全弹出列表

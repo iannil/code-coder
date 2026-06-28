@@ -78,7 +78,7 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
     let spans = if needed < total_width {
         // Three columns with padding
         let mid_gap = total_width - left_len - right_len;
-        let center_start = left_len + left_pad;
+        let _center_start = left_len + left_pad;
         let fill_mid = if center_len > 0 {
             let before = (mid_gap - center_len) / 2;
             let after = mid_gap - center_len - before;

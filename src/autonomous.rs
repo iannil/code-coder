@@ -5,8 +5,7 @@
 
 use crate::agent::{AgentCommand, AgentResponse};
 use crate::config::ConfigStore;
-use crate::event::{Event, FileChangeKind, SharedEventBus, SystemCommand};
-use std::sync::Arc;
+use crate::event::{Event, FileChangeKind, SharedEventBus};
 use std::time::Duration;
 
 /// ─── ScheduledTask ─────────────────────────────────────────────────────────
@@ -140,7 +139,7 @@ impl AutonomousRunner {
         cmd_tx: std::sync::mpsc::Sender<AgentCommand>,
         mut resp_rx: tokio::sync::mpsc::Receiver<AgentResponse>,
         bus: SharedEventBus,
-        config: ConfigStore,
+        _config: ConfigStore,
         tasks: Vec<ScheduledTask>,
         watch_paths: Vec<String>,
     ) -> anyhow::Result<()> {
@@ -194,7 +193,7 @@ impl AutonomousRunner {
 
             // Check for events on the bus
             let event = {
-                let mut bus_inner = bus_for_sub.clone();
+                let bus_inner = bus_for_sub.clone();
                 bus_inner.drain_event()
             };
 

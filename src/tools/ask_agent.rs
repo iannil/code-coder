@@ -104,7 +104,6 @@ impl Tool for AskUserTool {
 
 use crate::agent::AgentLoop;
 use crate::context::Context;
-use crate::llm::LlmClient;
 
 pub struct AgentTool;
 

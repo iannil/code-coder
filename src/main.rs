@@ -14,11 +14,15 @@ mod skill;
 mod tools;
 
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-/// Print a log message to codecoder.log AND stderr (stderr works in non-TUI mode).
-/// In TUI raw mode, stderr shares the same terminal as the rendered UI, so a file
-/// is the primary medium for persistent logs. Use `tail -f codecoder.log` alongside
-/// the TUI session.
+/// Whether the TUI (raw mode) is currently active.
+/// When true, log() skips stderr to avoid corrupting the terminal display.
+pub(crate) static TUI_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+/// Print a log message to codecoder.log AND stderr (stderr only in non-TUI mode).
+/// In TUI raw mode, stderr shares the same terminal as the rendered UI, so only
+/// file logging is used. Use `tail -f codecoder.log` alongside the TUI session.
 pub(crate) fn log(msg: &str) {
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)
@@ -28,8 +32,10 @@ pub(crate) fn log(msg: &str) {
         let _ = writeln!(f, "{}", msg);
         let _ = f.flush();
     }
-    let _ = writeln!(std::io::stderr(), "{}", msg);
-    let _ = std::io::stderr().flush();
+    if !TUI_ACTIVE.load(Ordering::Relaxed) {
+        let _ = writeln!(std::io::stderr(), "{}", msg);
+        let _ = std::io::stderr().flush();
+    }
 }
 
 use agent::BackgroundAgent;

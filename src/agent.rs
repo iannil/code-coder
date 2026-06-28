@@ -5,7 +5,7 @@
 
 use crate::context::Context;
 use crate::event::{Event, Subscriber};
-use crate::llm::{LlmClient, Message, StreamDelta};
+use crate::llm::{LlmClient, Message};
 use crate::self_evolve::{IntrospectConfig, IntrospectResult, SelfEvolve};
 use crate::skill::SkillRegistry;
 use crate::tools::ToolRegistry;
