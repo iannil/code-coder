@@ -548,6 +548,21 @@ mod tests {
     }
 
     #[test]
+    fn test_gap_analysis_web_search() {
+        let ctx = "I need to search the web.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "web-search");
+    }
+
+    #[test]
+    fn test_gap_analysis_search_github() {
+        // "github" matches "git" first in the matching order
+        let ctx = "I cannot find GitHub repositories.";
+        let gap = analyze_gap(&[], 1, ctx).unwrap();
+        assert_eq!(gap.name, "git-helper");
+    }
+
+    #[test]
     fn test_gap_analysis_level2() {
         let ctx = "Tool error with git — could not connect.";
         let gap = analyze_gap(&[], 2, ctx).unwrap();
