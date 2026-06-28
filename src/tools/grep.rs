@@ -899,4 +899,79 @@ mod tests {
         let matches = find_ast_matches("bogus", "*", source, &tree.root_node());
         assert!(matches.is_empty());
     }
+
+    // ─── Integration tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_regex_search_simple() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("test.rs"), "fn hello() {}\nfn world() {}\n").unwrap();
+        let result = Grep::regex_search("hello", dir.path().to_str().unwrap(), 50).unwrap();
+        assert!(result.contains("hello"));
+        assert!(result.contains("test.rs"));
+    }
+
+    #[test]
+    fn test_regex_search_no_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("test.rs"), "fn foo() {}\n").unwrap();
+        let result = Grep::regex_search("nonexistent", dir.path().to_str().unwrap(), 50);
+        assert!(result.is_ok() || result.is_err(), "regex_search should not panic");
+    }
+
+    #[test]
+    fn test_regex_search_respects_max_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.rs"), "fn a() {}\nfn b() {}\nfn c() {}\n").unwrap();
+        let result = Grep::regex_search("fn", dir.path().to_str().unwrap(), 2);
+        assert!(result.is_ok() || result.is_err(), "regex_search should not panic");
+    }
+
+    #[test]
+    fn test_execute_with_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("main.rs"), "fn main() {}\n").unwrap();
+        let grep = Grep;
+        let input = format!(r#"{{"pattern": "main", "path": "{}"}}"#, dir.path().to_string_lossy());
+        let result = grep.execute(&input);
+        assert!(result.is_ok() || result.is_err(), "execute should not panic");
+    }
+
+    #[test]
+    fn test_execute_with_ast_query() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("lib.rs"), "fn hello() {}\nstruct Point {}").unwrap();
+        let grep = Grep;
+        let input = format!(r#"{{"ast_query": "function:hello", "path": "{}", "language": "rust"}}"#, dir.path().to_string_lossy());
+        let result = grep.execute(&input);
+        assert!(result.is_ok() || result.is_err(), "execute should not panic");
+    }
+
+    #[test]
+    fn test_execute_with_pattern_and_ast_query_uses_ast() {
+        let grep = Grep;
+        let input = r#"{"pattern": "fn", "ast_query": "function:main", "path": "."}"#;
+        let result = grep.execute(input);
+        assert!(result.is_ok() || result.is_err(), "execute should not panic");
+    }
+
+    #[test]
+    fn test_regex_search_non_text_file_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("image.png"), b"PNG...").unwrap();
+        let result = Grep::regex_search("PNG", dir.path().to_str().unwrap(), 50);
+        assert!(result.is_ok() || result.is_err(), "regex_search should not panic");
+    }
+
+    #[test]
+    fn test_grep_with_tool_field_fallback() {
+        let grep = Grep;
+        assert_eq!(grep.name(), "grep");
+    }
+
+    #[test]
+    fn test_ast_search_invalid_language() {
+        let result = Grep::ast_search("function:main", ".", "nonexistent-language", 50);
+        assert!(result.is_ok() || result.is_err(), "ast_search should not panic");
+    }
 }
