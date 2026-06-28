@@ -135,6 +135,26 @@ mod tests {
     }
 
     #[test]
+    fn test_strip_html_numeric_entities() {
+        // Numeric entities like &#39; and &#x27; should be passed through
+        // since the simple entity handler doesn't decode them
+        let result = strip_html_tags("&#39;quote&#x27;");
+        assert_eq!(result, "''"); // &#39; has entity "39" which doesn't match any known entity
+    }
+
+    #[test]
+    fn test_strip_html_self_closing_tag() {
+        assert_eq!(strip_html_tags("<br/>text"), "text");
+    }
+
+    #[test]
+    fn test_strip_html_mixed_content() {
+        let html = "<div><p>Hello <b>world</b></p><ul><li>item</li></ul></div>";
+        let result = strip_html_tags(html);
+        assert_eq!(result, "Hello worlditem");
+    }
+
+    #[test]
     fn test_empty_url() {
         assert!(SearchWeb.execute("").is_err());
     }
