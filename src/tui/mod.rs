@@ -449,9 +449,49 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
             }
         ))
         .title_alignment(ratatui::layout::Alignment::Left);
-    let msg_paragraph = Paragraph::new(rendered_lines)
+
+    // ── 虚拟滚动：只传递可见行给 ratatui ──────────────────────────────────
+    // 计算可见的 logical line 窗口：跳过 scrolled_display_rows 显示行，然后取 msg_height 显示行
+    let visible_slice = if scrolled_display_rows > 0 && total_display_rows > msg_height {
+        // 找到 scrolled_display_rows 对应的 logical line 索引
+        let mut logical_start = 0usize;
+        let mut accumulated = 0usize;
+        for (i, l) in rendered_lines.iter().enumerate() {
+            let w = l.width();
+            let rows = if w == 0 { 1 } else { (w + text_width as usize - 1) / text_width as usize };
+            if accumulated + rows > scrolled_display_rows {
+                logical_start = i;
+                break;
+            }
+            accumulated += rows;
+        }
+
+        // 计算可见窗口能容纳多少 logical lines
+        let mut visible_end = logical_start;
+        accumulated = 0;
+        for (i, l) in rendered_lines[logical_start..].iter().enumerate() {
+            let w = l.width();
+            let rows = if w == 0 { 1 } else { (w + text_width as usize - 1) / text_width as usize };
+            if accumulated + rows > msg_height {
+                visible_end = logical_start + i + 1;
+                break;
+            }
+            accumulated += rows;
+        }
+        if visible_end <= logical_start {
+            visible_end = rendered_lines.len().min(logical_start + msg_height);
+        }
+
+        &rendered_lines[logical_start..visible_end.min(rendered_lines.len())]
+    } else {
+        // 没有滚动或有大量空白：取开头 msg_height 个 logical lines
+        let end = rendered_lines.len().min(msg_height);
+        &rendered_lines[..end]
+    };
+
+    let msg_paragraph = Paragraph::new(visible_slice.to_vec())
         .block(msg_block)
-        .scroll((scrolled_display_rows as u16, 0))
+        .scroll((0, 0)) // 虚拟滚动已裁剪，不需要 scroll
         .wrap(Wrap { trim: false });
     frame.render_widget(msg_paragraph, msg_area);
 
