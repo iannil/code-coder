@@ -126,4 +126,20 @@ mod tests {
         let result = transport.shutdown();
         assert!(result.is_ok());
     }
+
+    #[test]
+    fn test_mcp_transport_drop_does_not_panic() {
+        // Dropping the transport should call drop() which kills the process
+        let transport = McpTransport::spawn("echo", &["test".into()], &[]).unwrap();
+        drop(transport); // should not panic
+    }
+
+    #[test]
+    fn test_mcp_transport_is_running_after_spawn() {
+        // Use sleep to keep a process running while we check
+        let mut transport = McpTransport::spawn("sleep", &["5".into()], &[]).unwrap();
+        assert!(transport.is_running(), "A sleep process should be running");
+        transport.shutdown().unwrap();
+        assert!(!transport.is_running(), "After shutdown, is_running should be false");
+    }
 }
