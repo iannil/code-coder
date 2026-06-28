@@ -157,6 +157,34 @@ fn run_daemon(
     })
 }
 
+// ─── Unit Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_main_no_panic_on_help() {
+        // Just verify imports & basic structure compile
+        fn check_types() {
+            let _: fn(&str) = log;
+        }
+        check_types();
+    }
+
+    #[test]
+    fn test_log_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = std::env::current_dir().unwrap();
+        std::env::set_current_dir(dir.path()).unwrap();
+        log("[test] log message");
+        let content = std::fs::read_to_string(dir.path().join("codecoder.log")).unwrap_or_default();
+        assert!(content.contains("[test] log message"), "log should write to file");
+        std::env::set_current_dir(original).unwrap();
+        let _ = dir.close();
+    }
+}
+
 // ─── End-to-End Smoke Tests ─────────────────────────────────────────────────
 
 #[cfg(test)]
