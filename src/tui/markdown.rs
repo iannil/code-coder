@@ -257,7 +257,7 @@ fn render_code_block(
 
             for (style, text) in ranges {
                 let fg = syntect_color_to_ratatui(style.foreground);
-                let mut ratatui_style = Style::default().fg(fg).add_modifier(Modifier::DIM);
+                let mut ratatui_style = Style::default().fg(fg);
 
                 if style.font_style.contains(FontStyle::BOLD) {
                     ratatui_style = ratatui_style.add_modifier(Modifier::BOLD);
@@ -279,7 +279,7 @@ fn render_code_block(
         for line in content.lines() {
             lines.push(Line::styled(
                 format!("  {}", line),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                Style::default().fg(Color::DarkGray),
             ));
         }
     }
@@ -491,8 +491,7 @@ fn render_inline(text: &str, spans: &mut Vec<Span<'static>>, base_style: Style, 
             spans.push(Span::styled(
                 code_text,
                 base_style
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::DIM),
+                    .fg(Color::Cyan),
             ));
             if i < chars.len() {
                 i += 1; // skip closing backtick

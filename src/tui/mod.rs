@@ -587,17 +587,17 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                 }
             }
             MessageItem::Reasoning { text, .. } => {
-                // Always fully expanded, Dim Gray, wrapped in prefix
+                // Always fully expanded, Dark Gray (no DIM)
                 for (i, line) in text.lines().enumerate() {
                     if i == 0 {
                         lines.push(Line::styled(
                             format!("· {}", line),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            Style::default().fg(Color::DarkGray),
                         ));
                     } else {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            Style::default().fg(Color::DarkGray),
                         ));
                     }
                 }
@@ -606,13 +606,13 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                 // Always fully expanded, no fold
                 lines.push(Line::styled(
                     format!("⚙ {}", name),
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                    Style::default().fg(Color::DarkGray),
                 ));
                 if !input.is_empty() {
                     for line in input.lines() {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            Style::default().fg(Color::DarkGray),
                         ));
                     }
                 }
@@ -620,7 +620,7 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                     for line in output.lines() {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            Style::default().fg(Color::DarkGray),
                         ));
                     }
                 }
@@ -628,7 +628,7 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
             MessageItem::System { text } => {
                 lines.push(Line::styled(
                     format!(" {}", text),
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::DarkGray),
                 ));
             }
         }
