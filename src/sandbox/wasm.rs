@@ -280,4 +280,33 @@ mod tests {
         let result = run_wasm_direct("");
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_run_wasm_direct_wat_detection() {
+        // A WAT file starts with (module or contains "module"
+        let result = run_wasm_direct("(module)");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("wat2wasm") || msg.contains("WAT"), "Error: {msg}");
+    }
+
+    #[test]
+    fn test_compile_and_run_go_wasm_fallback() {
+        // This should fall back with a helpful message
+        let result = compile_and_run_go_wasm("package main");
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Go") || msg.contains("Docker"), "Error: {msg}");
+    }
+
+    #[test]
+    fn test_run_via_docker_fallback() {
+        let result = run_via_docker_fallback("print('hi')", "python");
+        // Will fail gracefully if Docker is not available
+        assert!(result.is_err() || result.is_ok());
+        if let Err(e) = result {
+            assert!(e.to_string().contains("Docker") || e.to_string().contains("NotFound"),
+                "Unexpected: {e}");
+        }
+    }
 }

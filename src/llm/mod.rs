@@ -476,6 +476,42 @@ mod tests {
     }
 
     #[test]
+    fn test_openai_client_from_env_sets_env_vars() {
+        // Temporarily set env vars to test from_env
+        unsafe {
+            std::env::set_var("CODECODER_API_KEY", "test-key-from-env");
+            std::env::set_var("CODECODER_API_BASE", "https://custom.example.com/v1");
+            std::env::set_var("CODECODER_MODEL", "custom-model");
+            std::env::set_var("CODECODER_MAX_TOKENS", "8192");
+            std::env::set_var("CODECODER_TEMPERATURE", "0.2");
+        }
+        let config = LlmConfig::from_env();
+        assert_eq!(config.api_key, "test-key-from-env");
+        assert_eq!(config.api_base, "https://custom.example.com/v1");
+        assert_eq!(config.model, "custom-model");
+        assert_eq!(config.max_tokens, 8192);
+
+        let client = OpenAiClient::from_env();
+        assert_eq!(client.config.model, "custom-model");
+    }
+
+    #[test]
+    fn test_openai_client_from_env_fallback_to_openai_vars() {
+        unsafe {
+            std::env::remove_var("CODECODER_API_KEY");
+            std::env::remove_var("CODECODER_API_BASE");
+            std::env::remove_var("CODECODER_MODEL");
+            std::env::set_var("OPENAI_API_KEY", "openai-fallback-key");
+            std::env::set_var("OPENAI_API_BASE", "https://openai.example.com/v1");
+            std::env::set_var("OPENAI_MODEL", "gpt-4o");
+        }
+        let config = LlmConfig::from_env();
+        assert_eq!(config.api_key, "openai-fallback-key");
+        assert_eq!(config.api_base, "https://openai.example.com/v1");
+        assert_eq!(config.model, "gpt-4o");
+    }
+
+    #[test]
     fn test_stub_client_config() {
         let client = StubClient::new();
         let config = client.config();

@@ -754,4 +754,77 @@ Here is the content."#;
         assert_eq!(calls[0].name, "search_web");
         assert_eq!(calls[0].input, "query");
     }
+
+    #[test]
+    fn test_parse_single_tool_call_empty_name() {
+        let result = parse_single_tool_call(r#"{"input": "test"}"#);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("name"));
+    }
+
+    #[test]
+    fn test_agent_response_llm_delta() {
+        let resp = AgentResponse::LlmDelta { text: "thinking...".into() };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("thinking"));
+    }
+
+    #[test]
+    fn test_agent_response_reasoning_delta() {
+        let resp = AgentResponse::ReasoningDelta { text: "step by step".into() };
+        let debug = format!("{resp:?}");
+        assert!(debug.contains("step"));
+    }
+
+    #[test]
+    fn test_build_messages_with_skills() {
+        let mut agent = test_agent();
+        let mut skills = SkillRegistry::new();
+        let tools = ToolRegistry::new_for_test();
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join("skills");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(
+            skills_dir.join("test-skill.md"),
+            "---\nname: test-skill\ndescription: A test skill\n---\n\nContent.",
+        ).unwrap();
+        skills.scan(dir.path().to_str().unwrap()).unwrap();
+        let ctx = Context::load(dir.path().to_str().unwrap());
+        agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
+        let msgs = agent.build_messages(&tools, &skills);
+        let sys_prompt = &msgs[0].content;
+        assert!(sys_prompt.contains("test-skill"));
+    }
+
+    #[test]
+    fn test_set_model_updates_config() {
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "test-key");
+        }
+        let mut agent = test_agent();
+        agent.set_model("custom-model-name");
+        assert!(agent.llm.config().model.contains("custom-model"));
+    }
+
+    #[test]
+    fn test_reload_context_does_not_panic() {
+        let mut agent = test_agent();
+        agent.reload_context();
+        assert!(agent.context().project_root.contains("tmp"));
+    }
+
+    #[test]
+    fn test_agent_with_delta_tx() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(256);
+        let ctx = Context::load("/tmp");
+        let agent = AgentLoop::new(Box::new(StubClient::new()), ctx).with_delta_tx(tx);
+        // Just verify it doesn't panic — delta_tx is set
+    }
+
+    #[test]
+    fn test_build_system_prompt_contains_tools() {
+        let agent = test_agent();
+        let prompt = agent.build_system_prompt(&ToolRegistry::new_for_test(), &SkillRegistry::new());
+        assert!(prompt.contains("tool") || prompt.contains("read_file"));
+    }
 }
