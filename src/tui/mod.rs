@@ -1636,6 +1636,9 @@ fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>
     app.input_history.push(input.clone());
     app.history_pos = app.input_history.len();
 
+    // 清除上一个对话轮的 [end] 标记，避免旧标记混在新轮消息中
+    app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[end]")));
+
     // 添加到消息列表
     app.messages.push(MessageItem::User {
         text: input.clone(),
@@ -1686,8 +1689,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             .unwrap_or(0.0);
                         // 移除流式阶段的过渡状态消息
                         app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[write]") || text.starts_with("[think]")));
-                        // 非空内容才追加（流式场景下内容已通过 LlmDelta 送达）
-                        if !text.is_empty() {
+                        // 非空内容才追加 —— 仅在无流式传输（LlmDelta 未送达）时追加，
+                        // 否则内容已通过 LlmDelta 逐段 push 完成，再次追加会导致重复
+                        let already_streamed = matches!(app.messages.last(), Some(MessageItem::Assistant { .. }));
+                        if !text.is_empty() && !already_streamed {
                             app.messages.push(MessageItem::Assistant { text });
                         }
                         // 执行结束：插入结束标记 + 耗时提示
@@ -1741,6 +1746,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text == "[send] Agent…" || text == "[send] Agent 处理中…"));
                     }
                     AgentResponse::LlmDelta { text } => {
+                        // 忽略旧轮延迟到达的 delta（tokio::spawn 后台任务可能在新轮 Text 后到达）
+                        if !app.status.agent_busy {
+                            continue;
+                        }
                         // 首次收到 streaming 输出：从推理切换到生成状态
                         if app.current_round == 1 && app.messages.last().map_or(true, |m| !matches!(m, MessageItem::Assistant { .. })) {
                             app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.contains("LLM")));
@@ -1760,6 +1769,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         }
                     }
                     AgentResponse::ReasoningDelta { text } => {
+                        // 忽略旧轮延迟到达的 delta
+                        if !app.status.agent_busy {
+                            continue;
+                        }
                         if let Some(MessageItem::Reasoning { text: t, .. }) = app.messages.last_mut() {
                             t.push_str(&text);
                             app.cached_msg_count = 0; // 内容已变，强制重建缓存
@@ -3556,6 +3569,7 @@ mod tests {
     #[tokio::test]
     async fn test_agent_response_llm_delta_append() {
         let mut app = TuiApp::default();
+        app.status.agent_busy = true; // simulate active agent
         app.messages.push(MessageItem::Assistant { text: "hello ".into() });
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         tx.send(AgentResponse::LlmDelta { text: "world".into() }).await.unwrap();
@@ -3570,6 +3584,7 @@ mod tests {
     #[tokio::test]
     async fn test_agent_response_reasoning_delta() {
         let mut app = TuiApp::default();
+        app.status.agent_busy = true; // simulate active agent
         let (tx, mut rx) = tokio::sync::mpsc::channel(16);
         tx.send(AgentResponse::ReasoningDelta { text: "step 1".into() }).await.unwrap();
         check_agent_responses(&mut app, &mut rx);
