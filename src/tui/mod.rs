@@ -1672,6 +1672,10 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         if !text.is_empty() {
                             app.messages.push(MessageItem::Assistant { text });
                         }
+                        // 执行结束：插入分隔线 + 耗时提示
+                        app.messages.push(MessageItem::System {
+                            text: "─".repeat(20),
+                        });
                         app.messages.push(MessageItem::System {
                             text: format!("[done] ({took:.1}s)"),
                         });
