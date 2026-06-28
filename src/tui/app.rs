@@ -2,7 +2,6 @@
 ///
 /// Extracted from mod.rs to reduce the 5000+ line file.
 
-use ratatui::text::Line;
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -59,8 +58,8 @@ pub struct TuiApp {
     pub model_picker_selected: usize,
     pub available_models: Vec<String>,
 
-    /// 权限对话框状态
-    pub permission_pending: Option<PendingPermission>,
+    /// 覆盖层对话框（权限/计划/提问）
+    pub dialog: Option<Dialog>,
 
     /// 主题切换（暗/亮模式）
     pub dark_mode: bool,
@@ -68,10 +67,7 @@ pub struct TuiApp {
     /// 消息选择模式 —选中消息的索引
     pub selected_msg: Option<usize>,
 
-    /// 渲染缓存（避免每帧重新解析 Markdown）
-    pub cached_lines: Vec<Line<'static>>,
-    pub cached_msg_count: usize,
-    pub cached_search_query: String,
+
 
     /// 状态栏数据
     pub status: StatusData,
@@ -106,14 +102,29 @@ pub enum MessageItem {
     Reasoning { text: String, expanded: bool },
 }
 
-/// 待用户确认的权限请求
+/// 覆盖层对话框枚举（替代 PendingPermission）
 #[derive(Debug, Clone)]
-pub struct PendingPermission {
-    pub tool_name: String,
-    pub tool_input: String,
-    pub request_id: u64,
-    /// Risk assessment (e.g. "suspicious command", "path outside root")
-    pub risk: String,
+pub enum Dialog {
+    ToolPermission {
+        tool_name: String,
+        tool_input: String,
+        request_id: u64,
+        risk: String,
+    },
+    PlanApproval {
+        title: String,
+        plan: String,
+        request_id: u64,
+    },
+    AskQuestion {
+        question: String,
+        request_id: u64,
+    },
+    PlanReview {
+        title: String,
+        plan: String,
+        request_id: u64,
+    },
 }
 
 /// 斜杠命令补全状态
@@ -238,14 +249,11 @@ impl Default for TuiApp {
                 "claude-haiku-3-5".into(), "deepseek-chat".into(),
                 "llama3.2".into(), "gemini-2.5-flash".into(),
             ],
-            permission_pending: None,
+            dialog: None,
             dark_mode: true,
             selected_msg: None,
             slash_completion: SlashCompletionState::default(),
             help_active: false,
-            cached_lines: Vec::new(),
-            cached_msg_count: 0,
-            cached_search_query: String::new(),
             status: StatusData::default(),
             thinking_start_time: None,
             current_round: 0,
