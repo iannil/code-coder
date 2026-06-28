@@ -118,23 +118,15 @@ pub fn run_tui(
                 Event::Mouse(mouse) => {
                     match mouse.kind {
                         MouseEventKind::ScrollUp => {
-                            if !app.input.is_empty() || app.search_active || app.reverse_search_active {
-                                // 输入/搜索模式下不处理
-                            } else {
-                                app.auto_scroll = false;
-                                app.scroll_offset = app.scroll_offset.saturating_add(3);
-                            }
+                            app.auto_scroll = false;
+                            app.scroll_offset = app.scroll_offset.saturating_add(3);
                         }
                         MouseEventKind::ScrollDown => {
-                            if !app.input.is_empty() || app.search_active || app.reverse_search_active {
-                                // 输入/搜索模式下不处理
+                            if app.scroll_offset > 3 {
+                                app.scroll_offset = app.scroll_offset.saturating_sub(3);
                             } else {
-                                if app.scroll_offset > 3 {
-                                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
-                                } else {
-                                    app.scroll_offset = 0;
-                                    app.auto_scroll = true;
-                                }
+                                app.scroll_offset = 0;
+                                app.auto_scroll = true;
                             }
                         }
                         _ => {}
@@ -352,7 +344,9 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         app.messages.push(MessageItem::System {
                             text: format!("[end] ({took:.1}s)"),
                         });
-                        app.auto_scroll = false;
+                        // 不移除 auto_scroll：如果用户在 agent 回复期间没有手动滚动，
+                        // auto_scroll 应保持 true，继续自动跟随底部。
+                        // 如果用户曾向上滚动，auto_scroll 已经是 false，应尊重用户选择。
                         app.status.agent_busy = false;
                         app.status.streaming_complete = false;
                         app.status.current_tool = None;

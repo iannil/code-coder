@@ -53,6 +53,8 @@ fn count_display_rows(lines: &[Line<'_>], area_width: u16) -> usize {
 }
 
 /// 从末尾开始算，返回 scroll_offset 使得最后 msg_height 显示行可见
+/// 现在未在渲染中使用（改用 display-rows 直接计算），保留供引用和测试
+#[allow(dead_code)]
 fn bottom_scroll_offset(lines: &[Line<'_>], area_width: u16, msg_height: usize) -> usize {
     if area_width == 0 || msg_height == 0 || lines.is_empty() {
         return 0;
@@ -250,26 +252,22 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut TuiApp, _frame_count: u64
     let text_width = area.width;
     let total_display_rows = count_display_rows(&rendered_lines, text_width);
 
-    // Auto-scroll or clamp
-    if app.auto_scroll {
-        app.scroll_offset = bottom_scroll_offset(&rendered_lines, text_width, msg_height);
+    // Auto-scroll or clamp — scroll_offset 始终是显示行偏移（display rows），
+    // 与逻辑行数无关。auto_scroll 时不修改 scroll_offset，避免类型混淆。
+    let scrolled_display_rows = if app.auto_scroll {
+        if total_display_rows > msg_height {
+            total_display_rows - msg_height
+        } else {
+            0
+        }
     } else {
-        let max_offset = bottom_scroll_offset(&rendered_lines, text_width, msg_height);
+        // Clamp user scroll_offset (display rows) to valid range
+        let max_offset = total_display_rows.saturating_sub(msg_height);
         if app.scroll_offset > max_offset {
             app.scroll_offset = max_offset;
         }
-    }
-
-    // Scrolled display rows
-    let scrolled_display_rows =
-        if app.auto_scroll && total_display_rows > msg_height {
-            total_display_rows - msg_height
-        } else if app.scroll_offset > 0 {
-            let clamped = app.scroll_offset.min(rendered_lines.len());
-            count_display_rows(&rendered_lines[..clamped], text_width)
-        } else {
-            0
-        };
+        app.scroll_offset
+    };
 
     // Block title
     let msg_block = Block::default()
