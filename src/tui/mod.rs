@@ -90,6 +90,11 @@ pub fn run_tui(
     while !app.should_quit {
         frame_count = frame_count.wrapping_add(1);
 
+        // Enforce message bounds at frame start. Cheap fast-path when small;
+        // when over budget, evicts tool outputs → reasoning → FIFO. Also
+        // covers /resume loading a previously-unbounded session.
+        app::enforce_message_bounds(&mut app);
+
         // Panic-injection test: run with CODECODER_PANIC_TEST=1 to verify the
         // panic hook restores the terminal. Remove or gate behind a test cfg
         // once verified. Keep best-effort — must not interfere with normal runs.
@@ -114,43 +119,15 @@ pub fn run_tui(
         // 检查 agent 响应（非阻塞）
         check_agent_responses(&mut app, &mut resp_rx);
 
-        // 非阻塞事件轮询 + 16ms sleep 保底以实现 ≈60fps
+        // 事件循环：先 drain 已积压的事件（非阻塞），再阻塞等待下一个事件
+        // 或 16ms 超时（≈60fps 用于 spinner / 状态栏计时器刷新）。
+        // 比 poll(0)+sleep 的忙等节省 CPU，事件密集时也不丢。
         while event::poll(Duration::from_millis(0))? {
-            match event::read()? {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        handle_key(&mut app, key, &cmd_tx);
-                    }
-                }
-                Event::Mouse(mouse) => {
-                    match mouse.kind {
-                        MouseEventKind::ScrollUp => {
-                            app.auto_scroll = false;
-                            app.scroll_offset = app.scroll_offset.saturating_add(3);
-                        }
-                        MouseEventKind::ScrollDown => {
-                            if app.scroll_offset > 3 {
-                                app.scroll_offset = app.scroll_offset.saturating_sub(3);
-                            } else {
-                                app.scroll_offset = 0;
-                                app.auto_scroll = true;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                Event::Paste(text) => {
-                    // Bracketed paste: save snapshot then insert
-                    input_area::save_undo_snapshot(&mut app);
-                    app.input.insert_str(app.cursor_pos, &text);
-                    app.cursor_pos += text.len();
-                }
-                _ => {}
-            }
+            process_event(&mut app, event::read()?, &cmd_tx);
         }
-
-        // 保底 sleep 实现 ≈60fps
-        std::thread::sleep(Duration::from_millis(16));
+        if event::poll(Duration::from_millis(16))? {
+            process_event(&mut app, event::read()?, &cmd_tx);
+        }
     }
 
     // 发送 shutdown
@@ -351,6 +328,41 @@ fn handle_key(
     input_area::handle_input_key(app, key, cmd_tx);
 }
 
+/// Dispatch a single terminal event (key / mouse / paste). Extracted so the
+/// event loop can share one code path between the drain phase and the
+/// blocking-wait phase.
+fn process_event(app: &mut TuiApp, ev: Event, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
+    match ev {
+        Event::Key(key) => {
+            if key.kind == KeyEventKind::Press {
+                handle_key(app, key, cmd_tx);
+            }
+        }
+        Event::Mouse(mouse) => match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                app.auto_scroll = false;
+                app.scroll_offset = app.scroll_offset.saturating_add(3);
+            }
+            MouseEventKind::ScrollDown => {
+                if app.scroll_offset > 3 {
+                    app.scroll_offset = app.scroll_offset.saturating_sub(3);
+                } else {
+                    app.scroll_offset = 0;
+                    app.auto_scroll = true;
+                }
+            }
+            _ => {}
+        },
+        Event::Paste(text) => {
+            // Bracketed paste: save snapshot then insert at cursor.
+            input_area::save_undo_snapshot(app);
+            app.input.insert_str(app.cursor_pos, &text);
+            app.cursor_pos += text.len();
+        }
+        _ => {}
+    }
+}
+
 /// ─── Agent Response Polling ───────────────────────────────────────────────
 
 fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Receiver<AgentResponse>) {
@@ -363,7 +375,9 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             .map(|t| t.elapsed().as_secs_f32())
                             .unwrap_or(0.0);
                         if tokens_in > 0 || tokens_out > 0 {
-                            app.status.token_count = (app.status.token_count as u32).saturating_add(tokens_in).saturating_add(tokens_out) as usize;
+                            app.status.token_count = app.status.token_count
+                                .saturating_add(tokens_in as usize)
+                                .saturating_add(tokens_out as usize);
                         }
                         app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[write]") || text.starts_with("[think]")));
                         if !text.is_empty() && !app.status.streaming_complete {

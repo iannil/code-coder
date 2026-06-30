@@ -369,9 +369,13 @@ pub fn handle_mcp_cmd(app: &mut TuiApp, input: &str) {
 }
 
 /// Build a Session from the current TuiApp state.
+/// Applies save-time per-field compaction so the persisted file is bounded
+/// regardless of in-memory state.
 pub fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
     let id = app.current_session_id.clone()
         .unwrap_or_else(|| crate::session::Session::new(&app.status.model).id);
+    let mut messages = app.messages.clone();
+    super::app::compact_messages_for_save(&mut messages);
     let mut session = crate::session::Session {
         id,
         model: app.status.model.clone(),
@@ -379,7 +383,7 @@ pub fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
         updated_at: String::new(),
         message_count: 0,
         token_count: app.status.token_count,
-        messages: app.messages.clone(),
+        messages,
     };
     session.touch();
     session
