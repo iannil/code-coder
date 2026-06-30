@@ -462,20 +462,30 @@ pub(crate) fn refresh_slash_completion(app: &mut TuiApp) {
     };
 
     let prefix_lower = prefix.to_lowercase();
+    let prefix_tail = prefix_lower.trim_start_matches('/');
     app.slash_completion.active = true;
-    app.slash_completion.filtered = app
+    // Subsequence (fuzzy) match: keep commands whose name contains the typed
+    // chars in order — so "cfg" matches "config". Prefix matches rank first.
+    let mut matches: Vec<(bool, usize)> = app
         .slash_completion
         .commands
         .iter()
         .enumerate()
         .filter_map(|(i, cmd)| {
             let cmd_lower = cmd.to_lowercase();
-            // Strip leading '/' for prefix match, then compare.
             let cmd_tail = cmd_lower.trim_start_matches('/');
-            let prefix_tail = prefix_lower.trim_start_matches('/');
-            if cmd_tail.starts_with(prefix_tail) { Some(i) } else { None }
+            if cmd_tail.starts_with(prefix_tail) {
+                Some((true, i))
+            } else if is_subsequence(prefix_tail, cmd_tail) {
+                Some((false, i))
+            } else {
+                None
+            }
         })
         .collect();
+    // Stable sort keeps enumerate order within each group; prefix (true) first.
+    matches.sort_by_key(|(is_prefix, _)| !is_prefix);
+    app.slash_completion.filtered = matches.into_iter().map(|(_, i)| i).collect();
     // Clamp selected to filtered range; reset to top when filter shrinks.
     let max = app.slash_completion.filtered.len().saturating_sub(1);
     if app.slash_completion.selected > max {
@@ -570,6 +580,21 @@ pub(crate) fn try_move_cursor_vertical(app: &mut TuiApp, delta: i32) -> bool {
         new_cursor += l.len() + 1; // +1 for '\n'
     }
     app.cursor_pos = new_cursor;
+    true
+}
+
+/// True if every char of `needle` appears in `haystack` in order (a
+/// subsequence / fuzzy match). Empty needle matches everything.
+pub(crate) fn is_subsequence(needle: &str, haystack: &str) -> bool {
+    let mut hay = haystack.chars();
+    'outer: for nc in needle.chars() {
+        for hc in hay.by_ref() {
+            if hc == nc {
+                continue 'outer;
+            }
+        }
+        return false; // ran out of haystack before matching nc
+    }
     true
 }
 
@@ -958,6 +983,41 @@ mod tests {
         // i.e. just before the second '\n'
         assert!(app.cursor_pos < app.input.len(), "cursor must move up");
         assert_eq!(&app.input[app.cursor_pos..app.cursor_pos+1], "\n", "cursor should sit at row boundary");
+    }
+
+    // ── Slash completion fuzzy match ──────────────────────────────────────
+
+    #[test]
+    fn is_subsequence_matches_in_order() {
+        assert!(is_subsequence("cfg", "config"));
+        assert!(is_subsequence("hist", "history"));
+        assert!(is_subsequence("", "anything"));
+        assert!(!is_subsequence("cgf", "config"), "out-of-order must fail");
+        assert!(!is_subsequence("xyz", "config"));
+    }
+
+    #[test]
+    fn slash_filter_fuzzy_and_prefix_ranking() {
+        let mut app = TuiApp::default();
+        // "/cfg" should fuzzy-match "/config" even though it's not a prefix.
+        app.input = "/cfg".into();
+        refresh_slash_completion(&mut app);
+        let names: Vec<&str> = app.slash_completion.filtered.iter()
+            .map(|&i| app.slash_completion.commands[i])
+            .collect();
+        assert!(names.contains(&"/config"), "fuzzy '/cfg' should match /config: {names:?}");
+
+        // Prefix matches rank ahead of pure subsequence matches.
+        app.input = "/re".into();
+        refresh_slash_completion(&mut app);
+        let ranked: Vec<&str> = app.slash_completion.filtered.iter()
+            .map(|&i| app.slash_completion.commands[i])
+            .collect();
+        let first_prefix = ranked.iter().position(|c| c.trim_start_matches('/').starts_with("re"));
+        let first_fuzzy = ranked.iter().position(|c| !c.trim_start_matches('/').starts_with("re"));
+        if let (Some(p), Some(f)) = (first_prefix, first_fuzzy) {
+            assert!(p < f, "prefix matches must come before fuzzy ones: {ranked:?}");
+        }
     }
 
     // ── Cursor helpers ────────────────────────────────────────────────────

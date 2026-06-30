@@ -102,7 +102,8 @@ pub fn dispatch_slash_command(
         "/help" | "/h" => {
             app.help_active = true;
         }
-        "/clear" => {
+        // Aliases mirror the original: reset / new ≡ clear.
+        "/clear" | "/reset" | "/new" => {
             // ADR 0006: route through Dialog::Confirm instead of executing
             // directly. The actual clear happens in execute_confirm_action
             // when the user confirms.
@@ -146,7 +147,8 @@ pub fn dispatch_slash_command(
             // ADR 0006 will wrap this in Dialog::Confirm before overwriting.
             handle_resume_cmd(app, trimmed);
         }
-        "/config" => {
+        // Alias mirrors the original: settings ≡ config.
+        "/config" | "/settings" => {
             handle_config_cmd(app, trimmed);
         }
         "/mcp" => {
@@ -743,6 +745,32 @@ mod adr0002_tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         dispatch(&mut app, "/help", &tx);
         assert!(app.help_active, "/help should set help_active");
+    }
+
+    #[test]
+    fn reset_and_new_alias_clear() {
+        use crate::tui::{Dialog, ConfirmAction};
+        for alias in ["/reset", "/new"] {
+            let mut app = TuiApp::default();
+            let (tx, _rx) = std::sync::mpsc::channel();
+            dispatch(&mut app, alias, &tx);
+            match &app.dialog {
+                Some(Dialog::Confirm { action: ConfirmAction::ClearMessages, .. }) => {}
+                other => panic!("{alias} should open Confirm{{ClearMessages}}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn settings_aliases_config() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        // /settings should be handled (not fall through to "Unknown command").
+        assert!(dispatch(&mut app, "/settings", &tx));
+        assert!(
+            !app.messages.iter().any(|m| matches!(m, MessageItem::System { text } if text.starts_with("Unknown command"))),
+            "/settings must alias /config, not be unknown"
+        );
     }
 
     #[test]
