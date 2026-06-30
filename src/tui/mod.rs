@@ -156,10 +156,16 @@ pub fn run_tui(
     // 发送 shutdown
     let _ = cmd_tx.send(AgentCommand::Shutdown);
 
-    // 持久化会话（退出时自动保存）
+    // 持久化会话（退出时自动保存）。
+    // 错误延迟到 terminal restore 之后才打印——raw mode 下 eprintln 会乱码。
+    let mut exit_save_error: Option<String> = None;
     if let Some(ref store) = app.session_store {
         let session = build_session_from_app(&app);
-        let _ = store.save(&session);
+        if let Err(e) = store.save(&session) {
+            let msg = format!("session exit save failed: {e}");
+            crate::log(&format!("[error] {msg}"));
+            exit_save_error = Some(msg);
+        }
     }
 
     // Restore terminal
@@ -172,6 +178,11 @@ pub fn run_tui(
     )?;
     crossterm::terminal::disable_raw_mode()?;
     ratatui::restore();
+
+    // Raw mode 已退出，stderr 可写
+    if let Some(msg) = exit_save_error {
+        eprintln!("[codecoder] {msg}");
+    }
     Ok(())
 }
 

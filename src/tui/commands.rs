@@ -385,11 +385,26 @@ pub fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
     session
 }
 
-/// Auto-save the current session (best-effort).
-pub fn auto_save_session(app: &TuiApp) {
-    if let Some(ref store) = app.session_store {
-        let session = build_session_from_app(app);
-        let _ = store.save(&session);
+/// Auto-save the current session. On failure, logs to codecoder.log and pushes
+/// a System message to the message list — but only on the *first* occurrence of
+/// any given error string, to avoid flooding the chat during persistent disk
+/// issues. Successful save resets the dedup state so a later new failure shows.
+pub fn auto_save_session(app: &mut TuiApp) {
+    let Some(ref store) = app.session_store else { return };
+    let session = build_session_from_app(app);
+    match store.save(&session) {
+        Ok(()) => app.last_save_error = None,
+        Err(e) => {
+            let err_str = e.to_string();
+            crate::log(&format!("[error] session auto-save failed: {err_str}"));
+            let is_new = app.last_save_error.as_deref() != Some(err_str.as_str());
+            if is_new {
+                app.messages.push(MessageItem::System {
+                    text: format!("[error] session auto-save failed: {err_str}"),
+                });
+                app.last_save_error = Some(err_str);
+            }
+        }
     }
 }
 

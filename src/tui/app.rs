@@ -85,6 +85,8 @@ pub struct TuiApp {
     pub session_store: Option<crate::session::SessionStore>,
     /// 当前会话 ID（None = 新会话）
     pub current_session_id: Option<String>,
+    /// 上一次 session save 错误（去重用：相同错误不重复 push 到消息列表）
+    pub last_save_error: Option<String>,
     /// 配置存储
     pub config_store: Option<crate::config::ConfigStore>,
     /// MCP 注册表
@@ -260,6 +262,7 @@ impl Default for TuiApp {
             should_quit: false,
             session_store: None,
             current_session_id: None,
+            last_save_error: None,
             config_store: None,
             mcp_registry: None,
         }

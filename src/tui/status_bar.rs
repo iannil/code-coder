@@ -259,6 +259,7 @@ mod tests {
             should_quit: false,
             session_store: None,
             current_session_id: None,
+            last_save_error: None,
             config_store: None,
             mcp_registry: None,
         };
