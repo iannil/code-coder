@@ -90,6 +90,13 @@ pub fn run_tui(
     while !app.should_quit {
         frame_count = frame_count.wrapping_add(1);
 
+        // Panic-injection test: run with CODECODER_PANIC_TEST=1 to verify the
+        // panic hook restores the terminal. Remove or gate behind a test cfg
+        // once verified. Keep best-effort — must not interfere with normal runs.
+        if std::env::var("CODECODER_PANIC_TEST").is_ok() {
+            panic!("injected for terminal-restore test");
+        }
+
         // 更新已耗时间
         if let Some(start) = app.thinking_start_time {
             let secs = start.elapsed().as_secs();

@@ -248,7 +248,7 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
 /// Render the message list area (no layout calculation — caller provides area).
 pub fn render(frame: &mut Frame, area: Rect, app: &mut TuiApp, _frame_count: u64) {
     let rendered_lines = build_message_lines(app);
-    let msg_height = area.height.saturating_sub(1) as usize;
+    let msg_height = area.height.saturating_sub(2) as usize;
     let text_width = area.width;
     let total_display_rows = count_display_rows(&rendered_lines, text_width);
 
@@ -271,7 +271,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut TuiApp, _frame_count: u64
 
     // Block title
     let msg_block = Block::default()
-        .borders(ratatui::widgets::Borders::TOP)
+        .borders(ratatui::widgets::Borders::TOP | ratatui::widgets::Borders::BOTTOM)
         .border_type(BorderType::Plain)
         .border_style(Style::default().fg(Color::DarkGray))
         .title(format!(

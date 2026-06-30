@@ -52,6 +52,25 @@ use std::sync::{Arc, Mutex};
 use mcp::{McpRegistry, McpTool};
 
 fn main() -> anyhow::Result<()> {
+    // ── Panic hook ─────────────────────────────────────────────────────────
+    // Install before any subsystem init. A panic during run_tui (or elsewhere)
+    // would otherwise leave the user's terminal in raw mode. We restore
+    // terminal state first so the chained default hook's stderr output stays
+    // readable. All I/O is best-effort: the hook itself must not panic.
+    let previous_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::DisableBracketedPaste,
+            crossterm::event::DisableMouseCapture,
+            crossterm::cursor::SetCursorStyle::DefaultUserShape,
+            crossterm::terminal::LeaveAlternateScreen,
+        );
+        crate::TUI_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+        previous_hook(info);
+    }));
+
     let args: Vec<String> = std::env::args().collect();
     let is_daemon = args.iter().any(|a| a == "--daemon" || a == "-d");
 
