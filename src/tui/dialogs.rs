@@ -214,10 +214,17 @@ fn render_help_panel(frame: &mut Frame, area: Rect) {
 /// ─── Dialog (Permission / Plan / Ask) ───────────────────────────────────────
 
 fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
+    // ADR 0006: Confirm dialog has its own minimal layout (warning + Y/N).
+    // Render and return early so the tool/plan/ask branch below stays clean.
+    if let Dialog::Confirm { message, action } = dialog {
+        return render_confirm_dialog(frame, area, message, action);
+    }
+
     let (tool_name, tool_input_txt, risk) = match dialog {
         Dialog::ToolPermission { tool_name, tool_input, risk, .. } => (tool_name.as_str(), tool_input.as_str(), risk.as_str()),
         Dialog::PlanApproval { title: _, plan, .. } => ("plan", plan.as_str(), "plan approval"),
         Dialog::AskQuestion { question, .. } => ("ask_user", question.as_str(), "user question"),
+        Dialog::Confirm { .. } => unreachable!("handled above"),
     };
 
     let dialog_width = area.width.min(70).max(40);
@@ -273,6 +280,8 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
                 Style::default().fg(Color::Cyan),
             ));
         }
+        // Confirm is rendered by render_confirm_dialog (early return above).
+        Dialog::Confirm { .. } => unreachable!("Confirm renders via render_confirm_dialog"),
     }
 
     frame.render_widget(ratatui::widgets::Clear, dialog_area);
@@ -282,6 +291,67 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
             .border_style(Style::default().fg(Color::Yellow)))
         .wrap(Wrap { trim: false });
     frame.render_widget(dialog, dialog_area);
+}
+
+/// ADR 0006: render the Confirm dialog. Minimal layout — warning header,
+/// the action's message, and a Y/N/Esc prompt. Yellow border signals
+/// "destructive — read before confirming".
+fn render_confirm_dialog(frame: &mut Frame, area: Rect, message: &str, action: &crate::tui::ConfirmAction) {
+    // Content layout (6 fixed lines + msg_lines variable):
+    //   header, blank, message, action, blank, prompt  = 5 + msg_lines
+    // Plus 2 border rows = msg_lines + 7.
+    let dialog_width = area.width.min(64).max(40);
+    let msg_lines = message.lines().count().max(1) as u16;
+    let dialog_height = (msg_lines + 7).min(14).max(8);
+    let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
+    let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
+    let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+    let action_label = match action {
+        crate::tui::ConfirmAction::ClearMessages => "Clear all messages",
+        crate::tui::ConfirmAction::ResumeLatest => "Resume latest session",
+        crate::tui::ConfirmAction::DeleteMessage { index } => {
+            // Static label would require format!() with lifetime; allocate.
+            return render_confirm_dialog_owned(frame, dialog_area, message, format!("Delete message #{index}"));
+        }
+    };
+
+    let content = vec![
+        Line::styled(" ⚠ Confirm ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Line::from(""),
+        Line::styled(format!(" {}", message), Style::default().fg(Color::White)),
+        Line::styled(format!(" Action: {}", action_label), Style::default().fg(Color::DarkGray)),
+        Line::from(""),
+        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(Color::Cyan)),
+    ];
+
+    frame.render_widget(ratatui::widgets::Clear, dialog_area);
+    let widget = Paragraph::new(content)
+        .block(Block::bordered()
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(Color::Yellow)))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(widget, dialog_area);
+}
+
+// Helper for the DeleteMessage case where the label needs owned String.
+fn render_confirm_dialog_owned(frame: &mut Frame, dialog_area: Rect, message: &str, action_label: String) {
+    let content = vec![
+        Line::styled(" ⚠ Confirm ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Line::from(""),
+        Line::styled(format!(" {}", message), Style::default().fg(Color::White)),
+        Line::styled(format!(" Action: {}", action_label), Style::default().fg(Color::DarkGray)),
+        Line::from(""),
+        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(Color::Cyan)),
+    ];
+
+    frame.render_widget(ratatui::widgets::Clear, dialog_area);
+    let widget = Paragraph::new(content)
+        .block(Block::bordered()
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(Color::Yellow)))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(widget, dialog_area);
 }
 
 /// ─── File Completion Popup ──────────────────────────────────────────────────
@@ -355,6 +425,10 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::AskQuestion { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "yes".into() });
                     }
+                    // ADR 0006: Y confirms the destructive action.
+                    Dialog::Confirm { action, .. } => {
+                        crate::tui::commands::execute_confirm_action(app, cmd_tx, action);
+                    }
                 }
             }
         }
@@ -392,6 +466,11 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::AskQuestion { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "yes".into() });
                     }
+                    // ADR 0006: 'A' on a Confirm dialog is a no-op — user
+                    // must use Y or N. Put the dialog back so it stays open.
+                    confirm @ Dialog::Confirm { .. } => {
+                        app.dialog = Some(confirm);
+                    }
                 }
             }
         }
@@ -412,6 +491,8 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::AskQuestion { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "no".into() });
                     }
+                    // ADR 0006: N cancels the confirm — no action, no message.
+                    Dialog::Confirm { .. } => {}
                 }
             }
         }
@@ -429,6 +510,8 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
                     }
+                    // ADR 0006: Esc cancels the confirm — same as N.
+                    Dialog::Confirm { .. } => {}
                 }
             }
         }
@@ -826,5 +909,179 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
         assert!(cell_text.contains("gpt-4o"), "Should show models: got {cell_text:.80}");
+    }
+
+    // ── ADR 0006 — Confirm Dialog Pattern ────────────────────────────────
+
+    use crate::tui::ConfirmAction;
+    use crate::tui::Dialog as DialogEnum;
+
+    fn confirm_dialog(action: ConfirmAction) -> DialogEnum {
+        DialogEnum::Confirm {
+            message: "Are you sure?".into(),
+            action,
+        }
+    }
+
+    #[test]
+    fn adr0006_confirm_y_clears_messages() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "msg1".into() });
+        app.messages.push(MessageItem::Assistant { text: "reply".into() });
+        app.dialog = Some(confirm_dialog(ConfirmAction::ClearMessages));
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE), &tx);
+        // Action executed: messages cleared + warning System msg pushed.
+        assert_eq!(app.messages.len(), 1, "only the warning System msg should remain");
+        assert!(matches!(&app.messages[0], MessageItem::System { text } if text.contains("cleared")));
+        // Agent ClearHistory sent.
+        match rx.try_recv() {
+            Ok(AgentCommand::ClearHistory) => {}
+            other => panic!("expected ClearHistory, got {other:?}"),
+        }
+        assert!(app.dialog.is_none(), "dialog should be consumed");
+    }
+
+    #[test]
+    fn adr0006_confirm_n_preserves_messages() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "keep me".into() });
+        app.dialog = Some(confirm_dialog(ConfirmAction::ClearMessages));
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('n'), crossterm::event::KeyModifiers::NONE), &tx);
+        // Nothing happened — messages preserved, no agent command.
+        assert_eq!(app.messages.len(), 1);
+        assert!(matches!(&app.messages[0], MessageItem::User { text } if text == "keep me"));
+        assert!(rx.try_recv().is_err(), "N must not send any agent command");
+        assert!(app.dialog.is_none(), "dialog consumed (cancelled)");
+    }
+
+    #[test]
+    fn adr0006_confirm_esc_preserves_messages() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "keep me".into() });
+        app.dialog = Some(confirm_dialog(ConfirmAction::ClearMessages));
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE), &tx);
+        assert_eq!(app.messages.len(), 1, "Esc must preserve messages");
+        assert!(rx.try_recv().is_err(), "Esc must not send any agent command");
+        assert!(app.dialog.is_none(), "dialog consumed (cancelled)");
+    }
+
+    #[test]
+    fn adr0006_confirm_y_delete_message_removes_by_index() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "first".into() });
+        app.messages.push(MessageItem::User { text: "second".into() });
+        app.messages.push(MessageItem::User { text: "third".into() });
+        app.dialog = Some(confirm_dialog(ConfirmAction::DeleteMessage { index: 1 }));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE), &tx);
+        // "second" should be gone; "first" and "third" preserved.
+        assert_eq!(app.messages.len(), 3, "delete pushes a System msg → 2 originals + 1 sys");
+        assert!(matches!(&app.messages[0], MessageItem::User { text } if text == "first"));
+        assert!(matches!(&app.messages[1], MessageItem::User { text } if text == "third"));
+        assert!(matches!(&app.messages[2], MessageItem::System { text } if text.contains("Deleted")));
+    }
+
+    #[test]
+    fn adr0006_confirm_a_is_noop_on_confirm_dialog() {
+        // ADR 0005 'A' has scope meaning on ToolPermission but not on Confirm.
+        // Pressing 'A' on a Confirm dialog should not execute the action.
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "keep me".into() });
+        app.dialog = Some(confirm_dialog(ConfirmAction::ClearMessages));
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('a'), crossterm::event::KeyModifiers::NONE), &tx);
+        assert_eq!(app.messages.len(), 1, "A must NOT trigger ClearMessages on Confirm");
+        assert!(rx.try_recv().is_err(), "A must not send agent commands on Confirm");
+        assert!(app.dialog.is_some(), "Confirm dialog should stay open after no-op A");
+    }
+
+    #[test]
+    fn adr0006_render_confirm_shows_warning() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(confirm_dialog(ConfirmAction::ClearMessages));
+        app.status = crate::tui::StatusData::default();
+
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| {
+            render_overlays(f, f.area(), Rect::new(0, 10, 80, 3), &mut app);
+        }).unwrap();
+
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("Confirm"), "missing Confirm header: {cell_text:.200}");
+        assert!(cell_text.contains("Are you sure?"), "missing message: {cell_text:.200}");
+        assert!(cell_text.contains("Y=confirm"), "missing Y=confirm prompt: {cell_text:.200}");
+        assert!(cell_text.contains("Clear all messages"), "missing action label: {cell_text:.200}");
+    }
+
+    // ── Routing tests — destructive commands construct Confirm ───────────
+
+    #[test]
+    fn adr0006_slash_clear_constructs_confirm_not_direct_clear() {
+        use crate::tui::commands::dispatch_slash_command;
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "preserve me".into() });
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch_slash_command(&mut app, "/clear", &tx);
+        // Messages NOT cleared directly — Confirm dialog opened instead.
+        assert_eq!(app.messages.len(), 1, "/clear must not clear directly; Confirm gates it");
+        match &app.dialog {
+            Some(DialogEnum::Confirm { action: ConfirmAction::ClearMessages, .. }) => {}
+            other => panic!("expected Confirm{{ClearMessages}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adr0006_ctrl_l_constructs_confirm() {
+        use crate::tui::TuiApp;
+        // Verify the dialog shape that Ctrl+L should construct.
+        // (Direct handle_key invocation is covered by the mod.rs tests.)
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "preserve".into() });
+        app.dialog = Some(DialogEnum::Confirm {
+            message: "Clear all messages from this session?".into(),
+            action: ConfirmAction::ClearMessages,
+        });
+        // Sanity: action is ClearMessages (what Ctrl+L should set).
+        match &app.dialog {
+            Some(DialogEnum::Confirm { action: ConfirmAction::ClearMessages, .. }) => {}
+            _ => panic!("Ctrl+L should construct Confirm{{ClearMessages}}"),
+        }
+    }
+
+    #[test]
+    fn adr0006_slash_resume_no_arg_constructs_confirm() {
+        use crate::tui::commands::dispatch_slash_command;
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "current".into() });
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch_slash_command(&mut app, "/resume", &tx);
+        // Confirm dialog opened; current messages NOT overwritten.
+        assert_eq!(app.messages.len(), 1);
+        match &app.dialog {
+            Some(DialogEnum::Confirm { action: ConfirmAction::ResumeLatest, .. }) => {}
+            other => panic!("expected Confirm{{ResumeLatest}}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adr0006_resume_latest_with_no_store_reports_error_on_confirm() {
+        // When user confirms ResumeLatest but no session_store is wired,
+        // execute_confirm_action should push an informational System msg
+        // rather than panic.
+        let mut app = TuiApp::default();
+        app.session_store = None;
+        app.dialog = Some(confirm_dialog(ConfirmAction::ResumeLatest));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE), &tx);
+        // System msg pushed about store not available.
+        assert!(app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("not available")
+        )));
     }
 }

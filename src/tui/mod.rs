@@ -275,14 +275,12 @@ fn handle_key(
             app.help_active = !app.help_active;
             return;
         }
-        // ADR 0001: destructive — would route through Dialog::Confirm in
-        // ADR 0006. For now, preserve clear behavior so the key stays live;
-        // the confirm wrapper is added when ADR 0006 lands.
+        // ADR 0006: Ctrl+L is destructive — route through Dialog::Confirm.
         KeyCode::Char('l') if key.modifiers == KeyModifiers::CONTROL => {
-            app.messages.clear();
-            message_list::invalidate_cache();
-            app.scroll_offset = 0;
-            app.auto_scroll = true;
+            app.dialog = Some(Dialog::Confirm {
+                message: "Clear all messages from this session?".into(),
+                action: crate::tui::ConfirmAction::ClearMessages,
+            });
             return;
         }
         KeyCode::Char('t') if key.modifiers == KeyModifiers::CONTROL => {

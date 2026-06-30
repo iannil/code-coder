@@ -2,9 +2,74 @@
 ///
 /// Extracted from mod.rs to reduce the 5000+ line file.
 
-use super::{MessageItem, TuiApp};
+use super::{ConfirmAction, Dialog, MessageItem, TuiApp};
 use crate::agent::AgentCommand;
 use std::sync::PoisonError;
+
+/// ─── Confirm Action Executor (ADR 0006) ────────────────────────────────────
+///
+/// Runs the destructive operation encoded in `ConfirmAction`. Called only
+/// when the user confirms the dialog (Y). N and Esc do not invoke this.
+pub fn execute_confirm_action(
+    app: &mut TuiApp,
+    cmd_tx: &std::sync::mpsc::Sender<AgentCommand>,
+    action: ConfirmAction,
+) {
+    match action {
+        ConfirmAction::ClearMessages => {
+            app.messages.clear();
+            crate::tui::message_list::invalidate_cache();
+            app.scroll_offset = 0;
+            app.auto_scroll = true;
+            let _ = cmd_tx.send(AgentCommand::ClearHistory);
+            app.messages.push(MessageItem::System {
+                text: "⚠ Conversation cleared.".into(),
+            });
+        }
+        ConfirmAction::ResumeLatest => {
+            // Inline the latest-session load (handle_resume_cmd's no-arg
+            // path). If no session exists, push an informational System msg.
+            let Some(ref store) = app.session_store else {
+                app.messages.push(MessageItem::System {
+                    text: "Session store not available.".into(),
+                });
+                return;
+            };
+            match store.latest() {
+                Some(session) => {
+                    app.messages = session.messages.clone();
+                    app.current_session_id = Some(session.id.clone());
+                    app.messages.push(MessageItem::System {
+                        text: format!("↻ Resumed session {} ({} msgs)",
+                            &session.id[..8.min(session.id.len())], session.message_count),
+                    });
+                }
+                None => {
+                    app.messages.push(MessageItem::System {
+                        text: "No saved sessions to resume.".into(),
+                    });
+                }
+            }
+        }
+        ConfirmAction::DeleteMessage { index } => {
+            if index < app.messages.len() {
+                let removed = app.messages.remove(index);
+                crate::tui::message_list::invalidate_cache();
+                app.messages.push(MessageItem::System {
+                    text: format!("Deleted message at index {index}."),
+                });
+                crate::log(&format!(
+                    "[adr0006] deleted message idx={index}: {:?}",
+                    removed
+                ));
+            } else {
+                app.messages.push(MessageItem::System {
+                    text: format!("Cannot delete: index {index} out of range."),
+                });
+            }
+        }
+    }
+}
 
 /// ─── Slash Command Dispatcher (ADR 0002) ───────────────────────────────────
 ///
@@ -38,16 +103,12 @@ pub fn dispatch_slash_command(
             app.help_active = true;
         }
         "/clear" => {
-            // ADR 0006 will wrap this in Dialog::Confirm; for now execute
-            // directly to preserve the Ctrl+L behavior. Note in the message
-            // that this is destructive.
-            app.messages.clear();
-            crate::tui::message_list::invalidate_cache();
-            app.scroll_offset = 0;
-            app.auto_scroll = true;
-            let _ = cmd_tx.send(AgentCommand::ClearHistory);
-            app.messages.push(MessageItem::System {
-                text: "⚠ Conversation cleared.".into(),
+            // ADR 0006: route through Dialog::Confirm instead of executing
+            // directly. The actual clear happens in execute_confirm_action
+            // when the user confirms.
+            app.dialog = Some(Dialog::Confirm {
+                message: "Clear all messages from this session?".into(),
+                action: ConfirmAction::ClearMessages,
             });
         }
         "/reload" => {
@@ -140,31 +201,14 @@ pub fn handle_session_cmd(app: &mut TuiApp) {
 pub fn handle_resume_cmd(app: &mut TuiApp, input: &str) {
     let parts: Vec<&str> = input.splitn(2, ' ').collect();
     if parts.len() < 2 || parts[1].trim().is_empty() {
-        // Show latest session if no id given
-        let store = match app.session_store {
-            Some(ref store) => store,
-            None => {
-                app.messages.push(MessageItem::System {
-                    text: "Session store not available.".into(),
-                });
-                return;
-            }
-        };
-
-        match store.latest() {
-            Some(session) => {
-                app.messages = session.messages.clone();
-                app.current_session_id = Some(session.id.clone());
-                app.messages.push(MessageItem::System {
-                    text: format!("↻ Resumed session {} ({} msgs)", &session.id[..8], session.message_count),
-                });
-            }
-            None => {
-                app.messages.push(MessageItem::System {
-                    text: "No saved sessions to resume.".into(),
-                });
-            }
-        }
+        // ADR 0006: no-arg /resume is destructive (overwrites current
+        // messages). Route through Dialog::Confirm instead of loading
+        // directly. If the session store is missing or empty, the
+        // confirm executor will surface a System message on confirm.
+        app.dialog = Some(Dialog::Confirm {
+            message: "Resume the latest saved session? Current messages will be replaced.".into(),
+            action: ConfirmAction::ResumeLatest,
+        });
         return;
     }
 

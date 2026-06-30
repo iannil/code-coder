@@ -122,6 +122,26 @@ pub enum Dialog {
         question: String,
         request_id: u64,
     },
+    /// ADR 0006: confirm gate for destructive operations. Y executes
+    /// `action`; N or Esc cancels with no state change.
+    Confirm {
+        message: String,
+        action: ConfirmAction,
+    },
+}
+
+/// ADR 0006: enumeration of all destructive operations that must route
+/// through Dialog::Confirm. Adding a new destructive op = adding a variant
+/// + an `execute_confirm_action` match arm + routing the user-facing
+/// trigger to construct the dialog.
+#[derive(Debug, Clone)]
+pub enum ConfirmAction {
+    /// Drop all messages from the current session and clear agent history.
+    ClearMessages,
+    /// Overwrite current messages with the latest saved session.
+    ResumeLatest,
+    /// Remove a single message by index (for browse-mode `d` key).
+    DeleteMessage { index: usize },
 }
 
 /// 斜杠命令补全状态
