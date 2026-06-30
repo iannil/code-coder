@@ -126,19 +126,13 @@ pub fn dispatch_slash_command(
             });
         }
         "/tools" => {
-            app.messages.push(MessageItem::System {
-                text: "→ Tools are listed in the agent's system prompt; ask the agent to use them.".into(),
-            });
+            handle_tools_cmd(app);
         }
         "/skills" => {
-            app.messages.push(MessageItem::System {
-                text: "→ Skills are listed in the agent's system prompt; ask the agent to use them.".into(),
-            });
+            handle_skills_cmd(app);
         }
         "/memory" => {
-            app.messages.push(MessageItem::System {
-                text: "→ Memory entries are stored in the memory/ directory.".into(),
-            });
+            handle_memory_cmd(app);
         }
         "/session" => {
             handle_session_cmd(app);
@@ -161,6 +155,63 @@ pub fn dispatch_slash_command(
         }
     }
     true
+}
+
+/// Current project root (cwd), falling back to ".".
+fn project_root() -> String {
+    std::env::current_dir()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| ".".into())
+}
+
+/// Handle `/tools` — list the actually-registered agent tools.
+pub fn handle_tools_cmd(app: &mut TuiApp) {
+    let reg = crate::tools::ToolRegistry::new(&project_root());
+    let names = reg.list_tools(); // already sorted
+    let body = if names.is_empty() {
+        "No tools registered.".to_string()
+    } else {
+        format!("── Tools ({}) ──\n  {}", names.len(), names.join("\n  "))
+    };
+    app.messages.push(MessageItem::System { text: body });
+}
+
+/// Handle `/skills` — scan and list loaded skills.
+pub fn handle_skills_cmd(app: &mut TuiApp) {
+    let mut reg = crate::skill::SkillRegistry::new();
+    match reg.scan(&project_root()) {
+        Ok(()) => {
+            let names = reg.list();
+            let body = if names.is_empty() {
+                "No skills loaded (skills/ is empty).".to_string()
+            } else {
+                format!("── Skills ({}) ──\n  {}", names.len(), names.join("\n  "))
+            };
+            app.messages.push(MessageItem::System { text: body });
+        }
+        Err(e) => {
+            app.messages.push(MessageItem::System { text: format!("Failed to scan skills: {e}") });
+        }
+    }
+}
+
+/// Handle `/memory` — list entries in the memory/ store.
+pub fn handle_memory_cmd(app: &mut TuiApp) {
+    let mut store = crate::memory::MemoryStore::open(&project_root());
+    match store.load_all() {
+        Ok(()) => {
+            let names = store.list();
+            let body = if names.is_empty() {
+                "No memory entries (memory/ is empty).".to_string()
+            } else {
+                format!("── Memory ({}) ──\n  {}", names.len(), names.join("\n  "))
+            };
+            app.messages.push(MessageItem::System { text: body });
+        }
+        Err(e) => {
+            app.messages.push(MessageItem::System { text: format!("Failed to read memory: {e}") });
+        }
+    }
 }
 
 /// Handle `/session` — list saved sessions.
@@ -757,6 +808,39 @@ mod adr0002_tests {
             match &app.dialog {
                 Some(Dialog::Confirm { action: ConfirmAction::ClearMessages, .. }) => {}
                 other => panic!("{alias} should open Confirm{{ClearMessages}}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn tools_lists_real_registered_tools() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/tools", &tx);
+        let last = app.messages.last().expect("a System message");
+        match last {
+            MessageItem::System { text } => {
+                assert!(text.contains("Tools ("), "should list a count: {text}");
+                assert!(text.contains("read_file"), "should include a known tool: {text}");
+                assert!(!text.contains("system prompt"), "must not be the old placeholder");
+            }
+            _ => panic!("expected System message"),
+        }
+    }
+
+    #[test]
+    fn skills_and_memory_are_handled_not_placeholder() {
+        for cmd in ["/skills", "/memory"] {
+            let mut app = TuiApp::default();
+            let (tx, _rx) = std::sync::mpsc::channel();
+            assert!(dispatch(&mut app, cmd, &tx));
+            let last = app.messages.last().expect("a System message");
+            match last {
+                MessageItem::System { text } => {
+                    assert!(!text.contains("listed in the agent"), "{cmd} must not be old placeholder: {text}");
+                    assert!(!text.contains("stored in the memory/ directory"), "{cmd} must not be old placeholder: {text}");
+                }
+                _ => panic!("expected System message for {cmd}"),
             }
         }
     }

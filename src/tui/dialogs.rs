@@ -904,8 +904,17 @@ pub fn handle_slash_completion_key(app: &mut TuiApp, key: crossterm::event::KeyE
             app.slash_completion.active = false;
         }
         KeyCode::Tab => {
-            if !filtered.is_empty() {
-                app.slash_completion.selected = (app.slash_completion.selected + 1) % filtered.len();
+            // Fidelity: Tab FILLS the selected command into the input without
+            // executing (Enter executes), so the user can append arguments.
+            // Navigation is on Up/Down, so Tab no longer needs to cycle.
+            if let Some(&cmd_idx) = filtered.get(app.slash_completion.selected) {
+                if let Some(cmd) = app.slash_completion.commands.get(cmd_idx).copied() {
+                    app.input = format!("{cmd} ");
+                    app.cursor_pos = app.input.len();
+                    // Re-run the filter: trailing space keeps the popup open as
+                    // a reference hint per ADR 0002 §7.
+                    crate::tui::input_area::refresh_slash_completion(app);
+                }
             }
         }
         KeyCode::Esc => {
@@ -1308,6 +1317,21 @@ mod tests {
         assert_eq!(app.slash_completion.selected, 0);
         handle_slash_completion_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
         assert_eq!(app.slash_completion.selected, 1);
+    }
+
+    #[test]
+    fn slash_tab_fills_command_without_executing() {
+        let mut app = TuiApp::default();
+        app.slash_completion.active = true;
+        app.slash_completion.selected = 0; // first command in the default list
+        let first = app.slash_completion.commands[0]; // "/help"
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_slash_completion_key(&mut app, key(crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::NONE), &tx);
+        assert_eq!(app.input, format!("{first} "), "Tab fills the command + space");
+        assert_eq!(app.cursor_pos, app.input.len());
+        // It must NOT execute — no agent command, no quit.
+        assert!(rx.try_recv().is_err(), "Tab must not execute the command");
+        assert!(!app.should_quit);
     }
 
     #[test]
