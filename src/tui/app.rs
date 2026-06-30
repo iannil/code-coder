@@ -26,6 +26,13 @@ pub struct TuiApp {
     pub undo_stack: Vec<String>,
     pub redo_stack: Vec<String>,
 
+    /// Kill-ring (Claude-consistent): Ctrl+K/U/W feed it, Ctrl+Y yanks it.
+    /// `kill_accumulating` tracks whether the previous keypress was a kill, so
+    /// consecutive kills concatenate (append for K, prepend for U/W) instead
+    /// of overwriting — matching the original's kill-ring accumulation.
+    pub kill_ring: String,
+    pub kill_accumulating: bool,
+
     /// 消息列表滚动偏移（0 = 顶部，正数 = 向下滚动行数）
     pub scroll_offset: usize,
 
@@ -267,6 +274,8 @@ impl Default for TuiApp {
             history_pos: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            kill_ring: String::new(),
+            kill_accumulating: false,
             scroll_offset: 0,
             auto_scroll: true,
             completion: CompletionState::default(),

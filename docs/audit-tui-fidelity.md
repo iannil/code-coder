@@ -75,10 +75,10 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 | 键 | 原版 → codecoder → ADR |
 |---|---|
 | Ctrl+A/E | 行首/行尾（当前行）→ ✅ **已修**：改为当前行首/尾（与 Home/End、ADR 0001 一致）|
-| Ctrl+K/U | 删到**当前行**首/尾 + 进 kill-ring → 删到**整个输入**首/尾，无 kill-ring → 🔴 无 ADR（与下方 kill-ring 一并裁决）|
-| Ctrl+W | 删前一词 + kill-ring → 删前一词，无 kill-ring → 🔴 无 ADR（功能在，kill-ring 缺失） |
-| **Ctrl+Y** | **yank（粘贴 kill-ring）** → **redo（重做）** → 🔴 无 ADR，键义冲突（待裁决）|
-| **Ctrl+Z** | 原版 = 保留给终端挂起（SIGTSTP，reservedShortcuts 警告）→ codecoder = undo → 🔴 无 ADR，占用了保留键（待裁决）|
+| Ctrl+K/U | 删到当前行首/尾 + 进 kill-ring → ✅ **已修**：改为行级 + 入 kill-ring（U/W 前插、K 后接，连续 kill 累积）|
+| Ctrl+W | 删前一词 + kill-ring → ✅ **已修**：删前一词并入 kill-ring（前插）|
+| **Ctrl+Y** | yank（粘贴 kill-ring）→ ✅ **已修**：改回 yank；redo 让位到 `Ctrl+Shift+Z` |
+| **Ctrl+Z** | 原版保留给终端挂起 → codecoder = undo → 🟡 保留为 undo（raw mode 下 ISIG 关闭，不会真挂起；与 Claude 编辑器无冲突，仅 Claude 自身不绑此键）|
 | 词级光标 Alt+B/F、Ctrl+←/→ | 有 → ✅ **已修**：Ctrl/Alt+←→ 词级移动（Ctrl+↑↓ 仍归历史）|
 
 ### 1.6 全局快捷键冲突
@@ -113,7 +113,7 @@ ADR 0001 声明单一级联顺序：`reverse-search → search → slash-complet
 > 注：即便修好路由，`input_area` 的 Home/End 仍是"整段输入首/尾"而非 ADR 要求的"当前行首/尾"，多行下仍不符（与 Ctrl+A/E 同源）。
 
 ### 2.x 其他（见 1.5 表）
-kill-ring 体系整体缺失（Ctrl+K/U/W 不进环、无 Ctrl+Y yank）；行级 vs 整段差异；词级移动缺失；`\` 续行缺失。均 🔴 无 ADR。
+✅ 本轮均已修：kill-ring（Ctrl+K/U/W 入环、Ctrl+Y yank、连续累积）、行级 Ctrl+A/E/K/U、词级移动（Ctrl/Alt+←→）、`\` 续行。redo 迁至 Ctrl+Shift+Z。
 
 ---
 
@@ -242,7 +242,7 @@ codecoder 实际实现（`commands.rs:98-160`）：`/help`(/h) `/exit` `/quit` `
 
 **再裁决（无 ADR 的偏离，定性为"保留/回补"）**
 4. Plan 审批二元化（丢 auto-accept-edits / keep-planning+反馈）。
-5. kill-ring 体系缺失 + Ctrl+Y 键义冲突（redo vs yank）+ Ctrl+Z 占用保留键。
+5. ✅ 已修（按"和 Claude 一致"）：补齐 kill-ring（Ctrl+K/U/W 入环、Ctrl+Y yank），redo 迁到 Ctrl+Shift+Z。Ctrl+Z 保留为 undo（已说明无冲突）。
 6. ✅ 部分已修：slash 升级为子序列模糊匹配（ADR 0002 已注记）。剩 Tab 语义（循环 vs 填入）待裁决。
 7. ✅ 已修：词级光标移动（Ctrl/Alt+←→）、`\` 续行、Ctrl+A/E 行级语义。剩 Ctrl+K/U 多行行级语义（与 kill-ring 一并，见 #5）。
 8. ✅ 部分已修：补齐别名（reset/new/settings）。剩 `/skills` `/memory` `/tools` 占位实现（需接真实数据，非纯保真）。

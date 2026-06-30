@@ -235,6 +235,8 @@ mod tests {
             history_pos: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            kill_ring: String::new(),
+            kill_accumulating: false,
             scroll_offset: 0,
             auto_scroll: true,
             completion: crate::tui::CompletionState::default(),

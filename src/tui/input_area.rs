@@ -97,6 +97,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &TuiApp, frame_count: u64) {
 pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
     use crossterm::event::{KeyCode, KeyModifiers};
 
+    // Kill-ring accumulation: consecutive kills (Ctrl+K/U/W) concatenate. Any
+    // other key breaks the run, so reset the flag here and let the kill arms
+    // re-set it. `was_kill` tells those arms whether to extend or replace.
+    let was_kill = app.kill_accumulating;
+    app.kill_accumulating = false;
+
     match key.code {
         // ── Ctrl combos for editing ──────────────────────────────────────
         // ADR 0001: Ctrl+A/E are line-edge (readline), matching Home/End —
@@ -107,6 +113,7 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
             app.cursor_pos = line_end(&app.input, app.cursor_pos);
         }
+        // Ctrl+W — kill word before cursor → kill-ring (prepend).
         KeyCode::Char('w') if key.modifiers == KeyModifiers::CONTROL => {
             if app.cursor_pos > 0 {
                 save_undo_snapshot(app);
@@ -116,24 +123,42 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                     .rfind(|c: char| c.is_whitespace())
                     .map(|p| p + 1)
                     .unwrap_or(0);
-                app.input.drain(word_start..app.cursor_pos);
+                let killed: String = app.input.drain(word_start..app.cursor_pos).collect();
                 app.cursor_pos = word_start;
+                push_kill(app, &killed, was_kill, KillSide::Prepend);
             }
         }
+        // Ctrl+U — kill to start of current line → kill-ring (prepend).
         KeyCode::Char('u') if key.modifiers == KeyModifiers::CONTROL => {
-            if app.cursor_pos > 0 {
+            let start = line_start(&app.input, app.cursor_pos);
+            if app.cursor_pos > start {
                 save_undo_snapshot(app);
-                app.input.drain(..app.cursor_pos);
-                app.cursor_pos = 0;
+                let killed: String = app.input.drain(start..app.cursor_pos).collect();
+                app.cursor_pos = start;
+                push_kill(app, &killed, was_kill, KillSide::Prepend);
             }
         }
+        // Ctrl+K — kill to end of current line → kill-ring (append).
         KeyCode::Char('k') if key.modifiers == KeyModifiers::CONTROL => {
-            if app.cursor_pos < app.input.len() {
+            let end = line_end(&app.input, app.cursor_pos);
+            if end > app.cursor_pos {
                 save_undo_snapshot(app);
-                app.input.truncate(app.cursor_pos);
+                let killed: String = app.input.drain(app.cursor_pos..end).collect();
+                push_kill(app, &killed, was_kill, KillSide::Append);
             }
         }
-        // Ctrl+Z — undo
+        // Ctrl+Shift+Z — redo (relocated from Ctrl+Y, which is now yank).
+        KeyCode::Char('z') | KeyCode::Char('Z')
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                && key.modifiers.contains(KeyModifiers::SHIFT) =>
+        {
+            if let Some(next) = app.redo_stack.pop() {
+                save_undo_snapshot(app);
+                app.input = next;
+                app.cursor_pos = app.input.len();
+            }
+        }
+        // Ctrl+Z — undo.
         KeyCode::Char('z') if key.modifiers == KeyModifiers::CONTROL => {
             if let Some(prev) = app.undo_stack.pop() {
                 app.redo_stack.push(app.input.clone());
@@ -144,12 +169,13 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                 app.cursor_pos = app.input.len();
             }
         }
-        // Ctrl+Y — redo
+        // Ctrl+Y — yank (paste the kill-ring at the cursor), Claude-consistent.
         KeyCode::Char('y') if key.modifiers == KeyModifiers::CONTROL => {
-            if let Some(next) = app.redo_stack.pop() {
+            if !app.kill_ring.is_empty() {
                 save_undo_snapshot(app);
-                app.input = next;
-                app.cursor_pos = app.input.len();
+                let text = app.kill_ring.clone();
+                app.input.insert_str(app.cursor_pos, &text);
+                app.cursor_pos += text.len();
             }
         }
 
@@ -583,6 +609,32 @@ pub(crate) fn try_move_cursor_vertical(app: &mut TuiApp, delta: i32) -> bool {
     true
 }
 
+/// Which end of the kill-ring a freshly-killed span attaches to.
+pub(crate) enum KillSide {
+    /// Killed text is forward of the cursor (Ctrl+K) → append.
+    Append,
+    /// Killed text is behind the cursor (Ctrl+U / Ctrl+W) → prepend.
+    Prepend,
+}
+
+/// Add `killed` to the kill-ring. When the previous key was also a kill
+/// (`was_kill`), the span concatenates onto the existing ring (Claude-style
+/// accumulation); otherwise it replaces the ring.
+pub(crate) fn push_kill(app: &mut TuiApp, killed: &str, was_kill: bool, side: KillSide) {
+    if !was_kill {
+        app.kill_ring.clear();
+    }
+    match side {
+        KillSide::Append => app.kill_ring.push_str(killed),
+        KillSide::Prepend => {
+            let mut s = killed.to_string();
+            s.push_str(&app.kill_ring);
+            app.kill_ring = s;
+        }
+    }
+    app.kill_accumulating = true;
+}
+
 /// True if every char of `needle` appears in `haystack` in order (a
 /// subsequence / fuzzy match). Empty needle matches everything.
 pub(crate) fn is_subsequence(needle: &str, haystack: &str) -> bool {
@@ -839,13 +891,63 @@ mod tests {
     }
 
     #[test]
-    fn test_key_ctrl_y_redo_input() {
+    fn test_key_ctrl_shift_z_redo_input() {
+        // Redo relocated to Ctrl+Shift+Z (Ctrl+Y is now yank).
         let mut app = TuiApp::default();
         app.input = "first".into();
         app.redo_stack.push("second".into());
         let (tx, _) = std::sync::mpsc::channel();
-        press(&mut app, crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        press(&mut app, crossterm::event::KeyCode::Char('z'),
+            crossterm::event::KeyModifiers::CONTROL | crossterm::event::KeyModifiers::SHIFT, &tx);
         assert_eq!(app.input, "second");
+    }
+
+    // ── Kill-ring (Claude-consistent) ─────────────────────────────────────
+
+    #[test]
+    fn killring_ctrl_y_yanks_killed_text() {
+        let mut app = TuiApp::default();
+        app.input = "hello world".into();
+        app.cursor_pos = 11;
+        let (tx, _) = std::sync::mpsc::channel();
+        // Ctrl+W kills "world" into the ring.
+        press(&mut app, crossterm::event::KeyCode::Char('w'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "hello ");
+        assert_eq!(app.kill_ring, "world");
+        // Ctrl+Y yanks it back at the cursor.
+        press(&mut app, crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "hello world");
+        assert_eq!(app.cursor_pos, 11);
+    }
+
+    #[test]
+    fn killring_consecutive_kills_accumulate() {
+        // Two consecutive Ctrl+W kills should concatenate (prepend) in the ring.
+        let mut app = TuiApp::default();
+        app.input = "foo bar baz".into();
+        app.cursor_pos = 11;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Char('w'), crossterm::event::KeyModifiers::CONTROL, &tx); // kill "baz"
+        press(&mut app, crossterm::event::KeyCode::Char('w'), crossterm::event::KeyModifiers::CONTROL, &tx); // kill "bar "
+        assert_eq!(app.kill_ring, "bar baz", "consecutive kills accumulate in order");
+    }
+
+    #[test]
+    fn killring_non_kill_key_breaks_accumulation() {
+        let mut app = TuiApp::default();
+        app.input = "foo bar".into();
+        app.cursor_pos = 7;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Char('w'), crossterm::event::KeyModifiers::CONTROL, &tx); // kill "bar"
+        assert_eq!(app.kill_ring, "bar");
+        // A normal keystroke breaks the kill run.
+        press(&mut app, crossterm::event::KeyCode::Char('x'), crossterm::event::KeyModifiers::NONE, &tx);
+        assert!(!app.kill_accumulating, "typing breaks the kill run");
+        // Next kill replaces, not extends.
+        app.cursor_pos = line_start(&app.input, app.cursor_pos).max(0);
+        app.cursor_pos = app.input.len();
+        press(&mut app, crossterm::event::KeyCode::Char('u'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert!(!app.kill_ring.contains("bar"), "ring replaced after the run broke: {:?}", app.kill_ring);
     }
 
     // ── ADR 0001 — Keybinding & Mode Semantics ────────────────────────────

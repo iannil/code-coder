@@ -40,3 +40,12 @@ The original Phase A sent `AgentCommand::Interrupt` but the agent's `handle_mess
 - When observed, `react_loop` returns `"[interrupted by user]"`, which flows back to the TUI as a normal `AgentResponse::Text` and clears `agent_busy`.
 
 This is cooperative cancellation, not pre-emption — the current `await` still completes (one more LLM delta may arrive). But no further rounds, no tool calls, no self-evolution. The agent stays alive and ready for the next message. Sub-agents spawned via `ask_agent` get their own never-set token (the user's Ctrl+C applies to the parent request only).
+
+## Kill-ring & undo/redo bindings (TUI fidelity audit)
+
+Aligned the editor keys with the original Claude Code editor:
+
+- `Ctrl+K` (kill to line end), `Ctrl+U` (kill to line start), `Ctrl+W` (kill word before) all feed a **kill-ring**; consecutive kills accumulate (K appends, U/W prepend).
+- `Ctrl+Y` is **yank** (paste the kill-ring at the cursor) — it was previously bound to redo.
+- Redo moved to `Ctrl+Shift+Z`; `Ctrl+Z` remains undo. `Ctrl+Z` does not suspend the process because raw mode disables `ISIG`; Claude's own editor leaves `Ctrl+Z` unbound, so this is additive rather than conflicting.
+- `Ctrl+A/E` and `Home/End` are line-edge (current line) for multi-line input; `Ctrl/Alt+Left/Right` move by word; a trailing `\` before the cursor + `Enter` inserts a newline (line continuation).
