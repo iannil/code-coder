@@ -153,24 +153,27 @@ fn build_message_lines(app: &TuiApp) -> Vec<Line<'static>> {
 /// The actual rendering logic (separated for cache clarity)
 fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    let primary = app.theme.primary_text;
+    let secondary = app.theme.secondary_text;
+    let accent = app.theme.accent_text;
     for (msg_idx, m) in app.messages.iter().enumerate() {
         let is_selected = app.selected_msg == Some(msg_idx);
         let prefix_style = if is_selected {
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            Style::default().fg(accent).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Cyan)
+            Style::default().fg(accent)
         };
         match m {
             MessageItem::User { text } => {
                 let prefix = if is_selected { "▸ " } else { "▶ " };
                 lines.push(Line::styled(
                     format!("{}{}", prefix, text.lines().next().unwrap_or("")),
-                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    Style::default().fg(primary).add_modifier(Modifier::BOLD),
                 ));
                 for line in text.lines().skip(1) {
                     lines.push(Line::styled(
                         format!("  {}", line),
-                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                        Style::default().fg(primary).add_modifier(Modifier::BOLD),
                     ));
                 }
             }
@@ -198,12 +201,12 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                     if i == 0 {
                         lines.push(Line::styled(
                             format!("· {}", line),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(secondary),
                         ));
                     } else {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(secondary),
                         ));
                     }
                 }
@@ -211,13 +214,13 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
             MessageItem::ToolCall { name, input, output, .. } => {
                 lines.push(Line::styled(
                     format!("⚙ {}", name),
-                    Style::default().fg(Color::DarkGray),
+                    Style::default().fg(secondary),
                 ));
                 if !input.is_empty() {
                     for line in input.lines() {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(secondary),
                         ));
                     }
                 }
@@ -225,16 +228,16 @@ fn build_message_lines_inner(app: &TuiApp, highlight: Option<&str>) -> Vec<Line<
                     for line in output.lines() {
                         lines.push(Line::styled(
                             format!("  {}", line),
-                            Style::default().fg(Color::DarkGray),
+                            Style::default().fg(secondary),
                         ));
                     }
                 }
             }
             MessageItem::System { text } => {
                 let style = if text.starts_with("[end]") || text.starts_with("[error]") {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(secondary)
                 } else {
-                    Style::default().fg(Color::Cyan)
+                    Style::default().fg(accent)
                 };
                 lines.push(Line::styled(format!("  {}", text), style));
             }
@@ -273,7 +276,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut TuiApp, _frame_count: u64
     let msg_block = Block::default()
         .borders(ratatui::widgets::Borders::TOP | ratatui::widgets::Borders::BOTTOM)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(Color::DarkGray))
+        .border_style(Style::default().fg(app.theme.secondary_text))
         .title(format!(
             "{} CodeCoder{}{}",
             if app.status.agent_busy { "• " } else { "" },
@@ -337,7 +340,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut TuiApp, _frame_count: u64
 
     // Scrollbar
     if total_display_rows > msg_height {
-        let thumb_color = if app.dark_mode { Color::White } else { Color::Black };
+        let thumb_color = app.theme.primary_text;
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(None)
             .end_symbol(None)

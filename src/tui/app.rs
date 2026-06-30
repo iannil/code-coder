@@ -61,8 +61,9 @@ pub struct TuiApp {
     /// 覆盖层对话框（权限/计划/提问）
     pub dialog: Option<Dialog>,
 
-    /// 主题切换（暗/亮模式）
-    pub dark_mode: bool,
+    /// ADR 0003: color theme. Replaces the old dark_mode bool — Ctrl+T
+    /// swaps the entire struct between Theme::dark() and Theme::light().
+    pub theme: crate::tui::Theme,
 
     /// 消息选择模式 —选中消息的索引
     pub selected_msg: Option<usize>,
@@ -282,7 +283,7 @@ impl Default for TuiApp {
                 "llama3.2".into(), "gemini-2.5-flash".into(),
             ],
             dialog: None,
-            dark_mode: true,
+            theme: crate::tui::Theme::dark(),
             selected_msg: None,
             slash_completion: SlashCompletionState::default(),
             help_active: false,

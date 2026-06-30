@@ -16,12 +16,14 @@ pub mod message_list;
 pub mod input_area;
 pub mod dialogs;
 pub mod status_bar;
+pub mod theme;
 #[allow(unused_imports)]
 pub(crate) use status_bar::{compact_cwd, format_context_bar};
 pub mod app;
 pub mod commands;
 pub use app::*;
 pub use commands::*;
+pub use theme::Theme;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
@@ -209,7 +211,7 @@ fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
     dialogs::render_overlays(frame, area, input_area_rect, app);
 
     // 状态栏
-    status_bar::render(frame, status_area, &app.status, frame_count);
+    status_bar::render(frame, status_area, &app.status, frame_count, &app.theme);
 }
 
 /// ─── Key Dispatch ──────────────────────────────────────────────────────────
@@ -300,8 +302,15 @@ fn handle_key(
             return;
         }
         KeyCode::Char('t') if key.modifiers == KeyModifiers::CONTROL => {
-            app.dark_mode = !app.dark_mode;
-            markdown::set_dark_mode(app.dark_mode);
+            // ADR 0003: swap the entire Theme struct. Every render reads
+            // from app.theme.<role>, so this single assignment updates
+            // all components consistently.
+            app.theme = if app.theme.is_dark() {
+                crate::tui::Theme::light()
+            } else {
+                crate::tui::Theme::dark()
+            };
+            markdown::set_dark_mode(app.theme.is_dark());
             message_list::invalidate_cache();
             return;
         }
@@ -720,5 +729,29 @@ mod adr0001_tests {
         press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
         assert!(!app.completion.active, "Esc should close completion via cascade");
         assert!(!app.should_quit, "Esc must not quit");
+    }
+
+    // ── ADR 0003 — Theme switching ───────────────────────────────────────
+
+    #[test]
+    fn adr0003_default_theme_is_dark() {
+        let app = TuiApp::default();
+        assert!(app.theme.is_dark(), "TuiApp default theme must be dark");
+    }
+
+    #[test]
+    fn adr0003_ctrl_t_swaps_theme() {
+        // Ctrl+T must swap the entire theme struct — every render reads
+        // from app.theme.<role>, so this single toggle affects all
+        // components consistently.
+        let mut app = TuiApp::default();
+        let original = app.theme;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('t'), KeyModifiers::CONTROL, &tx);
+        assert_ne!(app.theme, original, "Ctrl+T must change the theme");
+        assert!(!app.theme.is_dark(), "after one toggle from dark, theme should be light");
+        // Toggle back.
+        press(&mut app, KeyCode::Char('t'), KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.theme, original, "second Ctrl+T returns to original");
     }
 }

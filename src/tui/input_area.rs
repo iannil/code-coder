@@ -35,10 +35,10 @@ pub fn save_undo_snapshot(app: &mut TuiApp) {
 pub fn render(frame: &mut Frame, area: Rect, app: &TuiApp, frame_count: u64) {
     let _ = frame_count; // reserved for future cursor blink animation
 
-    // Separator line
+    // ADR 0003: read colors from app.theme.
     let separator_line = Line::from(Span::styled(
         "─".repeat(area.width.saturating_sub(1) as usize),
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(app.theme.secondary_text),
     ));
     frame.render_widget(
         Paragraph::new(separator_line),
@@ -48,7 +48,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &TuiApp, frame_count: u64) {
     // Input content on line 2
     let input_content_y = area.y + 1;
     let cursor_pos = app.cursor_pos.min(app.input.len());
-    let prefix_span = Span::styled("> ", Style::default().fg(Color::Cyan));
+    let prefix_span = Span::styled("> ", Style::default().fg(app.theme.accent_text));
     let input_display = if app.input.is_empty() {
         Line::from(prefix_span)
     } else {
@@ -58,7 +58,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &TuiApp, frame_count: u64) {
     };
     let input_content_area = Rect::new(area.x, input_content_y, area.width, 1);
     let input_paragraph = Paragraph::new(input_display)
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().fg(app.theme.primary_text));
     frame.render_widget(input_paragraph, input_content_area);
 
     // Cursor position

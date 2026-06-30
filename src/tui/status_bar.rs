@@ -14,7 +14,7 @@ use ratatui::Frame;
 use super::StatusData;
 
 /// Render status bar as three-column tmux-style bar
-pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u64) {
+pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u64, theme: &crate::tui::Theme) {
     let spinner = if status.agent_busy {
         let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
         let idx = (frame_count / 3) as usize % frames.len();
@@ -28,7 +28,7 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
     // Left column: model name
     let left = Span::styled(
         &status.model,
-        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        Style::default().fg(theme.accent_text).add_modifier(Modifier::BOLD),
     );
 
     // Right column: cwd + token count + cost estimate
@@ -46,7 +46,7 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
     };
     let right = Span::styled(
         &right_str,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme.secondary_text),
     );
 
     // Center column: tool + elapsed + round (only when busy)
@@ -70,7 +70,7 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
     };
     let center = Span::styled(
         &center_str,
-        Style::default().fg(Color::DarkGray),
+        Style::default().fg(theme.secondary_text),
     );
 
     // Build line with left/center/right alignment
@@ -117,7 +117,7 @@ pub fn render(frame: &mut Frame, area: Rect, status: &StatusData, frame_count: u
     };
 
     let line = Line::from(spans);
-    let paragraph = Paragraph::new(line).style(Style::default().fg(Color::DarkGray));
+    let paragraph = Paragraph::new(line).style(Style::default().fg(theme.secondary_text));
     frame.render_widget(paragraph, area);
 }
 
@@ -250,7 +250,7 @@ mod tests {
             model_picker_selected: 0,
             available_models: vec![],
             dialog: None,
-            dark_mode: true,
+            theme: crate::tui::Theme::dark(),
             selected_msg: None,
             slash_completion: crate::tui::SlashCompletionState::default(),
             help_active: false,
@@ -272,7 +272,7 @@ mod tests {
         terminal
             .draw(|f| {
                 let area = ratatui::layout::Rect::new(0, 0, 80, 1);
-                render(f, area, &app.status, 0);
+                render(f, area, &app.status, 0, &app.theme);
             })
             .unwrap();
 
@@ -307,7 +307,7 @@ mod tests {
         terminal
             .draw(|f| {
                 let area = ratatui::layout::Rect::new(0, 0, 60, 1);
-                render(f, area, &status, 0);
+                render(f, area, &status, 0, &crate::tui::Theme::dark());
             })
             .unwrap();
 

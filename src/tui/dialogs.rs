@@ -16,6 +16,7 @@ use super::{TuiApp, Dialog};
 /// Render all active overlays on top of the message/input areas.
 /// Each overlay is mutually exclusive and renders first with Clear.
 pub fn render_overlays(frame: &mut Frame, area: Rect, input_area: Rect, app: &mut TuiApp) {
+    let theme = app.theme;
     // 1. Slash completion popup
     if app.slash_completion.active {
         render_slash_completion(frame, area, input_area, app);
@@ -30,13 +31,13 @@ pub fn render_overlays(frame: &mut Frame, area: Rect, input_area: Rect, app: &mu
 
     // 3. Help panel
     if app.help_active {
-        render_help_panel(frame, area);
+        render_help_panel(frame, area, &theme);
         return;
     }
 
     // 4. Permission/plan/question dialog
     if let Some(ref dialog) = app.dialog {
-        render_dialog(frame, area, dialog);
+        render_dialog(frame, area, dialog, &theme);
         return;
     }
 
@@ -52,6 +53,7 @@ fn render_slash_completion(frame: &mut Frame, area: Rect, input_area: Rect, app:
     // ADR 0002 §7: render only filtered commands. When filtered is empty
     // (shouldn't happen — refresh_slash_completion keeps it in sync), fall
     // back to showing all.
+    let theme = app.theme;
     let indices: Vec<usize> = if app.slash_completion.filtered.is_empty() {
         (0..app.slash_completion.commands.len()).collect()
     } else {
@@ -69,12 +71,12 @@ fn render_slash_completion(frame: &mut Frame, area: Rect, input_area: Rect, app:
         if pos == app.slash_completion.selected {
             Line::styled(
                 format!(" ▸ {:<12} {}", cmd, desc),
-                Style::default().fg(Color::Black).bg(Color::White),
+                Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
             )
         } else {
             Line::styled(
                 format!("   {:<12} {}", cmd, desc),
-                Style::default().fg(Color::White),
+                Style::default().fg(theme.primary_text),
             )
         }
     }).collect();
@@ -90,6 +92,7 @@ fn render_slash_completion(frame: &mut Frame, area: Rect, input_area: Rect, app:
 /// ─── Model Picker Popup ─────────────────────────────────────────────────────
 
 fn render_model_picker(frame: &mut Frame, area: Rect, input_area: Rect, app: &TuiApp) {
+    let theme = app.theme;
     let popup_width = area.width.min(40).max(20);
     let popup_height = (app.available_models.len() as u16 + 2).min(16);
     let popup_x = area.x + area.width.saturating_sub(popup_width) / 2;
@@ -102,12 +105,12 @@ fn render_model_picker(frame: &mut Frame, area: Rect, input_area: Rect, app: &Tu
             if i == app.model_picker_selected {
                 Line::styled(
                     format!(" ▸ {} {}", m, if is_current { "✓" } else { "" }),
-                    Style::default().fg(Color::Black).bg(Color::White),
+                    Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
                 )
             } else {
                 Line::styled(
                     format!("   {} {}", m, if is_current { "✓" } else { "" }),
-                    Style::default().fg(if is_current { Color::Green } else { Color::White }),
+                    Style::default().fg(if is_current { theme.success_text } else { theme.primary_text }),
                 )
             }
         })
@@ -123,83 +126,88 @@ fn render_model_picker(frame: &mut Frame, area: Rect, input_area: Rect, app: &Tu
 
 /// ─── Help Panel ─────────────────────────────────────────────────────────────
 
-fn render_help_panel(frame: &mut Frame, area: Rect) {
+fn render_help_panel(frame: &mut Frame, area: Rect, theme: &crate::tui::Theme) {
     let panel_width = area.width.min(72).max(50);
-    // Panel needs ~50 lines for the full ADR 0001 binding list. Cap at
-    // area.height - 2 so borders always fit, but never less than 20.
     let panel_height = (area.height.saturating_sub(2)).min(60).max(20);
     let panel_x = area.x + (area.width.saturating_sub(panel_width)) / 2;
     let panel_y = area.y + (area.height.saturating_sub(panel_height)) / 2;
     let panel_area = Rect::new(panel_x, panel_y, panel_width, panel_height);
 
-    fn hdr(s: &str) -> Line {
-        Line::styled(format!(" {s} "), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    // ADR 0003: helper fns take colors as params to avoid closure lifetime
+    // gymnastics. Same shape as before ADR 0003 but colors now come from
+    // the theme instead of being hardcoded.
+    fn hdr<'a>(s: &'a str, c: Color) -> Line<'a> {
+        Line::styled(format!(" {s} "), Style::default().fg(c).add_modifier(Modifier::BOLD))
     }
-    fn key(k: &str) -> Span {
-        Span::styled(format!("{:<14}", k), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+    fn key<'a>(k: &'a str, c: Color) -> Span<'a> {
+        Span::styled(format!("{:<14}", k), Style::default().fg(c).add_modifier(Modifier::BOLD))
     }
-    fn row<'a>(k: &'a str, d: &'a str) -> Line<'a> {
-        Line::from(vec![Span::raw("  "), key(k), Span::raw(d)])
+    fn row<'a>(k: &'a str, d: &'a str, kc: Color) -> Line<'a> {
+        Line::from(vec![Span::raw("  "), key(k, kc), Span::raw(d)])
     }
-    fn row_warn<'a>(k: &'a str, d: &'a str) -> Line<'a> {
+    fn row_warn<'a>(k: &'a str, d: &'a str, kc: Color, wc: Color) -> Line<'a> {
         Line::from(vec![
             Span::raw("  "),
-            key(k),
-            Span::styled(format!("⚠ {d}"), Style::default().fg(Color::Yellow)),
+            key(k, kc),
+            Span::styled(format!("⚠ {d}"), Style::default().fg(wc)),
         ])
     }
+    let accent = theme.accent_text;
+    let primary = theme.primary_text;
+    let warn = theme.warning_text;
+    let dim = theme.secondary_text;
 
     let help_lines = vec![
-        hdr("Editing"),
+        hdr("Editing", accent),
         Line::from(""),
-        row("Enter",        "Submit message (empty: no-op)"),
-        row("Shift+Enter",  "Insert newline (multi-line input)"),
-        row("Alt+Enter",    "Force submit (overrides modifiers)"),
-        row("Ctrl+Z / Y",   "Undo / redo input"),
-        row("Ctrl+A / E",   "Cursor to line start / end"),
-        row("Ctrl+W",       "Delete word backward"),
-        row("Ctrl+U / K",   "Delete to start / end of line"),
-        row("Tab",          "Accept completion / fold last message"),
-        row("@",            "Trigger file completion"),
+        row("Enter",        "Submit message (empty: no-op)", primary),
+        row("Shift+Enter",  "Insert newline (multi-line input)", primary),
+        row("Alt+Enter",    "Force submit (overrides modifiers)", primary),
+        row("Ctrl+Z / Y",   "Undo / redo input", primary),
+        row("Ctrl+A / E",   "Cursor to line start / end", primary),
+        row("Ctrl+W",       "Delete word backward", primary),
+        row("Ctrl+U / K",   "Delete to start / end of line", primary),
+        row("Tab",          "Accept completion / fold last message", primary),
+        row("@",            "Trigger file completion", primary),
         Line::from(""),
-        hdr("Navigation"),
+        hdr("Navigation", accent),
         Line::from(""),
-        row("Up / Down",    "Move cursor (or browse msgs when empty)"),
-        row("Ctrl+Up/Dn",   "Walk input history"),
-        row("Left / Right", "Move cursor one char"),
-        row("Home / End",   "Cursor to line start / end"),
-        row("g / G",        "Msg list: scroll to top / bottom (empty input)"),
-        row("PgUp / PgDn",  "Msg list: scroll up / down by page"),
-        row("End",          "Msg list: jump to bottom"),
+        row("Up / Down",    "Move cursor (or browse msgs when empty)", primary),
+        row("Ctrl+Up/Dn",   "Walk input history", primary),
+        row("Left / Right", "Move cursor one char", primary),
+        row("Home / End",   "Cursor to line start / end", primary),
+        row("g / G",        "Msg list: scroll to top / bottom (empty input)", primary),
+        row("PgUp / PgDn",  "Msg list: scroll up / down by page", primary),
+        row("End",          "Msg list: jump to bottom", primary),
         Line::from(""),
-        hdr("Mode & Tools"),
+        hdr("Mode & Tools", accent),
         Line::from(""),
-        row("Ctrl+F",       "Search messages"),
-        row("Ctrl+R",       "Reverse search"),
-        row("Ctrl+P",       "Switch model"),
-        row("Ctrl+T",       "Toggle theme (partial — markdown only)"),
-        row("Ctrl+H",       "Toggle this help panel"),
-        row_warn("Ctrl+L",  "Clear messages — no confirm yet"),
-        row("Ctrl+C",       "Busy: interrupt agent  ·  Idle: quit"),
-        row_warn("Ctrl+Q",  "Quit"),
-        row("Esc",          "Close current overlay (never quits)"),
+        row("Ctrl+F",       "Search messages", primary),
+        row("Ctrl+R",       "Reverse search", primary),
+        row("Ctrl+P",       "Switch model", primary),
+        row("Ctrl+T",       "Toggle theme (dark/light)", primary),
+        row("Ctrl+H",       "Toggle this help panel", primary),
+        row_warn("Ctrl+L",  "Clear messages (confirms)", primary, warn),
+        row("Ctrl+C",       "Busy: interrupt agent  ·  Idle: quit", primary),
+        row_warn("Ctrl+Q",  "Quit", primary, warn),
+        row("Esc",          "Close current overlay (never quits)", primary),
         Line::from(""),
-        hdr("Commands"),
+        hdr("Commands", accent),
         Line::from(""),
-        row("/help",        "Show this panel"),
-        row("/exit /quit",  "Quit"),
-        row("/clear",       "Clear messages"),
-        row("/reload",      "Reload context + skills"),
-        row("/history",     "Show message count"),
-        row("/tools",       "List available tools"),
-        row("/skills",      "List loaded skills"),
-        row("/memory",      "List memory entries"),
-        row("/session",     "List saved sessions"),
-        row("/resume [id]", "Resume a session"),
-        row("/config",      "View / change settings"),
-        row("/mcp",         "Manage MCP servers"),
+        row("/help",        "Show this panel", primary),
+        row("/exit /quit",  "Quit", primary),
+        row("/clear",       "Clear messages (confirms)", primary),
+        row("/reload",      "Reload context + skills", primary),
+        row("/history",     "Show message count", primary),
+        row("/tools",       "List available tools", primary),
+        row("/skills",      "List loaded skills", primary),
+        row("/memory",      "List memory entries", primary),
+        row("/session",     "List saved sessions", primary),
+        row("/resume [id]", "Resume a session (confirms)", primary),
+        row("/config",      "View / change settings", primary),
+        row("/mcp",         "Manage MCP servers", primary),
         Line::from(""),
-        Line::styled(" Esc to close ", Style::default().fg(Color::DarkGray)),
+        Line::styled(" Esc to close ", Style::default().fg(dim)),
     ];
 
     frame.render_widget(ratatui::widgets::Clear, panel_area);
@@ -213,11 +221,11 @@ fn render_help_panel(frame: &mut Frame, area: Rect) {
 
 /// ─── Dialog (Permission / Plan / Ask) ───────────────────────────────────────
 
-fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
+fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::tui::Theme) {
     // ADR 0006: Confirm dialog has its own minimal layout (warning + Y/N).
     // Render and return early so the tool/plan/ask branch below stays clean.
     if let Dialog::Confirm { message, action } = dialog {
-        return render_confirm_dialog(frame, area, message, action);
+        return render_confirm_dialog(frame, area, message, action, theme);
     }
 
     let (tool_name, tool_input_txt, risk) = match dialog {
@@ -236,15 +244,15 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
     let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
 
     let risk_style = if risk.contains("suspicious") || risk.contains("outside") {
-        Style::default().fg(Color::Yellow)
+        Style::default().fg(theme.warning_text)
     } else {
-        Style::default().fg(Color::DarkGray)
+        Style::default().fg(theme.secondary_text)
     };
 
     let mut content = vec![
-        Line::styled(" [!] Tool Permission ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Line::styled(" [!] Tool Permission ", Style::default().fg(theme.warning_text).add_modifier(Modifier::BOLD)),
         Line::from(""),
-        Line::styled(format!(" Tool: {}", tool_name), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Line::styled(format!(" Tool: {}", tool_name), Style::default().fg(theme.primary_text).add_modifier(Modifier::BOLD)),
     ];
 
     if !risk.is_empty() {
@@ -253,10 +261,10 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
 
     let input_display: String = info_str.chars().take(400).collect();
     for line in input_display.lines().take(6) {
-        content.push(Line::styled(format!("  {}", line), Style::default().fg(Color::DarkGray)));
+        content.push(Line::styled(format!("  {}", line), Style::default().fg(theme.secondary_text)));
     }
     if info_str.len() > 400 {
-        content.push(Line::styled("  …(truncated)", Style::default().fg(Color::DarkGray)));
+        content.push(Line::styled("  …(truncated)", Style::default().fg(theme.secondary_text)));
     }
 
     content.push(Line::from(""));
@@ -264,20 +272,20 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
         Dialog::AskQuestion { .. } => {
             content.push(Line::styled(
                 " Type answer + Enter, or Esc to skip ",
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme.accent_text),
             ));
         }
         Dialog::ToolPermission { .. } => {
             // ADR 0005: scope-aware approval keys.
             content.push(Line::styled(
                 " Y=once  A=session  Shift+A=project  N=deny  Esc=cancel ",
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme.accent_text),
             ));
         }
         Dialog::PlanApproval { .. } => {
             content.push(Line::styled(
                 " Y=approve  N=reject  Esc=cancel ",
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(theme.accent_text),
             ));
         }
         // Confirm is rendered by render_confirm_dialog (early return above).
@@ -288,7 +296,7 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
     let dialog = Paragraph::new(content)
         .block(Block::bordered()
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow)))
+            .border_style(Style::default().fg(theme.warning_text)))
         .wrap(Wrap { trim: false });
     frame.render_widget(dialog, dialog_area);
 }
@@ -296,10 +304,7 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
 /// ADR 0006: render the Confirm dialog. Minimal layout — warning header,
 /// the action's message, and a Y/N/Esc prompt. Yellow border signals
 /// "destructive — read before confirming".
-fn render_confirm_dialog(frame: &mut Frame, area: Rect, message: &str, action: &crate::tui::ConfirmAction) {
-    // Content layout (6 fixed lines + msg_lines variable):
-    //   header, blank, message, action, blank, prompt  = 5 + msg_lines
-    // Plus 2 border rows = msg_lines + 7.
+fn render_confirm_dialog(frame: &mut Frame, area: Rect, message: &str, action: &crate::tui::ConfirmAction, theme: &crate::tui::Theme) {
     let dialog_width = area.width.min(64).max(40);
     let msg_lines = message.lines().count().max(1) as u16;
     let dialog_height = (msg_lines + 7).min(14).max(8);
@@ -311,45 +316,44 @@ fn render_confirm_dialog(frame: &mut Frame, area: Rect, message: &str, action: &
         crate::tui::ConfirmAction::ClearMessages => "Clear all messages",
         crate::tui::ConfirmAction::ResumeLatest => "Resume latest session",
         crate::tui::ConfirmAction::DeleteMessage { index } => {
-            // Static label would require format!() with lifetime; allocate.
-            return render_confirm_dialog_owned(frame, dialog_area, message, format!("Delete message #{index}"));
+            return render_confirm_dialog_owned(frame, dialog_area, message, format!("Delete message #{index}"), theme);
         }
     };
 
     let content = vec![
-        Line::styled(" ⚠ Confirm ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Line::styled(" ⚠ Confirm ", Style::default().fg(theme.warning_text).add_modifier(Modifier::BOLD)),
         Line::from(""),
-        Line::styled(format!(" {}", message), Style::default().fg(Color::White)),
-        Line::styled(format!(" Action: {}", action_label), Style::default().fg(Color::DarkGray)),
+        Line::styled(format!(" {}", message), Style::default().fg(theme.primary_text)),
+        Line::styled(format!(" Action: {}", action_label), Style::default().fg(theme.secondary_text)),
         Line::from(""),
-        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(Color::Cyan)),
+        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(theme.accent_text)),
     ];
 
     frame.render_widget(ratatui::widgets::Clear, dialog_area);
     let widget = Paragraph::new(content)
         .block(Block::bordered()
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow)))
+            .border_style(Style::default().fg(theme.warning_text)))
         .wrap(Wrap { trim: false });
     frame.render_widget(widget, dialog_area);
 }
 
 // Helper for the DeleteMessage case where the label needs owned String.
-fn render_confirm_dialog_owned(frame: &mut Frame, dialog_area: Rect, message: &str, action_label: String) {
+fn render_confirm_dialog_owned(frame: &mut Frame, dialog_area: Rect, message: &str, action_label: String, theme: &crate::tui::Theme) {
     let content = vec![
-        Line::styled(" ⚠ Confirm ", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Line::styled(" ⚠ Confirm ", Style::default().fg(theme.warning_text).add_modifier(Modifier::BOLD)),
         Line::from(""),
-        Line::styled(format!(" {}", message), Style::default().fg(Color::White)),
-        Line::styled(format!(" Action: {}", action_label), Style::default().fg(Color::DarkGray)),
+        Line::styled(format!(" {}", message), Style::default().fg(theme.primary_text)),
+        Line::styled(format!(" Action: {}", action_label), Style::default().fg(theme.secondary_text)),
         Line::from(""),
-        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(Color::Cyan)),
+        Line::styled(" Y=confirm  N=cancel  Esc=cancel ", Style::default().fg(theme.accent_text)),
     ];
 
     frame.render_widget(ratatui::widgets::Clear, dialog_area);
     let widget = Paragraph::new(content)
         .block(Block::bordered()
             .border_type(BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow)))
+            .border_style(Style::default().fg(theme.warning_text)))
         .wrap(Wrap { trim: false });
     frame.render_widget(widget, dialog_area);
 }
@@ -357,6 +361,7 @@ fn render_confirm_dialog_owned(frame: &mut Frame, dialog_area: Rect, message: &s
 /// ─── File Completion Popup ──────────────────────────────────────────────────
 
 fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: &TuiApp) {
+    let theme = app.theme;
     let popup_width = area.width.min(50).max(20);
     let popup_height = (app.completion.candidates.len() as u16 + 2).min(12);
     let popup_x = area.x + area.width.saturating_sub(popup_width) / 2;
@@ -368,12 +373,12 @@ fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: 
             if i == app.completion.selected {
                 Line::styled(
                     format!(" ▸ {} ", c.display),
-                    Style::default().fg(Color::Black).bg(Color::White),
+                    Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
                 )
             } else {
                 Line::styled(
                     format!("   {} ", c.display),
-                    Style::default().fg(Color::White),
+                    Style::default().fg(theme.primary_text),
                 )
             }
         })
