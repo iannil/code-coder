@@ -581,6 +581,38 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             risk,
                         });
                     }
+                    AgentResponse::PersistPermission { tool_name } => {
+                        // ADR 0005 Phase B: append to codecoder.json's
+                        // permissions.allowlist. Dedup so re-granting the
+                        // same tool doesn't bloat the file. Errors are
+                        // surfaced to the message list once per error
+                        // string (same pattern as session auto-save).
+                        if let Some(ref mut store) = app.config_store {
+                            let allowlist = &mut store.get_mut().permissions.allowlist;
+                            if !allowlist.iter().any(|t| t == &tool_name) {
+                                allowlist.push(tool_name.clone());
+                                match store.save() {
+                                    Ok(()) => {
+                                        app.messages.push(MessageItem::System {
+                                            text: format!("✓ '{}' added to project allowlist (codecoder.json)", tool_name),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        let err = format!("Failed to persist permission: {e}");
+                                        crate::log(&format!("[error] {err}"));
+                                        app.messages.push(MessageItem::System { text: err });
+                                    }
+                                }
+                            }
+                        } else {
+                            app.messages.push(MessageItem::System {
+                                text: format!(
+                                    "⚠ '{}' granted for project but no config store wired — grant will not persist.",
+                                    tool_name
+                                ),
+                            });
+                        }
+                    }
                 }
             }
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,

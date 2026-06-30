@@ -23,6 +23,25 @@ pub struct CodeCoderConfig {
     pub scheduled_tasks: Vec<ScheduledTaskConfig>,
     /// Directories to watch for file changes
     pub watch_paths: Vec<String>,
+    /// ADR 0005 Phase B: persisted permission allowlist. Tool names here
+    /// skip the permission prompt across all sessions. Populated when the
+    /// user grants AlwaysThisProject scope in the TUI dialog.
+    pub permissions: PermissionsConfig,
+}
+
+/// Permission-related config (ADR 0005 Phase B).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PermissionsConfig {
+    /// Tool names that never prompt. Compared by exact match against the
+    /// tool_name field of PermissionRequest.
+    pub allowlist: Vec<String>,
+}
+
+impl Default for PermissionsConfig {
+    fn default() -> Self {
+        Self { allowlist: Vec::new() }
+    }
 }
 
 /// Configuration for a scheduled task in daemon mode.
@@ -73,6 +92,7 @@ impl Default for CodeCoderConfig {
             mcp_servers: Vec::new(),
             scheduled_tasks: Vec::new(),
             watch_paths: Vec::new(),
+            permissions: PermissionsConfig::default(),
         }
     }
 }
@@ -147,6 +167,7 @@ impl ConfigStore {
             mcp_servers: file_config.mcp_servers,
             scheduled_tasks: file_config.scheduled_tasks,
             watch_paths: file_config.watch_paths,
+            permissions: file_config.permissions,
         };
 
         Self { file_path, config }
@@ -338,5 +359,89 @@ mod tests {
         let llm_config = store.to_llm_config();
         assert_eq!(llm_config.model, "gpt-4o");
         assert_eq!(llm_config.max_tokens, 4096);
+    }
+
+    // ─── ADR 0005 Phase B — Persisted allowlist ──────────────────────────
+
+    #[test]
+    fn adr0005_default_config_has_empty_allowlist() {
+        let cfg = CodeCoderConfig::default();
+        assert!(cfg.permissions.allowlist.is_empty(),
+            "fresh config must not pre-grant any tools");
+    }
+
+    #[test]
+    fn adr0005_allowlist_roundtrips_through_save_load() {
+        let dir = tempfile::tempdir().unwrap();
+        // First write a config with an allowlist.
+        let mut store = ConfigStore::load(dir.path().to_str().unwrap());
+        store.get_mut().permissions.allowlist = vec![
+            "read_file".into(),
+            "list_directory".into(),
+        ];
+        store.save().unwrap();
+
+        // Reload — allowlist should survive the roundtrip.
+        let reloaded = ConfigStore::load(dir.path().to_str().unwrap());
+        assert_eq!(reloaded.get().permissions.allowlist.len(), 2);
+        assert!(reloaded.get().permissions.allowlist.iter().any(|t| t == "read_file"));
+        assert!(reloaded.get().permissions.allowlist.iter().any(|t| t == "list_directory"));
+    }
+
+    #[test]
+    fn adr0005_legacy_config_without_permissions_loads_empty() {
+        // Pre-ADR-0005 file with no permissions field should load via
+        // serde default — empty allowlist, no crash.
+        let dir = tempfile::tempdir().unwrap();
+        let legacy_json = r#"{
+            "llm": { "model": "gpt-4o", "api_base": "x", "max_tokens": 4096, "temperature": 0.7 },
+            "features": {}
+        }"#;
+        let path = dir.path().join("codecoder.json");
+        std::fs::write(&path, legacy_json).unwrap();
+
+        let store = ConfigStore::load(dir.path().to_str().unwrap());
+        assert!(store.get().permissions.allowlist.is_empty(),
+            "legacy file must yield empty allowlist, got: {:?}",
+            store.get().permissions.allowlist);
+    }
+
+    #[test]
+    fn adr0005_added_allowlist_entry_persists_across_restart() {
+        // Simulate: user grants AlwaysThisProject for write_file. TUI
+        // appends + saves. New ConfigStore::load sees it.
+        let dir = tempfile::tempdir().unwrap();
+        let project_root = dir.path().to_str().unwrap();
+
+        // First session: grant + save.
+        {
+            let mut store = ConfigStore::load(project_root);
+            store.get_mut().permissions.allowlist.push("write_file".into());
+            store.save().unwrap();
+        }
+
+        // Second session: load — grant must be visible.
+        let new_session = ConfigStore::load(project_root);
+        assert_eq!(new_session.get().permissions.allowlist, vec!["write_file".to_string()]);
+    }
+
+    #[test]
+    fn adr0005_dedup_on_repeat_grant() {
+        // TUI logic appends only if not already present (avoids bloat).
+        let dir = tempfile::tempdir().unwrap();
+        let project_root = dir.path().to_str().unwrap();
+        let mut store = ConfigStore::load(project_root);
+
+        // First grant.
+        let allowlist = &mut store.get_mut().permissions.allowlist;
+        let tool = "read_file";
+        if !allowlist.iter().any(|t| t == tool) {
+            allowlist.push(tool.into());
+        }
+        // Second grant (same tool) — should be a no-op.
+        if !allowlist.iter().any(|t| t == tool) {
+            allowlist.push(tool.into());
+        }
+        assert_eq!(store.get().permissions.allowlist.len(), 1, "duplicate grant must not duplicate entry");
     }
 }

@@ -138,7 +138,14 @@ fn main() -> anyhow::Result<()> {
 
     // ── Spawn background agent (async on tokio) ───────────────────────────
 
-    let bg = BackgroundAgent::spawn(llm, context, tools, skills, bus.clone());
+    let bg = BackgroundAgent::spawn(
+        llm,
+        context,
+        tools,
+        skills,
+        bus.clone(),
+        config.get().permissions.allowlist.clone(),
+    );
 
     // ── Run (TUI or Daemon) ────────────────────────────────────────────────
 
@@ -232,7 +239,7 @@ mod e2e_tests {
         let tools = ToolRegistry::new_for_test();
         let skills = SkillRegistry::new();
         let bus = SharedEventBus::new();
-        let bg = BackgroundAgent::spawn(Box::new(StubClient::new()), ctx, tools, skills, bus);
+        let bg = BackgroundAgent::spawn(Box::new(StubClient::new()), ctx, tools, skills, bus, Vec::new());
         bg.cmd_tx
     }
 

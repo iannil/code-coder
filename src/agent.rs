@@ -358,6 +358,10 @@ pub enum AgentResponse {
     ToolCall { name: String, input: String },
     ToolResult { name: String, output: String, success: bool },
     PermissionRequest { tool_name: String, tool_input: String, request_id: u64, risk: String },
+    /// ADR 0005 Phase B: agent signals that the user granted AlwaysThisProject
+    /// for `tool_name`. TUI persists it to codecoder.json so future sessions
+    /// honor the grant without re-prompting.
+    PersistPermission { tool_name: String },
     /// Agent asked a question — user needs to answer
     AskUser { question: String, request_id: u64 },
     /// Agent presents a plan for user approval
@@ -375,6 +379,7 @@ impl BackgroundAgent {
         tools: ToolRegistry,
         skills: SkillRegistry,
         bus: SharedEventBus,
+        initial_allowlist: Vec<String>,
     ) -> Self {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<AgentCommand>();
         let (resp_tx, resp_rx) = tokio::sync::mpsc::channel::<AgentResponse>(256);
@@ -424,6 +429,17 @@ impl BackgroundAgent {
                     // each new message; set by AgentCommand::Interrupt.
                     let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
+                    // ADR 0005 Phase B: session allowlist, seeded once from
+                    // the persisted project allowlist. Lives for the entire
+                    // agent thread lifetime — AlwaysThisSession and
+                    // AlwaysThisProject grants accumulate across messages.
+                    let session_allowed = std::sync::Arc::new(
+                        std::sync::Mutex::new(
+                            initial_allowlist.iter().cloned()
+                                .collect::<std::collections::HashSet<String>>(),
+                        ),
+                    );
+
                     loop {
                         // Non-blocking poll
                         match cmd_rx.try_recv() {
@@ -435,15 +451,9 @@ impl BackgroundAgent {
                                 // Reset cancel for this fresh message.
                                 cancel.store(false, std::sync::atomic::Ordering::SeqCst);
                                 let cancel_for_handle = cancel.clone();
-                                // ADR 0005: session-scoped allowlist shared
-                                // across calls within this ProcessMessage
-                                // (and across multiple ProcessMessages in the
-                                // same agent thread lifetime).
-                                let session_allowed = std::sync::Arc::new(
-                                    std::sync::Mutex::new(
-                                        std::collections::HashSet::<String>::new(),
-                                    ),
-                                );
+                                // ADR 0005 Phase B: session_allowed lives
+                                // outside the loop, so this clone shares the
+                                // same set across all messages.
                                 let session_allowed_closure = session_allowed.clone();
                                 let permission_check = move |name: &str, input: &str| {
                                     // 1. Hard rules via PermissionEngine — these
@@ -501,6 +511,16 @@ impl BackgroundAgent {
                                                         "[permission] '{name}' added to {:?} allowlist",
                                                         scope
                                                     ));
+                                                    // ADR 0005 Phase B: project
+                                                    // scope also signals TUI
+                                                    // to persist to codecoder.json.
+                                                    if matches!(scope, PermScope::AlwaysThisProject) {
+                                                        let _ = resp_tx2.blocking_send(
+                                                            AgentResponse::PersistPermission {
+                                                                tool_name: name.to_string(),
+                                                            }
+                                                        );
+                                                    }
                                                 }
                                                 return allowed;
                                             }
@@ -775,6 +795,7 @@ Here is the content."#;
             tools,
             skills,
             bus,
+            Vec::new(),
         );
 
         let shutdown_sent = bg.cmd_tx.send(AgentCommand::Shutdown);
