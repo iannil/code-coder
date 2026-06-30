@@ -93,8 +93,7 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 
 ### 1.7 Esc 级联顺序：实现与 ADR 文字不符 ⛔(轻)
 
-ADR 0001 声明单一级联顺序：`reverse-search → search → slash-completion → model-picker → help → dialog → selected-msg → file-completion`。
-实现里 dialog/help/model-picker/slash-completion 在 `mod.rs:252-264`（step 2 覆盖层路由）**先于** step-3 的 Esc 级联被各自 handler 消费，step-3 只处理 `reverse-search → search → selected_msg → completion`。净效果接近，但 ADR 描述的"单一有序级联"实际被拆成两层，且 `selected_msg` 相对 `dialog` 的先后与 ADR 文字不一致。→ ⛔ 文档/实现表述不符（低危，建议改 ADR 文字或注释说明分层）。
+~~ADR 0001 声明单一级联顺序，实现拆成两层~~ → ✅ **已修（文档）**：ADR 0001 改写为如实描述两层关闭（覆盖层经路由先消费 Esc，再到 in-place 模式级联），并说明覆盖层互斥故等价于单一级联。
 
 ---
 
