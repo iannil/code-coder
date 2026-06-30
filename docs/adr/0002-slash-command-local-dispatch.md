@@ -12,7 +12,9 @@ Two related problems collapse into one fix here:
 1. Known commands must actually execute (route to local handlers).
 2. Unknown commands must not silently leak to the LLM — that wastes tokens, time, and risks the model "doing something" based on a typo.
 
-Filtering on input prefix (see [[0001-tui-keybinding-and-mode-semantics]] Issue #7) is a separate concern from routing, but both live in the same dispatcher and are being added together.
+Filtering the completion list (see [[0001-tui-keybinding-and-mode-semantics]] Issue #7) is a separate concern from routing, but both live in the same dispatcher and are being added together.
+
+Update (TUI fidelity audit): filtering was upgraded from prefix-only to **subsequence (fuzzy) matching with prefix matches ranked first** — e.g. `/cfg` now matches `/config` — to match the original Claude Code completion. `refresh_slash_completion` builds two tiers (prefix, then in-order subsequence) and stable-sorts prefix ahead. Command aliases (`/reset`,`/new` ≡ `/clear`; `/settings` ≡ `/config`) were added to the dispatcher to match the original's aliases.
 
 ## How to apply
 

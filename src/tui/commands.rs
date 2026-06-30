@@ -943,17 +943,20 @@ mod adr0002_tests {
     }
 
     #[test]
-    fn refresh_filters_by_prefix() {
+    fn refresh_filters_by_subsequence_prefix_first() {
+        // Filtering upgraded prefix → subsequence for fidelity with the
+        // original. "/se" prefix-matches /session AND subsequence-matches
+        // /resume (s@2, e@5); the prefix match must rank first.
         use crate::tui::input_area::refresh_slash_completion;
         let mut app = TuiApp::default();
-        app.input = "/se".into();  // matches /session
+        app.input = "/se".into();
         refresh_slash_completion(&mut app);
         assert!(app.slash_completion.active);
-        // Only /session should match
         let matched: Vec<&str> = app.slash_completion.filtered.iter()
             .map(|&i| app.slash_completion.commands[i])
             .collect();
-        assert_eq!(matched, vec!["/session"], "got: {matched:?}");
+        assert_eq!(matched.first(), Some(&"/session"), "prefix match ranks first: {matched:?}");
+        assert!(matched.contains(&"/resume"), "subsequence match included: {matched:?}");
     }
 
     #[test]
