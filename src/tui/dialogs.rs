@@ -219,6 +219,7 @@ fn render_help_panel(frame: &mut Frame, area: Rect, theme: &crate::tui::Theme) {
         row("/tools",       "List available tools", primary),
         row("/skills",      "List loaded skills", primary),
         row("/memory",      "List memory entries", primary),
+        row("/grill-me <x>", "Relentless design interview", primary),
         row("/session",     "List saved sessions", primary),
         row("/resume [id]", "Resume a session (confirms)", primary),
         row("/config",      "View / change settings", primary),

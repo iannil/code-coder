@@ -191,6 +191,7 @@ impl Default for SlashCompletionState {
             commands: vec![
                 "/help", "/exit", "/quit", "/reload", "/clear", "/history",
                 "/session", "/resume", "/config", "/mcp", "/tools", "/skills", "/memory",
+                "/grill-me",
             ],
             descriptions: vec![
                 "Show help and shortcuts", "Exit the application", "Exit the application",
@@ -199,6 +200,7 @@ impl Default for SlashCompletionState {
                 "View or change settings (model, api_base, etc.)",
                 "Manage MCP servers (list, start, stop)", "List available tools",
                 "List loaded skills", "List memory entries",
+                "Relentless design interview (one question at a time)",
             ],
             filtered: Vec::new(),
         }

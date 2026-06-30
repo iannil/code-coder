@@ -59,7 +59,7 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 |---|---|
 | 文本中 | no-op（不插入）→ no-op（移除了旧的"插 2 空格"）→ 🟢 ADR 0001 |
 | 折叠/展开消息 | 原版无此功能（折叠走 Ctrl+O transcript 等）→ Tab 折叠/展开最后一条 Reasoning/ToolCall → 🟢 ADR 0001（新增设计） |
-| slash 浮层中 | **Tab = 接受/填入命令（不执行）** → **Tab = 循环到下一个候选** → 🔴 无 ADR，语义不同；codecoder 因此**没有"填入但不执行以便加参数"的能力** |
+| slash 浮层中 | Tab = 接受/填入命令（不执行）→ ✅ **已修**：Tab 填入选中命令+空格（不执行），可继续加参数；Enter 才执行；导航用 ↑↓ |
 | @ 文件补全中 | Tab 补全到最长公共前缀再插入 → Tab 插入候选（无 LCP）→ 🔴 无 ADR |
 
 ### 1.4 上下移动 & 历史
@@ -179,7 +179,7 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 | 触发 | 输入以 `/` 开头，光标>0，尚无参数 → 输入以 `/` 开头且无空白 → 🟡 近似 |
 | 过滤 | **Fuse.js 模糊**，按 exact-name>alias>prefix>fuzzy 排序 → ✅ **已修**：升级为子序列模糊匹配，前缀命中优先排序（`/cfg` 现可匹配 `/config`）。仍无原版的 recent/builtin 分组 |
 | 导航 | ↑↓ + Ctrl+N/P → ↑↓（`dialogs.rs:600-609`）→ 🟡 缺 Ctrl+N/P |
-| **Tab** | 接受/填入（不执行）→ **循环候选** → 🔴 见 1.3 |
+| **Tab** | 接受/填入（不执行）→ ✅ 已修，见 1.3（填入不执行）|
 | Enter | 接受并执行 → 接受并执行 → ✅ |
 | Esc | dismiss + 记录"已忽略输入"阻止重弹 → dismiss（重打 `/` 立即重弹，无抑制）→ 🔴 无 ADR，轻 |
 | 行内 ghost text | 中段 `/com` 显示灰字提示，Tab 展开 → **无** → 🔴 无 ADR，缺失 |
@@ -228,11 +228,12 @@ codecoder 实际实现（`commands.rs:98-160`）：`/help`(/h) `/exit` `/quit` `
 | /theme | 主题 | ❌(走 Ctrl+T) | 🟡 交互化 |
 | /context /files | 上下文可视化 | ❌ | 🔴 缺失 |
 | /copy /export /diff | 复制/导出/diff | ❌ | 🔴 缺失 |
-| /agents /skills | 子代理/技能 | 部分(/skills 占位) | 🔴 /skills 仅打印占位文案 |
+| /skills | 技能列表 | ✅ | ✅ 已修：扫描 skills/ 列出真实技能 |
+| /tools | 工具列表 | ✅ | ✅ 已修：列出 ToolRegistry 真实工具名 |
 | /memory | 记忆 | 部分 | 🔴 仅打印目录提示，非编辑 |
 | (其余 ~50 个：/login /logout /doctor /ide /mobile /stats /tag …) | — | ❌ | 多为云/账号/IDE 功能，属功能范围而非保真缺口 |
 
-> 大量缺失命令属"功能范围"而非"行为保真"问题，列此供你做范围取舍；真正的保真问题是已实现命令的**别名缺失**与 `/skills`、`/memory`、`/tools` 的**占位实现**（只打印文案，不做事）。
+> 大量缺失命令属"功能范围"而非"行为保真"问题，列此供你做范围取舍。别名缺失与 `/skills`/`/memory`/`/tools` 占位实现均已修：`/tools` 列 ToolRegistry 真实工具、`/skills` 扫描 skills/、`/memory` 读 memory/ 条目。
 
 ---
 
@@ -246,9 +247,9 @@ codecoder 实际实现（`commands.rs:98-160`）：`/help`(/h) `/exit` `/quit` `
 **再裁决（无 ADR 的偏离，定性为"保留/回补"）**
 4. ✅ 已修：Plan 审批扩到三选项（auto-accept / manual / keep-planning），auto 选项联动 session allowlist。剩 keep-planning 附反馈 / $EDITOR 改 plan 未做。
 5. ✅ 已修（按"和 Claude 一致"）：补齐 kill-ring（Ctrl+K/U/W 入环、Ctrl+Y yank），redo 迁到 Ctrl+Shift+Z。Ctrl+Z 保留为 undo（已说明无冲突）。
-6. ✅ 部分已修：slash 升级为子序列模糊匹配（ADR 0002 已注记）。剩 Tab 语义（循环 vs 填入）待裁决。
+6. ✅ 已修：slash 子序列模糊匹配（ADR 0002 已注记）+ Tab 改为"填入不执行"。
 7. ✅ 已修：词级光标移动（Ctrl/Alt+←→）、`\` 续行、Ctrl+A/E 行级语义。剩 Ctrl+K/U 多行行级语义（与 kill-ring 一并，见 #5）。
-8. ✅ 部分已修：补齐别名（reset/new/settings）。剩 `/skills` `/memory` `/tools` 占位实现（需接真实数据，非纯保真）。
+8. ✅ 已修：补齐别名（reset/new/settings）+ `/tools`/`/skills`/`/memory` 接真实数据（ToolRegistry / skills 扫描 / memory 读取）。
 
 **已知有意偏离（ADR 背书，仅需确认是否仍认可）**
 9. 🟢 Esc 永不退出 + 级联（ADR 0001）。

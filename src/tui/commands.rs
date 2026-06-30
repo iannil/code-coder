@@ -131,6 +131,9 @@ pub fn dispatch_slash_command(
         "/skills" => {
             handle_skills_cmd(app);
         }
+        "/grill-me" => {
+            handle_grill_me_cmd(app, trimmed, cmd_tx);
+        }
         "/memory" => {
             handle_memory_cmd(app);
         }
@@ -212,6 +215,103 @@ pub fn handle_memory_cmd(app: &mut TuiApp) {
             app.messages.push(MessageItem::System { text: format!("Failed to read memory: {e}") });
         }
     }
+}
+
+/// ─── /grill-me ────────────────────────────────────────────────────────────
+///
+/// 1:1 port of the user's `grill-me` + `grill-with-docs` skill pair. The
+/// dispatcher expands the user's `/grill-me <topic>` into the full grilling
+/// prompt and forwards it via `ProcessMessage`. The literal `/grill-me ...`
+/// the user typed is what's shown in the TUI and what gets persisted to the
+/// session; the expanded prompt is what the LLM actually sees this turn.
+/// ADR 0002 holds: the user-typed slash input never reaches the LLM.
+pub fn handle_grill_me_cmd(
+    app: &mut TuiApp,
+    input: &str,
+    cmd_tx: &std::sync::mpsc::Sender<AgentCommand>,
+) {
+    // Parse "<topic>" from "/grill-me <topic>". Everything after the first
+    // whitespace run is the topic — no quote handling, matching the
+    // original skill's free-form intent.
+    let topic = input
+        .strip_prefix("/grill-me")
+        .map(|s| s.trim())
+        .unwrap_or("");
+
+    if topic.is_empty() {
+        app.messages.push(MessageItem::System {
+            text: "Usage: /grill-me <plan or design to grill>\n\
+                   Run a relentless interview that walks every branch of the \
+                                   design tree, one question at a time."
+                .into(),
+        });
+        return;
+    }
+
+    // The visible user-facing message is exactly what the user typed. This
+    // is what the TUI shows and what /resume restores. The expanded prompt
+    // below is what the LLM sees for this turn only — agent.history is
+    // in-memory and rebuilt fresh each session, so there's no save/resume
+    // divergence.
+    app.messages.retain(|m| !matches!(m, MessageItem::System { text } if text.starts_with("[end]")));
+    app.messages.push(MessageItem::User {
+        text: input.trim().to_string(),
+    });
+    super::commands::auto_save_session(app);
+    app.auto_scroll = true;
+    app.scroll_offset = 0;
+
+    let prompt = build_grilling_prompt(topic);
+    if let Err(e) = cmd_tx.send(AgentCommand::ProcessMessage { text: prompt }) {
+        app.messages.push(MessageItem::System {
+            text: format!("[disconnect] Agent 通道已断开 — 线程可能已崩溃。stderr 可能有更多信息。错误: {e}"),
+        });
+        app.status.agent_busy = false;
+        return;
+    }
+    crate::log("[codecoder] TUI 发送 /grill-me prompt");
+
+    app.thinking_start_time = Some(std::time::Instant::now());
+    app.status.agent_busy = true;
+    app.current_round = 0;
+    app.status.current_tool = None;
+    app.status.streaming_complete = false;
+    app.messages.push(MessageItem::System {
+        text: "[send] Agent…".into(),
+    });
+}
+
+/// Compose the grilling prompt sent to the LLM. Mirrors the structure of the
+/// `grill-with-docs` skill: relentless one-question-at-a-time interview,
+/// recommended answer per question, codebase exploration over asking when
+/// answerable, CONTEXT.md and ADR updates as decisions crystallise.
+fn build_grilling_prompt(topic: &str) -> String {
+    format!(
+        r#"Interview me relentlessly about every aspect of this plan or design until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one by one. For each question, provide your recommended answer.
+
+The topic:
+
+{topic}
+
+## Rules
+
+- Ask the questions **one at a time**, waiting for feedback on each question before continuing.
+- For each question, propose your **recommended answer** alongside it.
+- If a question can be answered by exploring the codebase, **explore the codebase instead** of asking me. Use read_file / glob / grep freely.
+- Don't stop early. If you think we're done, ask one more question to be sure.
+
+## During the session
+
+- **Challenge the glossary.** When I use a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately. ("Your glossary defines X as A, but you seem to mean B — which is it?")
+- **Sharpen fuzzy language.** When I use vague or overloaded terms, propose a precise canonical term.
+- **Discuss concrete scenarios.** Stress-test domain relationships with specific scenarios that probe edge cases and force precise boundaries.
+- **Cross-reference with code.** When I state how something works, check whether the code agrees. Surface contradictions.
+- **Update CONTEXT.md inline** as terms are resolved. Use the format defined in CONTEXT.md. CONTEXT.md is a glossary and nothing else — no implementation details, no specs.
+- **Offer ADRs sparingly.** Only when all three are true: (1) hard to reverse, (2) surprising without context, (3) the result of a real trade-off. ADRs live in `docs/adr/` with sequential numbering `NNNN-slug.md`. Use the existing ADR format in this repo as the template.
+
+Begin by briefly stating what you understand the topic to be, then ask the first question."#,
+        topic = topic,
+    )
 }
 
 /// Handle `/session` — list saved sessions.
@@ -967,6 +1067,128 @@ mod adr0002_tests {
         // handle_session_cmd pushes a System msg ("Session store not available."
         // when no store is wired, which is the expected test fixture).
         assert!(!app.messages.is_empty());
+    }
+
+    // ── /grill-me ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn grill_me_with_topic_forwards_expanded_prompt_via_process_message() {
+        // The literal "/grill-me ..." must NOT reach the agent — ADR 0002.
+        // The expanded grilling prompt must. The TUI display shows what the
+        // user typed; the agent receives the expanded prompt.
+        let mut app = TuiApp::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/grill-me design the foo system", &tx);
+
+        // Display: user message is exactly what was typed.
+        let user_msgs: Vec<&str> = app.messages.iter()
+            .filter_map(|m| match m {
+                MessageItem::User { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            user_msgs.iter().any(|t| *t == "/grill-me design the foo system"),
+            "TUI should show the raw /grill-me input; got: {user_msgs:?}"
+        );
+
+        // Agent receives an EXPANDED prompt, not the literal slash input.
+        match rx.try_recv() {
+            Ok(AgentCommand::ProcessMessage { text }) => {
+                assert!(
+                    !text.starts_with("/grill-me"),
+                    "expanded prompt must not start with /grill-me: {text:?}"
+                );
+                assert!(
+                    text.contains("design the foo system"),
+                    "expanded prompt must embed the topic: {text:?}"
+                );
+                assert!(
+                    text.contains("Interview me relentlessly"),
+                    "expanded prompt must carry the grilling instruction: {text:?}"
+                );
+                assert!(
+                    text.contains("one at a time"),
+                    "expanded prompt must enforce one-question-at-a-time: {text:?}"
+                );
+            }
+            other => panic!("expected ProcessMessage with expanded prompt, got {other:?}"),
+        }
+
+        // Agent-busy signals mirror send_message so the spinner fires.
+        assert!(app.status.agent_busy, "agent_busy should be set");
+        assert!(app.thinking_start_time.is_some(), "thinking_start_time should be set");
+        assert!(
+            app.messages.iter().any(|m| matches!(
+                m,
+                MessageItem::System { text } if text.starts_with("[send]")
+            )),
+            "should push the [send] system marker"
+        );
+    }
+
+    #[test]
+    fn grill_me_without_topic_shows_usage_no_agent_forward() {
+        let mut app = TuiApp::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/grill-me", &tx);
+        // No agent forward — usage error path.
+        assert!(rx.try_recv().is_err(), "no agent command without a topic");
+        let last = app.messages.last().expect("a System message");
+        match last {
+            MessageItem::System { text } => {
+                assert!(text.contains("Usage"), "should be usage hint: {text}");
+                assert!(text.contains("/grill-me"), "should mention the command: {text}");
+            }
+            _ => panic!("expected System message, got {last:?}"),
+        }
+    }
+
+    #[test]
+    fn grill_me_appears_in_completion_list() {
+        // ADR 0002 §7: discoverability requires the command to be in the
+        // SlashCompletionState static list.
+        let app = TuiApp::default();
+        assert!(
+            app.slash_completion.commands.contains(&"/grill-me"),
+            "/grill-me must be in the completion list: {:?}",
+            app.slash_completion.commands
+        );
+        let idx = app.slash_completion.commands.iter()
+            .position(|c| *c == "/grill-me")
+            .expect("/grill-me in commands");
+        let desc = app.slash_completion.descriptions.get(idx)
+            .expect("description at same index");
+        assert!(!desc.is_empty(), "description must be non-empty");
+    }
+
+    #[test]
+    fn grill_me_completion_matches_on_g_or_gr_prefix() {
+        // Fuzzy / prefix completion should surface /grill-me for typical
+        // prefixes the user would type.
+        use crate::tui::input_area::refresh_slash_completion;
+        for prefix in ["/g", "/gr", "/gri", "/grill"] {
+            let mut app = TuiApp::default();
+            app.input = prefix.into();
+            refresh_slash_completion(&mut app);
+            let matched: Vec<&str> = app.slash_completion.filtered.iter()
+                .map(|&i| app.slash_completion.commands[i])
+                .collect();
+            assert!(
+                matched.contains(&"/grill-me"),
+                "prefix {prefix:?} should match /grill-me: {matched:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn grill_me_prompt_includes_doc_update_anchors() {
+        // The expanded prompt must mention CONTEXT.md and ADRs — these are
+        // the inline-update targets from grill-with-docs.
+        let prompt = super::build_grilling_prompt("anything");
+        assert!(prompt.contains("CONTEXT.md"), "prompt must mention CONTEXT.md");
+        assert!(prompt.contains("ADR"), "prompt must mention ADRs");
+        assert!(prompt.contains("docs/adr/"), "prompt must point at the ADR directory");
     }
 
     // ── send_message integration: no ProcessMessage leak for / inputs ─────

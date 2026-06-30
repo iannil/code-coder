@@ -54,6 +54,10 @@ _Avoid_: log, recents, message history.
 An input beginning with `/` that is intercepted by the local dispatcher in TUI mode and never forwarded to the LLM. See [[0002-slash-command-local-dispatch]]. Unknown commands produce a System error.
 _Avoid_: command (too generic — use "shell command" or "agent command" for other meanings), macro.
 
+**Prompt-Injecting Slash Command**:
+A slash command that constructs an expanded prompt and forwards it via `AgentCommand::ProcessMessage`. ADR 0002's typo-safety invariant is preserved because the dispatcher's own expansion (not user-typed) is what reaches the LLM. The visible TUI message shows the raw `/cmd args` the user typed; the LLM sees the expanded prompt for that turn only. `/grill-me` is the first instance. See [[0007-prompt-injecting-slash-commands]].
+_Avoid_: prompt command (ambiguous — could mean "command for prompts"), macro, template.
+
 **Agent Command**:
 A message sent from the TUI thread to the agent thread via the `cmd_tx` channel, typed as the `AgentCommand` enum (ProcessMessage, Shutdown, PermissionResponse, etc.). Distinct from slash commands (which are user-typed) and shell commands (which agent tools execute).
 _Avoid_: command (unqualified), request, message.
