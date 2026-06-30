@@ -100,10 +100,12 @@ impl Tool for PlanTool {
         match rx.recv_timeout(std::time::Duration::from_secs(600)) {
             Ok(decision) => {
                 let normalized = decision.to_lowercase();
-                if normalized == "y" || normalized == "yes" || normalized == "approved" {
-                    Ok("approved".into())
-                } else {
-                    Ok("rejected".into())
+                match normalized.as_str() {
+                    // Auto-accept: the TUI has pre-granted edit tools for this
+                    // session, so file edits proceed without prompting.
+                    "approved_auto" => Ok("approved (auto-accept edits enabled for this session)".into()),
+                    "y" | "yes" | "approved" => Ok("approved (edits require manual approval)".into()),
+                    _ => Ok("rejected".into()),
                 }
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
@@ -177,7 +179,7 @@ mod tests {
 
         let result = tool.execute(input);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "approved");
+        assert!(result.unwrap().starts_with("approved"), "manual approval should report approved");
 
         handle.join().unwrap();
     }

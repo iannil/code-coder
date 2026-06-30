@@ -565,7 +565,9 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                             text: format!("[plan] Plan: {}", title),
                         });
                         app.messages.push(MessageItem::Assistant { text: plan.clone() });
-                        app.dialog = Some(Dialog::PlanApproval { title, plan, request_id });
+                        // Default to "manually approve" (index 1) — the safe
+                        // choice; auto-accept pre-grants edit tools.
+                        app.dialog = Some(Dialog::PlanApproval { title, plan, selected: 1, request_id });
                     }
                     AgentResponse::PermissionRequest { tool_name, tool_input, request_id, risk } => {
                         app.dialog = Some(Dialog::ToolPermission {

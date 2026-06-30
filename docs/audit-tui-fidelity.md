@@ -149,13 +149,17 @@ ADR 0001 声明单一级联顺序：`reverse-search → search → slash-complet
 
 > 仍与原版有差：未实现 `SelectMulti` 多选（Space 切换）与多问题 Tab 切换——当前协议每次一个问题。若后续需要多选，再扩 `options` 为带选中态的结构。
 
-### 3.3 Plan 审批对话框
+### 3.3 Plan 审批对话框 — ✅ 已修（扩到三选项）
 
-| 维度 | 原版 → codecoder → ADR |
+**修复方案：** Plan 对话框改为 3 选项可导航列表，贴合原版。
+
+| 维度 | 原版 → codecoder（修复后） |
 |---|---|
-| 选项 | "Yes, auto-accept edits" / "Yes, manually approve" / "No, keep planning"(+clear-context/ultraplan 变体) → **仅 Y=approved / N=rejected**（二元字符串）→ 🔴 无 ADR |
-| auto-accept vs 手动 | 区分（影响后续是否逐个批准编辑）→ **丢失**，无此区分 → 🔴 无 ADR，语义缺口 |
-| keep-planning + 反馈 | "No, keep planning" 是输入型选项，可附反馈，Shift+Tab 直接 auto-accept；Ctrl+G 进 `$EDITOR` 改 plan → **全缺** → 🔴 无 ADR |
+| 选项 | auto-accept / manual / keep-planning → ✅ 三选项：`A`=auto-accept、`Y`=manual、`N`/`Esc`=keep planning；↑↓ 导航 + Enter 确认 |
+| auto-accept vs 手动 | 区分 → ✅ 区分：选 auto 时 agent 把 `write_file`/`edit_file` 加入 session allowlist（ADR 0005），本会话编辑不再逐个弹窗；manual 仍逐个弹 |
+| decision 协议 | — | `PlanDecision` 现传 `approved_auto` / `approved` / `rejected`；plan 工具据此回报 LLM |
+
+> 仍与原版有差：未做 keep-planning 的"附反馈文本"、Ctrl+G 进 `$EDITOR` 改 plan、ultraplan/clear-context 变体。如需要可后续再扩（keep-planning 反馈可复用 AskQuestion 的自由文本路径）。
 
 ### 3.4 Confirm 对话框
 
@@ -241,7 +245,7 @@ codecoder 实际实现（`commands.rs:98-160`）：`/help`(/h) `/exit` `/quit` `
 3. 🔴 H3：AskQuestion 丢弃选项 —— 决定是否扩展 `AgentResponse::AskUser` 携带 options；否则移除对自由问答无意义的 Y/N/A。
 
 **再裁决（无 ADR 的偏离，定性为"保留/回补"）**
-4. Plan 审批二元化（丢 auto-accept-edits / keep-planning+反馈）。
+4. ✅ 已修：Plan 审批扩到三选项（auto-accept / manual / keep-planning），auto 选项联动 session allowlist。剩 keep-planning 附反馈 / $EDITOR 改 plan 未做。
 5. ✅ 已修（按"和 Claude 一致"）：补齐 kill-ring（Ctrl+K/U/W 入环、Ctrl+Y yank），redo 迁到 Ctrl+Shift+Z。Ctrl+Z 保留为 undo（已说明无冲突）。
 6. ✅ 部分已修：slash 升级为子序列模糊匹配（ADR 0002 已注记）。剩 Tab 语义（循环 vs 填入）待裁决。
 7. ✅ 已修：词级光标移动（Ctrl/Alt+←→）、`\` 续行、Ctrl+A/E 行级语义。剩 Ctrl+K/U 多行行级语义（与 kill-ring 一并，见 #5）。

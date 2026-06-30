@@ -49,3 +49,5 @@ Aligned the editor keys with the original Claude Code editor:
 - `Ctrl+Y` is **yank** (paste the kill-ring at the cursor) — it was previously bound to redo.
 - Redo moved to `Ctrl+Shift+Z`; `Ctrl+Z` remains undo. `Ctrl+Z` does not suspend the process because raw mode disables `ISIG`; Claude's own editor leaves `Ctrl+Z` unbound, so this is additive rather than conflicting.
 - `Ctrl+A/E` and `Home/End` are line-edge (current line) for multi-line input; `Ctrl/Alt+Left/Right` move by word; a trailing `\` before the cursor + `Enter` inserts a newline (line continuation).
+
+The Plan approval dialog is a 3-option navigable list (↑↓ + Enter, or shortcuts `A`=auto-accept edits, `Y`=manually approve, `N`/`Esc`=keep planning). Choosing auto-accept adds `write_file`/`edit_file` to the session allowlist ([[0005-permission-scope-and-session-allowlist]]) so edits proceed without prompting for the rest of the session. The AskQuestion dialog is likewise a list (options + free-text custom answer) rather than a Y/N prompt.

@@ -42,7 +42,13 @@ pub fn render_overlays(frame: &mut Frame, area: Rect, input_area: Rect, app: &mu
         return;
     }
 
-    // 4b. Permission / plan dialog
+    // 4b. Plan approval has its own 3-option layout.
+    if let Some(Dialog::PlanApproval { title, plan, selected, .. }) = &app.dialog {
+        render_plan_approval_dialog(frame, area, title, plan, *selected, &theme);
+        return;
+    }
+
+    // 4c. Permission dialog
     if let Some(ref dialog) = app.dialog {
         render_dialog(frame, area, dialog, &theme);
         return;
@@ -241,9 +247,9 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
 
     let (tool_name, tool_input_txt, risk) = match dialog {
         Dialog::ToolPermission { tool_name, tool_input, risk, .. } => (tool_name.as_str(), tool_input.as_str(), risk.as_str()),
-        Dialog::PlanApproval { title: _, plan, .. } => ("plan", plan.as_str(), "plan approval"),
-        // AskQuestion and Confirm are rendered by their own functions before
-        // render_dialog is ever called (see render_overlays).
+        // PlanApproval, AskQuestion and Confirm are rendered by their own
+        // functions before render_dialog is ever called (see render_overlays).
+        Dialog::PlanApproval { .. } => unreachable!("PlanApproval renders via render_plan_approval_dialog"),
         Dialog::AskQuestion { .. } => unreachable!("AskQuestion renders via render_ask_question_dialog"),
         Dialog::Confirm { .. } => unreachable!("Confirm renders via render_confirm_dialog"),
     };
@@ -290,12 +296,7 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
                 Style::default().fg(theme.accent_text),
             ));
         }
-        Dialog::PlanApproval { .. } => {
-            content.push(Line::styled(
-                " Y=approve  N=reject  Esc=cancel ",
-                Style::default().fg(theme.accent_text),
-            ));
-        }
+        Dialog::PlanApproval { .. } => unreachable!("PlanApproval renders via render_plan_approval_dialog"),
         // Confirm is rendered by render_confirm_dialog (early return above).
         Dialog::Confirm { .. } => unreachable!("Confirm renders via render_confirm_dialog"),
     }
@@ -439,6 +440,68 @@ fn render_ask_question_dialog(
     frame.render_widget(widget, dialog_area);
 }
 
+/// ─── Plan Approval Dialog ───────────────────────────────────────────────────
+///
+/// Three options matching the original: auto-accept edits / manually approve /
+/// keep planning. Navigable with ↑↓ + Enter, or the letter shortcuts A/Y/N.
+pub(crate) const PLAN_OPTIONS: [&str; 3] = [
+    "Yes, and auto-accept edits",
+    "Yes, manually approve edits",
+    "No, keep planning",
+];
+
+fn render_plan_approval_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    title: &str,
+    plan: &str,
+    selected: usize,
+    theme: &crate::tui::Theme,
+) {
+    let dialog_width = area.width.min(72).max(44);
+    let plan_lines = plan.lines().count().min(6).max(1) as u16;
+    let dialog_height = (plan_lines + 9).min(area.height.saturating_sub(2)).max(11);
+    let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
+    let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
+    let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+    let mut content = vec![
+        Line::styled(" [~] Ready to code? ", Style::default().fg(theme.accent_text).add_modifier(Modifier::BOLD)),
+        Line::styled(format!(" Plan: {}", title), Style::default().fg(theme.primary_text).add_modifier(Modifier::BOLD)),
+        Line::from(""),
+    ];
+    for line in plan.lines().take(6) {
+        content.push(Line::styled(format!("  {}", line), Style::default().fg(theme.secondary_text)));
+    }
+    content.push(Line::from(""));
+    for (i, opt) in PLAN_OPTIONS.iter().enumerate() {
+        if i == selected {
+            content.push(Line::styled(
+                format!(" ▸ {}", opt),
+                Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
+            ));
+        } else {
+            content.push(Line::styled(
+                format!("   {}", opt),
+                Style::default().fg(theme.primary_text),
+            ));
+        }
+    }
+    content.push(Line::from(""));
+    content.push(Line::styled(
+        " ↑↓ select · Enter confirm · A=auto Y=manual N=keep planning · Esc=keep planning ",
+        Style::default().fg(theme.accent_text),
+    ));
+
+    frame.render_widget(ratatui::widgets::Clear, dialog_area);
+    let widget = Paragraph::new(content)
+        .block(Block::bordered()
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(theme.accent_text)))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(widget, dialog_area);
+}
+
 /// ─── File Completion Popup ──────────────────────────────────────────────────
 
 fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: &TuiApp) {
@@ -494,6 +557,10 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
     if matches!(app.dialog, Some(Dialog::AskQuestion { .. })) {
         return handle_ask_question_key(app, key, cmd_tx);
     }
+    // Plan approval is a 3-option list, not a Y/N dialog.
+    if matches!(app.dialog, Some(Dialog::PlanApproval { .. })) {
+        return handle_plan_approval_key(app, key, cmd_tx);
+    }
 
     // Distinguish lowercase 'a' (Shift unset) from uppercase 'A' (Shift held).
     // crossterm reports Shift+via both KeyCode::Char('A') and modifiers, so
@@ -512,9 +579,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                             scope: PermScope::Once,
                         });
                     }
-                    Dialog::PlanApproval { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
-                    }
+                    Dialog::PlanApproval { .. } => unreachable!("PlanApproval routed to handle_plan_approval_key"),
                     Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: Y confirms the destructive action.
                     Dialog::Confirm { action, .. } => {
@@ -551,9 +616,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                             text: format!("✓ {} auto-allowed for {}", tool_name, scope_label),
                         });
                     }
-                    Dialog::PlanApproval { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
-                    }
+                    Dialog::PlanApproval { .. } => unreachable!("PlanApproval routed to handle_plan_approval_key"),
                     Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: 'A' on a Confirm dialog is a no-op — user
                     // must use Y or N. Put the dialog back so it stays open.
@@ -574,9 +637,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                             scope: PermScope::Once,
                         });
                     }
-                    Dialog::PlanApproval { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
-                    }
+                    Dialog::PlanApproval { .. } => unreachable!("PlanApproval routed to handle_plan_approval_key"),
                     Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: N cancels the confirm — no action, no message.
                     Dialog::Confirm { .. } => {}
@@ -594,9 +655,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                             scope: PermScope::Once,
                         });
                     }
-                    Dialog::PlanApproval { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
-                    }
+                    Dialog::PlanApproval { .. } => unreachable!("PlanApproval routed to handle_plan_approval_key"),
                     Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: Esc cancels the confirm — same as N.
                     Dialog::Confirm { .. } => {}
@@ -707,6 +766,64 @@ pub fn handle_ask_question_key(app: &mut TuiApp, key: crossterm::event::KeyEvent
                 app.cursor_pos = new_pos;
             }
         }
+        _ => {}
+    }
+}
+
+/// Handle keys for the 3-option Plan approval dialog. ↑↓ move the highlighted
+/// option; Enter submits it; A/Y/N are shortcuts (auto / manual / keep
+/// planning); Esc keeps planning (reject). The decision string sent to the
+/// agent is one of `approved_auto`, `approved`, `rejected`.
+pub fn handle_plan_approval_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<crate::agent::AgentCommand>) {
+    use crossterm::event::KeyCode;
+    use crate::agent::AgentCommand;
+
+    let request_id = match &app.dialog {
+        Some(Dialog::PlanApproval { request_id, .. }) => *request_id,
+        _ => return,
+    };
+
+    // index → decision string
+    let decision_for = |idx: usize| match idx {
+        0 => "approved_auto",
+        1 => "approved",
+        _ => "rejected",
+    };
+    let submit = |app: &mut TuiApp, idx: usize| {
+        let decision = decision_for(idx);
+        app.dialog = None;
+        let note = match decision {
+            "approved_auto" => "▶ Plan approved — auto-accepting edits this session.",
+            "approved" => "▶ Plan approved — edits will prompt for approval.",
+            _ => "✗ Plan rejected — staying in planning.",
+        };
+        app.messages.push(super::MessageItem::System { text: note.into() });
+        let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: decision.into() });
+    };
+
+    match key.code {
+        KeyCode::Up => {
+            if let Some(Dialog::PlanApproval { selected, .. }) = app.dialog.as_mut() {
+                *selected = selected.saturating_sub(1);
+            }
+        }
+        KeyCode::Down => {
+            if let Some(Dialog::PlanApproval { selected, .. }) = app.dialog.as_mut() {
+                *selected = (*selected + 1).min(PLAN_OPTIONS.len() - 1);
+            }
+        }
+        KeyCode::Enter => {
+            let idx = match &app.dialog {
+                Some(Dialog::PlanApproval { selected, .. }) => *selected,
+                _ => return,
+            };
+            submit(app, idx);
+        }
+        // Letter shortcuts (case-insensitive): A=auto, Y=manual, N=keep planning.
+        KeyCode::Char('a') | KeyCode::Char('A') => submit(app, 0),
+        KeyCode::Char('y') | KeyCode::Char('Y') => submit(app, 1),
+        KeyCode::Char('n') | KeyCode::Char('N') => submit(app, 2),
+        KeyCode::Esc => submit(app, 2),
         _ => {}
     }
 }
@@ -1071,6 +1188,79 @@ mod tests {
         assert!(cell_text.contains("Pick one"), "missing question: {cell_text:.120}");
         assert!(cell_text.contains("Apple"), "missing option Apple");
         assert!(cell_text.contains("Banana"), "missing option Banana");
+    }
+
+    // ── Plan approval: 3 options ──────────────────────────────────────────
+
+    fn plan_dialog() -> Dialog {
+        Dialog::PlanApproval { title: "Refactor".into(), plan: "1. do x".into(), selected: 1, request_id: 5 }
+    }
+
+    fn decision_of(rx: &std::sync::mpsc::Receiver<AgentCommand>) -> String {
+        match rx.try_recv().unwrap() {
+            AgentCommand::PlanDecision { decision, .. } => decision,
+            other => panic!("expected PlanDecision, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plan_up_down_navigate_three_options() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(plan_dialog()); // selected = 1
+        let (tx, _) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE), &tx);
+        match &app.dialog { Some(Dialog::PlanApproval { selected, .. }) => assert_eq!(*selected, 0), _ => panic!() }
+        // clamp at top
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE), &tx);
+        match &app.dialog { Some(Dialog::PlanApproval { selected, .. }) => assert_eq!(*selected, 0), _ => panic!() }
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        match &app.dialog { Some(Dialog::PlanApproval { selected, .. }) => assert_eq!(*selected, 2, "clamp at last"), _ => panic!() }
+    }
+
+    #[test]
+    fn plan_enter_submits_selected_decision() {
+        // selected starts at 1 (manual approve) → "approved".
+        let mut app = TuiApp::default();
+        app.dialog = Some(plan_dialog());
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE), &tx);
+        assert!(app.dialog.is_none());
+        assert_eq!(decision_of(&rx), "approved");
+    }
+
+    #[test]
+    fn plan_letter_shortcuts_map_to_decisions() {
+        for (k, expected) in [('a', "approved_auto"), ('y', "approved"), ('n', "rejected")] {
+            let mut app = TuiApp::default();
+            app.dialog = Some(plan_dialog());
+            let (tx, rx) = std::sync::mpsc::channel();
+            handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char(k), crossterm::event::KeyModifiers::NONE), &tx);
+            assert_eq!(decision_of(&rx), expected, "key {k}");
+        }
+    }
+
+    #[test]
+    fn plan_esc_keeps_planning() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(plan_dialog());
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE), &tx);
+        assert_eq!(decision_of(&rx), "rejected");
+    }
+
+    #[test]
+    fn plan_render_shows_three_options() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(plan_dialog());
+        app.status = crate::tui::StatusData::default();
+        let backend = TestBackend::new(80, 24);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| { render_overlays(f, f.area(), Rect::new(0, 14, 80, 3), &mut app); }).unwrap();
+        let text: String = terminal.backend().buffer().content.iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("auto-accept edits"), "missing auto option: {text:.160}");
+        assert!(text.contains("manually approve"), "missing manual option");
+        assert!(text.contains("keep planning"), "missing keep-planning option");
     }
 
     // ── Model picker ──────────────────────────────────────────────────────

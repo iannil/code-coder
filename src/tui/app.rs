@@ -133,6 +133,9 @@ pub enum Dialog {
     PlanApproval {
         title: String,
         plan: String,
+        /// Highlighted option: 0 = auto-accept edits, 1 = manual approve,
+        /// 2 = keep planning (reject).
+        selected: usize,
         request_id: u64,
     },
     AskQuestion {

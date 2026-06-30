@@ -581,6 +581,17 @@ impl BackgroundAgent {
                                 });
                             }
                             Ok(AgentCommand::PlanDecision { request_id, decision }) => {
+                                // "Auto-accept edits": pre-grant the file-editing
+                                // tools to the session allowlist so they don't
+                                // prompt for the rest of this session (mirrors the
+                                // original's auto-accept-edits plan option).
+                                if decision == "approved_auto" {
+                                    if let Ok(mut set) = session_allowed.lock() {
+                                        set.insert("write_file".to_string());
+                                        set.insert("edit_file".to_string());
+                                    }
+                                    crate::log("[plan] auto-accept: write_file/edit_file added to session allowlist");
+                                }
                                 tokio::task::block_in_place(|| {
                                     crate::tools::PlanTool::deliver_decision(request_id, decision);
                                 });
