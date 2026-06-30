@@ -50,7 +50,7 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 | 普通提交 | 提交 → 提交 → ✅ 一致 |
 | 换行 | `Shift`/`Meta` 或**行尾反斜杠 `\`** → 插入 `\n` | `Shift+Enter` → 插入 `\n` |
 | **Alt/Meta+Enter** | 原版 = **插入换行** → codecoder = **强制提交** → 🟢 ADR 0001（但**语义反转**：原版 Meta+Enter 是换行，codecoder Alt+Enter 是提交，肌肉记忆冲突） |
-| **行尾 `\` 续行** | 支持（删反斜杠并插 `\n`）→ **不支持** → 🔴 无 ADR，疑似遗漏 |
+| **行尾 `\` 续行** | 支持（删反斜杠并插 `\n`）→ ✅ **已修**：光标前为 `\` 时 Enter 转为换行而非提交 |
 | autocomplete 打开时 | 接受并执行建议 → 见 4.1 |
 
 ### 1.3 Tab 语义
@@ -74,12 +74,12 @@ codecoder 锚点：`src/tui/{mod,input_area,dialogs,completion,commands,app}.rs`
 
 | 键 | 原版 → codecoder → ADR |
 |---|---|
-| Ctrl+A/E | 行首/行尾（当前行）→ 输入**整体**首/尾（多行不分行）→ 🔴 无 ADR（ADR 0001 说"line-edge"，多行下不符，见 H1 同源） |
-| Ctrl+K/U | 删到**当前行**首/尾 + 进 kill-ring → 删到**整个输入**首/尾，无 kill-ring → 🔴 无 ADR |
+| Ctrl+A/E | 行首/行尾（当前行）→ ✅ **已修**：改为当前行首/尾（与 Home/End、ADR 0001 一致）|
+| Ctrl+K/U | 删到**当前行**首/尾 + 进 kill-ring → 删到**整个输入**首/尾，无 kill-ring → 🔴 无 ADR（与下方 kill-ring 一并裁决）|
 | Ctrl+W | 删前一词 + kill-ring → 删前一词，无 kill-ring → 🔴 无 ADR（功能在，kill-ring 缺失） |
-| **Ctrl+Y** | **yank（粘贴 kill-ring）** → **redo（重做）** → 🔴 无 ADR，键义冲突 |
-| **Ctrl+Z** | 原版 = 保留给终端挂起（SIGTSTP，reservedShortcuts 警告）→ codecoder = undo → 🔴 无 ADR，占用了保留键 |
-| 词级光标 Alt+B/F、Ctrl+←/→ | 有 → **全缺** → 🔴 无 ADR，缺失 |
+| **Ctrl+Y** | **yank（粘贴 kill-ring）** → **redo（重做）** → 🔴 无 ADR，键义冲突（待裁决）|
+| **Ctrl+Z** | 原版 = 保留给终端挂起（SIGTSTP，reservedShortcuts 警告）→ codecoder = undo → 🔴 无 ADR，占用了保留键（待裁决）|
+| 词级光标 Alt+B/F、Ctrl+←/→ | 有 → ✅ **已修**：Ctrl/Alt+←→ 词级移动（Ctrl+↑↓ 仍归历史）|
 
 ### 1.6 全局快捷键冲突
 
@@ -244,7 +244,7 @@ codecoder 实际实现（`commands.rs:98-160`）：`/help`(/h) `/exit` `/quit` `
 4. Plan 审批二元化（丢 auto-accept-edits / keep-planning+反馈）。
 5. kill-ring 体系缺失 + Ctrl+Y 键义冲突（redo vs yank）+ Ctrl+Z 占用保留键。
 6. slash 模糊匹配 vs 前缀匹配；Tab 语义（循环 vs 填入）。
-7. 词级光标移动、`\` 续行、行级 Ctrl+A/E/K/U 多行语义。
+7. ✅ 已修：词级光标移动（Ctrl/Alt+←→）、`\` 续行、Ctrl+A/E 行级语义。剩 Ctrl+K/U 多行行级语义（与 kill-ring 一并，见 #5）。
 8. `/skills` `/memory` `/tools` 占位实现；常用命令别名缺失。
 
 **已知有意偏离（ADR 背书，仅需确认是否仍认可）**

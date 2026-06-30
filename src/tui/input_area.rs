@@ -99,11 +99,13 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
 
     match key.code {
         // ── Ctrl combos for editing ──────────────────────────────────────
+        // ADR 0001: Ctrl+A/E are line-edge (readline), matching Home/End —
+        // current line, not whole buffer (matters for multi-line input).
         KeyCode::Char('a') if key.modifiers == KeyModifiers::CONTROL => {
-            app.cursor_pos = 0;
+            app.cursor_pos = line_start(&app.input, app.cursor_pos);
         }
         KeyCode::Char('e') if key.modifiers == KeyModifiers::CONTROL => {
-            app.cursor_pos = app.input.len();
+            app.cursor_pos = line_end(&app.input, app.cursor_pos);
         }
         KeyCode::Char('w') if key.modifiers == KeyModifiers::CONTROL => {
             if app.cursor_pos > 0 {
@@ -188,11 +190,36 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                 return; // ADR 0001: no-op. No more fold/accept/scroll magic.
             }
             if key.modifiers == KeyModifiers::SHIFT {
-                app.input.push('\n');
-                app.cursor_pos = app.input.len();
+                app.input.insert(app.cursor_pos, '\n');
+                app.cursor_pos += 1;
+            } else if app.input[..app.cursor_pos].ends_with('\\') {
+                // Trailing-backslash line continuation: turn the `\` directly
+                // before the cursor into a newline instead of submitting
+                // (mirrors the original's multi-line continuation).
+                let bs = app.cursor_pos - 1;
+                save_undo_snapshot(app);
+                app.input.remove(bs);
+                app.input.insert(bs, '\n');
+                app.cursor_pos = bs + 1;
             } else {
                 send_message(app, cmd_tx);
             }
+        }
+
+        // ── Word-wise cursor (Ctrl/Alt + Left/Right) ────────────────────
+        // Ctrl+Up/Down own history, but Ctrl/Alt+Left/Right are free — bind
+        // them to prev/next word, matching the original's readline word nav.
+        KeyCode::Left
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                || key.modifiers.contains(KeyModifiers::ALT) =>
+        {
+            app.cursor_pos = prev_word(&app.input, app.cursor_pos);
+        }
+        KeyCode::Right
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                || key.modifiers.contains(KeyModifiers::ALT) =>
+        {
+            app.cursor_pos = next_word(&app.input, app.cursor_pos);
         }
 
         // ── Cursor navigation (multi-line aware per ADR 0001) ───────────
@@ -264,15 +291,10 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         // ADR 0001: Home/End move to the edge of the CURRENT line (readline
         // convention), not the whole buffer — matters for multi-line input.
         KeyCode::Home => {
-            let before = &app.input[..app.cursor_pos];
-            app.cursor_pos = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
+            app.cursor_pos = line_start(&app.input, app.cursor_pos);
         }
         KeyCode::End => {
-            let after = &app.input[app.cursor_pos..];
-            app.cursor_pos = match after.find('\n') {
-                Some(i) => app.cursor_pos + i,
-                None => app.input.len(),
-            };
+            app.cursor_pos = line_end(&app.input, app.cursor_pos);
         }
 
         // ── Character input ──────────────────────────────────────────────
@@ -549,6 +571,41 @@ pub(crate) fn try_move_cursor_vertical(app: &mut TuiApp, delta: i32) -> bool {
     }
     app.cursor_pos = new_cursor;
     true
+}
+
+/// Byte offset of the start of the line containing `pos` (after the previous
+/// '\n', or 0). Used by Home and Ctrl+A.
+pub(crate) fn line_start(input: &str, pos: usize) -> usize {
+    input[..pos.min(input.len())].rfind('\n').map(|i| i + 1).unwrap_or(0)
+}
+
+/// Byte offset of the end of the line containing `pos` (just before the next
+/// '\n', or input length). Used by End and Ctrl+E.
+pub(crate) fn line_end(input: &str, pos: usize) -> usize {
+    let pos = pos.min(input.len());
+    match input[pos..].find('\n') {
+        Some(i) => pos + i,
+        None => input.len(),
+    }
+}
+
+/// Byte offset one word to the left of `pos`: skip trailing whitespace, then
+/// the word characters before it. Boundary-safe (slices land on char edges
+/// because whitespace/non-whitespace splits never bisect a char).
+pub(crate) fn prev_word(input: &str, pos: usize) -> usize {
+    let before = &input[..pos.min(input.len())];
+    let no_ws = before.trim_end_matches(|c: char| c.is_whitespace());
+    no_ws.trim_end_matches(|c: char| !c.is_whitespace()).len()
+}
+
+/// Byte offset one word to the right of `pos`: skip leading whitespace, then
+/// the word characters after it (lands at the end of the next word).
+pub(crate) fn next_word(input: &str, pos: usize) -> usize {
+    let pos = pos.min(input.len());
+    let after = &input[pos..];
+    let after_ws = after.trim_start_matches(|c: char| c.is_whitespace());
+    let after_word = after_ws.trim_start_matches(|c: char| !c.is_whitespace());
+    input.len() - after_word.len()
 }
 
 pub fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
@@ -901,6 +958,65 @@ mod tests {
         // i.e. just before the second '\n'
         assert!(app.cursor_pos < app.input.len(), "cursor must move up");
         assert_eq!(&app.input[app.cursor_pos..app.cursor_pos+1], "\n", "cursor should sit at row boundary");
+    }
+
+    // ── Cursor helpers ────────────────────────────────────────────────────
+
+    #[test]
+    fn line_start_end_on_multiline() {
+        let s = "ab\ncde\nf";
+        // cursor inside "cde" (pos 5)
+        assert_eq!(line_start(s, 5), 3, "line_start → after first '\\n'");
+        assert_eq!(line_end(s, 5), 6, "line_end → before second '\\n'");
+        // first line
+        assert_eq!(line_start(s, 1), 0);
+        assert_eq!(line_end(s, 1), 2);
+        // last line (no trailing '\n')
+        assert_eq!(line_end(s, 7), 8);
+    }
+
+    #[test]
+    fn prev_next_word_basic() {
+        let s = "foo bar baz";
+        assert_eq!(prev_word(s, 11), 8, "prev_word from end → start of 'baz'");
+        assert_eq!(prev_word(s, 8), 4, "prev_word skips the space → start of 'bar'");
+        assert_eq!(next_word(s, 0), 3, "next_word from start → end of 'foo'");
+        assert_eq!(next_word(s, 3), 7, "next_word skips space → end of 'bar'");
+    }
+
+    #[test]
+    fn ctrl_left_right_move_by_word() {
+        let mut app = TuiApp::default();
+        app.input = "foo bar baz".into();
+        app.cursor_pos = 11;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Left, crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.cursor_pos, 8, "Ctrl+Left → start of 'baz'");
+        press(&mut app, crossterm::event::KeyCode::Right, crossterm::event::KeyModifiers::ALT, &tx);
+        assert_eq!(app.cursor_pos, 11, "Alt+Right → end of 'baz'");
+    }
+
+    #[test]
+    fn ctrl_a_e_are_line_edge_in_multiline() {
+        let mut app = TuiApp::default();
+        app.input = "ab\ncde\nf".into();
+        app.cursor_pos = 5; // inside "cde"
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Char('a'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.cursor_pos, 3, "Ctrl+A → current line start, not buffer start");
+        press(&mut app, crossterm::event::KeyCode::Char('e'), crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.cursor_pos, 6, "Ctrl+E → current line end, not buffer end");
+    }
+
+    #[test]
+    fn trailing_backslash_enter_continues_line() {
+        let mut app = TuiApp::default();
+        app.input = "line one\\".into();
+        app.cursor_pos = app.input.len();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "line one\n", "trailing '\\' + Enter → newline, not submit");
+        assert!(!app.messages.iter().any(|m| matches!(m, MessageItem::User { .. })), "must not submit");
     }
 
     // ── H1 — Home/End are line-edge cursor keys (not list scroll) ─────────
