@@ -136,6 +136,11 @@ pub struct SlashCompletionState {
     pub selected: usize,
     pub commands: Vec<&'static str>,
     pub descriptions: Vec<&'static str>,
+    /// ADR 0002 §7: indices into `commands`/`descriptions` matching the
+    /// current input prefix. When non-empty, popup + navigation show only
+    /// these. When input has a space (args started), filtered resets to
+    /// all indices and the popup stays open as a hint until submission.
+    pub filtered: Vec<usize>,
 }
 
 impl Default for SlashCompletionState {
@@ -155,6 +160,7 @@ impl Default for SlashCompletionState {
                 "Manage MCP servers (list, start, stop)", "List available tools",
                 "List loaded skills", "List memory entries",
             ],
+            filtered: Vec::new(),
         }
     }
 }

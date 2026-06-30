@@ -402,6 +402,8 @@ fn process_event(app: &mut TuiApp, ev: Event, cmd_tx: &std::sync::mpsc::Sender<A
             input_area::save_undo_snapshot(app);
             app.input.insert_str(app.cursor_pos, &text);
             app.cursor_pos += text.len();
+            // ADR 0002 §7: pasting "/foo" should also activate the popup.
+            input_area::refresh_slash_completion(app);
         }
         _ => {}
     }

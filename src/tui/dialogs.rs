@@ -49,29 +49,35 @@ pub fn render_overlays(frame: &mut Frame, area: Rect, input_area: Rect, app: &mu
 /// ─── Slash Completion Popup ─────────────────────────────────────────────────
 
 fn render_slash_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: &TuiApp) {
+    // ADR 0002 §7: render only filtered commands. When filtered is empty
+    // (shouldn't happen — refresh_slash_completion keeps it in sync), fall
+    // back to showing all.
+    let indices: Vec<usize> = if app.slash_completion.filtered.is_empty() {
+        (0..app.slash_completion.commands.len()).collect()
+    } else {
+        app.slash_completion.filtered.clone()
+    };
     let popup_width = area.width.min(50).max(30);
-    let popup_height = (app.slash_completion.commands.len() as u16 + 2).min(14);
+    let popup_height = (indices.len() as u16 + 2).min(14);
     let popup_x = area.x + area.width.saturating_sub(popup_width) / 2;
     let popup_y = input_area.y.saturating_sub(popup_height + 1);
     let popup_area = Rect::new(popup_x, popup_y, popup_width, popup_height);
 
-    let items: Vec<Line> = app.slash_completion.commands.iter()
-        .zip(app.slash_completion.descriptions.iter())
-        .enumerate()
-        .map(|(i, (cmd, desc))| {
-            if i == app.slash_completion.selected {
-                Line::styled(
-                    format!(" ▸ {:<12} {}", cmd, desc),
-                    Style::default().fg(Color::Black).bg(Color::White),
-                )
-            } else {
-                Line::styled(
-                    format!("   {:<12} {}", cmd, desc),
-                    Style::default().fg(Color::White),
-                )
-            }
-        })
-        .collect();
+    let items: Vec<Line> = indices.iter().enumerate().map(|(pos, &i)| {
+        let cmd = app.slash_completion.commands.get(i).copied().unwrap_or("");
+        let desc = app.slash_completion.descriptions.get(i).copied().unwrap_or("");
+        if pos == app.slash_completion.selected {
+            Line::styled(
+                format!(" ▸ {:<12} {}", cmd, desc),
+                Style::default().fg(Color::Black).bg(Color::White),
+            )
+        } else {
+            Line::styled(
+                format!("   {:<12} {}", cmd, desc),
+                Style::default().fg(Color::White),
+            )
+        }
+    }).collect();
 
     frame.render_widget(ratatui::widgets::Clear, popup_area);
     let popup_block = Paragraph::new(items)
@@ -444,6 +450,16 @@ pub fn handle_model_picker_key(app: &mut TuiApp, key: crossterm::event::KeyEvent
 pub fn handle_slash_completion_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<crate::agent::AgentCommand>) {
     use crossterm::event::KeyCode;
 
+    // ADR 0002 §7: navigation over the *filtered* list. Fall back to all
+    // commands when filtered is empty (defensive — refresh should keep it
+    // in sync, but a stale state shouldn't panic).
+    let filtered: Vec<usize> = if app.slash_completion.filtered.is_empty() {
+        (0..app.slash_completion.commands.len()).collect()
+    } else {
+        app.slash_completion.filtered.clone()
+    };
+    let max_pos = filtered.len().saturating_sub(1);
+
     match key.code {
         KeyCode::Up => {
             if app.slash_completion.selected > 0 {
@@ -451,22 +467,25 @@ pub fn handle_slash_completion_key(app: &mut TuiApp, key: crossterm::event::KeyE
             }
         }
         KeyCode::Down => {
-            let max_idx = app.slash_completion.commands.len().saturating_sub(1);
-            if app.slash_completion.selected < max_idx {
+            if app.slash_completion.selected < max_pos {
                 app.slash_completion.selected += 1;
             }
         }
         KeyCode::Enter => {
-            if let Some(cmd) = app.slash_completion.commands.get(app.slash_completion.selected) {
-                app.input = cmd.to_string();
-                app.cursor_pos = app.input.len();
-                crate::tui::input_area::send_message(app, cmd_tx);
+            // Resolve selected → actual command index → command string.
+            if let Some(&cmd_idx) = filtered.get(app.slash_completion.selected) {
+                if let Some(cmd) = app.slash_completion.commands.get(cmd_idx).copied() {
+                    app.input = cmd.to_string();
+                    app.cursor_pos = app.input.len();
+                    crate::tui::input_area::send_message(app, cmd_tx);
+                }
             }
             app.slash_completion.active = false;
         }
         KeyCode::Tab => {
-            app.slash_completion.selected = (app.slash_completion.selected + 1)
-                % app.slash_completion.commands.len();
+            if !filtered.is_empty() {
+                app.slash_completion.selected = (app.slash_completion.selected + 1) % filtered.len();
+            }
         }
         KeyCode::Esc => {
             app.slash_completion.active = false;

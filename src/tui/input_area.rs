@@ -269,17 +269,11 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
             app.input.insert(app.cursor_pos, c);
             app.cursor_pos += c.len_utf8();
 
-            // Cancel slash completion if typing non-slash characters
-            if app.slash_completion.active && !app.input.starts_with('/') {
-                app.slash_completion.active = false;
-            }
-            // Detect / at start → slash command menu
-            if c == '/' && app.cursor_pos == 1 {
-                app.slash_completion.active = true;
-                app.slash_completion.selected = 0;
-            } else if app.slash_completion.active {
-                app.slash_completion.selected = 0;
-            }
+            // ADR 0002 §7: slash completion is input-driven. Refresh on
+            // every keystroke — activates when input starts with '/' and
+            // has no whitespace, filters by prefix, deactivates otherwise.
+            refresh_slash_completion(app);
+
             // Detect @ → file completion
             if c == '@' {
                 app.completion.active = true;
@@ -299,9 +293,6 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         KeyCode::Backspace => {
             if app.cursor_pos > 0 {
                 save_undo_snapshot(app);
-                if app.slash_completion.active && app.cursor_pos == 1 {
-                    app.slash_completion.active = false;
-                }
                 if app.completion.active && app.cursor_pos - 1 == app.completion.at_pos {
                     app.completion.active = false;
                 }
@@ -311,6 +302,9 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                 }
                 app.input.remove(new_pos);
                 app.cursor_pos = new_pos;
+                // ADR 0002 §7: slash completion refresh covers both
+                // activation (re-pressing '/') and deactivation.
+                refresh_slash_completion(app);
                 // Update completion query
                 if app.completion.active {
                     let after_at = &app.input[app.completion.at_pos + 1..];
@@ -416,6 +410,51 @@ pub(crate) enum Direction {
     Next,
 }
 
+/// ADR 0002 §7: input-driven slash completion filter.
+///
+/// Activates the slash popup when `app.input` starts with `/` and contains
+/// no whitespace; populates `filtered` with command indices whose name starts
+/// with the typed prefix; clamps `selected` to the filtered range. Deactivates
+/// the popup otherwise. Call after every Char / Backspace / Paste that
+/// touches the input buffer.
+pub(crate) fn refresh_slash_completion(app: &mut TuiApp) {
+    // Only activate when input begins with '/' and has no whitespace —
+    // once args start, the user is typing parameters, not the command name.
+    let prefix = if app.input.starts_with('/') && !app.input[1..].contains(char::is_whitespace) {
+        &app.input[1..]
+    } else if app.input.starts_with('/') {
+        // Has whitespace: keep popup open with all commands visible as a
+        // reference, but no filtering.
+        ""
+    } else {
+        app.slash_completion.active = false;
+        app.slash_completion.filtered.clear();
+        app.slash_completion.selected = 0;
+        return;
+    };
+
+    let prefix_lower = prefix.to_lowercase();
+    app.slash_completion.active = true;
+    app.slash_completion.filtered = app
+        .slash_completion
+        .commands
+        .iter()
+        .enumerate()
+        .filter_map(|(i, cmd)| {
+            let cmd_lower = cmd.to_lowercase();
+            // Strip leading '/' for prefix match, then compare.
+            let cmd_tail = cmd_lower.trim_start_matches('/');
+            let prefix_tail = prefix_lower.trim_start_matches('/');
+            if cmd_tail.starts_with(prefix_tail) { Some(i) } else { None }
+        })
+        .collect();
+    // Clamp selected to filtered range; reset to top when filter shrinks.
+    let max = app.slash_completion.filtered.len().saturating_sub(1);
+    if app.slash_completion.selected > max {
+        app.slash_completion.selected = 0;
+    }
+}
+
 /// Walk input history (Ctrl+Up / Ctrl+Down per ADR 0001).
 /// Independent of input contents — overrides whatever is in the buffer,
 /// matching readline behavior. Caller can undo to recover.
@@ -495,18 +534,13 @@ pub fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentComm
         return;
     }
 
-    // Local slash commands (handled elsewhere)
+    // ADR 0002: every slash-prefixed input is intercepted by the local
+    // dispatcher. Nothing starting with '/' ever reaches the agent.
     if input.starts_with('/') {
-        let lower = input.to_lowercase();
-        if input == "/session" || input.starts_with("/session ")
-            || input == "/resume" || input.starts_with("/resume ")
-            || lower == "/config" || lower.starts_with("/config ")
-            || lower == "/mcp" || lower.starts_with("/mcp ")
-        {
-            // These are handled by dedicated functions in commands.rs;
-            // dispatch through main loop to avoid double-handling.
-            // For now, pass through to agent.
-        }
+        super::commands::dispatch_slash_command(app, &input, cmd_tx);
+        app.input.clear();
+        app.cursor_pos = 0;
+        return;
     }
 
     app.input_history.push(input.clone());

@@ -3,7 +3,102 @@
 /// Extracted from mod.rs to reduce the 5000+ line file.
 
 use super::{MessageItem, TuiApp};
+use crate::agent::AgentCommand;
 use std::sync::PoisonError;
+
+/// ─── Slash Command Dispatcher (ADR 0002) ───────────────────────────────────
+///
+/// Every input beginning with `/` is intercepted here before reaching the
+/// agent. Known commands execute locally; unknown commands push an error
+/// System message. No `/`-prefixed input ever reaches `cmd_tx.send(
+/// ProcessMessage)` — that path is permanently reserved for natural-language
+/// messages.
+///
+/// Returns true to indicate "handled (input should be cleared, no agent
+/// forward)". There is no false case — the dispatcher handles every slash
+/// input, including unknown ones (by reporting an error).
+pub fn dispatch_slash_command(
+    app: &mut TuiApp,
+    input: &str,
+    cmd_tx: &std::sync::mpsc::Sender<AgentCommand>,
+) -> bool {
+    let trimmed = input.trim();
+    // Split into command word + remainder at first whitespace.
+    let (cmd_word, _args) = match trimmed.find(char::is_whitespace) {
+        Some(idx) => (&trimmed[..idx], trimmed[idx..].trim_start()),
+        None => (trimmed, ""),
+    };
+    let cmd_lower = cmd_word.to_lowercase();
+
+    match cmd_lower.as_str() {
+        "/exit" | "/quit" => {
+            app.should_quit = true;
+        }
+        "/help" | "/h" => {
+            app.help_active = true;
+        }
+        "/clear" => {
+            // ADR 0006 will wrap this in Dialog::Confirm; for now execute
+            // directly to preserve the Ctrl+L behavior. Note in the message
+            // that this is destructive.
+            app.messages.clear();
+            crate::tui::message_list::invalidate_cache();
+            app.scroll_offset = 0;
+            app.auto_scroll = true;
+            let _ = cmd_tx.send(AgentCommand::ClearHistory);
+            app.messages.push(MessageItem::System {
+                text: "⚠ Conversation cleared.".into(),
+            });
+        }
+        "/reload" => {
+            let _ = cmd_tx.send(AgentCommand::ReloadContext);
+            app.messages.push(MessageItem::System {
+                text: "→ Context and skills reloaded.".into(),
+            });
+        }
+        "/history" => {
+            // Report actual in-memory count instead of asking the LLM.
+            let count = app.messages.len();
+            app.messages.push(MessageItem::System {
+                text: format!("{count} message(s) in current session."),
+            });
+        }
+        "/tools" => {
+            app.messages.push(MessageItem::System {
+                text: "→ Tools are listed in the agent's system prompt; ask the agent to use them.".into(),
+            });
+        }
+        "/skills" => {
+            app.messages.push(MessageItem::System {
+                text: "→ Skills are listed in the agent's system prompt; ask the agent to use them.".into(),
+            });
+        }
+        "/memory" => {
+            app.messages.push(MessageItem::System {
+                text: "→ Memory entries are stored in the memory/ directory.".into(),
+            });
+        }
+        "/session" => {
+            handle_session_cmd(app);
+        }
+        "/resume" => {
+            // ADR 0006 will wrap this in Dialog::Confirm before overwriting.
+            handle_resume_cmd(app, trimmed);
+        }
+        "/config" => {
+            handle_config_cmd(app, trimmed);
+        }
+        "/mcp" => {
+            handle_mcp_cmd(app, trimmed);
+        }
+        _ => {
+            app.messages.push(MessageItem::System {
+                text: format!("Unknown command: {cmd_word}. Type /help for the list."),
+            });
+        }
+    }
+    true
+}
 
 /// Handle `/session` — list saved sessions.
 pub fn handle_session_cmd(app: &mut TuiApp) {
@@ -468,5 +563,267 @@ pub fn fetch_available_models(api_base: &str, api_key: &str) -> Vec<String> {
             if models.is_empty() { fallback } else { models }
         }
         Err(_) => fallback,
+    }
+}
+
+// ─── ADR 0002 Tests ─────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod adr0002_tests {
+    use super::*;
+    use crate::agent::AgentCommand;
+    use crate::tui::TuiApp;
+
+    fn dispatch(app: &mut TuiApp, input: &str, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) -> bool {
+        dispatch_slash_command(app, input, cmd_tx)
+    }
+
+    // ── Known commands route locally ──────────────────────────────────────
+
+    #[test]
+    fn exit_sets_should_quit() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        assert!(dispatch(&mut app, "/exit", &tx));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn quit_sets_should_quit() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        assert!(dispatch(&mut app, "/quit", &tx));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn case_insensitive_exit() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        assert!(dispatch(&mut app, "/EXIT", &tx));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn help_opens_help_panel() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/help", &tx);
+        assert!(app.help_active, "/help should set help_active");
+    }
+
+    #[test]
+    fn h_alias_opens_help() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/h", &tx);
+        assert!(app.help_active);
+    }
+
+    #[test]
+    fn clear_clears_messages_and_sends_clearhistory() {
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "msg1".into() });
+        app.messages.push(MessageItem::User { text: "msg2".into() });
+        let (tx, rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/clear", &tx);
+        // System warning is pushed, so messages has 1 entry
+        assert_eq!(app.messages.len(), 1, "after /clear, only the warning System msg remains");
+        match rx.try_recv() {
+            Ok(AgentCommand::ClearHistory) => {}
+            other => panic!("expected ClearHistory, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reload_sends_reloadcontext_and_msgs() {
+        let mut app = TuiApp::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/reload", &tx);
+        match rx.try_recv() {
+            Ok(AgentCommand::ReloadContext) => {}
+            other => panic!("expected ReloadContext, got {other:?}"),
+        }
+        assert!(app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("reloaded")
+        )));
+    }
+
+    #[test]
+    fn history_reports_actual_count() {
+        let mut app = TuiApp::default();
+        for i in 0..7 {
+            app.messages.push(MessageItem::User { text: format!("m{i}") });
+        }
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/history", &tx);
+        // Should NOT send any agent command — count is local.
+        // The pushed System message should mention "7 message".
+        let last = app.messages.last().expect("msg pushed");
+        match last {
+            MessageItem::System { text } => assert!(text.contains("7 message"), "got: {text}"),
+            _ => panic!("expected System msg"),
+        }
+    }
+
+    #[test]
+    fn unknown_command_pushes_error_and_returns_handled() {
+        let mut app = TuiApp::default();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handled = dispatch(&mut app, "/notarealcommand", &tx);
+        assert!(handled, "unknown commands are still 'handled' (error reported)");
+        // No agent command forwarded
+        assert!(rx.try_recv().is_err(), "unknown command must not send to agent");
+        // Error System message pushed
+        let last = app.messages.last().expect("msg pushed");
+        match last {
+            MessageItem::System { text } => {
+                assert!(text.contains("Unknown command"), "got: {text}");
+                assert!(text.contains("/help"), "should mention /help: {text}");
+            }
+            _ => panic!("expected System msg"),
+        }
+    }
+
+    #[test]
+    fn args_after_command_work_for_resume() {
+        // /resume with an arg should be dispatched (handle_resume_cmd will
+        // run even if no sessions match — it just reports an error).
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let handled = dispatch(&mut app, "/resume nonexistent", &tx);
+        assert!(handled);
+        // handle_resume_cmd pushes a System message
+        assert!(!app.messages.is_empty());
+    }
+
+    #[test]
+    fn config_with_args_dispatches() {
+        // /config with subcommand — handler runs even without a config store
+        // (it pushes a "not available" message).
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let handled = dispatch(&mut app, "/config", &tx);
+        assert!(handled);
+        assert!(!app.messages.is_empty(), "config handler should push a System msg");
+    }
+
+    #[test]
+    fn session_dispatches_to_handler() {
+        let mut app = TuiApp::default();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        dispatch(&mut app, "/session", &tx);
+        // handle_session_cmd pushes a System msg ("Session store not available."
+        // when no store is wired, which is the expected test fixture).
+        assert!(!app.messages.is_empty());
+    }
+
+    // ── send_message integration: no ProcessMessage leak for / inputs ─────
+
+    #[test]
+    fn send_message_routes_slash_input_through_dispatcher() {
+        use crate::tui::input_area::send_message;
+        let mut app = TuiApp::default();
+        app.input = "/help".into();
+        let (tx, rx) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        // /help opens help panel; input cleared; NO ProcessMessage sent.
+        assert!(app.help_active);
+        assert!(app.input.is_empty());
+        assert!(rx.try_recv().is_err(), "no agent command should be sent for /help");
+    }
+
+    #[test]
+    fn send_message_rejects_unknown_slash_without_agent_forward() {
+        use crate::tui::input_area::send_message;
+        let mut app = TuiApp::default();
+        app.input = "/totallyfake".into();
+        let (tx, rx) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        // Error pushed, no agent forward, input cleared
+        assert!(app.input.is_empty(), "input should clear after dispatch");
+        assert!(rx.try_recv().is_err(), "must NOT forward to agent");
+        assert!(app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("Unknown command")
+        )));
+    }
+
+    #[test]
+    fn send_message_forwards_non_slash_to_agent() {
+        use crate::tui::input_area::send_message;
+        let mut app = TuiApp::default();
+        app.input = "hello world".into();
+        let (tx, rx) = std::sync::mpsc::channel();
+        send_message(&mut app, &tx);
+        match rx.try_recv() {
+            Ok(AgentCommand::ProcessMessage { text }) => assert_eq!(text, "hello world"),
+            other => panic!("expected ProcessMessage, got {other:?}"),
+        }
+    }
+
+    // ── Slash completion filtering (ADR 0002 §7) ──────────────────────────
+
+    #[test]
+    fn refresh_activates_on_leading_slash() {
+        use crate::tui::input_area::refresh_slash_completion;
+        let mut app = TuiApp::default();
+        app.input = "/".into();
+        refresh_slash_completion(&mut app);
+        assert!(app.slash_completion.active);
+        // Empty prefix → all commands visible
+        assert_eq!(app.slash_completion.filtered.len(), app.slash_completion.commands.len());
+    }
+
+    #[test]
+    fn refresh_filters_by_prefix() {
+        use crate::tui::input_area::refresh_slash_completion;
+        let mut app = TuiApp::default();
+        app.input = "/se".into();  // matches /session
+        refresh_slash_completion(&mut app);
+        assert!(app.slash_completion.active);
+        // Only /session should match
+        let matched: Vec<&str> = app.slash_completion.filtered.iter()
+            .map(|&i| app.slash_completion.commands[i])
+            .collect();
+        assert_eq!(matched, vec!["/session"], "got: {matched:?}");
+    }
+
+    #[test]
+    fn refresh_deactivates_when_input_lacks_slash() {
+        use crate::tui::input_area::refresh_slash_completion;
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        refresh_slash_completion(&mut app);
+        assert!(!app.slash_completion.active);
+        assert!(app.slash_completion.filtered.is_empty());
+    }
+
+    #[test]
+    fn refresh_keeps_popup_open_when_args_start() {
+        // Input "/resume foo" — args started, popup stays open as reference
+        // but no filtering.
+        use crate::tui::input_area::refresh_slash_completion;
+        let mut app = TuiApp::default();
+        app.input = "/resume foo".into();
+        refresh_slash_completion(&mut app);
+        assert!(app.slash_completion.active, "popup should stay open with args present");
+        // No filtering — all visible
+        assert_eq!(app.slash_completion.filtered.len(), app.slash_completion.commands.len());
+    }
+
+    #[test]
+    fn refresh_prefix_match_is_case_insensitive() {
+        use crate::tui::input_area::refresh_slash_completion;
+        let mut app = TuiApp::default();
+        app.input = "/RE".into();  // uppercase prefix
+        refresh_slash_completion(&mut app);
+        let matched: Vec<&str> = app.slash_completion.filtered.iter()
+            .map(|&i| app.slash_completion.commands[i])
+            .collect();
+        // Should match /reload, /resume (anything starting with "re")
+        assert!(matched.iter().any(|c| *c == "/reload"), "got: {matched:?}");
+        assert!(matched.iter().any(|c| *c == "/resume"), "got: {matched:?}");
     }
 }
