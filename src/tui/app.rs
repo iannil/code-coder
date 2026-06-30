@@ -122,11 +122,6 @@ pub enum Dialog {
         question: String,
         request_id: u64,
     },
-    PlanReview {
-        title: String,
-        plan: String,
-        request_id: u64,
-    },
 }
 
 /// 斜杠命令补全状态

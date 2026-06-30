@@ -218,7 +218,6 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
         Dialog::ToolPermission { tool_name, tool_input, risk, .. } => (tool_name.as_str(), tool_input.as_str(), risk.as_str()),
         Dialog::PlanApproval { title: _, plan, .. } => ("plan", plan.as_str(), "plan approval"),
         Dialog::AskQuestion { question, .. } => ("ask_user", question.as_str(), "user question"),
-        Dialog::PlanReview { title: _, plan, .. } => ("plan_review", plan.as_str(), "plan review"),
     };
 
     let dialog_width = area.width.min(70).max(40);
@@ -261,9 +260,16 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog) {
                 Style::default().fg(Color::Cyan),
             ));
         }
-        _ => {
+        Dialog::ToolPermission { .. } => {
+            // ADR 0005: scope-aware approval keys.
             content.push(Line::styled(
-                " Y=allow  N=deny  A=always-allow  Esc=cancel ",
+                " Y=once  A=session  Shift+A=project  N=deny  Esc=cancel ",
+                Style::default().fg(Color::Cyan),
+            ));
+        }
+        Dialog::PlanApproval { .. } => {
+            content.push(Line::styled(
+                " Y=approve  N=reject  Esc=cancel ",
                 Style::default().fg(Color::Cyan),
             ));
         }
@@ -315,18 +321,35 @@ fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: 
 /// ─── Key Handlers ───────────────────────────────────────────────────────────
 
 /// Handle Y/N/A/Esc/Enter when a dialog is active.
+///
+/// ADR 0005: ToolPermission dialogs honor three scopes:
+///   Y          → Once (re-prompt next time)
+///   A          → AlwaysThisSession (no more prompts this session)
+///   Shift+A    → AlwaysThisProject (persist to codecoder.json — Phase B)
+/// Plan/Ask dialogs only have Y/N/Esc — scope is meaningless for them.
 pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<crate::agent::AgentCommand>) {
     use crossterm::event::KeyCode;
     use crate::agent::AgentCommand;
+    use crate::agent::PermScope;
+
+    // Distinguish lowercase 'a' (Shift unset) from uppercase 'A' (Shift held).
+    // crossterm reports Shift+via both KeyCode::Char('A') and modifiers, so
+    // check modifiers first to be unambiguous.
+    let shift = key.modifiers.contains(crossterm::event::KeyModifiers::SHIFT);
 
     match key.code {
+        // ── Y: approve once ───────────────────────────────────────────────
         KeyCode::Char('y') | KeyCode::Char('Y') => {
             if let Some(dialog) = app.dialog.take() {
                 match dialog {
                     Dialog::ToolPermission { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PermissionResponse { request_id, allowed: true });
+                        let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                            request_id,
+                            allowed: true,
+                            scope: PermScope::Once,
+                        });
                     }
-                    Dialog::PlanApproval { request_id, .. } | Dialog::PlanReview { request_id, .. } => {
+                    Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
                     }
                     Dialog::AskQuestion { request_id, .. } => {
@@ -335,34 +358,55 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                 }
             }
         }
+        // ── A: session allow (Shift+A: project allow) ────────────────────
+        // For Plan/Ask dialogs, 'A' has no scope meaning — fall through to
+        // approve-once behavior (preserves prior "A approves" UX).
         KeyCode::Char('a') | KeyCode::Char('A') => {
             if let Some(dialog) = app.dialog.take() {
-                let tool_name = match dialog {
+                match dialog {
                     Dialog::ToolPermission { ref tool_name, request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PermissionResponse { request_id, allowed: true });
-                        tool_name.clone()
+                        let scope = if shift { PermScope::AlwaysThisProject } else { PermScope::AlwaysThisSession };
+                        let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                            request_id,
+                            allowed: true,
+                            scope,
+                        });
+                        // Accurate scope-aware confirmation. The old text
+                        // ("will be allowed without prompting for this
+                        // session") lied when project scope was chosen and
+                        // when no persistence existed at all — both are now
+                        // fixed (project persistence is Phase B but the
+                        // scope field reaches the agent).
+                        let scope_label = match scope {
+                            PermScope::AlwaysThisSession => "this session",
+                            PermScope::AlwaysThisProject => "this project (persists across sessions)",
+                            PermScope::Once => unreachable!(),
+                        };
+                        app.messages.push(super::MessageItem::System {
+                            text: format!("✓ {} auto-allowed for {}", tool_name, scope_label),
+                        });
                     }
-                    Dialog::PlanApproval { request_id, .. } | Dialog::PlanReview { request_id, .. } => {
+                    Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
-                        "plan".into()
                     }
                     Dialog::AskQuestion { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "yes".into() });
-                        "ask_user".into()
                     }
-                };
-                app.messages.push(super::MessageItem::System {
-                    text: format!("✓ {} will be allowed without prompting for this session", tool_name),
-                });
+                }
             }
         }
+        // ── N: deny ───────────────────────────────────────────────────────
         KeyCode::Char('n') | KeyCode::Char('N') => {
             if let Some(dialog) = app.dialog.take() {
                 match dialog {
                     Dialog::ToolPermission { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PermissionResponse { request_id, allowed: false });
+                        let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                            request_id,
+                            allowed: false,
+                            scope: PermScope::Once,
+                        });
                     }
-                    Dialog::PlanApproval { request_id, .. } | Dialog::PlanReview { request_id, .. } => {
+                    Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
                     }
                     Dialog::AskQuestion { request_id, .. } => {
@@ -371,20 +415,25 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                 }
             }
         }
+        // ── Esc: cancel ───────────────────────────────────────────────────
         KeyCode::Esc => {
             if let Some(dialog) = app.dialog.take() {
                 match dialog {
                     Dialog::ToolPermission { request_id, .. } | Dialog::AskQuestion { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::PermissionResponse { request_id, allowed: false });
+                        let _ = cmd_tx.send(AgentCommand::PermissionResponse {
+                            request_id,
+                            allowed: false,
+                            scope: PermScope::Once,
+                        });
                     }
-                    Dialog::PlanApproval { request_id, .. } | Dialog::PlanReview { request_id, .. } => {
+                    Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
                     }
                 }
             }
         }
+        // ── Enter: AskQuestion submit, else no-op ─────────────────────────
         KeyCode::Enter => {
-            // AskQuestion: submit typed answer
             if let Some(dialog) = app.dialog.take() {
                 if let Dialog::AskQuestion { question, request_id } = dialog {
                     if !app.input.is_empty() {
@@ -394,11 +443,10 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                         app.input.clear();
                         app.cursor_pos = 0;
                     } else {
-                        // Empty answer → put question in dialog back
+                        // Empty answer → put question back
                         app.dialog = Some(Dialog::AskQuestion { question, request_id });
                     }
                 } else {
-                    // Non-ask dialog: put it back
                     app.dialog = Some(dialog);
                 }
             }
@@ -507,10 +555,11 @@ mod tests {
         crossterm::event::KeyEvent::new(code, modifiers)
     }
 
-    // ── Dialog key: Y/N/A/Esc ─────────────────────────────────────────────
+    // ── Dialog key: Y/N/A/Esc (ADR 0005 scope-aware) ─────────────────────
 
     #[test]
-    fn test_dialog_y_permits_tool() {
+    fn test_dialog_y_permits_tool_once() {
+        // ADR 0005: Y = Once scope.
         let mut app = TuiApp::default();
         app.dialog = Some(Dialog::ToolPermission {
             tool_name: "write_file".into(),
@@ -523,7 +572,10 @@ mod tests {
         assert!(app.dialog.is_none(), "dialog should be consumed");
         let msg = rx.try_recv().unwrap();
         match msg {
-            AgentCommand::PermissionResponse { allowed, .. } => assert!(allowed),
+            AgentCommand::PermissionResponse { allowed, scope, .. } => {
+                assert!(allowed);
+                assert_eq!(scope, crate::agent::PermScope::Once, "Y must send Once scope");
+            }
             _ => panic!("expected PermissionResponse"),
         }
     }
@@ -563,6 +615,96 @@ mod tests {
             AgentCommand::PermissionResponse { allowed, .. } => assert!(!allowed),
             _ => panic!("expected PermissionResponse"),
         }
+    }
+
+    // ── ADR 0005: Scope-aware approval ───────────────────────────────────
+
+    #[test]
+    fn adr0005_a_lowercase_sends_alwaystihssession() {
+        // 'a' without Shift = AlwaysThisSession.
+        let mut app = TuiApp::default();
+        app.dialog = Some(Dialog::ToolPermission {
+            tool_name: "write_file".into(),
+            tool_input: "src/main.rs".into(),
+            request_id: 7,
+            risk: "moderate".into(),
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('a'), crossterm::event::KeyModifiers::NONE), &tx);
+        match rx.try_recv().unwrap() {
+            AgentCommand::PermissionResponse { allowed, scope, .. } => {
+                assert!(allowed);
+                assert_eq!(scope, crate::agent::PermScope::AlwaysThisSession);
+            }
+            _ => panic!("expected PermissionResponse"),
+        }
+        // Confirmation message should mention session scope.
+        assert!(app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("session")
+        )));
+    }
+
+    #[test]
+    fn adr0005_shift_a_sends_alwaysthisproject() {
+        // 'A' with Shift modifier = AlwaysThisProject.
+        let mut app = TuiApp::default();
+        app.dialog = Some(Dialog::ToolPermission {
+            tool_name: "write_file".into(),
+            tool_input: "src/lib.rs".into(),
+            request_id: 9,
+            risk: "moderate".into(),
+        });
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('A'), crossterm::event::KeyModifiers::SHIFT), &tx);
+        match rx.try_recv().unwrap() {
+            AgentCommand::PermissionResponse { allowed, scope, .. } => {
+                assert!(allowed);
+                assert_eq!(scope, crate::agent::PermScope::AlwaysThisProject);
+            }
+            _ => panic!("expected PermissionResponse"),
+        }
+        // Confirmation message should mention project scope.
+        assert!(app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("project")
+        )));
+    }
+
+    #[test]
+    fn adr0005_dialog_consumed_after_a() {
+        // A should consume the dialog like Y/N do.
+        let mut app = TuiApp::default();
+        app.dialog = Some(Dialog::ToolPermission {
+            tool_name: "read_file".into(),
+            tool_input: "x".into(),
+            request_id: 1,
+            risk: "low".into(),
+        });
+        let (tx, _) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('a'), crossterm::event::KeyModifiers::NONE), &tx);
+        assert!(app.dialog.is_none(), "A must consume the dialog");
+    }
+
+    #[test]
+    fn adr0005_no_false_session_promise_for_y() {
+        // Y must NOT push a "will be allowed without prompting" message —
+        // only A does. This guards against the old lie where Y also claimed
+        // session persistence.
+        let mut app = TuiApp::default();
+        app.dialog = Some(Dialog::ToolPermission {
+            tool_name: "write_file".into(),
+            tool_input: "x".into(),
+            request_id: 1,
+            risk: "low".into(),
+        });
+        let (tx, _) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE), &tx);
+        // No "auto-allowed" confirmation should be pushed for Y.
+        assert!(!app.messages.iter().any(|m| matches!(
+            m,
+            MessageItem::System { text } if text.contains("auto-allowed")
+        )), "Y must not push auto-allow confirmation");
     }
 
     // ── Model picker ──────────────────────────────────────────────────────

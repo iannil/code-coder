@@ -269,7 +269,15 @@ pub struct BackgroundAgent {
 pub enum AgentCommand {
     ProcessMessage { text: String },
     SetModel { model: String },
-    PermissionResponse { request_id: u64, allowed: bool },
+    /// Permission response from the TUI. `scope` controls whether the grant
+    /// persists for the session (AlwaysThisSession) or project
+    /// (AlwaysThisProject — Phase B; persisted to codecoder.json) or is
+    /// one-shot (Once). See ADR 0005.
+    PermissionResponse {
+        request_id: u64,
+        allowed: bool,
+        scope: PermScope,
+    },
     AskUserResponse { request_id: u64, answer: String },
     PlanDecision { request_id: u64, decision: String },
     ReloadContext,
@@ -280,6 +288,25 @@ pub enum AgentCommand {
     /// wire a CancellationToken into handle_message for true mid-call abort).
     Interrupt,
     Shutdown,
+}
+
+/// ADR 0005 — durability of a permission grant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PermScope {
+    /// Re-prompt next time. Default for the "Y" key.
+    Once,
+    /// No more prompts for this tool name, this session only.
+    AlwaysThisSession,
+    /// Persisted to codecoder.json under `permissions.allowlist`. Future
+    /// sessions load it at startup. Phase B: not yet wired to disk; for now
+    /// behaves like AlwaysThisSession in-memory.
+    AlwaysThisProject,
+}
+
+impl Default for PermScope {
+    fn default() -> Self {
+        Self::Once
+    }
 }
 
 #[derive(Debug)]
@@ -363,8 +390,19 @@ impl BackgroundAgent {
                                 let _ = bus.drain();
                                 let resp_tx2 = resp_tx.clone();
                                 let cmd_rx_ref = &cmd_rx;
+                                // ADR 0005: session-scoped allowlist shared
+                                // across calls within this ProcessMessage
+                                // (and across multiple ProcessMessages in the
+                                // same agent thread lifetime).
+                                let session_allowed = std::sync::Arc::new(
+                                    std::sync::Mutex::new(
+                                        std::collections::HashSet::<String>::new(),
+                                    ),
+                                );
+                                let session_allowed_closure = session_allowed.clone();
                                 let permission_check = move |name: &str, input: &str| {
-                                    // 1. Auto-evaluate via PermissionEngine
+                                    // 1. Hard rules via PermissionEngine — these
+                                    // cannot be overridden by the allowlist.
                                     let engine = crate::permission::PermissionEngine::new();
                                     let decision = engine.evaluate(name, input);
                                     match decision {
@@ -373,11 +411,24 @@ impl BackgroundAgent {
                                             return false;
                                         }
                                         crate::permission::PermissionDecision::NeedsApproval { .. } => {
-                                            // Fall through to user prompt
+                                            // Fall through to allowlist / prompt
                                         }
                                     }
 
-                                    // 2. Prompt user for approval
+                                    // 2. Session allowlist — skip the prompt if
+                                    // the user previously granted AlwaysThisSession
+                                    // (or AlwaysThisProject, which Phase B will
+                                    // persist; for now treated identically).
+                                    if let Ok(set) = session_allowed_closure.lock() {
+                                        if set.contains(name) {
+                                            crate::log(&format!(
+                                                "[permission] '{name}' auto-allowed by session allowlist"
+                                            ));
+                                            return true;
+                                        }
+                                    }
+
+                                    // 3. Prompt user for approval
                                     let id: u64 = rand_id();
                                     let risk_str = format!("{:?}", decision);
                                     let _ = resp_tx2.blocking_send(AgentResponse::PermissionRequest {
@@ -390,7 +441,24 @@ impl BackgroundAgent {
                                     while std::time::Instant::now() < deadline {
                                         let remaining = deadline - std::time::Instant::now();
                                         match cmd_rx_ref.recv_timeout(remaining) {
-                                            Ok(AgentCommand::PermissionResponse { request_id, allowed }) if request_id == id => return allowed,
+                                            Ok(AgentCommand::PermissionResponse { request_id, allowed, scope })
+                                                if request_id == id =>
+                                            {
+                                                // Persist grant for session/project scope.
+                                                if allowed && matches!(
+                                                    scope,
+                                                    PermScope::AlwaysThisSession | PermScope::AlwaysThisProject
+                                                ) {
+                                                    if let Ok(mut set) = session_allowed_closure.lock() {
+                                                        set.insert(name.to_string());
+                                                    }
+                                                    crate::log(&format!(
+                                                        "[permission] '{name}' added to {:?} allowlist",
+                                                        scope
+                                                    ));
+                                                }
+                                                return allowed;
+                                            }
                                             Ok(AgentCommand::Shutdown) => return false,
                                             _ => continue,
                                         }
@@ -919,5 +987,57 @@ Here is the content."#;
         let agent = test_agent();
         let prompt = agent.build_system_prompt(&ToolRegistry::new_for_test(), &SkillRegistry::new());
         assert!(prompt.contains("tool") || prompt.contains("read_file"));
+    }
+
+    // ─── ADR 0005 — Permission Scope ─────────────────────────────────────
+
+    #[test]
+    fn adr0005_perm_scope_default_is_once() {
+        // Default scope must be Once so legacy callers that don't specify
+        // scope get the safe (re-prompt) behavior, not silent persistence.
+        assert_eq!(PermScope::default(), PermScope::Once);
+    }
+
+    #[test]
+    fn adr0005_perm_scope_variants_exist() {
+        // Compile-time check: all three variants exist and are Copy.
+        let once = PermScope::Once;
+        let session = PermScope::AlwaysThisSession;
+        let project = PermScope::AlwaysThisProject;
+        let _copy = once;
+        let _copy2 = session;
+        let _copy3 = project;
+        assert_eq!(once, PermScope::Once);
+    }
+
+    #[test]
+    fn adr0005_permission_response_carries_scope() {
+        let cmd = AgentCommand::PermissionResponse {
+            request_id: 42,
+            allowed: true,
+            scope: PermScope::AlwaysThisSession,
+        };
+        match cmd {
+            AgentCommand::PermissionResponse { request_id, allowed, scope } => {
+                assert_eq!(request_id, 42);
+                assert!(allowed);
+                assert_eq!(scope, PermScope::AlwaysThisSession);
+            }
+            _ => panic!("expected PermissionResponse"),
+        }
+    }
+
+    #[test]
+    fn adr0005_permission_engine_deny_is_absolute() {
+        // Document the safety rail: a Denied decision from PermissionEngine
+        // is absolute and cannot be overridden by any allowlist. The agent's
+        // permission_check closure checks Denied BEFORE consulting
+        // session_allowed, so the engine remains the source of truth for
+        // hard denies.
+        use crate::permission::{PermissionEngine, PermissionDecision};
+        let engine = PermissionEngine::new();
+        let decision = engine.evaluate("run_command", "rm -rf /");
+        assert!(matches!(decision, PermissionDecision::Denied { .. }),
+            "rm -rf / must be hard-denied (engine safety rail)");
     }
 }
