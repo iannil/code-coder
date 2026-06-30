@@ -91,6 +91,15 @@ pub struct TuiApp {
     pub config_store: Option<crate::config::ConfigStore>,
     /// MCP 注册表
     pub mcp_registry: Option<Arc<Mutex<crate::mcp::McpRegistry>>>,
+    /// ADR 0004: dirty flag for debounced saves. auto_save_session only
+    /// sets this + timestamps; the main loop flushes ~5s later on a
+    /// background thread.
+    pub dirty: bool,
+    pub last_dirty_at: Option<std::time::Instant>,
+    /// ADR 0004: channel into the background save thread. None when no
+    /// thread is running (e.g. tests without store wiring). Senders can
+    /// clone this; the receiver side lives in the save thread.
+    pub save_tx: Option<std::sync::mpsc::Sender<crate::session::Session>>,
 }
 
 /// 消息列表中的一条
@@ -286,6 +295,9 @@ impl Default for TuiApp {
             last_save_error: None,
             config_store: None,
             mcp_registry: None,
+            dirty: false,
+            last_dirty_at: None,
+            save_tx: None,
         }
     }
 }

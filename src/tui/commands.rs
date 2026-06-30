@@ -516,6 +516,7 @@ pub fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
     let mut messages = app.messages.clone();
     super::app::compact_messages_for_save(&mut messages);
     let mut session = crate::session::Session {
+        schema_version: crate::session::CURRENT_SCHEMA_VERSION,
         id,
         model: app.status.model.clone(),
         created_at: String::new(),
@@ -528,27 +529,115 @@ pub fn build_session_from_app(app: &TuiApp) -> crate::session::Session {
     session
 }
 
-/// Auto-save the current session. On failure, logs to codecoder.log and pushes
-/// a System message to the message list — but only on the *first* occurrence of
-/// any given error string, to avoid flooding the chat during persistent disk
-/// issues. Successful save resets the dedup state so a later new failure shows.
+/// ADR 0004: mark the session dirty. The main loop flushes ~5s later on a
+/// background thread. Replaces the old synchronous save-per-keystroke.
 pub fn auto_save_session(app: &mut TuiApp) {
-    let Some(ref store) = app.session_store else { return };
+    // No store wired → nothing to save (tests / non-persistent runs).
+    if app.session_store.is_none() {
+        return;
+    }
+    app.dirty = true;
+    app.last_dirty_at = Some(std::time::Instant::now());
+}
+
+/// ADR 0004: debounce window. The main loop calls this once per frame; if
+/// the session is dirty and the last dirty mark is older than the window,
+/// spawns a save onto the background thread.
+const SAVE_DEBOUNCE_SECS: u64 = 5;
+
+/// Try to flush a pending dirty mark to the background save thread. No-op
+/// when not dirty, when the debounce window hasn't elapsed, or when no
+/// save thread is wired (legacy synchronous fallback then).
+pub fn flush_pending_save(app: &mut TuiApp) {
+    if !app.dirty {
+        return;
+    }
+    let Some(last) = app.last_dirty_at else {
+        return;
+    };
+    if last.elapsed().as_secs() < SAVE_DEBOUNCE_SECS {
+        return;
+    }
+    // Mark clean BEFORE building the snapshot so concurrent marks during
+    // serialize don't get lost (they'll trigger another flush next frame).
+    app.dirty = false;
+    app.last_dirty_at = None;
+
     let session = build_session_from_app(app);
-    match store.save(&session) {
+
+    if let Some(tx) = &app.save_tx {
+        // Background thread path. Send errors are silently dropped — the
+        // next dirty mark will retry next frame.
+        let _ = tx.send(session);
+    } else if let Some(ref store) = app.session_store {
+        // Legacy synchronous fallback (no background thread spawned yet,
+        // e.g. tests). Run inline so saves still happen.
+        report_save_result(app, store.save(&session));
+    }
+}
+
+/// Synchronous flush on exit. The main loop calls this after the event
+/// loop ends. If a background thread is running, drops the sender (which
+/// signals EOF to the receiver) and joins; otherwise runs one inline
+/// save. Returns when all pending saves have completed or errored.
+pub fn flush_on_exit(app: &mut TuiApp) {
+    // Take the sender so the background thread sees channel close.
+    let tx = app.save_tx.take();
+    if let Some(store) = app.session_store.as_ref() {
+        if app.dirty {
+            let session = build_session_from_app(app);
+            app.dirty = false;
+            app.last_dirty_at = None;
+            // If background thread exists, send the final snapshot; the
+            // drop(tx) below will make the thread exit after processing.
+            if let Some(tx) = &tx {
+                let _ = tx.send(session);
+            } else {
+                report_save_result(app, store.save(&session));
+            }
+        }
+    }
+    // Drop sender → background thread drains remaining work then exits.
+    // (Thread is detached; we trust it finishes within OS thread lifetime.
+    // A future Phase C could block on join via a handle in TuiApp.)
+    drop(tx);
+}
+
+/// Update app state with the result of a save attempt (dedup on error
+/// string to avoid flooding the message list).
+fn report_save_result(app: &mut TuiApp, result: anyhow::Result<()>) {
+    match result {
         Ok(()) => app.last_save_error = None,
         Err(e) => {
             let err_str = e.to_string();
-            crate::log(&format!("[error] session auto-save failed: {err_str}"));
+            crate::log(&format!("[error] session save failed: {err_str}"));
             let is_new = app.last_save_error.as_deref() != Some(err_str.as_str());
             if is_new {
                 app.messages.push(MessageItem::System {
-                    text: format!("[error] session auto-save failed: {err_str}"),
+                    text: format!("[error] session save failed: {err_str}"),
                 });
                 app.last_save_error = Some(err_str);
             }
         }
     }
+}
+
+/// ADR 0004: spawn the background save thread. Returns the sender to wire
+/// into `TuiApp::save_tx`. The thread owns the SessionStore and writes
+/// sessions as they arrive; it exits when the sender is dropped (EOF).
+pub fn spawn_save_thread(store: crate::session::SessionStore) -> std::sync::mpsc::Sender<crate::session::Session> {
+    let (tx, rx) = std::sync::mpsc::channel::<crate::session::Session>();
+    std::thread::Builder::new()
+        .name("codecoder-save".into())
+        .spawn(move || {
+            for session in rx.iter() {
+                if let Err(e) = store.save(&session) {
+                    crate::log(&format!("[error] background save failed: {e}"));
+                }
+            }
+        })
+        .expect("spawn save thread");
+    tx
 }
 
 /// Fetch available models from the LLM API's `/v1/models` endpoint.

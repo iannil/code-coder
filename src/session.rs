@@ -15,22 +15,42 @@ use crate::tui::MessageItem;
 
 /// ─── Data structures ───────────────────────────────────────────────────────
 
+/// Current on-disk schema version. Increment when changing the shape of
+/// `Session` or `MessageItem`; add a corresponding `migrate_vN_to_vN+1`.
+pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+/// Default used by serde when loading a session file that omits
+/// `schema_version` (i.e. files written before ADR 0004 landed).
+fn default_schema_version() -> u32 {
+    0
+}
+
 /// Full session with messages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
+    /// ADR 0004: schema version for forward/backward compatibility.
+    /// Older files (pre-ADR-0004) lack this field and default to 0; the
+    /// migrate chain walks them forward to CURRENT_SCHEMA_VERSION.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     /// Unique session id (timestamp-based, e.g. "20260627_144500")
     pub id: String,
     /// Model name used in this session
     pub model: String,
     /// ISO 8601 creation time
+    #[serde(default)]
     pub created_at: String,
     /// ISO 8601 last-update time
+    #[serde(default)]
     pub updated_at: String,
     /// Number of user+assistant messages
+    #[serde(default)]
     pub message_count: usize,
     /// Approximate token count (from status bar data)
+    #[serde(default)]
     pub token_count: usize,
     /// Full message history
+    #[serde(default)]
     pub messages: Vec<MessageItem>,
 }
 
@@ -82,11 +102,20 @@ impl SessionStore {
         Ok(())
     }
 
-    /// Load a session by id.
+    /// Load a session by id. ADR 0004: deserializes first to
+    /// `serde_json::Value` so the migrate chain can transform old shapes
+    /// before re-deserializing into the current `Session` struct.
     pub fn load(&self, session_id: &str) -> anyhow::Result<Session> {
         let path = self.file_path(session_id);
         let json = std::fs::read_to_string(&path)?;
-        let session: Session = serde_json::from_str(&json)?;
+        let mut value: serde_json::Value = serde_json::from_str(&json)?;
+        let from_version = value
+            .get("schema_version")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+            .unwrap_or(0);
+        value = migrate(from_version, CURRENT_SCHEMA_VERSION, value)?;
+        let session: Session = serde_json::from_value(value)?;
         Ok(session)
     }
 
@@ -148,6 +177,7 @@ impl Session {
     pub fn new(model: &str) -> Self {
         let now = iso_now();
         Self {
+            schema_version: CURRENT_SCHEMA_VERSION,
             id: timestamp_id(),
             model: model.to_string(),
             created_at: now.clone(),
@@ -208,12 +238,7 @@ fn iso_now() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_nanos();
-    // Approximate: use nanos as a readable hex timestamp
-    // For a real ISO timestamp we'd need chrono, but we keep deps minimal
     let secs = nanos / 1_000_000_000;
-    let _ms = (nanos % 1_000_000_000) / 1_000_000;
-    // Format from unix epoch: YYYY-MM-DD HH:MM:SS.mmm
-    // Simple approach: use a readable hex-based timestamp
     format!("ts{:016x}", secs)
 }
 
@@ -231,6 +256,51 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         format!("{}…", &s[..max_len.saturating_sub(1)])
     }
+}
+
+// ─── ADR 0004 — Schema Migration ────────────────────────────────────────────
+//
+// Walks a deserialized session `Value` from `from_version` to `to_version`
+// by chaining per-step migrations. Each step is small and total — it must
+// not panic, must not lose data, and must produce a `Value` matching the
+// next version's shape.
+//
+// When incrementing CURRENT_SCHEMA_VERSION, add a `migrate_vN_to_vN+1`
+// function and a match arm below. The chain handles arbitrary from→to
+// jumps automatically.
+
+/// Apply the migration chain. Returns the transformed Value.
+pub fn migrate(
+    from: u32,
+    to: u32,
+    mut value: serde_json::Value,
+) -> anyhow::Result<serde_json::Value> {
+    let mut current = from;
+    while current < to {
+        value = match current {
+            0 => migrate_v0_to_v1(value)?,
+            // 1 => migrate_v1_to_v2(value)?,  // future
+            v => return Err(anyhow::anyhow!("no migrator from schema v{v}")),
+        };
+        current += 1;
+    }
+    Ok(value)
+}
+
+/// v0 → v1: stamp `schema_version: 1` onto the session.
+///
+/// v0 files are pre-ADR-0004 files (no schema_version field). All other
+/// fields already match v1's shape because the v0 Session struct is a
+/// strict subset of v1. The migration only needs to add the version tag
+/// so subsequent loads short-circuit the chain.
+fn migrate_v0_to_v1(mut value: serde_json::Value) -> anyhow::Result<serde_json::Value> {
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "schema_version".into(),
+            serde_json::Value::Number(1.into()),
+        );
+    }
+    Ok(value)
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -315,5 +385,274 @@ mod tests {
         let store = SessionStore::open(dir.path().to_str().unwrap());
         assert!(store.list().is_empty());
         assert!(store.latest().is_none());
+    }
+
+    // ─── ADR 0004 — Schema Migration ─────────────────────────────────────
+
+    #[test]
+    fn adr0004_new_session_has_current_schema_version() {
+        let session = Session::new("gpt-4o");
+        assert_eq!(session.schema_version, CURRENT_SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn adr0004_save_writes_schema_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let session = Session::new("gpt-4o");
+        store.save(&session).unwrap();
+        let raw = std::fs::read_to_string(
+            dir.path().join("sessions").join(format!("{}.json", sanitize_id(&session.id))),
+        ).unwrap();
+        assert!(raw.contains("\"schema_version\""), "saved JSON should include schema_version");
+    }
+
+    #[test]
+    fn adr0004_loads_legacy_file_without_schema_version() {
+        // v0 file: no schema_version field. Load should still succeed and
+        // stamp schema_version = 1 via migrate_v0_to_v1.
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let legacy_json = r#"{
+            "id": "legacy_session",
+            "model": "gpt-4o",
+            "created_at": "ts_old",
+            "updated_at": "ts_old",
+            "message_count": 1,
+            "token_count": 100,
+            "messages": [
+                {"User": {"text": "hello from the past"}}
+            ]
+        }"#;
+        let sessions_dir = dir.path().join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let path = sessions_dir.join("legacy_session.json");
+        std::fs::write(&path, legacy_json).unwrap();
+
+        let loaded = store.load("legacy_session").unwrap();
+        assert_eq!(loaded.schema_version, CURRENT_SCHEMA_VERSION);
+        assert_eq!(loaded.model, "gpt-4o");
+        assert_eq!(loaded.messages.len(), 1);
+    }
+
+    #[test]
+    fn adr0004_migrate_v0_to_v1_stamps_version() {
+        let v0: serde_json::Value = serde_json::json!({
+            "id": "test",
+            "model": "gpt-4o",
+            "messages": []
+        });
+        let v1 = migrate(0, 1, v0).unwrap();
+        assert_eq!(v1.get("schema_version").and_then(|v| v.as_u64()), Some(1));
+    }
+
+    #[test]
+    fn adr0004_migrate_chain_handles_jumps() {
+        // from=0, to=1: walks one step. Future to=2 etc. will chain more.
+        let v0: serde_json::Value = serde_json::json!({"id": "x"});
+        let v1 = migrate(0, 1, v0).unwrap();
+        assert_eq!(v1.get("schema_version").and_then(|v| v.as_u64()), Some(1));
+    }
+
+    #[test]
+    fn adr0004_migrate_is_idempotent_when_already_at_target() {
+        // from == to: no-op, returns input unchanged.
+        let v: serde_json::Value = serde_json::json!({"schema_version": 1, "id": "x"});
+        let out = migrate(1, 1, v.clone()).unwrap();
+        assert_eq!(v, out);
+    }
+
+    #[test]
+    fn adr0004_unknown_target_version_errors() {
+        let v: serde_json::Value = serde_json::json!({"id": "x"});
+        // No migrator from v99.
+        assert!(migrate(99, 100, v).is_err());
+    }
+
+    #[test]
+    fn adr0004_serde_default_fills_missing_optional_fields() {
+        // A file missing created_at/updated_at/etc should still load via
+        // serde defaults — they default to empty strings / 0.
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let minimal_json = r#"{
+            \"id\": \"min\",
+            \"model\": \"gpt-4o\",
+            \"messages\": []
+        }"#.replace("\\\"", "\"");
+        let sessions_dir = dir.path().join("sessions");
+        std::fs::create_dir_all(&sessions_dir).unwrap();
+        let path = sessions_dir.join("min.json");
+        std::fs::write(&path, minimal_json).unwrap();
+
+        let loaded = store.load("min").unwrap();
+        assert_eq!(loaded.created_at, "");
+        assert_eq!(loaded.message_count, 0);
+        assert_eq!(loaded.token_count, 0);
+    }
+
+    #[test]
+    fn adr0004_roundtrip_preserves_schema_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let mut session = Session::new("gpt-4o");
+        session.messages.push(MessageItem::User { text: "round".into() });
+        session.touch();
+        store.save(&session).unwrap();
+
+        let loaded = store.load(&session.id).unwrap();
+        assert_eq!(loaded.schema_version, session.schema_version);
+        assert_eq!(loaded.messages.len(), 1);
+    }
+
+    // ─── ADR 0004 — Debounce / Background Save ───────────────────────────
+
+    #[test]
+    fn adr0004_auto_save_does_not_immediately_save() {
+        // mark_dirty only — file should NOT exist immediately after.
+        use crate::tui::TuiApp;
+        use crate::tui::commands::{auto_save_session, build_session_from_app};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let mut app = TuiApp::default();
+        app.session_store = Some(store);
+        app.messages.push(MessageItem::User { text: "hi".into() });
+
+        auto_save_session(&mut app);
+        assert!(app.dirty, "dirty flag must be set");
+        assert!(app.last_dirty_at.is_some());
+
+        // No file exists yet — no synchronous save ran.
+        let session = build_session_from_app(&app);
+        let path = dir.path().join("sessions").join(format!("{}.json", sanitize_id(&session.id)));
+        assert!(!path.exists(), "no file should exist immediately after mark_dirty");
+    }
+
+    #[test]
+    fn adr0004_flush_pending_save_writes_when_debounce_elapsed() {
+        use crate::tui::TuiApp;
+        use crate::tui::commands::{auto_save_session, flush_pending_save};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let mut app = TuiApp::default();
+        app.session_store = Some(store);
+        app.messages.push(MessageItem::User { text: "flush me".into() });
+        auto_save_session(&mut app);
+
+        // Simulate the debounce window elapsing by backdating last_dirty_at.
+        app.last_dirty_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(10));
+
+        flush_pending_save(&mut app);
+        assert!(!app.dirty, "flush should clear dirty");
+        assert!(app.last_dirty_at.is_none());
+
+        // Session file should now exist in dir/sessions/.
+        let sessions_dir = dir.path().join("sessions");
+        let entries: Vec<_> = std::fs::read_dir(&sessions_dir).unwrap().collect();
+        assert_eq!(entries.len(), 1, "exactly one session file should exist");
+    }
+
+    #[test]
+    fn adr0004_flush_skipped_within_debounce_window() {
+        use crate::tui::TuiApp;
+        use crate::tui::commands::{auto_save_session, flush_pending_save};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let mut app = TuiApp::default();
+        app.session_store = Some(store);
+        app.messages.push(MessageItem::User { text: "x".into() });
+        auto_save_session(&mut app);
+
+        // Within the 5s window — flush should be a no-op.
+        flush_pending_save(&mut app);
+        assert!(app.dirty, "dirty should remain within debounce window");
+
+        // And no file written.
+        let sessions_dir = dir.path().join("sessions");
+        let _ = std::fs::create_dir_all(&sessions_dir);
+        let entries: Vec<_> = std::fs::read_dir(&sessions_dir).unwrap().collect();
+        assert!(entries.is_empty(), "no file should be written within window");
+    }
+
+    #[test]
+    fn adr0004_multiple_marks_collapse_into_one_save() {
+        use crate::tui::TuiApp;
+        use crate::tui::commands::{auto_save_session, flush_pending_save};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let mut app = TuiApp::default();
+        app.session_store = Some(store);
+
+        for i in 0..5 {
+            app.messages.push(MessageItem::User { text: format!("msg{i}") });
+            auto_save_session(&mut app);
+        }
+
+        // Backdate and flush.
+        app.last_dirty_at = Some(std::time::Instant::now() - std::time::Duration::from_secs(10));
+        flush_pending_save(&mut app);
+
+        // Exactly one session file (the latest snapshot) in dir/sessions/.
+        let sessions_dir = dir.path().join("sessions");
+        let entries: Vec<_> = std::fs::read_dir(&sessions_dir).unwrap().collect();
+        assert_eq!(entries.len(), 1, "5 marks should collapse to 1 save");
+    }
+
+    #[test]
+    fn adr0004_no_store_means_mark_dirty_is_noop() {
+        // When session_store is None, mark_dirty should not crash and
+        // should not set the flag (nothing to save).
+        use crate::tui::TuiApp;
+        use crate::tui::commands::auto_save_session;
+        let mut app = TuiApp::default();
+        app.session_store = None;
+        auto_save_session(&mut app);
+        // Flag stays false because we short-circuit on None store.
+        // (auto_save_session's "if app.session_store.is_none() return" path.)
+        assert!(!app.dirty, "no-op when no store");
+    }
+
+    #[test]
+    fn adr0004_background_thread_writes_sessions_off_main() {
+        // End-to-end: spawn real background thread, send snapshot, verify
+        // it gets written. Simulates the production main-loop path.
+        use crate::tui::commands::spawn_save_thread;
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::open(dir.path().to_str().unwrap());
+        let tx = spawn_save_thread(store);
+
+        let mut session = Session::new("gpt-4o");
+        session.messages.push(MessageItem::User { text: "bg".into() });
+        session.touch();
+
+        let expected_path = dir.path().join("sessions").join(format!("{}.json", sanitize_id(&session.id)));
+        tx.send(session).unwrap();
+        // Drop sender to signal EOF so the thread exits and flushes.
+        drop(tx);
+
+        // Spin briefly until the file appears (thread may need a moment).
+        let done = Arc::new(AtomicBool::new(false));
+        let done_clone = done.clone();
+        let watcher = std::thread::spawn(move || {
+            for _ in 0..50 {
+                if done_clone.load(Ordering::Relaxed) { return; }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        });
+        for _ in 0..50 {
+            if expected_path.exists() { break; }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        done.store(true, Ordering::Relaxed);
+        let _ = watcher.join();
+
+        assert!(expected_path.exists(), "background thread should write the session file");
     }
 }

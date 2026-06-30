@@ -262,6 +262,9 @@ mod tests {
             last_save_error: None,
             config_store: None,
             mcp_registry: None,
+            dirty: false,
+            last_dirty_at: None,
+            save_tx: None,
         };
 
         let backend = ratatui::backend::TestBackend::new(80, 1);

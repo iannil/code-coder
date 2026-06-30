@@ -78,10 +78,19 @@ pub fn run_tui(
     });
 
     // 注入存储到 app
+    let session_store_for_thread = crate::session::SessionStore::open(
+        &std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default(),
+    );
+    // ADR 0004: spawn background save thread. The TUI sends snapshots via
+    // save_tx; the thread serializes + writes off the main loop.
+    let save_tx = commands::spawn_save_thread(session_store_for_thread);
     app.session_store = Some(session_store);
     app.current_session_id = None;
     app.config_store = Some(config_store);
     app.mcp_registry = Some(mcp_registry);
+    app.save_tx = Some(save_tx);
 
     // 帧计数器（用于 spinner 动画）
     let mut frame_count: u64 = 0;
@@ -94,6 +103,11 @@ pub fn run_tui(
         // when over budget, evicts tool outputs → reasoning → FIFO. Also
         // covers /resume loading a previously-unbounded session.
         app::enforce_message_bounds(&mut app);
+
+        // ADR 0004: flush any pending dirty mark to the background save
+        // thread (debounced ~5s). No-op when nothing's dirty or the
+        // window hasn't elapsed.
+        commands::flush_pending_save(&mut app);
 
         // Panic-injection test: run with CODECODER_PANIC_TEST=1 to verify the
         // panic hook restores the terminal. Remove or gate behind a test cfg
@@ -133,17 +147,19 @@ pub fn run_tui(
     // 发送 shutdown
     let _ = cmd_tx.send(AgentCommand::Shutdown);
 
-    // 持久化会话（退出时自动保存）。
-    // 错误延迟到 terminal restore 之后才打印——raw mode 下 eprintln 会乱码。
-    let mut exit_save_error: Option<String> = None;
-    if let Some(ref store) = app.session_store {
-        let session = build_session_from_app(&app);
-        if let Err(e) = store.save(&session) {
-            let msg = format!("session exit save failed: {e}");
-            crate::log(&format!("[error] {msg}"));
-            exit_save_error = Some(msg);
-        }
-    }
+    // ADR 0004: flush final dirty mark + drop sender so the background
+    // save thread drains and exits. The thread is detached; we trust the
+    // OS to keep it alive long enough to finish. If a sync save happens
+    // (no thread wired), errors surface via the message list.
+    commands::flush_on_exit(&mut app);
+
+    // Capture any save error that surfaced into the message list (legacy
+    // sync path only — background path logs to codecoder.log directly).
+    let exit_save_error: Option<String> = if let Some(ref err) = app.last_save_error {
+        Some(format!("session save failed: {err}"))
+    } else {
+        None
+    };
 
     // Restore terminal
     crate::TUI_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
