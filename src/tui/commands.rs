@@ -665,17 +665,22 @@ mod adr0002_tests {
     }
 
     #[test]
-    fn clear_clears_messages_and_sends_clearhistory() {
+    fn clear_constructs_confirm_dialog_adr0006() {
+        // ADR 0006: /clear no longer clears directly — it constructs a
+        // Dialog::Confirm{ClearMessages}. The clear happens only when the
+        // user confirms via execute_confirm_action.
+        use crate::tui::{ConfirmAction, Dialog};
         let mut app = TuiApp::default();
         app.messages.push(MessageItem::User { text: "msg1".into() });
         app.messages.push(MessageItem::User { text: "msg2".into() });
         let (tx, rx) = std::sync::mpsc::channel();
         dispatch(&mut app, "/clear", &tx);
-        // System warning is pushed, so messages has 1 entry
-        assert_eq!(app.messages.len(), 1, "after /clear, only the warning System msg remains");
-        match rx.try_recv() {
-            Ok(AgentCommand::ClearHistory) => {}
-            other => panic!("expected ClearHistory, got {other:?}"),
+        // Messages NOT cleared; dialog opened.
+        assert_eq!(app.messages.len(), 2, "/clear must not clear directly (ADR 0006)");
+        assert!(rx.try_recv().is_err(), "no agent command until user confirms");
+        match app.dialog {
+            Some(Dialog::Confirm { action: ConfirmAction::ClearMessages, .. }) => {}
+            other => panic!("expected Confirm{{ClearMessages}}, got {other:?}"),
         }
     }
 
