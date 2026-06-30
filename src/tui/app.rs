@@ -130,6 +130,11 @@ pub enum Dialog {
     },
     AskQuestion {
         question: String,
+        /// Selectable choices (empty = free-text only). The user can always
+        /// type a custom answer instead of picking one.
+        options: Vec<String>,
+        /// Index of the highlighted option (ignored when `options` is empty).
+        selected: usize,
         request_id: u64,
     },
     /// ADR 0006: confirm gate for destructive operations. Y executes

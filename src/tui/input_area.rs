@@ -10,7 +10,7 @@ use ratatui::Frame;
 use std::time::Instant;
 
 use super::completion;
-use super::{Dialog, MessageItem, TuiApp};
+use super::{MessageItem, TuiApp};
 use crate::agent::AgentCommand;
 
 /// ─── Undo Snapshot ──────────────────────────────────────────────────────────
@@ -172,26 +172,17 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
             if app.model_picker_active || app.slash_completion.active {
                 return; // handled by dialogs
             }
-            if let Some(ref dialog) = app.dialog {
-                if let Dialog::AskQuestion { question: _, request_id } = dialog {
-                    if !app.input.is_empty() {
-                        let answer = app.input.trim().to_string();
-                        let rid = *request_id;
-                        app.dialog = None;
-                        app.messages.push(MessageItem::User { text: answer.clone() });
-                        let _ = cmd_tx.send(AgentCommand::AskUserResponse {
-                            request_id: rid,
-                            answer,
-                        });
-                        app.input.clear();
-                        app.cursor_pos = 0;
-                        app.auto_scroll = true;
-                        app.scroll_offset = 0;
-                        return;
-                    }
-                    return; // empty answer in AskQuestion: no-op (dialog stays)
-                }
-                return; // other dialogs handle their own Enter
+            // H2 fix: Enter accepts the highlighted @ file-completion candidate
+            // (mirrors the original) instead of submitting a half-typed @query.
+            if app.completion.active && !app.completion.candidates.is_empty() {
+                accept_file_completion(app);
+                return;
+            }
+            // When any dialog is open, key routing in mod.rs sends Enter to the
+            // dialog handler — this input-area path is never reached with a
+            // dialog active. The guard stays as defense-in-depth.
+            if app.dialog.is_some() {
+                return;
             }
             if app.input.is_empty() {
                 return; // ADR 0001: no-op. No more fold/accept/scroll magic.
@@ -232,6 +223,20 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         KeyCode::Down if key.modifiers == KeyModifiers::CONTROL => {
             navigate_history(app, Direction::Next);
         }
+        // H2 fix: while the @ file-completion popup is open, Up/Down move the
+        // popup selection instead of the cursor — otherwise `completion.selected`
+        // is stuck at 0 and Tab/Enter can only ever pick the first candidate.
+        KeyCode::Up if app.completion.active && !app.completion.candidates.is_empty() => {
+            if app.completion.selected > 0 {
+                app.completion.selected -= 1;
+            }
+        }
+        KeyCode::Down if app.completion.active && !app.completion.candidates.is_empty() => {
+            let max = app.completion.candidates.len().saturating_sub(1);
+            if app.completion.selected < max {
+                app.completion.selected += 1;
+            }
+        }
         KeyCode::Up => {
             if try_move_cursor_vertical(app, -1) {
                 // cursor moved within input — done
@@ -256,11 +261,18 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                 app.selected_msg = Some(0);
             }
         }
+        // ADR 0001: Home/End move to the edge of the CURRENT line (readline
+        // convention), not the whole buffer — matters for multi-line input.
         KeyCode::Home => {
-            app.cursor_pos = 0;
+            let before = &app.input[..app.cursor_pos];
+            app.cursor_pos = before.rfind('\n').map(|i| i + 1).unwrap_or(0);
         }
         KeyCode::End => {
-            app.cursor_pos = app.input.len();
+            let after = &app.input[app.cursor_pos..];
+            app.cursor_pos = match after.find('\n') {
+                Some(i) => app.cursor_pos + i,
+                None => app.input.len(),
+            };
         }
 
         // ── Character input ──────────────────────────────────────────────
@@ -328,13 +340,7 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         // the last collapsible message. The old "insert 2 spaces" fallback
         // is removed — Tab is exclusively for accepting/cycling/folding.
         KeyCode::Tab if app.completion.active => {
-            if let Some(candidate) = app.completion.candidates.get(app.completion.selected) {
-                let at_pos = app.completion.at_pos;
-                let end_of_word = app.cursor_pos;
-                app.input.replace_range(at_pos..end_of_word, &candidate.display);
-                app.cursor_pos = at_pos + candidate.display.len();
-            }
-            app.completion.active = false;
+            accept_file_completion(app);
         }
         KeyCode::Tab => {
             if app.slash_completion.active {
@@ -453,6 +459,23 @@ pub(crate) fn refresh_slash_completion(app: &mut TuiApp) {
     if app.slash_completion.selected > max {
         app.slash_completion.selected = 0;
     }
+}
+
+/// Accept the currently-highlighted @ file-completion candidate: replace the
+/// `@query` span (from the stored `at_pos` up to the cursor) with the
+/// candidate's display path, move the cursor to the end of the insertion, and
+/// close the popup. Shared by Tab and Enter (H2 fix).
+pub(crate) fn accept_file_completion(app: &mut TuiApp) {
+    if let Some(candidate) = app.completion.candidates.get(app.completion.selected) {
+        let at_pos = app.completion.at_pos;
+        let end_of_word = app.cursor_pos.min(app.input.len());
+        if at_pos <= end_of_word && app.input.is_char_boundary(at_pos) {
+            let display = candidate.display.clone();
+            app.input.replace_range(at_pos..end_of_word, &display);
+            app.cursor_pos = at_pos + display.len();
+        }
+    }
+    app.completion.active = false;
 }
 
 /// Walk input history (Ctrl+Up / Ctrl+Down per ADR 0001).
@@ -878,6 +901,83 @@ mod tests {
         // i.e. just before the second '\n'
         assert!(app.cursor_pos < app.input.len(), "cursor must move up");
         assert_eq!(&app.input[app.cursor_pos..app.cursor_pos+1], "\n", "cursor should sit at row boundary");
+    }
+
+    // ── H1 — Home/End are line-edge cursor keys (not list scroll) ─────────
+
+    #[test]
+    fn h1_home_moves_to_current_line_start() {
+        let mut app = TuiApp::default();
+        app.input = "line1\nline2\nline3".into();
+        app.cursor_pos = 14; // inside "line3" (after "li")
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Home, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 12, "Home goes to start of current line, not buffer start");
+    }
+
+    #[test]
+    fn h1_end_moves_to_current_line_end() {
+        let mut app = TuiApp::default();
+        app.input = "line1\nline2\nline3".into();
+        app.cursor_pos = 6; // start of "line2"
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::End, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.cursor_pos, 11, "End goes to end of current line (before the '\\n'), not buffer end");
+    }
+
+    // ── H2 — @ file completion is navigable and acceptable ────────────────
+
+    fn cand(s: &str) -> completion::CompletionCandidate {
+        completion::CompletionCandidate { display: s.into(), path: s.into() }
+    }
+
+    #[test]
+    fn h2_down_up_move_completion_selection() {
+        let mut app = TuiApp::default();
+        app.completion.active = true;
+        app.completion.candidates = vec![cand("a.rs"), cand("b.rs"), cand("c.rs")];
+        app.completion.selected = 0;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.completion.selected, 1, "Down should advance completion selection");
+        press(&mut app, crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.completion.selected, 2);
+        press(&mut app, crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.completion.selected, 2, "Down clamps at last candidate");
+        press(&mut app, crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.completion.selected, 1, "Up should move selection back");
+    }
+
+    #[test]
+    fn h2_enter_accepts_selected_candidate() {
+        let mut app = TuiApp::default();
+        app.input = "see @b".into();
+        app.cursor_pos = app.input.len();
+        app.completion.active = true;
+        app.completion.at_pos = 4; // the '@'
+        app.completion.candidates = vec![cand("a.rs"), cand("bbb.rs")];
+        app.completion.selected = 1;
+        let (tx, _rx) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "see bbb.rs", "Enter inserts the highlighted candidate, not the first");
+        assert!(!app.completion.active, "accepting closes the popup");
+        // Must NOT have submitted a message.
+        assert!(!app.messages.iter().any(|m| matches!(m, MessageItem::User { .. })));
+    }
+
+    #[test]
+    fn h2_tab_accepts_selected_candidate() {
+        let mut app = TuiApp::default();
+        app.input = "@a".into();
+        app.cursor_pos = 2;
+        app.completion.active = true;
+        app.completion.at_pos = 0;
+        app.completion.candidates = vec![cand("alpha.rs"), cand("beta.rs")];
+        app.completion.selected = 1;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "beta.rs", "Tab inserts the highlighted (2nd) candidate");
+        assert!(!app.completion.active);
     }
 
     #[test]

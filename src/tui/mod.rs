@@ -370,16 +370,10 @@ fn handle_key(
             }
             return;
         }
-        KeyCode::End => {
-            app.scroll_offset = 0;
-            app.auto_scroll = true;
-            return;
-        }
-        KeyCode::Home => {
-            app.auto_scroll = false;
-            app.scroll_offset = 0;
-            return;
-        }
+        // ADR 0001: Home/End are cursor-to-line-edge keys, NOT message-list
+        // scroll. Scrolling the list to top/bottom is g/G (with PageUp/PageDown
+        // for paging). We deliberately do NOT bind Home/End here so they fall
+        // through to input_area::handle_input_key for line-edge cursor motion.
         _ => {}
     }
 
@@ -560,11 +554,11 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
                         app.thinking_start_time.take();
                         app.should_quit = true;
                     }
-                    AgentResponse::AskUser { question, request_id } => {
+                    AgentResponse::AskUser { question, options, request_id } => {
                         app.messages.push(MessageItem::System {
                             text: format!("[ask] Agent asks: {}", question),
                         });
-                        app.dialog = Some(Dialog::AskQuestion { question, request_id });
+                        app.dialog = Some(Dialog::AskQuestion { question, options, selected: 0, request_id });
                     }
                     AgentResponse::PlanRequest { title, plan, request_id } => {
                         app.messages.push(MessageItem::System {

@@ -361,8 +361,10 @@ pub enum AgentResponse {
     /// for `tool_name`. TUI persists it to codecoder.json so future sessions
     /// honor the grant without re-prompting.
     PersistPermission { tool_name: String },
-    /// Agent asked a question — user needs to answer
-    AskUser { question: String, request_id: u64 },
+    /// Agent asked a question — user needs to answer. `options` are
+    /// selectable choices (empty = free-text only); the user may always type
+    /// a custom answer instead of picking an option.
+    AskUser { question: String, options: Vec<String>, request_id: u64 },
     /// Agent presents a plan for user approval
     PlanRequest { title: String, plan: String, request_id: u64 },
     Error { message: String },
@@ -914,7 +916,7 @@ Here is the content."#;
 
     #[test]
     fn test_agent_ask_user_response() {
-        let resp = AgentResponse::AskUser { question: "your name?".into(), request_id: 42 };
+        let resp = AgentResponse::AskUser { question: "your name?".into(), options: vec![], request_id: 42 };
         let debug = format!("{resp:?}");
         assert!(debug.contains("42") || debug.contains("name"));
     }

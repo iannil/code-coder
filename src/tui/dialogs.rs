@@ -35,7 +35,14 @@ pub fn render_overlays(frame: &mut Frame, area: Rect, input_area: Rect, app: &mu
         return;
     }
 
-    // 4. Permission/plan/question dialog
+    // 4a. AskQuestion has its own layout (selectable option list + free-text
+    // line), and needs the typed answer (app.input) which render_dialog lacks.
+    if let Some(Dialog::AskQuestion { question, options, selected, .. }) = &app.dialog {
+        render_ask_question_dialog(frame, area, question, options, *selected, &app.input, &theme);
+        return;
+    }
+
+    // 4b. Permission / plan dialog
     if let Some(ref dialog) = app.dialog {
         render_dialog(frame, area, dialog, &theme);
         return;
@@ -231,8 +238,10 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
     let (tool_name, tool_input_txt, risk) = match dialog {
         Dialog::ToolPermission { tool_name, tool_input, risk, .. } => (tool_name.as_str(), tool_input.as_str(), risk.as_str()),
         Dialog::PlanApproval { title: _, plan, .. } => ("plan", plan.as_str(), "plan approval"),
-        Dialog::AskQuestion { question, .. } => ("ask_user", question.as_str(), "user question"),
-        Dialog::Confirm { .. } => unreachable!("handled above"),
+        // AskQuestion and Confirm are rendered by their own functions before
+        // render_dialog is ever called (see render_overlays).
+        Dialog::AskQuestion { .. } => unreachable!("AskQuestion renders via render_ask_question_dialog"),
+        Dialog::Confirm { .. } => unreachable!("Confirm renders via render_confirm_dialog"),
     };
 
     let dialog_width = area.width.min(70).max(40);
@@ -269,12 +278,7 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
 
     content.push(Line::from(""));
     match dialog {
-        Dialog::AskQuestion { .. } => {
-            content.push(Line::styled(
-                " Type answer + Enter, or Esc to skip ",
-                Style::default().fg(theme.accent_text),
-            ));
-        }
+        Dialog::AskQuestion { .. } => unreachable!("AskQuestion renders via render_ask_question_dialog"),
         Dialog::ToolPermission { .. } => {
             // ADR 0005: scope-aware approval keys.
             content.push(Line::styled(
@@ -358,6 +362,79 @@ fn render_confirm_dialog_owned(frame: &mut Frame, dialog_area: Rect, message: &s
     frame.render_widget(widget, dialog_area);
 }
 
+/// ─── AskQuestion Dialog ─────────────────────────────────────────────────────
+///
+/// H3: render the agent's question as a navigable option list (when the agent
+/// supplied `options`) plus a free-text line for a custom answer. The user
+/// picks an option with ↑↓ + Enter, or types any text and presses Enter. Esc
+/// skips. When `options` is empty this degrades to a pure free-text prompt.
+fn render_ask_question_dialog(
+    frame: &mut Frame,
+    area: Rect,
+    question: &str,
+    options: &[String],
+    selected: usize,
+    input: &str,
+    theme: &crate::tui::Theme,
+) {
+    let dialog_width = area.width.min(70).max(40);
+    let q_lines = question.lines().count().max(1) as u16;
+    let opt_lines = options.len() as u16;
+    // header + blank + question + blank + options + blank + answer + hint
+    let dialog_height = (q_lines + opt_lines + 6).min(area.height.saturating_sub(2)).max(7);
+    let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
+    let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
+    let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
+
+    let mut content = vec![
+        Line::styled(" [?] Question ", Style::default().fg(theme.accent_text).add_modifier(Modifier::BOLD)),
+        Line::from(""),
+    ];
+    for line in question.lines() {
+        content.push(Line::styled(format!(" {}", line), Style::default().fg(theme.primary_text)));
+    }
+
+    if !options.is_empty() {
+        content.push(Line::from(""));
+        for (i, opt) in options.iter().enumerate() {
+            // Highlight the selected option only when no custom text is typed —
+            // typing shifts focus to the free-text answer (the "__other__" path).
+            if i == selected && input.is_empty() {
+                content.push(Line::styled(
+                    format!(" ▸ {}", opt),
+                    Style::default().fg(theme.selected_fg).bg(theme.selected_bg),
+                ));
+            } else {
+                content.push(Line::styled(
+                    format!("   {}", opt),
+                    Style::default().fg(theme.primary_text),
+                ));
+            }
+        }
+    }
+
+    content.push(Line::from(""));
+    if input.is_empty() {
+        let hint = if options.is_empty() {
+            " Type answer + Enter  ·  Esc to skip "
+        } else {
+            " ↑↓ select · Enter confirm · or type a custom answer · Esc skip "
+        };
+        content.push(Line::styled(hint, Style::default().fg(theme.accent_text)));
+    } else {
+        content.push(Line::styled(format!(" > {}", input), Style::default().fg(theme.primary_text)));
+        content.push(Line::styled(" Enter to send · Esc to skip ", Style::default().fg(theme.accent_text)));
+    }
+
+    frame.render_widget(ratatui::widgets::Clear, dialog_area);
+    let widget = Paragraph::new(content)
+        .block(Block::bordered()
+            .border_type(BorderType::Plain)
+            .border_style(Style::default().fg(theme.accent_text)))
+        .wrap(Wrap { trim: false });
+    frame.render_widget(widget, dialog_area);
+}
+
 /// ─── File Completion Popup ──────────────────────────────────────────────────
 
 fn render_file_completion(frame: &mut Frame, area: Rect, input_area: Rect, app: &TuiApp) {
@@ -407,6 +484,13 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
     use crate::agent::AgentCommand;
     use crate::agent::PermScope;
 
+    // H3: AskQuestion is not a Y/N/A dialog — it has a selectable option list
+    // plus a free-text answer. Route it to its own handler so the letter keys
+    // (y/a/n) type into the answer instead of being hijacked into "yes"/"no".
+    if matches!(app.dialog, Some(Dialog::AskQuestion { .. })) {
+        return handle_ask_question_key(app, key, cmd_tx);
+    }
+
     // Distinguish lowercase 'a' (Shift unset) from uppercase 'A' (Shift held).
     // crossterm reports Shift+via both KeyCode::Char('A') and modifiers, so
     // check modifiers first to be unambiguous.
@@ -427,9 +511,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
                     }
-                    Dialog::AskQuestion { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "yes".into() });
-                    }
+                    Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: Y confirms the destructive action.
                     Dialog::Confirm { action, .. } => {
                         crate::tui::commands::execute_confirm_action(app, cmd_tx, action);
@@ -468,9 +550,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "approved".into() });
                     }
-                    Dialog::AskQuestion { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "yes".into() });
-                    }
+                    Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: 'A' on a Confirm dialog is a no-op — user
                     // must use Y or N. Put the dialog back so it stays open.
                     confirm @ Dialog::Confirm { .. } => {
@@ -493,9 +573,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
                     }
-                    Dialog::AskQuestion { request_id, .. } => {
-                        let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "no".into() });
-                    }
+                    Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: N cancels the confirm — no action, no message.
                     Dialog::Confirm { .. } => {}
                 }
@@ -505,7 +583,7 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
         KeyCode::Esc => {
             if let Some(dialog) = app.dialog.take() {
                 match dialog {
-                    Dialog::ToolPermission { request_id, .. } | Dialog::AskQuestion { request_id, .. } => {
+                    Dialog::ToolPermission { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PermissionResponse {
                             request_id,
                             allowed: false,
@@ -515,28 +593,114 @@ pub fn handle_dialog_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_
                     Dialog::PlanApproval { request_id, .. } => {
                         let _ = cmd_tx.send(AgentCommand::PlanDecision { request_id, decision: "rejected".into() });
                     }
+                    Dialog::AskQuestion { .. } => unreachable!("AskQuestion routed to handle_ask_question_key"),
                     // ADR 0006: Esc cancels the confirm — same as N.
                     Dialog::Confirm { .. } => {}
                 }
             }
         }
-        // ── Enter: AskQuestion submit, else no-op ─────────────────────────
-        KeyCode::Enter => {
-            if let Some(dialog) = app.dialog.take() {
-                if let Dialog::AskQuestion { question, request_id } = dialog {
-                    if !app.input.is_empty() {
-                        let answer = app.input.trim().to_string();
-                        app.messages.push(super::MessageItem::User { text: answer.clone() });
-                        let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer });
-                        app.input.clear();
-                        app.cursor_pos = 0;
-                    } else {
-                        // Empty answer → put question back
-                        app.dialog = Some(Dialog::AskQuestion { question, request_id });
-                    }
-                } else {
-                    app.dialog = Some(dialog);
+        // ── Enter: no-op for permission/plan/confirm (they need an explicit
+        // letter key). AskQuestion's Enter is handled in handle_ask_question_key.
+        KeyCode::Enter => {}
+        _ => {}
+    }
+}
+
+/// H3: handle keys for the AskQuestion dialog — a selectable option list plus
+/// a free-text answer. ↑↓ move the highlighted option (only while no custom
+/// text is typed); Enter submits the typed text if any, else the highlighted
+/// option; printable keys / Backspace edit the free-text answer; Esc skips and
+/// unblocks the waiting `ask_user` tool with a "[skipped]" sentinel.
+///
+/// Crucially, Esc here sends an `AskUserResponse` (not a `PermissionResponse`
+/// as the old combined handler did) — otherwise the tool blocked for 300s.
+pub fn handle_ask_question_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_tx: &std::sync::mpsc::Sender<crate::agent::AgentCommand>) {
+    use crossterm::event::KeyCode;
+    use crate::agent::AgentCommand;
+
+    let (request_id, opt_len) = match &app.dialog {
+        Some(Dialog::AskQuestion { request_id, options, .. }) => (*request_id, options.len()),
+        _ => return,
+    };
+
+    let submit = |app: &mut TuiApp, answer: String| {
+        app.dialog = None;
+        app.messages.push(super::MessageItem::User { text: answer.clone() });
+        let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer });
+        app.input.clear();
+        app.cursor_pos = 0;
+        app.auto_scroll = true;
+        app.scroll_offset = 0;
+    };
+
+    match key.code {
+        KeyCode::Up => {
+            if opt_len > 0 && app.input.is_empty() {
+                if let Some(Dialog::AskQuestion { selected, .. }) = app.dialog.as_mut() {
+                    *selected = selected.saturating_sub(1);
                 }
+            }
+        }
+        KeyCode::Down => {
+            if opt_len > 0 && app.input.is_empty() {
+                if let Some(Dialog::AskQuestion { selected, .. }) = app.dialog.as_mut() {
+                    *selected = (*selected + 1).min(opt_len - 1);
+                }
+            }
+        }
+        KeyCode::Enter => {
+            // Typed text wins (the "custom answer" path); otherwise the
+            // highlighted option; if neither exists, keep the dialog open.
+            if !app.input.is_empty() {
+                let answer = app.input.trim().to_string();
+                submit(app, answer);
+            } else if opt_len > 0 {
+                let answer = match &app.dialog {
+                    Some(Dialog::AskQuestion { options, selected, .. }) => {
+                        options.get(*selected).cloned().unwrap_or_default()
+                    }
+                    _ => return,
+                };
+                submit(app, answer);
+            }
+            // else: free-text empty and no options → nothing to submit.
+        }
+        KeyCode::Esc => {
+            app.dialog = None;
+            let _ = cmd_tx.send(AgentCommand::AskUserResponse { request_id, answer: "[skipped]".into() });
+            app.input.clear();
+            app.cursor_pos = 0;
+        }
+        KeyCode::Char(c) => {
+            app.input.insert(app.cursor_pos, c);
+            app.cursor_pos += c.len_utf8();
+        }
+        KeyCode::Backspace => {
+            if app.cursor_pos > 0 {
+                let mut new_pos = app.cursor_pos - 1;
+                while new_pos > 0 && !app.input.is_char_boundary(new_pos) {
+                    new_pos -= 1;
+                }
+                app.input.remove(new_pos);
+                app.cursor_pos = new_pos;
+            }
+        }
+        KeyCode::Left => {
+            if app.cursor_pos > 0 {
+                let mut new_pos = app.cursor_pos - 1;
+                while new_pos > 0 && !app.input.is_char_boundary(new_pos) {
+                    new_pos -= 1;
+                }
+                app.cursor_pos = new_pos;
+            }
+        }
+        KeyCode::Right => {
+            if app.cursor_pos < app.input.len() {
+                let mut new_pos = app.cursor_pos + 1;
+                while new_pos < app.input.len() && !app.input.is_char_boundary(new_pos) {
+                    new_pos += 1;
+                }
+                app.cursor_pos = new_pos;
             }
         }
         _ => {}
@@ -793,6 +957,116 @@ mod tests {
             m,
             MessageItem::System { text } if text.contains("auto-allowed")
         )), "Y must not push auto-allow confirmation");
+    }
+
+    // ── H3 — AskQuestion: selectable options + free-text ─────────────────
+
+    fn ask_dialog(options: Vec<&str>) -> Dialog {
+        Dialog::AskQuestion {
+            question: "Pick one".into(),
+            options: options.into_iter().map(String::from).collect(),
+            selected: 0,
+            request_id: 7,
+        }
+    }
+
+    #[test]
+    fn h3_down_up_move_selected_option() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec!["red", "green", "blue"]));
+        let (tx, _) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        match &app.dialog {
+            Some(Dialog::AskQuestion { selected, .. }) => assert_eq!(*selected, 2, "Down clamps at last option"),
+            _ => panic!("dialog should stay open"),
+        }
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE), &tx);
+        match &app.dialog {
+            Some(Dialog::AskQuestion { selected, .. }) => assert_eq!(*selected, 1),
+            _ => panic!("dialog should stay open"),
+        }
+    }
+
+    #[test]
+    fn h3_enter_submits_highlighted_option() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec!["red", "green", "blue"]));
+        // move to "green"
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::NONE), &tx);
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE), &tx);
+        assert!(app.dialog.is_none(), "Enter consumes the dialog");
+        match rx.try_recv().unwrap() {
+            AgentCommand::AskUserResponse { request_id, answer } => {
+                assert_eq!(request_id, 7);
+                assert_eq!(answer, "green", "submits the highlighted option text");
+            }
+            other => panic!("expected AskUserResponse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn h3_typed_text_wins_over_option() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec!["red", "green"]));
+        let (tx, rx) = std::sync::mpsc::channel();
+        // Type "y" — must NOT be hijacked to "yes"; it edits the answer.
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::NONE), &tx);
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Char('o'), crossterm::event::KeyModifiers::NONE), &tx);
+        assert_eq!(app.input, "yo", "letters type into the free-text answer");
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE), &tx);
+        match rx.try_recv().unwrap() {
+            AgentCommand::AskUserResponse { answer, .. } => assert_eq!(answer, "yo", "custom typed answer wins"),
+            other => panic!("expected AskUserResponse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn h3_esc_skips_with_askuser_response_not_permission() {
+        // The old combined handler sent a PermissionResponse on Esc, leaving
+        // the ask_user tool blocked for 300s. Esc must now deliver an
+        // AskUserResponse so the tool unblocks.
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec!["red"]));
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE), &tx);
+        assert!(app.dialog.is_none());
+        match rx.try_recv().unwrap() {
+            AgentCommand::AskUserResponse { request_id, answer } => {
+                assert_eq!(request_id, 7);
+                assert_eq!(answer, "[skipped]");
+            }
+            other => panic!("Esc must send AskUserResponse, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn h3_enter_with_no_input_no_options_keeps_dialog() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec![])); // free-text only, empty input
+        let (tx, rx) = std::sync::mpsc::channel();
+        handle_dialog_key(&mut app, key(crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE), &tx);
+        assert!(app.dialog.is_some(), "nothing to submit → dialog stays open");
+        assert!(rx.try_recv().is_err(), "no response sent on empty submit");
+    }
+
+    #[test]
+    fn h3_render_shows_options() {
+        let mut app = TuiApp::default();
+        app.dialog = Some(ask_dialog(vec!["Apple", "Banana"]));
+        app.status = crate::tui::StatusData::default();
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = ratatui::Terminal::new(backend).unwrap();
+        terminal.draw(|f| {
+            render_overlays(f, f.area(), Rect::new(0, 10, 80, 3), &mut app);
+        }).unwrap();
+        let buffer = terminal.backend().buffer();
+        let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
+        assert!(cell_text.contains("Pick one"), "missing question: {cell_text:.120}");
+        assert!(cell_text.contains("Apple"), "missing option Apple");
+        assert!(cell_text.contains("Banana"), "missing option Banana");
     }
 
     // ── Model picker ──────────────────────────────────────────────────────

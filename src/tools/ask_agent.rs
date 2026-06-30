@@ -52,13 +52,16 @@ impl Tool for AskUserTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the user a question. Input JSON: {\"question\":\"...\"}. Returns the user's answer."
+        "Ask the user a question. Input JSON: {\"question\":\"...\", \"options\":[\"choice A\",\"choice B\"]}. \
+         `options` is optional — when given, the user can pick a choice with the arrow keys or type a custom answer. Returns the user's answer."
     }
 
     fn execute(&self, input: &str) -> anyhow::Result<String> {
         #[derive(serde::Deserialize)]
         struct AskInput {
             question: String,
+            #[serde(default)]
+            options: Vec<String>,
         }
 
         let parsed: AskInput = serde_json::from_str(input)
@@ -79,6 +82,7 @@ impl Tool for AskUserTool {
             if let Some(ref tx) = *resp_tx {
                 let _ = tx.send(crate::agent::AgentResponse::AskUser {
                     question: parsed.question,
+                    options: parsed.options,
                     request_id: id,
                 });
             }
