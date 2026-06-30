@@ -152,6 +152,16 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         }
 
         // ── Enter ────────────────────────────────────────────────────────
+        // ADR 0001: Enter always means "submit the current submittable thing."
+        // - Alt/Ctrl+Enter: force submit even when modifiers would otherwise
+        //   be interpreted differently.
+        // - Shift+Enter: insert a literal newline (multi-line input).
+        // - Plain Enter on AskQuestion dialog: handled here as a submission
+        //   of the typed answer (mirrors dialog handler; kept here so the
+        //   input-area path doesn't drop the input silently).
+        // - Plain Enter otherwise: submit. Empty input is a no-op (does NOT
+        //   fold reasoning, accept completion, or scroll — those moved to Tab
+        //   per ADR 0001).
         KeyCode::Enter
             if key.modifiers == KeyModifiers::ALT
                 || key.modifiers == KeyModifiers::CONTROL =>
@@ -159,10 +169,7 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
             send_message(app, cmd_tx);
         }
         KeyCode::Enter => {
-            if app.model_picker_active {
-                return; // handled by dialogs
-            }
-            if app.slash_completion.active {
+            if app.model_picker_active || app.slash_completion.active {
                 return; // handled by dialogs
             }
             if let Some(ref dialog) = app.dialog {
@@ -182,46 +189,12 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                         app.scroll_offset = 0;
                         return;
                     }
+                    return; // empty answer in AskQuestion: no-op (dialog stays)
                 }
+                return; // other dialogs handle their own Enter
             }
             if app.input.is_empty() {
-                if let Some(idx) = app.selected_msg {
-                    if let Some(msg) = app.messages.get(idx) {
-                        let text = match msg {
-                            MessageItem::User { text } => text.clone(),
-                            MessageItem::Assistant { text } => text.clone(),
-                            MessageItem::System { text } => text.clone(),
-                            MessageItem::ToolCall { output, .. } => output.clone(),
-                            MessageItem::Reasoning { text, .. } => text.clone(),
-                        };
-                        app.input = text;
-                        app.cursor_pos = app.input.len();
-                        app.selected_msg = None;
-                        return;
-                    }
-                    app.selected_msg = None;
-                }
-                if app.completion.active {
-                    if let Some(candidate) = app.completion.candidates.get(app.completion.selected) {
-                        let at_pos = app.completion.at_pos;
-                        let end_of_word = app.cursor_pos;
-                        app.input.replace_range(at_pos..end_of_word, &candidate.display);
-                        app.cursor_pos = at_pos + candidate.display.len();
-                    }
-                    app.completion.active = false;
-                    return;
-                }
-                if let Some(MessageItem::Reasoning { expanded, .. }) = app.messages.last_mut() {
-                    *expanded = !*expanded;
-                    return;
-                }
-                if let Some(MessageItem::ToolCall { expanded: true, show_full, .. }) = app.messages.last_mut() {
-                    *show_full = !*show_full;
-                    return;
-                }
-                app.auto_scroll = true;
-                app.scroll_offset = 0;
-                return;
+                return; // ADR 0001: no-op. No more fold/accept/scroll magic.
             }
             if key.modifiers == KeyModifiers::SHIFT {
                 app.input.push('\n');
@@ -231,7 +204,7 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
             }
         }
 
-        // ── Cursor navigation ────────────────────────────────────────────
+        // ── Cursor navigation (multi-line aware per ADR 0001) ───────────
         KeyCode::Left => {
             if app.cursor_pos > 0 {
                 let mut new_pos = app.cursor_pos.saturating_sub(1);
@@ -250,11 +223,18 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                 app.cursor_pos = new_pos;
             }
         }
+        // ADR 0001: Up/Down move cursor within multi-line input. When input
+        // is empty (no cursor movement possible), Up/Down enter browse mode
+        // and walk the message list. History is on Ctrl+Up/Ctrl+Down below.
+        KeyCode::Up if key.modifiers == KeyModifiers::CONTROL => {
+            navigate_history(app, Direction::Prev);
+        }
+        KeyCode::Down if key.modifiers == KeyModifiers::CONTROL => {
+            navigate_history(app, Direction::Next);
+        }
         KeyCode::Up => {
-            if !app.input_history.is_empty() && app.history_pos > 0 {
-                app.history_pos -= 1;
-                app.input = app.input_history[app.history_pos].clone();
-                app.cursor_pos = app.input.len();
+            if try_move_cursor_vertical(app, -1) {
+                // cursor moved within input — done
             } else if app.input.is_empty() && !app.messages.is_empty() {
                 let max_idx = app.messages.len().saturating_sub(1);
                 app.selected_msg = Some(match app.selected_msg {
@@ -264,21 +244,15 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
             }
         }
         KeyCode::Down => {
-            if app.history_pos < app.input_history.len() {
-                app.history_pos += 1;
-                if app.history_pos == app.input_history.len() {
-                    app.input.clear();
-                } else {
-                    app.input = app.input_history[app.history_pos].clone();
-                }
-                app.cursor_pos = app.input.len();
+            if try_move_cursor_vertical(app, 1) {
+                // cursor moved within input — done
             } else if app.input.is_empty() && app.selected_msg.is_some() {
                 let max_idx = app.messages.len().saturating_sub(1);
                 app.selected_msg = Some(match app.selected_msg {
                     Some(i) if i < max_idx => i + 1,
                     _ => 0,
                 });
-            } else if app.input.is_empty() {
+            } else if app.input.is_empty() && !app.messages.is_empty() {
                 app.selected_msg = Some(0);
             }
         }
@@ -356,6 +330,9 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
         }
 
         // ── Tab ──────────────────────────────────────────────────────────
+        // ADR 0001 priority: completion accept > slash-cycle > fold/expand
+        // the last collapsible message. The old "insert 2 spaces" fallback
+        // is removed — Tab is exclusively for accepting/cycling/folding.
         KeyCode::Tab if app.completion.active => {
             if let Some(candidate) = app.completion.candidates.get(app.completion.selected) {
                 let at_pos = app.completion.at_pos;
@@ -371,24 +348,29 @@ pub fn handle_input_key(app: &mut TuiApp, key: crossterm::event::KeyEvent, cmd_t
                     % app.slash_completion.commands.len();
                 return;
             }
-            if app.completion.active {
-                app.completion.selected = (app.completion.selected + 1)
-                    % app.completion.candidates.len().max(1);
-            } else {
-                app.input.insert_str(app.cursor_pos, "  ");
-                app.cursor_pos += 2;
+            // No completion: fold/expand the last collapsible message.
+            // Reasoning toggles `expanded`. ToolCall only toggles `show_full`
+            // when already expanded (collapsed ToolCalls expand via selected_msg
+            // browse, not Tab — keep Tab scoped to "more detail" semantics).
+            if let Some(MessageItem::Reasoning { expanded, .. }) = app.messages.last_mut() {
+                *expanded = !*expanded;
+                return;
             }
+            if let Some(MessageItem::ToolCall { expanded, show_full, .. }) = app.messages.last_mut() {
+                if *expanded {
+                    *show_full = !*show_full;
+                    return;
+                }
+            }
+            // Nothing to fold: no-op (ADR 0001 reserves Tab for fold/expand,
+            // not for indenting input).
         }
 
         // ── Esc in input mode ────────────────────────────────────────────
-        KeyCode::Esc => {
-            if app.selected_msg.is_some() {
-                app.selected_msg = None;
-                return;
-            }
-            app.completion.active = false;
-            app.should_quit = true;
-        }
+        // ADR 0001: Esc never quits. The cascading close (search → selected_msg
+        // → completion) is handled by mod.rs's system-level Esc before we get
+        // here. If we do reach here, it's a no-op.
+        KeyCode::Esc => {}
 
         _ => {}
     }
@@ -427,6 +409,85 @@ pub fn handle_search_key(app: &mut TuiApp, key: crossterm::event::KeyEvent) {
 
 /// ─── Send Message ───────────────────────────────────────────────────────────
 /// (kept here because it's closely tied to the input area)
+
+/// Direction for history navigation (Ctrl+Up / Ctrl+Down).
+pub(crate) enum Direction {
+    Prev,
+    Next,
+}
+
+/// Walk input history (Ctrl+Up / Ctrl+Down per ADR 0001).
+/// Independent of input contents — overrides whatever is in the buffer,
+/// matching readline behavior. Caller can undo to recover.
+pub(crate) fn navigate_history(app: &mut TuiApp, dir: Direction) {
+    if app.input_history.is_empty() {
+        return;
+    }
+    match dir {
+        Direction::Prev => {
+            if app.history_pos > 0 {
+                app.history_pos -= 1;
+                app.input = app.input_history[app.history_pos].clone();
+                app.cursor_pos = app.input.len();
+            }
+        }
+        Direction::Next => {
+            if app.history_pos < app.input_history.len() {
+                app.history_pos += 1;
+                if app.history_pos == app.input_history.len() {
+                    app.input.clear();
+                    app.cursor_pos = 0;
+                } else {
+                    app.input = app.input_history[app.history_pos].clone();
+                    app.cursor_pos = app.input.len();
+                }
+            }
+        }
+    }
+}
+
+/// Try to move the cursor one display row up (-1) or down (+1) inside the
+/// multi-line input buffer. Returns true if the cursor moved (i.e. input
+/// had multiple lines and the cursor was not at the boundary already),
+/// false otherwise — callers fall back to browse-mode behavior when false.
+pub(crate) fn try_move_cursor_vertical(app: &mut TuiApp, delta: i32) -> bool {
+    if !app.input.contains('\n') {
+        return false; // single-line input: nothing to move vertically
+    }
+    let cursor = app.cursor_pos.min(app.input.len());
+    // Find current row/col
+    let before = &app.input[..cursor];
+    let row = before.matches('\n').count();
+    let last_nl = before.rfind('\n');
+    let col = match last_nl {
+        Some(idx) => cursor - idx - 1,
+        None => cursor,
+    };
+
+    let lines: Vec<&str> = app.input.split('\n').collect();
+    let target_row = row as i32 + delta;
+    if target_row < 0 || target_row as usize >= lines.len() {
+        return false; // at top/bottom edge: no movement
+    }
+    let target_row = target_row as usize;
+    let target_col = col.min(lines[target_row].len());
+    // Recompute byte offset: sum of preceding lines + target_col, accounting for '\n' separators
+    let mut new_cursor = 0usize;
+    for (i, l) in lines.iter().enumerate() {
+        if i == target_row {
+            // Advance to char boundary at or before target_col bytes
+            let mut boundary = target_col;
+            while boundary > 0 && !lines[target_row].is_char_boundary(boundary) {
+                boundary -= 1;
+            }
+            new_cursor += boundary;
+            break;
+        }
+        new_cursor += l.len() + 1; // +1 for '\n'
+    }
+    app.cursor_pos = new_cursor;
+    true
+}
 
 pub fn send_message(app: &mut TuiApp, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
     let input = app.input.trim().to_string();
@@ -646,5 +707,156 @@ mod tests {
         let (tx, _) = std::sync::mpsc::channel();
         press(&mut app, crossterm::event::KeyCode::Char('y'), crossterm::event::KeyModifiers::CONTROL, &tx);
         assert_eq!(app.input, "second");
+    }
+
+    // ── ADR 0001 — Keybinding & Mode Semantics ────────────────────────────
+
+    #[test]
+    fn adr0001_esc_in_input_does_not_quit() {
+        // Esc with empty input + no overlays must be a no-op (not quit).
+        let mut app = TuiApp::default();
+        app.input = String::new();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE, &tx);
+        assert!(!app.should_quit, "Esc must not set should_quit");
+    }
+
+    #[test]
+    fn adr0001_esc_in_input_handler_is_noop_when_completion_active() {
+        // ADR 0001: at the input_area layer, Esc is a no-op. The completion-
+        // closing cascade lives at mod.rs handle_key (tested there). When
+        // handle_input_key is reached with completion still active (which
+        // shouldn't happen in normal flow but is the contract), Esc must
+        // neither quit nor mutate state.
+        let mut app = TuiApp::default();
+        app.completion.active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Esc, crossterm::event::KeyModifiers::NONE, &tx);
+        assert!(!app.should_quit, "Esc at input layer must not quit");
+        // Note: completion is NOT closed here — that's the cascade's job.
+    }
+
+    #[test]
+    fn adr0001_enter_on_empty_input_is_noop() {
+        // Empty input + plain Enter must NOT trigger any state change.
+        // Previously this could fold reasoning, accept completion, or scroll.
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Reasoning { text: "CoT".into(), expanded: false });
+        app.input = String::new();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::NONE, &tx);
+        // Reasoning must remain un-folded (Enter no longer toggles).
+        match &app.messages[0] {
+            MessageItem::Reasoning { expanded, .. } => assert!(!*expanded, "Enter must not fold reasoning"),
+            _ => panic!("expected Reasoning"),
+        }
+    }
+
+    #[test]
+    fn adr0001_tab_folds_last_reasoning_message() {
+        // Tab is now the exclusive fold/expand key for Reasoning.
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::Reasoning { text: "CoT".into(), expanded: false });
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::NONE, &tx);
+        match &app.messages[0] {
+            MessageItem::Reasoning { expanded, .. } => assert!(*expanded, "Tab should expand reasoning"),
+            _ => panic!("expected Reasoning"),
+        }
+    }
+
+    #[test]
+    fn adr0001_tab_toggles_show_full_on_expanded_toolcall() {
+        // Tab on an already-expanded ToolCall toggles show_full.
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::ToolCall {
+            name: "read".into(), input: "x".into(), output: "y".into(),
+            expanded: true, show_full: false,
+        });
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::NONE, &tx);
+        match &app.messages[0] {
+            MessageItem::ToolCall { show_full, .. } => assert!(*show_full, "Tab should toggle show_full"),
+            _ => panic!("expected ToolCall"),
+        }
+    }
+
+    #[test]
+    fn adr0001_tab_does_not_insert_spaces_when_no_target() {
+        // Old behavior: Tab when nothing to fold inserted 2 spaces. ADR 0001
+        // removes that — Tab with no completion and nothing to fold is no-op.
+        let mut app = TuiApp::default();
+        app.input = "abc".into();
+        app.cursor_pos = 3;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Tab, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "abc", "Tab must not insert spaces");
+    }
+
+    #[test]
+    fn adr0001_ctrl_up_walks_history_backward() {
+        // Ctrl+Up is the new history-backward key (plain Up no longer is).
+        let mut app = TuiApp::default();
+        app.input_history = vec!["first".into(), "second".into(), "third".into()];
+        app.history_pos = 3; // past the end — current (empty) input
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "third");
+        assert_eq!(app.history_pos, 2);
+    }
+
+    #[test]
+    fn adr0001_ctrl_down_walks_history_forward() {
+        let mut app = TuiApp::default();
+        app.input_history = vec!["first".into(), "second".into()];
+        app.history_pos = 0;
+        // Override input to confirm Ctrl+Down supersedes buffer contents.
+        app.input = "garbage".into();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Down, crossterm::event::KeyModifiers::CONTROL, &tx);
+        assert_eq!(app.input, "second");
+        assert_eq!(app.history_pos, 1);
+    }
+
+    #[test]
+    fn adr0001_plain_up_on_empty_input_enters_browse() {
+        // Plain Up with empty input enters browse mode (selects last msg).
+        let mut app = TuiApp::default();
+        app.messages.push(MessageItem::User { text: "m1".into() });
+        app.messages.push(MessageItem::User { text: "m2".into() });
+        app.input = String::new();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE, &tx);
+        assert_eq!(app.selected_msg, Some(1), "Up on empty should select last message");
+    }
+
+    #[test]
+    fn adr0001_plain_up_in_multiline_moves_cursor() {
+        // Plain Up inside multi-line input moves cursor up a row, does not
+        // enter browse mode (input not empty).
+        let mut app = TuiApp::default();
+        app.input = "line1\nline2\nline3".into();
+        // Cursor at end of last line
+        app.cursor_pos = app.input.len();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Up, crossterm::event::KeyModifiers::NONE, &tx);
+        // Cursor should have moved to start of "line3" → end of "line2"
+        // i.e. just before the second '\n'
+        assert!(app.cursor_pos < app.input.len(), "cursor must move up");
+        assert_eq!(&app.input[app.cursor_pos..app.cursor_pos+1], "\n", "cursor should sit at row boundary");
+    }
+
+    #[test]
+    fn adr0001_ctrl_enter_submits_even_with_modifiers() {
+        // Ctrl+Enter / Alt+Enter force submit (override).
+        let mut app = TuiApp::default();
+        app.input = "hello".into();
+        // Keep rx alive so cmd_tx.send succeeds — otherwise send_message
+        // takes its early-return path and never clears the input.
+        let (tx, _rx) = std::sync::mpsc::channel();
+        press(&mut app, crossterm::event::KeyCode::Enter, crossterm::event::KeyModifiers::CONTROL, &tx);
+        // send_message pushes User msg + clears input
+        assert!(app.input.is_empty(), "Ctrl+Enter should submit and clear input");
+        assert!(app.messages.iter().any(|m| matches!(m, MessageItem::User { text } if text == "hello")));
     }
 }

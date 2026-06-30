@@ -205,16 +205,32 @@ fn handle_key(
     key: crossterm::event::KeyEvent,
     cmd_tx: &std::sync::mpsc::Sender<AgentCommand>,
 ) {
-    // 1. 全局快捷键（覆盖层中也生效）
+    // ADR 0001 §1 — Global keys (active even with overlays):
+    //   Ctrl+Q              → quit (the only exit shortcut)
+    //   Ctrl+C, agent busy  → send Interrupt (Phase A: best-effort)
+    //   Ctrl+C, agent idle  → quit (same as Ctrl+Q)
+    // Esc is NOT here — it never quits (see §3 below).
     match key.code {
-        KeyCode::Char('q' | 'c' | 'd') if key.modifiers == KeyModifiers::CONTROL => {
+        KeyCode::Char('q') if key.modifiers == KeyModifiers::CONTROL => {
             app.should_quit = true;
+            return;
+        }
+        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
+            if app.status.agent_busy {
+                let _ = cmd_tx.send(AgentCommand::Interrupt);
+                // Note: agent_busy stays true until the agent sends back a
+                // Text/Error response (Phase B will make this immediate via
+                // cancellation). We do NOT toggle agent_busy here — the
+                // response handler owns that transition.
+            } else {
+                app.should_quit = true;
+            }
             return;
         }
         _ => {}
     }
 
-    // 2. 覆盖层路由
+    // 2. Overlay routing (mutually exclusive)
     if app.dialog.is_some() {
         return dialogs::handle_dialog_key(app, key, cmd_tx);
     }
@@ -228,7 +244,7 @@ fn handle_key(
         return dialogs::handle_slash_completion_key(app, key, cmd_tx);
     }
 
-    // 3. 系统快捷键（不在覆盖层中时）
+    // 3. System shortcuts (only when no overlay is open)
     match key.code {
         KeyCode::Char('f') if key.modifiers == KeyModifiers::CONTROL => {
             app.search_active = !app.search_active;
@@ -259,6 +275,9 @@ fn handle_key(
             app.help_active = !app.help_active;
             return;
         }
+        // ADR 0001: destructive — would route through Dialog::Confirm in
+        // ADR 0006. For now, preserve clear behavior so the key stays live;
+        // the confirm wrapper is added when ADR 0006 lands.
         KeyCode::Char('l') if key.modifiers == KeyModifiers::CONTROL => {
             app.messages.clear();
             message_list::invalidate_cache();
@@ -272,8 +291,9 @@ fn handle_key(
             message_list::invalidate_cache();
             return;
         }
+        // ADR 0001: Esc cascading close — never quits. Order matters:
+        // innermost mode first.
         KeyCode::Esc => {
-            // Cascading close
             if app.reverse_search_active {
                 app.reverse_search_active = false;
                 app.reverse_search_query.clear();
@@ -288,18 +308,38 @@ fn handle_key(
                 app.selected_msg = None;
                 return;
             }
-            app.completion.active = false;
-            app.should_quit = true;
+            if app.completion.active {
+                app.completion.active = false;
+                return;
+            }
+            // Nothing to close: no-op. User must press Ctrl+Q to quit.
+            return;
+        }
+        // ADR 0001 §14: vim-style g/G for top/bottom scroll. Guarded by
+        // empty-input check so plain `g` in the middle of typing still
+        // inserts the character — these only fire when the user is browsing.
+        KeyCode::Char('g') if key.modifiers == KeyModifiers::NONE && app.input.is_empty() => {
+            app.auto_scroll = false;
+            app.scroll_offset = 0;
+            return;
+        }
+        KeyCode::Char('G')
+            if (key.modifiers == KeyModifiers::SHIFT
+                || key.modifiers == KeyModifiers::NONE)
+                && app.input.is_empty() =>
+        {
+            app.auto_scroll = true;
+            app.scroll_offset = 0;
             return;
         }
         KeyCode::PageUp => {
             app.auto_scroll = false;
-            app.scroll_offset = app.scroll_offset.saturating_add(10);
+            app.scroll_offset = app.scroll_offset.saturating_add(PAGE_SCROLL_LINES);
             return;
         }
         KeyCode::PageDown => {
-            if app.scroll_offset > 10 {
-                app.scroll_offset = app.scroll_offset.saturating_sub(10);
+            if app.scroll_offset > PAGE_SCROLL_LINES {
+                app.scroll_offset = app.scroll_offset.saturating_sub(PAGE_SCROLL_LINES);
             } else {
                 app.scroll_offset = 0;
                 app.auto_scroll = true;
@@ -319,14 +359,18 @@ fn handle_key(
         _ => {}
     }
 
-    // 4. 搜索/反向搜索模式
+    // 4. Search/reverse-search input modes
     if app.search_active || app.reverse_search_active {
         return input_area::handle_search_key(app, key);
     }
 
-    // 5. 常规输入模式
+    // 5. Regular input mode
     input_area::handle_input_key(app, key, cmd_tx);
 }
+
+/// Lines scrolled per PageUp/PageDown press. ADR 0001 §11: extracted from
+/// the old magic number 10 so the value is documented and adjustable.
+const PAGE_SCROLL_LINES: usize = 10;
 
 /// Dispatch a single terminal event (key / mouse / paste). Extracted so the
 /// event loop can share one code path between the drain phase and the
@@ -516,5 +560,149 @@ fn check_agent_responses(app: &mut TuiApp, resp_rx: &mut tokio::sync::mpsc::Rece
             Err(tokio::sync::mpsc::error::TryRecvError::Empty) => break,
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
         }
+    }
+}
+
+// ─── ADR 0001 Tests ────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod adr0001_tests {
+    use super::*;
+    use crate::agent::AgentCommand;
+    use crate::tui::TuiApp;
+
+    fn key(code: KeyCode, modifiers: KeyModifiers) -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(code, modifiers)
+    }
+
+    fn press(app: &mut TuiApp, code: KeyCode, modifiers: KeyModifiers, cmd_tx: &std::sync::mpsc::Sender<AgentCommand>) {
+        handle_key(app, key(code, modifiers), cmd_tx);
+    }
+
+    #[test]
+    fn ctrl_q_quits() {
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('q'), KeyModifiers::CONTROL, &tx);
+        assert!(app.should_quit, "Ctrl+Q must quit");
+    }
+
+    #[test]
+    fn ctrl_c_when_idle_quits() {
+        let mut app = TuiApp::default();
+        app.status.agent_busy = false;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, &tx);
+        assert!(app.should_quit, "Ctrl+C idle must quit (same as Ctrl+Q)");
+    }
+
+    #[test]
+    fn ctrl_c_when_busy_sends_interrupt_and_does_not_quit() {
+        let mut app = TuiApp::default();
+        app.status.agent_busy = true;
+        let (tx, rx) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.should_quit, "Ctrl+C busy must NOT quit");
+        let cmd = rx.try_recv().expect("should send an AgentCommand");
+        match cmd {
+            AgentCommand::Interrupt => {}
+            other => panic!("expected Interrupt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ctrl_d_no_longer_quits() {
+        // ADR 0001: only Ctrl+Q quits. Ctrl+D is no longer a quit shortcut.
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('d'), KeyModifiers::CONTROL, &tx);
+        assert!(!app.should_quit, "Ctrl+D must not quit");
+    }
+
+    #[test]
+    fn esc_with_no_overlays_is_noop() {
+        // Esc with nothing to close: no-op (no quit, no state change).
+        let mut app = TuiApp::default();
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.should_quit, "Esc with nothing open must not quit");
+    }
+
+    #[test]
+    fn esc_closes_search_then_is_noop() {
+        // First Esc closes search; second Esc (nothing open) is no-op.
+        let mut app = TuiApp::default();
+        app.search_active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.search_active, "first Esc should close search");
+        assert!(!app.should_quit, "closing search must not quit");
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.should_quit, "second Esc with nothing open must be no-op");
+    }
+
+    #[test]
+    fn esc_cascade_priority_reverse_search_first() {
+        // Both reverse_search and search active: Esc closes reverse first.
+        let mut app = TuiApp::default();
+        app.reverse_search_active = true;
+        app.search_active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.reverse_search_active, "Esc should close reverse_search first");
+        assert!(app.search_active, "search should remain active");
+    }
+
+    #[test]
+    fn g_on_empty_input_scrolls_to_top() {
+        // ADR 0001: g (lowercase) on empty input = scroll msg list to top.
+        let mut app = TuiApp::default();
+        app.input = String::new();
+        app.auto_scroll = true;
+        app.scroll_offset = 50;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('g'), KeyModifiers::NONE, &tx);
+        assert!(!app.auto_scroll, "g should disable auto_scroll");
+        assert_eq!(app.scroll_offset, 0, "g should reset scroll_offset to 0 (top)");
+    }
+
+    #[test]
+    fn g_with_text_in_input_inserts_g() {
+        // ADR 0001 guard: g only acts as scroll shortcut when input is empty.
+        // With text in input, g falls through to input handler and inserts.
+        let mut app = TuiApp::default();
+        app.input = "abc".into();
+        app.cursor_pos = 3;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('g'), KeyModifiers::NONE, &tx);
+        assert_eq!(app.input, "abcg", "g should insert as text when input non-empty");
+    }
+
+    #[test]
+    fn shift_g_scrolls_to_bottom() {
+        // G (Shift+G) jumps to bottom. Like lowercase g, requires empty
+        // input — Shift+G in the middle of typing would otherwise surprise
+        // the user by jumping the message list.
+        let mut app = TuiApp::default();
+        app.input = String::new();
+        app.auto_scroll = false;
+        app.scroll_offset = 100;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Char('G'), KeyModifiers::SHIFT, &tx);
+        assert!(app.auto_scroll, "G should re-enable auto_scroll");
+        assert_eq!(app.scroll_offset, 0, "G should reset offset (auto-scroll takes over)");
+    }
+
+    #[test]
+    fn esc_closes_completion_at_top_level() {
+        // ADR 0001: Esc cascade (including completion close) lives in
+        // handle_key at mod.rs level, not in handle_input_key. Verify the
+        // cascade closes completion without quitting.
+        let mut app = TuiApp::default();
+        app.completion.active = true;
+        let (tx, _) = std::sync::mpsc::channel();
+        press(&mut app, KeyCode::Esc, KeyModifiers::NONE, &tx);
+        assert!(!app.completion.active, "Esc should close completion via cascade");
+        assert!(!app.should_quit, "Esc must not quit");
     }
 }

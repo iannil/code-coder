@@ -118,29 +118,80 @@ fn render_model_picker(frame: &mut Frame, area: Rect, input_area: Rect, app: &Tu
 /// ─── Help Panel ─────────────────────────────────────────────────────────────
 
 fn render_help_panel(frame: &mut Frame, area: Rect) {
-    let panel_width = area.width.min(55).max(35);
-    let panel_height = area.height.min(22).max(10);
+    let panel_width = area.width.min(72).max(50);
+    // Panel needs ~50 lines for the full ADR 0001 binding list. Cap at
+    // area.height - 2 so borders always fit, but never less than 20.
+    let panel_height = (area.height.saturating_sub(2)).min(60).max(20);
     let panel_x = area.x + (area.width.saturating_sub(panel_width)) / 2;
     let panel_y = area.y + (area.height.saturating_sub(panel_height)) / 2;
     let panel_area = Rect::new(panel_x, panel_y, panel_width, panel_height);
 
+    fn hdr(s: &str) -> Line {
+        Line::styled(format!(" {s} "), Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+    }
+    fn key(k: &str) -> Span {
+        Span::styled(format!("{:<14}", k), Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
+    }
+    fn row<'a>(k: &'a str, d: &'a str) -> Line<'a> {
+        Line::from(vec![Span::raw("  "), key(k), Span::raw(d)])
+    }
+    fn row_warn<'a>(k: &'a str, d: &'a str) -> Line<'a> {
+        Line::from(vec![
+            Span::raw("  "),
+            key(k),
+            Span::styled(format!("⚠ {d}"), Style::default().fg(Color::Yellow)),
+        ])
+    }
+
     let help_lines = vec![
-        Line::styled(" Shortcuts ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        hdr("Editing"),
         Line::from(""),
-        Line::from(vec![Span::raw("  "), Span::styled("Enter         ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Send")]),
-        Line::from(vec![Span::raw("  "), Span::styled("↑/↓           ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("History / navigate")]),
-        Line::from(vec![Span::raw("  "), Span::styled("PgUp/PgDn     ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Scroll up/down")]),
-        Line::from(vec![Span::raw("  "), Span::styled("End/Home      ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Scroll to bottom/top")]),
-        Line::from(vec![Span::raw("  "), Span::styled("Ctrl+F        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Search")]),
-        Line::from(vec![Span::raw("  "), Span::styled("Ctrl+R        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Reverse search")]),
-        Line::from(vec![Span::raw("  "), Span::styled("Ctrl+P        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Switch model")]),
-        Line::from(vec![Span::raw("  "), Span::styled("Alt+Enter     ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("New line")]),
+        row("Enter",        "Submit message (empty: no-op)"),
+        row("Shift+Enter",  "Insert newline (multi-line input)"),
+        row("Alt+Enter",    "Force submit (overrides modifiers)"),
+        row("Ctrl+Z / Y",   "Undo / redo input"),
+        row("Ctrl+A / E",   "Cursor to line start / end"),
+        row("Ctrl+W",       "Delete word backward"),
+        row("Ctrl+U / K",   "Delete to start / end of line"),
+        row("Tab",          "Accept completion / fold last message"),
+        row("@",            "Trigger file completion"),
         Line::from(""),
-        Line::styled(" Commands ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        hdr("Navigation"),
         Line::from(""),
-        Line::from(vec![Span::raw("  "), Span::styled("/help /exit   ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Help / Quit")]),
-        Line::from(vec![Span::raw("  "), Span::styled("/clear        ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Clear chat")]),
-        Line::from(vec![Span::raw("  "), Span::styled("/model /tools ", Style::default().fg(Color::White).add_modifier(Modifier::BOLD)), Span::raw("Model / Tools")]),
+        row("Up / Down",    "Move cursor (or browse msgs when empty)"),
+        row("Ctrl+Up/Dn",   "Walk input history"),
+        row("Left / Right", "Move cursor one char"),
+        row("Home / End",   "Cursor to line start / end"),
+        row("g / G",        "Msg list: scroll to top / bottom (empty input)"),
+        row("PgUp / PgDn",  "Msg list: scroll up / down by page"),
+        row("End",          "Msg list: jump to bottom"),
+        Line::from(""),
+        hdr("Mode & Tools"),
+        Line::from(""),
+        row("Ctrl+F",       "Search messages"),
+        row("Ctrl+R",       "Reverse search"),
+        row("Ctrl+P",       "Switch model"),
+        row("Ctrl+T",       "Toggle theme (partial — markdown only)"),
+        row("Ctrl+H",       "Toggle this help panel"),
+        row_warn("Ctrl+L",  "Clear messages — no confirm yet"),
+        row("Ctrl+C",       "Busy: interrupt agent  ·  Idle: quit"),
+        row_warn("Ctrl+Q",  "Quit"),
+        row("Esc",          "Close current overlay (never quits)"),
+        Line::from(""),
+        hdr("Commands"),
+        Line::from(""),
+        row("/help",        "Show this panel"),
+        row("/exit /quit",  "Quit"),
+        row("/clear",       "Clear messages"),
+        row("/reload",      "Reload context + skills"),
+        row("/history",     "Show message count"),
+        row("/tools",       "List available tools"),
+        row("/skills",      "List loaded skills"),
+        row("/memory",      "List memory entries"),
+        row("/session",     "List saved sessions"),
+        row("/resume [id]", "Resume a session"),
+        row("/config",      "View / change settings"),
+        row("/mcp",         "Manage MCP servers"),
         Line::from(""),
         Line::styled(" Esc to close ", Style::default().fg(Color::DarkGray)),
     ];
@@ -149,7 +200,8 @@ fn render_help_panel(frame: &mut Frame, area: Rect) {
     let panel = Paragraph::new(help_lines)
         .block(Block::default()
             .title(" Help ")
-            .title_alignment(ratatui::layout::Alignment::Left));
+            .title_alignment(ratatui::layout::Alignment::Left))
+        .wrap(Wrap { trim: false });
     frame.render_widget(panel, panel_area);
 }
 
@@ -580,7 +632,9 @@ mod tests {
         app.help_active = true;
         app.status = crate::tui::StatusData::default();
 
-        let backend = TestBackend::new(80, 20);
+        // Panel needs ~50 rows for the ADR 0001 binding list — give the
+        // backend enough room for all four sections.
+        let backend = TestBackend::new(80, 60);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         terminal.draw(|f| {
             render_overlays(f, f.area(), Rect::new(0, 10, 80, 3), &mut app);
@@ -588,7 +642,12 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         let cell_text: String = buffer.content.iter().map(|c| c.symbol()).collect();
-        assert!(cell_text.contains("Shortcuts"), "Should show shortcuts: got {cell_text:.80}");
+        assert!(cell_text.contains("Editing"), "missing Editing section");
+        assert!(cell_text.contains("Navigation"), "missing Navigation section");
+        assert!(cell_text.contains("Ctrl+Q"), "missing Ctrl+Q quit binding");
+        assert!(cell_text.contains("Ctrl+C"), "missing Ctrl+C binding");
+        assert!(cell_text.contains("g / G"), "missing g/G scroll binding");
+        assert!(cell_text.contains("Ctrl+Up/Dn"), "missing Ctrl+Up/Dn history binding");
     }
 
     #[test]

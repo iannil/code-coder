@@ -265,6 +265,7 @@ pub struct BackgroundAgent {
     pub thread_handle: Option<std::thread::JoinHandle<()>>,
 }
 
+#[derive(Debug)]
 pub enum AgentCommand {
     ProcessMessage { text: String },
     SetModel { model: String },
@@ -273,6 +274,11 @@ pub enum AgentCommand {
     PlanDecision { request_id: u64, decision: String },
     ReloadContext,
     ClearHistory,
+    /// User-requested interrupt of the in-flight request. Phase A: best-effort —
+    /// drains pending ProcessMessage from the channel and notifies TUI. The
+    /// currently-awaiting handle_message call still completes (Phase B will
+    /// wire a CancellationToken into handle_message for true mid-call abort).
+    Interrupt,
     Shutdown,
 }
 
@@ -444,6 +450,28 @@ impl BackgroundAgent {
                                 tokio::task::block_in_place(|| {
                                     crate::tools::PlanTool::deliver_decision(request_id, decision);
                                 });
+                            }
+                            Ok(AgentCommand::Interrupt) => {
+                                // Phase A best-effort: drain pending ProcessMessage
+                                // entries so the queue is empty after the current
+                                // in-flight call returns. Log and notify TUI; do not
+                                // break the loop (agent stays alive for next msg).
+                                let mut drained = 0usize;
+                                while let Ok(AgentCommand::ProcessMessage { .. }) = cmd_rx.try_recv() {
+                                    drained += 1;
+                                }
+                                crate::log(&format!(
+                                    "[agent] Interrupt received; drained {drained} pending message(s). \
+                                     In-flight call still completes — true mid-call cancel is Phase B."
+                                ));
+                                let _ = resp_tx.send(AgentResponse::Text {
+                                    text: format!(
+                                        "[interrupted] {drained} pending message(s) dropped. \
+                                         In-flight request will finish — Phase B will abort it."
+                                    ),
+                                    tokens_in: 0,
+                                    tokens_out: 0,
+                                }).await;
                             }
                             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                             Err(std::sync::mpsc::TryRecvError::Empty) => {
