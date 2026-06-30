@@ -29,3 +29,14 @@ This is worse than missing functionality — it is a false sense of safety. A us
 - Users must understand the difference between session and project scope. The dialog UI must label these clearly (e.g., `[A] session  [Shift+A] project`) and Help must explain.
 - Project-scope allowlist changes codecoder.json schema → coordinate with [[0004-session-persistence-and-migration]] for forward compatibility of the config file (separate from session schema, but same principle).
 - If a tool is found to be compromised or buggy, the user needs a way to revoke allowlist entries: `/permissions` command to view and clear. This is a follow-up, not blocking.
+
+## Phase B: persisted project allowlist (implemented)
+
+The original implementation only persisted grants in-memory (the `Arc<Mutex<HashSet>>` lived inside the agent thread and reset on restart). Phase B closes that gap for `AlwaysThisProject`:
+
+- `Config` gains a `permissions: PermissionsConfig { allowlist: Vec<String> }` section, with `#[serde(default)]` so legacy codecoder.json files load cleanly.
+- `BackgroundAgent::spawn` accepts an `initial_allowlist: Vec<String>` parameter; the agent thread seeds `session_allowed` from it at startup. Tools previously granted `AlwaysThisProject` skip the prompt across restarts without any TUI action.
+- When the permission_check closure observes a `PermissionResponse` with `scope == AlwaysThisProject`, it both inserts into the in-memory set AND sends `AgentResponse::PersistPermission { tool_name }` back to the TUI.
+- The TUI's response handler dedups + appends to `config_store.get_mut().permissions.allowlist` and calls `store.save()`. Failures are surfaced to the message list.
+- `session_allowed` was hoisted out of the per-`ProcessMessage` block so `AlwaysThisSession` grants actually persist across messages within a session (the Phase A placement reset it on every message — a latent bug).
+- Sub-agents (`ask_agent`) and tests spawn with `Vec::new()` — they don't share the user's project allowlist, preserving isolation.

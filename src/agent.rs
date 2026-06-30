@@ -336,8 +336,7 @@ pub enum PermScope {
     /// No more prompts for this tool name, this session only.
     AlwaysThisSession,
     /// Persisted to codecoder.json under `permissions.allowlist`. Future
-    /// sessions load it at startup. Phase B: not yet wired to disk; for now
-    /// behaves like AlwaysThisSession in-memory.
+    /// sessions load it at startup (ADR 0005 Phase B).
     AlwaysThisProject,
 }
 
