@@ -188,7 +188,7 @@ fn render_help_panel(frame: &mut Frame, area: Rect, theme: &crate::tui::Theme) {
         row("Ctrl+T",       "Toggle theme (dark/light)", primary),
         row("Ctrl+H",       "Toggle this help panel", primary),
         row_warn("Ctrl+L",  "Clear messages (confirms)", primary, warn),
-        row("Ctrl+C",       "Busy: interrupt agent  ·  Idle: quit", primary),
+        row("Ctrl+C",       "Busy: abort LLM call  ·  Idle: quit", primary),
         row_warn("Ctrl+Q",  "Quit", primary, warn),
         row("Esc",          "Close current overlay (never quits)", primary),
         Line::from(""),

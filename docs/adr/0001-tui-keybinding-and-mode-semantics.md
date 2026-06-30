@@ -28,3 +28,15 @@ When adding a new interaction:
 - Users coming from CLIs where `Esc` exits (e.g., some REPLs) will need to relearn. Mitigation: Help panel lists `Ctrl+Q` for exit prominently.
 - `Ctrl+C` no longer raises `SIGINT` to the codecoder process in TUI mode; the agent loop catches it as an interrupt. The terminal itself still receives `SIGINT` if crossterm's raw-mode `ISIG` handling is disabled — verify the crossterm version when implementing.
 - Plugin/extension authors cannot overload `Esc` or `Enter` — they must layer new interactions through overlays or new modifier keys.
+
+## Phase B: real mid-call cancellation (implemented)
+
+The original Phase A sent `AgentCommand::Interrupt` but the agent's `handle_message` had no way to observe it — the in-flight LLM call ran to completion, the next message was just dropped from the queue. Phase B closes that gap:
+
+- `handle_message` and `react_loop` accept a `cancel: Arc<AtomicBool>` parameter.
+- The agent main loop declares one `Arc<AtomicBool>` per thread, resets it before each `ProcessMessage`, and shares the clone into `handle_message`.
+- `AgentCommand::Interrupt` flips the flag.
+- `react_loop` checks the flag at four points each round: (1) top of round, (2) after each LLM streaming delta, (3) after the response completes before tool calls, (4) before each tool call.
+- When observed, `react_loop` returns `"[interrupted by user]"`, which flows back to the TUI as a normal `AgentResponse::Text` and clears `agent_busy`.
+
+This is cooperative cancellation, not pre-emption — the current `await` still completes (one more LLM delta may arrive). But no further rounds, no tool calls, no self-evolution. The agent stays alive and ready for the next message. Sub-agents spawned via `ask_agent` get their own never-set token (the user's Ctrl+C applies to the parent request only).

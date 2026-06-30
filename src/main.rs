@@ -322,7 +322,8 @@ mod e2e_tests {
         let dir = tempfile::tempdir().unwrap();
         let _memory = MemoryStore::open(dir.path().to_str().unwrap());
         let mut agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
-        let resp = agent.handle_message("list all tools", &tools, &mut skills, &|_, _| true).await;
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let resp = agent.handle_message("list all tools", &tools, &mut skills, &|_, _| true, &cancel).await;
         assert!(resp.is_ok());
     }
 

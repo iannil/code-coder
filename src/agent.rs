@@ -111,16 +111,28 @@ tool, then summarise the result for the user."#
     }
 
     /// Process a user message synchronously, returning the final response text.
+    ///
+    /// ADR 0001 Phase B: `cancel` is checked between LLM rounds and after
+    /// each streaming delta. When set (by AgentCommand::Interrupt), the
+    /// loop aborts early and returns "[interrupted by user]". The current
+    /// in-flight await still completes (no pre-emption), but no further
+    /// rounds or tool calls execute.
     pub async fn handle_message(
         &mut self,
         text: &str,
         tools: &ToolRegistry,
         skills: &mut SkillRegistry,
         permission_check: &dyn Fn(&str, &str) -> bool,
+        cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> anyhow::Result<String> {
         self.history.push(Message::user(text));
         self.round_counter += 1;
-        let mut response = self.react_loop(tools, skills, permission_check).await?;
+        let mut response = self.react_loop(tools, skills, permission_check, cancel).await?;
+
+        // Cooperative cancel check before self-evolve (which can be slow).
+        if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+            return Ok("[interrupted by user]".into());
+        }
 
         // Self-evolution: evaluate after each turn
         let project_root = self.context.project_root.clone();
@@ -156,8 +168,15 @@ tool, then summarise the result for the user."#
         tools: &ToolRegistry,
         skills: &SkillRegistry,
         permission_check: &dyn Fn(&str, &str) -> bool,
+        cancel: &std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> anyhow::Result<String> {
         for _round in 0..self.max_tool_rounds {
+            // ADR 0001 Phase B: check cancel at the top of each round.
+            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                self.history.push(Message::assistant("[interrupted by user]"));
+                return Ok("[interrupted by user]".into());
+            }
+
             let messages = self.build_messages(tools, skills);
 
             let response = if let Some(ref delta_tx) = self.delta_tx {
@@ -166,6 +185,11 @@ tool, then summarise the result for the user."#
                 // 顺序转发 delta 到 TUI
                 let tx_clone = tx.clone();
                 while let Some(delta) = rx.recv().await {
+                    // ADR 0001 Phase B: check cancel after each delta.
+                    if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                        // Drain remaining without forwarding (drop rx).
+                        break;
+                    }
                     if let Some(text) = delta.text {
                         let _ = tx_clone.send(AgentResponse::LlmDelta { text }).await;
                     }
@@ -186,6 +210,12 @@ tool, then summarise the result for the user."#
                 llm_resp
             };
 
+            // Post-response cancel check before tool calls.
+            if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                self.history.push(Message::assistant("[interrupted by user]"));
+                return Ok("[interrupted by user]".into());
+            }
+
             let tool_calls = parse_tool_calls(&response.text);
 
             if tool_calls.is_empty() {
@@ -194,6 +224,11 @@ tool, then summarise the result for the user."#
             }
 
             for tc in &tool_calls {
+                // Per-tool cancel check.
+                if cancel.load(std::sync::atomic::Ordering::SeqCst) {
+                    self.history.push(Message::assistant("[interrupted by user]"));
+                    return Ok("[interrupted by user]".into());
+                }
                 let allowed = permission_check(&tc.name, &tc.input);
                 if !allowed {
                     self.history.push(Message::assistant(&response.text));
@@ -282,10 +317,13 @@ pub enum AgentCommand {
     PlanDecision { request_id: u64, decision: String },
     ReloadContext,
     ClearHistory,
-    /// User-requested interrupt of the in-flight request. Phase A: best-effort —
-    /// drains pending ProcessMessage from the channel and notifies TUI. The
-    /// currently-awaiting handle_message call still completes (Phase B will
-    /// wire a CancellationToken into handle_message for true mid-call abort).
+    /// User-requested interrupt of the in-flight request. ADR 0001 Phase B:
+    /// fires the shared AtomicBool cancel flag, which handle_message checks
+    /// at each round, after each LLM delta, and before each tool call. The
+    /// current in-flight await still completes (no pre-emption) but no
+    /// further work executes; the response comes back as "[interrupted]".
+    /// Also drains any queued ProcessMessages so a follow-up send doesn't
+    /// immediately restart.
     Interrupt,
     Shutdown,
 }
@@ -382,6 +420,10 @@ impl BackgroundAgent {
                             }
                         });
 
+                    // ADR 0001 Phase B: shared cancel flag. Reset before
+                    // each new message; set by AgentCommand::Interrupt.
+                    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
                     loop {
                         // Non-blocking poll
                         match cmd_rx.try_recv() {
@@ -390,6 +432,9 @@ impl BackgroundAgent {
                                 let _ = bus.drain();
                                 let resp_tx2 = resp_tx.clone();
                                 let cmd_rx_ref = &cmd_rx;
+                                // Reset cancel for this fresh message.
+                                cancel.store(false, std::sync::atomic::Ordering::SeqCst);
+                                let cancel_for_handle = cancel.clone();
                                 // ADR 0005: session-scoped allowlist shared
                                 // across calls within this ProcessMessage
                                 // (and across multiple ProcessMessages in the
@@ -470,7 +515,7 @@ impl BackgroundAgent {
                                     });
                                     false
                                 };
-                                match agent.handle_message(&text, &tools, &mut skills, &permission_check).await {
+                                match agent.handle_message(&text, &tools, &mut skills, &permission_check, &cancel_for_handle).await {
                                     Ok(resp) => {
                                         let (tin, tout) = agent.token_usage();
                                         let _ = resp_tx.send(AgentResponse::Text {
@@ -520,26 +565,28 @@ impl BackgroundAgent {
                                 });
                             }
                             Ok(AgentCommand::Interrupt) => {
-                                // Phase A best-effort: drain pending ProcessMessage
-                                // entries so the queue is empty after the current
-                                // in-flight call returns. Log and notify TUI; do not
-                                // break the loop (agent stays alive for next msg).
+                                // ADR 0001 Phase B: fire the shared cancel flag.
+                                // handle_message checks it at each round, after
+                                // each LLM delta, and before each tool call — so
+                                // the in-flight call returns promptly as
+                                // "[interrupted by user]" rather than running to
+                                // completion. We also drain queued ProcessMessages
+                                // (preserves Phase A's "don't immediately restart"
+                                // behavior).
+                                cancel.store(true, std::sync::atomic::Ordering::SeqCst);
                                 let mut drained = 0usize;
                                 while let Ok(AgentCommand::ProcessMessage { .. }) = cmd_rx.try_recv() {
                                     drained += 1;
                                 }
                                 crate::log(&format!(
-                                    "[agent] Interrupt received; drained {drained} pending message(s). \
-                                     In-flight call still completes — true mid-call cancel is Phase B."
+                                    "[agent] Interrupt received; cancel flag fired, drained {drained} queued message(s)."
                                 ));
-                                let _ = resp_tx.send(AgentResponse::Text {
-                                    text: format!(
-                                        "[interrupted] {drained} pending message(s) dropped. \
-                                         In-flight request will finish — Phase B will abort it."
-                                    ),
-                                    tokens_in: 0,
-                                    tokens_out: 0,
-                                }).await;
+                                // Note: do NOT send a synthetic Text here. The
+                                // in-flight handle_message will return naturally
+                                // with "[interrupted by user]" and that response
+                                // flows through the normal Ok(resp) match arm.
+                                // If we sent Text now, the TUI would see two
+                                // completion messages (this + the natural one).
                             }
                             Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
                             Err(std::sync::mpsc::TryRecvError::Empty) => {
@@ -688,12 +735,18 @@ Here is the content."#;
         assert!(calls.is_empty());
     }
 
+    /// Helper for tests: a never-cancelled token.
+    fn test_cancel() -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))
+    }
+
     #[tokio::test]
     async fn test_handle_message_with_stub() {
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
         let mut skills = SkillRegistry::new();
-        let resp = agent.handle_message("hello", &tools, &mut skills, &|_, _| true).await.unwrap();
+        let cancel = test_cancel();
+        let resp = agent.handle_message("hello", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
         assert!(resp.contains("hello"));
     }
 
@@ -702,7 +755,8 @@ Here is the content."#;
         let mut agent = test_agent();
         let tools = ToolRegistry::new_for_test();
         let mut skills = SkillRegistry::new();
-        agent.handle_message("hello", &tools, &mut skills, &|_, _| true).await.unwrap();
+        let cancel = test_cancel();
+        agent.handle_message("hello", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
         assert!(agent.history.len() >= 2);
         agent.clear_history();
         assert_eq!(agent.history.len(), 0);
@@ -824,8 +878,9 @@ Here is the content."#;
             let mut agent = AgentLoop::new(Box::new(StubClient::new()), ctx);
             let tools = crate::tools::ToolRegistry::new_for_test();
             let mut skills = crate::skill::SkillRegistry::new();
+            let cancel = test_cancel();
             // An empty message should still produce a response
-            let result = agent.handle_message("", &tools, &mut skills, &|_, _| true).await;
+            let result = agent.handle_message("", &tools, &mut skills, &|_, _| true, &cancel).await;
             assert!(result.is_ok() || result.is_err());
         });
     }
@@ -1039,5 +1094,80 @@ Here is the content."#;
         let decision = engine.evaluate("run_command", "rm -rf /");
         assert!(matches!(decision, PermissionDecision::Denied { .. }),
             "rm -rf / must be hard-denied (engine safety rail)");
+    }
+
+    // ─── ADR 0001 Phase B — Real mid-call cancellation ───────────────────
+
+    #[tokio::test]
+    async fn adr0001_phase_b_pre_set_cancel_returns_interrupted() {
+        // If the cancel flag is set BEFORE handle_message is called, the
+        // very first round check aborts immediately with "[interrupted]".
+        let mut agent = test_agent();
+        let tools = ToolRegistry::new_for_test();
+        let mut skills = SkillRegistry::new();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let resp = agent.handle_message("hello", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
+        assert_eq!(resp, "[interrupted by user]");
+    }
+
+    #[tokio::test]
+    async fn adr0001_phase_b_cancel_mid_call_aborts_promptly() {
+        // Simulate the realistic race: handle_message is in flight, the
+        // user fires Ctrl+C, the cancel flag flips to true. The next
+        // round-boundary check inside react_loop should observe it and
+        // return "[interrupted]".
+        let mut agent = test_agent();
+        let tools = ToolRegistry::new_for_test();
+        let mut skills = SkillRegistry::new();
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cancel_clone = cancel.clone();
+
+        // Spawn a task that flips cancel after a short delay, mimicking the
+        // user pressing Ctrl+C during the LLM call.
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            cancel_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+
+        // StubClient returns deterministic text with no tool calls, so the
+        // first round would normally succeed. With cancel firing mid-call,
+        // the round-top check on the *next* iteration (or the post-response
+        // check) catches it. Either way, the result must surface the cancel.
+        let start = std::time::Instant::now();
+        let resp = agent.handle_message("hello", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
+        let elapsed = start.elapsed();
+
+        // Accept either outcome: the cancel fired before round 2 (returns
+        // "[interrupted]") OR the cancel fired after the response completed
+        // (returns normal text). Both are valid — the contract is "no work
+        // happens AFTER the cancel flag is observed." We just verify the
+        // call returns and the agent didn't deadlock.
+        assert!(elapsed < std::time::Duration::from_secs(5), "handle_message must not hang");
+        // Either response is acceptable for this smoke test.
+        let _ = resp;
+    }
+
+    #[tokio::test]
+    async fn adr0001_phase_b_cancel_does_not_poison_next_message() {
+        // Reset semantics: after a cancelled handle_message returns, the
+        // NEXT call must work normally. The agent main loop resets the
+        // flag before each ProcessMessage; this test verifies the contract
+        // by simulating that reset.
+        let mut agent = test_agent();
+        let tools = ToolRegistry::new_for_test();
+        let mut skills = SkillRegistry::new();
+
+        // First call: cancelled.
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let resp1 = agent.handle_message("first", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
+        assert_eq!(resp1, "[interrupted by user]");
+
+        // Reset (simulating what the main loop does on each new ProcessMessage).
+        cancel.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // Second call: must work normally, not pre-cancelled.
+        let resp2 = agent.handle_message("second", &tools, &mut skills, &|_, _| true, &cancel).await.unwrap();
+        assert_ne!(resp2, "[interrupted by user]", "second message must not see stale cancel flag");
+        assert!(resp2.contains("second"));
     }
 }

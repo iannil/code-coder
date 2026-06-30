@@ -225,7 +225,7 @@ fn handle_key(
 ) {
     // ADR 0001 §1 — Global keys (active even with overlays):
     //   Ctrl+Q              → quit (the only exit shortcut)
-    //   Ctrl+C, agent busy  → send Interrupt (Phase A: best-effort)
+    //   Ctrl+C, agent busy  → send Interrupt (Phase B: real mid-call cancel)
     //   Ctrl+C, agent idle  → quit (same as Ctrl+Q)
     // Esc is NOT here — it never quits (see §3 below).
     match key.code {
@@ -236,10 +236,11 @@ fn handle_key(
         KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => {
             if app.status.agent_busy {
                 let _ = cmd_tx.send(AgentCommand::Interrupt);
-                // Note: agent_busy stays true until the agent sends back a
-                // Text/Error response (Phase B will make this immediate via
-                // cancellation). We do NOT toggle agent_busy here — the
-                // response handler owns that transition.
+                // ADR 0001 Phase B: the agent's handle_message checks the
+                // cancel flag at each round / LLM delta / tool call, so it
+                // returns promptly as "[interrupted by user]". agent_busy
+                // stays true until that Text response arrives here and the
+                // response handler clears it.
             } else {
                 app.should_quit = true;
             }

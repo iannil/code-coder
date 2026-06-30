@@ -156,10 +156,14 @@ impl Tool for AgentTool {
 
         // Run the sub-agent using the current tokio runtime
         let mut sub_skills = crate::skill::SkillRegistry::new();
+        // ADR 0001 Phase B: sub-agent uses its own never-cancelled token.
+        // The user's Ctrl+C applies to the parent request only — sub-agents
+        // spawned via ask_agent complete their own work.
+        let sub_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let result = tokio::task::block_in_place(|| {
             let handle = tokio::runtime::Handle::current();
             handle.block_on(async {
-                sub_agent.handle_message(&task, &sub_tools, &mut sub_skills, &|_, _| true).await
+                sub_agent.handle_message(&task, &sub_tools, &mut sub_skills, &|_, _| true, &sub_cancel).await
             })
         })?;
 
