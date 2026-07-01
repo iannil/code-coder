@@ -37,5 +37,58 @@ pub fn render_diff(_text: &str, _file_path: &str, _file_content: &str) -> Vec<Li
 
 #[cfg(test)]
 mod tests {
-    // Subsequent tasks add tests here.
+    use super::*;
+
+    #[test]
+    fn test_compute_basic_replace() {
+        let old = "line1\nline2\nline3";
+        let new = "line1\nchanged\nline3";
+        let diff = compute_unified_diff(old, new, "foo.txt");
+        assert!(diff.contains("--- a/foo.txt"));
+        assert!(diff.contains("+++ b/foo.txt"));
+        assert!(diff.contains("-line2"));
+        assert!(diff.contains("+changed"));
+        assert!(diff.contains("@@"));
+    }
+
+    #[test]
+    fn test_compute_new_file() {
+        let new = "alpha\nbeta\n";
+        let diff = compute_unified_diff("", new, "new.txt");
+        assert!(diff.contains("+alpha"));
+        assert!(diff.contains("+beta"));
+    }
+
+    #[test]
+    fn test_compute_delete_file() {
+        let old = "alpha\nbeta\n";
+        let diff = compute_unified_diff(old, "", "gone.txt");
+        assert!(diff.contains("-alpha"));
+        assert!(diff.contains("-beta"));
+    }
+
+    #[test]
+    fn test_compute_no_change() {
+        let same = "same\ncontent\n";
+        let diff = compute_unified_diff(same, same, "same.txt");
+        // No changes — output is just the file headers (no @@ hunks).
+        assert!(diff.contains("--- a/same.txt"));
+        assert!(diff.contains("+++ b/same.txt"));
+        assert!(!diff.contains("@@"));
+    }
+
+    #[test]
+    fn test_compute_includes_file_header() {
+        let diff = compute_unified_diff("a\n", "b\n", "path/to/x.rs");
+        assert!(diff.starts_with("--- a/path/to/x.rs\n"));
+        assert!(diff.contains("+++ b/path/to/x.rs\n"));
+    }
+
+    #[test]
+    fn test_compute_binary_returns_sentinel() {
+        let old = "normal\x00binary";
+        let new = "different\x00binary";
+        let result = compute_unified_diff(old, new, "blob.bin");
+        assert_eq!(result, "[binary file changed]");
+    }
 }

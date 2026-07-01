@@ -36,10 +36,10 @@
 `Cargo.toml`：
 
 ```toml
-similar = "5"
+similar = "3"
 ```
 
-`similar` 选定理由：现代维护活跃、行级 diff API 干净、是 sled / git-tools 等项目的选择。比 `diff` crate 更现代。
+`similar` 选定理由：现代维护活跃、行级 diff API 干净、是 sled / git-tools 等项目的选择。比 `diff` crate 更现代。（最新稳定版 3.1.1。）
 
 ### 2.2 新建 `src/tui/diff.rs`
 

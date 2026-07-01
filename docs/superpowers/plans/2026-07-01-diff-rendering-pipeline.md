@@ -13,6 +13,7 @@
 引自 spec `docs/superpowers/specs/2026-07-01-diff-rendering-pipeline-design.md`：
 
 - **本轮不动 markdown.rs 现有 Color::* 风格**：spec §4.6 写的 `theme: &Theme` 参数实际不可行（markdown.rs 没有 theme 访问），降级为 `render_diff(text, file_path, file_content) -> Vec<Line>` 用 Color 常量。这是 spec 的微调，记录在此
+- **依赖版本**：`similar = "3"`（spec 原写 `"5"`，crates.io 实际最新是 3.1.1，已校正）
 - `render_diff` 与 `compute_unified_diff` 都是纯函数（无 I/O、无副作用、可重复）
 - 工具结果 diff 块用 ` ```diff path="..." ` 元信息围栏（不是裸 ` ```diff `），让 markdown 解析器拿到 path 触发语法高亮
 - 颜色规则：`+` 行 marker=绿、行号=绿、内容=syntect 色；`-` 行 marker=红、无行号、内容=纯红；context 行 marker=dim、行号=dim、内容=syntect 色
@@ -62,7 +63,7 @@
 修改 `Cargo.toml` 的 `[dependencies]` 段，加一行：
 
 ```toml
-similar = "5"
+similar = "3"
 ```
 
 - [ ] **Step 2: 创建 `src/tui/diff.rs` 骨架**
