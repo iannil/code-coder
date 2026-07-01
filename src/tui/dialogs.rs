@@ -258,7 +258,13 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
     let dialog_width = area.width.min(70).max(40);
     let info_str: &str = tool_input_txt;
     let input_lines = info_str.lines().count().min(6).max(1);
-    let dialog_height = (5 + input_lines as u16).min(12).max(7);
+    let preview_extra: u16 = if tool_name == "edit_file" || tool_name == "write_file" {
+        // Up to MAX_DIALOG_PREVIEW_LINES diff lines + 1 header + 1 spacing.
+        (crate::tui::diff::MAX_DIALOG_PREVIEW_LINES as u16) + 2
+    } else {
+        0
+    };
+    let dialog_height = (5 + input_lines as u16 + preview_extra).min(40).max(7);
     let dialog_x = area.x + (area.width.saturating_sub(dialog_width)) / 2;
     let dialog_y = area.y + (area.height.saturating_sub(dialog_height)) / 2;
     let dialog_area = Rect::new(dialog_x, dialog_y, dialog_width, dialog_height);
@@ -287,6 +293,18 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
         content.push(Line::styled("  …(truncated)", Style::default().fg(theme.secondary_text)));
     }
 
+    // V1 (audit-tui-visual-fidelity.md bucket-4): for edit_file/write_file,
+    // compute and embed a diff preview so the user sees what changes before
+    // approving. Capped at MAX_DIALOG_PREVIEW_LINES to keep dialog on-screen.
+    if tool_name == "edit_file" || tool_name == "write_file" {
+        if let Some(preview_lines) = build_diff_preview(tool_name, info_str, theme) {
+            content.push(Line::from(""));
+            for dl in preview_lines {
+                content.push(dl);
+            }
+        }
+    }
+
     content.push(Line::from(""));
     match dialog {
         Dialog::AskQuestion { .. } => unreachable!("AskQuestion renders via render_ask_question_dialog"),
@@ -309,6 +327,62 @@ fn render_dialog(frame: &mut Frame, area: Rect, dialog: &Dialog, theme: &crate::
             .border_style(Style::default().fg(theme.warning_text)))
         .wrap(Wrap { trim: false });
     frame.render_widget(dialog, dialog_area);
+}
+
+/// Build a short diff preview for edit_file/write_file permission dialogs.
+/// Returns None if the diff cannot be computed (e.g., bad JSON, missing file).
+fn build_diff_preview(
+    tool_name: &str,
+    tool_input: &str,
+    theme: &crate::tui::Theme,
+) -> Option<Vec<Line<'static>>> {
+    let (path, before, after) = match tool_name {
+        "edit_file" => {
+            #[derive(serde::Deserialize)]
+            struct EditInput { path: String, old: String, new: String }
+            let parsed: EditInput = serde_json::from_str(tool_input).ok()?;
+            let before = std::fs::read_to_string(&parsed.path).unwrap_or_default();
+            let after = before.replacen(&parsed.old, &parsed.new, 1);
+            (parsed.path, before, after)
+        }
+        "write_file" => {
+            let newline = tool_input.find('\n')?;
+            let path = tool_input[..newline].trim().to_string();
+            let after = tool_input[newline + 1..].to_string();
+            let before = std::fs::read_to_string(&path).unwrap_or_default();
+            (path, before, after)
+        }
+        _ => return None,
+    };
+
+    let diff_text = crate::tui::diff::compute_unified_diff(&before, &after, &path);
+    let mut lines = crate::tui::diff::render_diff(&diff_text, &path, &after);
+
+    // Indent each line by 2 spaces to match dialog body style.
+    let mut preview: Vec<Line<'static>> = Vec::with_capacity(lines.len() + 1);
+    preview.push(Line::styled(
+        format!(" Changes ({}):", path),
+        Style::default().fg(theme.secondary_text),
+    ));
+    let limit = crate::tui::diff::MAX_DIALOG_PREVIEW_LINES;
+    let total_lines = lines.len();
+    if total_lines > limit {
+        lines.truncate(limit);
+        for mut l in lines {
+            l.spans.insert(0, Span::raw("  "));
+            preview.push(l);
+        }
+        preview.push(Line::styled(
+            format!("  …({} more lines)", total_lines.saturating_sub(limit)),
+            Style::default().fg(theme.secondary_text),
+        ));
+    } else {
+        for mut l in lines {
+            l.spans.insert(0, Span::raw("  "));
+            preview.push(l);
+        }
+    }
+    Some(preview)
 }
 
 /// ADR 0006: render the Confirm dialog. Minimal layout — warning header,
@@ -1357,7 +1431,9 @@ mod tests {
         });
         app.status = crate::tui::StatusData::default();
 
-        let backend = TestBackend::new(80, 20);
+        // write_file dialogs now include diff preview which can add ~22 lines,
+        // so give enough vertical space for the full dialog (40+ rows).
+        let backend = TestBackend::new(80, 50);
         let mut terminal = ratatui::Terminal::new(backend).unwrap();
         terminal.draw(|f| {
             render_overlays(f, f.area(), Rect::new(0, 10, 80, 3), &mut app);
