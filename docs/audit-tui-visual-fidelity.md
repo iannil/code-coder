@@ -80,37 +80,105 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| 前缀符 | 无显式前缀（HighlightedThinkingText.tsx:91 使用 `figures.pointer` 但仅用于 thinking 内容） | `▶ ` (src/tui/message_list.rs:168) | 🔴 | S |
+| 多行缩进 | 无显式缩进（Box flexDirection="column" 直接渲染） | `  ` 两空格缩进（src/tui/message_list.rs:175） | 🟡 | S |
+| 文本颜色 | `text` 主题色（HighlightedThinkingText.tsx:99） | `primary` + BOLD（src/tui/message_list.rs:171） | 🟡 | S |
+| 文本换行 | `wrap="wrap"` 自动换行（HighlightedThinkingText.tsx:99） | 无显式 wrap 配置 | 🔴 | M |
+| 背景色 | `userMessageBackground` 或 `messageActionsBackground`（UserPromptMessage.tsx:76） | 无背景色 | 🔴 | M |
+| 上边距 | `marginTop={addMargin ? 1 : 0}`（UserPromptMessage.tsx:76） | 无上边距 | 🔴 | S |
+| 右内边距 | `paddingRight={useBriefLayout ? 0 : 1}`（UserPromptMessage.tsx:76） | 无内边距 | 🟡 | S |
+| 截断机制 | `MAX_DISPLAY_CHARS=10000`，头 2500 + 尾 2500（UserPromptMessage.tsx:28-30,65-70） | 无截断机制 | 🔴 | M |
+| thinking 高亮 | `findThinkingTriggerPositions()` 彩虹色高亮（HighlightedThinkingText.tsx:87） | 无 thinking 高亮 | 🔴 | L |
 
 ### B2. Assistant 消息
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| 前缀符 | 无显式前缀（Markdown 组件直接渲染） | `▷ ` (src/tui/message_list.rs:181) | 🔴 | S |
+| 多行缩进 | 无显式缩进 | `  ` 两空格缩进（src/tui/message_list.rs:193） | 🟡 | S |
+| 文本颜色 | `text` 主题色（Markdown 组件继承） | `accent` 色前缀 + markdown 渲染（src/tui/message_list.rs:162,185） | 🟡 | S |
+| 选中态前缀色 | `suggestion` 色（AssistantTextMessage.tsx:232） | `accent` + BOLD（src/tui/message_list.rs:162-163） | 🟡 | S |
+| 选中态背景 | `messageActionsBackground`（AssistantTextMessage.tsx:229） | 无背景色 | 🔴 | M |
+| 段落间距 | `addMargin ? 1 : 0` 上边距（AssistantTextMessage.tsx:228） | 无上边距 | 🔴 | S |
+| 空消息过滤 | `isEmptyMessageText()` 返回 null（AssistantTextMessage.tsx:60-62） | 无空消息检查 | 🔴 | S |
+| Markdown 渲染 | `<Markdown>{text}</Markdown>` 组件（AssistantTextMessage.tsx:241） | `render_markdown_with_highlight()`（src/tui/message_list.rs:182） | ✅ | S |
+| 错误消息颜色 | `color="error"`（AssistantTextMessage.tsx:93,203 等） | 无特殊错误颜色 | 🔴 | M |
 
 ### B3. System 消息
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| 前缀符 | `BLACK_CIRCLE` (●) 用于非 info 级别（SystemTextMessage.tsx:103,330,445） | 无前缀符，仅两空格缩进（src/tui/message_list.rs:242） | 🔴 | S |
+| info 级别颜色 | `dimColor={true}` 灰色（SystemTextMessage.tsx:236,464） | `accent` 色非 dim（src/tui/message_list.rs:240） | 🔴 | S |
+| warning 级别颜色 | `color="warning"` 黄色（SystemTextMessage.tsx:235） | 无特殊颜色 | 🔴 | M |
+| error 级别颜色 | `color="error"` 红色（SystemTextMessage.tsx:103） | 无特殊颜色 | 🔴 | M |
+| `[end]` 标记 | 支持，`startsWith("[end]")` 触发 dim（SystemTextMessage.tsx:237-238） | 支持，`startsWith("[end]")` 使用 `secondary` 色（src/tui/message_list.rs:237-238） | 🟡 | S |
+| `[error]` 标记 | 支持，同 `[end]` dim 处理 | 支持，同 `[end]` `secondary` 色（src/tui/message_list.rs:237） | 🟡 | S |
+| TEARDROP_ASTERISK 前缀 | `✵` 用于特殊类型（SystemTextMessage.tsx:73,141,164,562） | 无 | 🔴 | M |
+| 上边距 | `marginTop={addMargin ? 1 : 0}`（SystemTextMessage.tsx:88,149,180） | 无上边距 | 🔴 | S |
+| 背景色 | `backgroundColor={bg}` 响应选中态（SystemTextMessage.tsx:88,149） | 无背景色 | 🔴 | M |
+| 宽度 | `width="100%"` 或 `width={columns-10}`（SystemTextMessage.tsx:88,149,353） | 无宽度限制 | 🔴 | S |
+| info 级别隐藏 | `!verbose && message.level === "info"` 返回 null（SystemTextMessage.tsx:201-203） | 无隐藏逻辑 | 🔴 | S |
 
 ### B4. Tool 调用
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| header 前缀 | `BLACK_CIRCLE` (●) 或 ToolUseLoader 动画（AssistantToolUseMessage.tsx:186） | `⚙ ` 齿轮符号（src/tui/message_list.rs:216） | 🔴 | S |
+| header 名称色 | `bold={true}` + 背景色可选（AssistantToolUseMessage.tsx:200） | `secondary` 色（src/tui/message_list.rs:217） | 🔴 | S |
+| input 显示 | `renderToolUseMessage()` 格式化输入（AssistantToolUseMessage.tsx:163-167,318-327） | 直接渲染 input 文本（src/tui/message_list.rs:220-225） | 🔴 | M |
+| input 折叠 | 支持折叠（verbose 控制） | 无折叠机制 | 🔴 | L |
+| output 显示 | 直接渲染 output 文本（AssistantToolUseMessage.tsx:340） | 直接渲染 output 文本（src/tui/message_list.rs:228-234） | ✅ | S |
+| output 截断 | 无显式截断 | 无截断机制 | ✅ | S |
+| 状态图标 - queued | `BLACK_CIRCLE` + `dimColor`（AssistantToolUseMessage.tsx:186） | 无状态图标 | 🔴 | M |
+| 状态图标 - in-progress | `ToolUseLoader` 组件动画（AssistantToolUseMessage.tsx:186, ToolUseLoader.tsx） | 无状态图标 | 🔴 | M |
+| 状态图标 - error | `isError={true}` 传给 ToolUseLoader（AssistantToolUseMessage.tsx:186） | 无状态图标 | 🔴 | M |
+| 状态图标 - resolved | 无图标（`isResolved` 时不显示 loader） | 无状态图标 | ✅ | S |
+| 进度消息 | `renderToolUseProgressMessage()` + HookProgressMessage（AssistantToolUseMessage.tsx:240,328-358） | 无进度消息 | 🔴 | L |
+| queued 提示 | `renderToolUseQueuedMessage()`（AssistantToolUseMessage.tsx:265,360-367） | 无 queued 提示 | 🔴 | M |
+| 工具名背景色 | `backgroundColor={userFacingToolNameBackgroundColor}`（AssistantToolUseMessage.tsx:200） | 无背景色 | 🔴 | M |
+| 工具名色 | `color={inverseText}` 配合背景（AssistantToolUseMessage.tsx:197,200） | 无反色 | 🔴 | M |
+| 多行缩进 | 无显式缩进（Box flexDirection="column"） | `  ` 两空格缩进（src/tui/message_list.rs:222,230） | 🟡 | S |
+| 上边距 | `marginTop={addMargin ? 1 : 0}`（AssistantToolUseMessage.tsx:285） | 无上边距 | 🔴 | S |
+| 背景色 | `backgroundColor={bg}` 响应选中态（AssistantToolUseMessage.tsx:149,285） | 无背景色 | 🔴 | M |
 
 ### B5. Reasoning
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| 前缀符（首行） | `figures.pointer` (❯ 或 ▶) + 空格（HighlightedThinkingText.tsx:91,145） | `· ` 中点符号（src/tui/message_list.rs:203） | 🔴 | S |
+| 前缀符颜色 | `pointerColor` = `suggestion`（选中时）或 `subtle`（默认）（HighlightedThinkingText.tsx:24,91） | `secondary` 色（src/tui/message_list.rs:204） | 🟡 | S |
+| 文本颜色 | `color="text"`（HighlightedThinkingText.tsx:99） | `secondary` 色（src/tui/message_list.rs:204） | 🔴 | S |
+| 多行缩进 | 无显式缩进（所有行同列） | `  ` 两空格缩进（src/tui/message_list.rs:208） | 🔴 | S |
+| 折叠态 | 支持（ThinkingToggle.tsx 控制展开/折叠） | 无折叠机制 | 🔴 | L |
+| 展开态 | 完整文本渲染 | 完整文本渲染 | ✅ | S |
+| dim 处理 | 无 dim（默认 text 色） | 使用 `secondary` dim 色（src/tui/message_list.rs:204） | 🟡 | S |
+| thinking 触发高亮 | `findThinkingTriggerPositions()` 彩虹色高亮（HighlightedThinkingText.tsx:87） | 无触发高亮 | 🔴 | L |
+| ultrathink 模式 | `isUltrathinkEnabled()` 启用特殊渲染（HighlightedThinkingText.tsx:87） | 无 ultrathink 模式 | 🔴 | L |
+| brief 模式布局 | `useBriefLayout` 时简化为 "You" + timestamp（HighlightedThinkingText.tsx:25-80） | 无 brief 模式 | 🔴 | M |
+| 上边距 | 无单独边距（父 Box 控制） | 无上边距 | ✅ | S |
+| 背景色 | 继承父 `backgroundColor={bg}`（HighlightedThinkingText.tsx 未显式设置） | 无背景色 | 🟡 | M |
 
 ### B6. Diff 渲染
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 3 填充 -->
+| `+` 行颜色 | 绿色（colorDiff Rust NAPI，StructuredDiff.tsx:65） | `Color::Green`（src/tui/markdown.rs:314） | ✅ | S |
+| `-` 行颜色 | 红色（colorDiff Rust NAPI） | `Color::Red`（src/tui/markdown.rs:318） | ✅ | S |
+| `diff --git` 行 | `Color::Cyan` + `BOLD`（src/tui/markdown.rs:304） | `Color::Cyan` + `BOLD`（src/tui/markdown.rs:304） | ✅ | S |
+| `---`/`+++` 行 | Cyan Bold（同 diff --git） | Cyan Bold（src/tui/markdown.rs:304） | ✅ | S |
+| `@@` hunk header | 蓝色（colorDiff Rust NAPI，StructuredDiff.tsx:65） | `Color::Blue`（src/tui/markdown.rs:308） | ✅ | S |
+| 上下文行（空格前缀） | 灰色 dim（colorDiff 默认） | `Color::DarkGray`（src/tui/markdown.rs:323） | 🟡 | S |
+| 行号显示 | 有 gutter（行号列）（StructuredDiff.tsx:43-49,73-76） | 无行号列 | 🔴 | M |
+| gutter 宽度 | `computeGutterWidth()` 动态计算（StructuredDiff.tsx:46-49） | 无 gutter | 🔴 | M |
+| gutter 分栏 | `RawAnsi` 双列渲染（gutter + content）（StructuredDiff.tsx:148-177） | 无分栏 | 🔴 | L |
+| 语法高亮 | ColorDiff Rust NAPI 语法高亮（StructuredDiff.tsx:51-66） | 无语法高亮 | 🔴 | L |
+| 边框 | `borderStyle="dashed"` + `borderLeft={false}` + `borderRight={false}`（FileEditToolDiff.tsx:98） | 无边框 | 🔴 | M |
+| 容器背景 | 无背景（Box 直接渲染） | 无背景 | ✅ | S |
+| 文件名显示 | `firstLine` 和 `filePath` 传给 ColorDiff（StructuredDiff.tsx:65,101） | 无文件名显示 | 🔴 | M |
+| 折叠机制 | 无折叠（完整 diff 显示） | 无折叠 | ✅ | S |
+| dim 支持 | `dim` 参数控制整体 dim（StructuredDiff.tsx:99） | 无 dim 参数 | 🔴 | M |
+| 等宽字体 | RawAnsi 等宽渲染 | 等宽渲染 | ✅ | S |
 
 ---
 
