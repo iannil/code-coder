@@ -5,7 +5,6 @@
 /// Two public pure functions:
 ///   - compute_unified_diff: generate unified diff text from before/after
 ///   - render_diff: parse unified diff text and produce styled ratatui Lines
-
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
@@ -125,15 +124,14 @@ fn compute_gutter_width(hunks: &[Hunk]) -> usize {
         .flat_map(|h| {
             let mut n = h.new_start;
             h.lines.iter().filter_map(move |l| {
-                let val = match l {
+                match l {
                     ParsedLine::Add(_) | ParsedLine::Context(_) => {
                         let v = n;
                         n += 1;
                         Some(v)
                     }
                     _ => None,
-                };
-                val
+                }
             })
         })
         .max()
@@ -144,15 +142,15 @@ fn compute_gutter_width(hunks: &[Hunk]) -> usize {
 /// Detect syntect language from file extension, falling back to shebang.
 fn detect_language(path: &str, first_line: &str) -> Option<&'static syntect::parsing::SyntaxReference> {
     let ss = crate::tui::markdown::get_syntax_set();
-    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
-        if let Some(syntax) = ss.find_syntax_by_extension(ext) {
-            return Some(syntax);
-        }
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str())
+        && let Some(syntax) = ss.find_syntax_by_extension(ext)
+    {
+        return Some(syntax);
     }
-    if !first_line.is_empty() {
-        if let Some(syntax) = ss.find_syntax_by_first_line(first_line) {
-            return Some(syntax);
-        }
+    if !first_line.is_empty()
+        && let Some(syntax) = ss.find_syntax_by_first_line(first_line)
+    {
+        return Some(syntax);
     }
     None
 }
@@ -223,12 +221,11 @@ pub fn render_diff(text: &str, file_path: &str, file_content: &str) -> Vec<Line<
         total_lines += 1;
 
         let mut line_no = hunk.new_start;
-        let mut hunk_lines_emitted: usize = 0;
 
-        for line in &hunk.lines {
+        for (hunk_lines_emitted, line) in hunk.lines.iter().enumerate() {
             if total_lines >= MAX_TOTAL_LINES || hunk_lines_emitted >= MAX_HUNK_LINES {
                 out.push(Line::styled(
-                    format!("... (diff truncated)"),
+                    "... (diff truncated)".to_string(),
                     Style::default().fg(Color::DarkGray),
                 ));
                 return out;
@@ -267,7 +264,6 @@ pub fn render_diff(text: &str, file_path: &str, file_content: &str) -> Vec<Line<
                 }
             }
             total_lines += 1;
-            hunk_lines_emitted += 1;
         }
     }
     out
@@ -498,7 +494,7 @@ mod tests {
         let lines = render_diff(diff, "f.txt", "");
         // First content line (after hunk header) should start with gutter spaces.
         let body_line = lines.iter().find(|l| {
-            l.spans.first().map_or(false, |s| s.content.starts_with('+'))
+            l.spans.first().is_some_and(|s| s.content.starts_with('+'))
         });
         assert!(body_line.is_some(), "expected an addition line");
     }
