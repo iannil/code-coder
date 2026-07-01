@@ -423,13 +423,22 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 ## 附录 A — 渲染代码映射图
 
-<!-- TASK 8 填充 -->
+| codecoder 文件 | 原版对应组件 | 备注 |
+|---|---|---|
+| `src/tui/mod.rs` | `FullscreenLayout.tsx` | 整体布局（三段 Flex 布局） |
+| `src/tui/status_bar.rs` | `StatusLine.tsx`、`CoordinatorAgentStatus.tsx` | 状态栏（模型名、token 显示、CWD、context 进度条、spinner） |
+| `src/tui/input_area.rs` | `PromptInput.tsx`、`TextInput.tsx`、`usePromptInputPlaceholder.ts`、`ShimmeredInput.tsx` | 输入区（prompt 符号、占位文字、分隔线、边框、多行渲染） |
+| `src/tui/message_list.rs` | `ScrollBox.tsx`、`Messages.tsx`、`MessageRow.tsx`、`UserPromptMessage.tsx`、`AssistantTextMessage.tsx`、`SystemTextMessage.tsx`、`AssistantToolUseMessage.tsx`、`ToolUseLoader.tsx`、`HighlightedThinkingText.tsx`、`ThinkingToggle.tsx` | 消息列表容器与所有消息变体（User、Assistant、System、Tool、Reasoning） |
+| `src/tui/dialogs.rs` | `PermissionDialog.tsx`、`FallbackPermissionRequest.tsx`、`PermissionRequestTitle.tsx`、`ExitPlanModePermissionRequest.tsx`、`SubmitQuestionsView.tsx`、`CustomSelect/select.tsx`、`HelpV2.tsx`、`Pane.tsx`、`ink/render-border.ts` | 所有对话框与补全浮层（Permission、Plan、AskQuestion、Confirm、Slash、@文件、模型选择、帮助） |
+| `src/tui/markdown.rs` | `Markdown.tsx`、`MarkdownTable.tsx`、`HighlightedCode.tsx`、`HighlightedCode/Fallback.tsx`、`StructuredDiff.tsx`、`FileEditToolDiff.tsx`、`colorDiff.ts`、`markdown.ts`、`hyperlink.ts`、`cliHighlight.ts` | Markdown 与代码渲染（行内格式、标题、列表、代码块、表格、引用块、链接、Diff） |
+| `src/tui/completion.rs` | 无对应（codecoder 自创） | 补全系统（无原版对比） |
+| `src/tui/theme.rs` | `theme.ts`、`ink/colorize.ts`、`utils/theme.ts` | 颜色与主题（暗色/亮色调色板、选中高亮、dim 处理） |
 
 ---
 
 ## 附录 B — 待补条目
 
-<!-- TASK 8 填充 -->
+本轮审计所有条目均已定位双侧锚点（codecoder TUI 文件与原版组件均有明确行号引用）。
 
 ---
 
