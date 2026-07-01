@@ -188,49 +188,89 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | `borderStyle="round"` + `borderLeft={false}` + `borderRight={false}` + `borderBottom={false}` + `borderColor={color}`（PermissionDialog.tsx:62） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:307-308） | 🔴 | M |
+| 标题行 | `[!] Tool Permission` 黄色粗体（dialogs.rs:273） | `[!] Tool Permission` 黄色粗体（dialogs.rs:273） | ✅ | S |
+| 选项高亮 | 无选项列表（仅 Y/N/A 提示） | 无选项列表（仅 Y/N/A 提示） | ✅ | S |
+| 选项分隔符 | 无选项分隔符 | 无选项分隔符 | ✅ | S |
+| footer 提示行 | `Y=once  A=session  Shift+A=project  N=deny  Esc=cancel`（dialogs.rs:296） | `Y=once  A=session  Shift+A=project  N=deny  Esc=cancel`（dialogs.rs:296） | ✅ | S |
+| 多选框 | 无多选框（单选 Y/N/A） | 无多选框（单选 Y/N/A） | ✅ | S |
 
 ### C2. Plan 审批对话框
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无明确定位（可能在 Dialog 或 CustomSelect） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:499-500） | 🟡 | M |
+| 标题行 | `[~] Ready to code?` 蓝色粗体（dialogs.rs:470） | `[~] Ready to code?` 蓝色粗体（dialogs.rs:470） | ✅ | S |
+| 选项高亮 | `figures.pointer`（`▸`）+ 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:480-482） | ✅ | S |
+| 选项分隔符 | 空行分隔（CustomSelect/select.tsx:403,450） | 空行分隔（dialogs.rs:477,491） | ✅ | S |
+| footer 提示行 | `↑↓ select · Enter confirm · A=auto Y=manual N=keep planning · Esc=keep planning`（dialogs.rs:492-494） | `↑↓ select · Enter confirm · A=auto Y=manual N=keep planning · Esc=keep planning`（dialogs.rs:492-494） | ✅ | S |
+| 多选框 | 无多选框（单选 A/Y/N） | 无多选框（单选 A/Y/N） | ✅ | S |
 
 ### C3. AskQuestion 对话框
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无明确定位（可能在 AskUserQuestionPermissionRequest） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:437-438） | 🟡 | M |
+| 标题行 | `[?] Question` 蓝色粗体（dialogs.rs:396） | `[?] Question` 蓝色粗体（dialogs.rs:396） | ✅ | S |
+| 选项高亮 | `figures.pointer` + 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:409-412） | ✅ | S |
+| 选项分隔符 | 空行分隔（CustomSelect/select.tsx:403） | 空行分隔（dialogs.rs:404,422） | ✅ | S |
+| footer 提示行 | `↑↓ select · Enter confirm · or type a custom answer · Esc skip`（dialogs.rs:427） | `↑↓ select · Enter confirm · or type a custom answer · Esc skip`（dialogs.rs:427） | ✅ | S |
+| 多选框 | 无多选框（单选或自由输入） | 无多选框（单选或自由输入） | ✅ | S |
 
 ### C4. Confirm 对话框
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无明确定位（可能在 Dialog 组件） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:344-345） | 🟡 | M |
+| 标题行 | `⚠ Confirm` 黄色粗体（dialogs.rs:334） | `⚠ Confirm` 黄色粗体（dialogs.rs:334） | ✅ | S |
+| 选项高亮 | 无选项列表（仅 Y/N 提示） | 无选项列表（仅 Y/N 提示） | ✅ | S |
+| 选项分隔符 | 无选项分隔符 | 无选项分隔符 | ✅ | S |
+| footer 提示行 | `Y=confirm  N=cancel  Esc=cancel`（dialogs.rs:339） | `Y=confirm  N=cancel  Esc=cancel`（dialogs.rs:339） | ✅ | S |
+| 多选框 | 无多选框（单选 Y/N） | 无多选框（单选 Y/N） | ✅ | S |
 
 ### C5. Slash 补全浮层
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无边框（CustomSelect 容器仅 `flexDirection: "column"`）（select.tsx:651） | `Block::default()` 无边框（dialogs.rs:99） | ✅ | S |
+| 标题行 | `Commands` 标题（dialogs.rs:100） | `Commands` 标题（dialogs.rs:100） | ✅ | S |
+| 选项高亮 | `figures.pointer` + `suggestion` 色（select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:85-87） | ✅ | S |
+| 选项分隔符 | 空行分隔（CustomSelect 默认布局） | 空行分隔（dialogs.rs:97） | ✅ | S |
+| footer 提示行 | 无显式 footer 提示（CustomSelect 内嵌） | 无显式 footer 提示 | ✅ | S |
+| 数字键直选提示 | `${i}.` 前缀（select.tsx:450） | 无数字键直选提示 | 🔴 | S |
 
 ### C6. @ 文件补全浮层
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无明确定位（可能在 file completion popup） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:534-535） | 🟡 | M |
+| 标题行 | `Files` 标题（dialogs.rs:536） | `Files` 标题（dialogs.rs:536） | ✅ | S |
+| 选项高亮 | `figures.pointer` + 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:519-521） | ✅ | S |
+| 选项分隔符 | 空行分隔（CustomSelect 默认布局） | 空行分隔（dialogs.rs:533） | ✅ | S |
+| footer 提示行 | 无显式 footer 提示 | 无显式 footer 提示 | ✅ | S |
+| 数字键直选提示 | `${i}.` 前缀（select.tsx:450） | 无数字键直选提示 | 🔴 | S |
 
 ### C7. 模型选择器
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | 无明确定位（可能在 CustomSelect） | `Block::default()` 无边框（dialogs.rs:134） | ✅ | S |
+| 标题行 | `Model` 标题（dialogs.rs:135） | `Model` 标题（dialogs.rs:135） | ✅ | S |
+| 选项高亮 | `figures.pointer` + `suggestion` 色（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:119-121） | ✅ | S |
+| 选项分隔符 | 空行分隔（CustomSelect 默认布局） | 空行分隔（dialogs.rs:133） | ✅ | S |
+| footer 提示行 | 无显式 footer 提示 | 无显式 footer 提示 | ✅ | S |
+| 当前标记 | `figures.tick`（✓）（select.tsx:522） | `✓` 符号（dialogs.rs:120,125） | ✅ | S |
 
 ### C8. 帮助页
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 4 填充 -->
+| 边框样式 | `Pane` 组件无完整边框，仅有顶部 `Divider` 线（Pane.tsx:52） | `Block::default()` 无边框（dialogs.rs:233） | ✅ | S |
+| 标题行 | `Help` 标题（dialogs.rs:234） | `Help` 标题（dialogs.rs:234） | ✅ | S |
+| 分类标题 | `Editing` / `Navigation` / `Mode & Tools` / `Commands` 蓝色粗体（dialogs.rs:174,189,200,212） | `Editing` / `Navigation` / `Mode & Tools` / `Commands` 蓝色粗体（dialogs.rs:174,189,200,212） | ✅ | S |
+| 按键格式 | `{:<14}` 左对齐 14 字符宽度（dialogs.rs:156） | `{:<14}` 左对齐 14 字符宽度（dialogs.rs:156） | ✅ | S |
+| 选项分隔符 | 空行分隔（HelpV2.tsx:176,188,199,211） | 空行分隔（dialogs.rs:175,188,199,211） | ✅ | S |
+| footer 提示行 | `Esc to close`（dialogs.rs:228） | `Esc to close`（dialogs.rs:228） | ✅ | S |
 
 ---
 
