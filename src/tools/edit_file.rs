@@ -55,9 +55,17 @@ impl Tool for EditFileTool {
         let new_lines = new_content.lines().count();
         let diff_lines = (new_lines as isize - old_lines as isize).abs();
 
+        // V1 (audit-tui-visual-fidelity.md bucket-4 #109/#110):
+        // attach unified diff with file_path so renderer can highlight.
+        let diff_text = crate::tui::diff::compute_unified_diff(
+            &content,
+            &new_content,
+            &parsed.path,
+        );
+
         Ok(format!(
-            "Edited {}. Replaced 1 occurrence ({}→{} lines, {} line diff).",
-            parsed.path, old_lines, new_lines, diff_lines
+            "Edited {}. Replaced 1 occurrence ({}→{} lines, {} line diff).\n\n```diff path=\"{}\"\n{}```",
+            parsed.path, old_lines, new_lines, diff_lines, parsed.path, diff_text
         ))
     }
 }
@@ -102,5 +110,47 @@ mod tests {
         let result = tool.execute(&input);
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("not found"));
+    }
+
+    #[test]
+    fn test_edit_file_output_contains_diff_block() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(file.as_file_mut(), b"line1\nline2\nline3\n").unwrap();
+        let path = file.path().to_str().unwrap().to_string();
+
+        let tool = EditFileTool;
+        let input = format!(r#"{{"path": "{path}", "old": "line2", "new": "LINE TWO"}}"#);
+        let result = tool.execute(&input).unwrap();
+
+        assert!(result.contains("```diff"), "result: {result}");
+        assert!(result.contains(&format!("path=\"{path}\"")), "result: {result}");
+    }
+
+    #[test]
+    fn test_edit_file_diff_has_correct_line_numbers() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(file.as_file_mut(), b"a\nb\nc\nd\ne\n").unwrap();
+        let path = file.path().to_str().unwrap().to_string();
+
+        let tool = EditFileTool;
+        let input = format!(r#"{{"path": "{path}", "old": "c", "new": "CHANGED"}}"#);
+        let result = tool.execute(&input).unwrap();
+
+        // The diff should show "3" as the line number for the change (new file).
+        assert!(result.contains("@@ -"), "result: {result}");
+    }
+
+    #[test]
+    fn test_edit_file_diff_includes_unified_file_header() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(file.as_file_mut(), b"hello\n").unwrap();
+        let path = file.path().to_str().unwrap().to_string();
+
+        let tool = EditFileTool;
+        let input = format!(r#"{{"path": "{path}", "old": "hello", "new": "world"}}"#);
+        let result = tool.execute(&input).unwrap();
+
+        assert!(result.contains(&format!("--- a/{path}")), "result: {result}");
+        assert!(result.contains(&format!("+++ b/{path}")), "result: {result}");
     }
 }
