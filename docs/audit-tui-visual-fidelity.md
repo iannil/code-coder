@@ -444,4 +444,121 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 ## 裁决清单（按优先级）
 
-<!-- TASK 9 填充 -->
+**先修（视觉 bug / 显著差距且难度 S/M）**
+1. 输入区.占位文字 — 缺少动态占位提示（§A3）难度 M
+2. 输入区.边框样式 — 缺少 round 边框（§A3）难度 M
+3. 输入区.边框颜色 — 缺少 promptBorder 颜色（§A3）难度 M
+4. 消息列表容器.容器边框 — 上下边框与原版无边框不符（§A4）难度 S
+5. User 消息.前缀符 — 原版无前缀，codecoder 有 `▶`（§B1）难度 S
+6. User 消息.文本换行 — 无显式 wrap 配置（§B1）难度 M
+7. User 消息.背景色 — 缺少 userMessageBackground（§B1）难度 M
+8. User 消息.上边距 — 无上边距（§B1）难度 S
+9. User 消息.截断机制 — 无 MAX_DISPLAY_CHARS 截断（§B1）难度 M
+10. Assistant 消息.前缀符 — 原版无前缀，codecoder 有 `▷`（§B2）难度 S
+11. Assistant 消息.选中态背景 — 缺少 messageActionsBackground（§B2）难度 M
+12. Assistant 消息.段落间距 — 无上边距（§B2）难度 S
+13. Assistant 消息.空消息过滤 — 无 isEmptyMessageText 检查（§B2）难度 S
+14. Assistant 消息.错误消息颜色 — 缺少 error 专用颜色（§B2）难度 M
+15. System 消息.前缀符 — 缺少 BLACK_CIRCLE (●)（§B3）难度 S
+16. System 消息.info 级别颜色 — 缺少 dim 灰色处理（§B3）难度 S
+17. System 消息.warning 级别颜色 — 缺少 warning 黄色（§B3）难度 M
+18. System 消息.error 级别颜色 — 缺少 error 红色（§B3）难度 M
+19. System 消息.TEARDROP_ASTERISK 前缀 — 缺少 `✵` 前缀（§B3）难度 M
+20. System 消息.上边距 — 无上边距（§B3）难度 S
+21. System 消息.背景色 — 无背景色响应选中态（§B3）难度 M
+22. System 消息.宽度 — 无宽度限制（§B3）难度 S
+23. System 消息.info 级别隐藏 — 无 verbose 条件隐藏（§B3）难度 S
+24. Tool 调用.header 前缀 — 使用 `⚙` 而非 BLACK_CIRCLE（§B4）难度 S
+25. Tool 调用.header 名称色 — 使用 secondary 色而非 bold（§B4）难度 S
+26. Tool 调用.input 显示 — 未格式化直接渲染（§B4）难度 M
+27. Tool 调用.状态图标-queued — 无 BLACK_CIRCLE dim（§B4）难度 M
+28. Tool 调用.状态图标-in-progress — 无 ToolUseLoader 动画（§B4）难度 M
+29. Tool 调用.状态图标-error — 无 isError 传给 loader（§B4）难度 M
+30. Tool 调用.queued 提示 — 无 renderToolUseQueuedMessage（§B4）难度 M
+31. Tool 调用.工具名背景色 — 缺少 userFacingToolNameBackgroundColor（§B4）难度 M
+32. Tool 调用.工具名色 — 缺少 inverseText 反色（§B4）难度 M
+33. Tool 调用.上边距 — 无上边距（§B4）难度 S
+34. Tool 调用.背景色 — 无背景色响应选中态（§B4）难度 M
+35. Reasoning.前缀符（首行） — 使用 `·` 而非 figures.pointer（§B5）难度 S
+36. Reasoning.文本颜色 — 使用 secondary 色而非 text 色（§B5）难度 S
+37. Reasoning.多行缩进 — 有缩进而原版无（§B5）难度 S
+38. Reasoning.brief 模式布局 — 无 brief 模式（§B5）难度 M
+39. Diff 渲染.上下文行 — 使用 DarkGray 而非 dim（§B6）难度 S
+40. Diff 渲染.行号显示 — 缺少 gutter 列（§B6）难度 M
+41. Diff 渲染.gutter 宽度 — 无 computeGutterWidth（§B6）难度 M
+42. Diff 渲染.边框 — 缺少 dashed 边框（§B6）难度 M
+43. Diff 渲染.文件名显示 — 无文件名显示（§B6）难度 M
+44. Diff 渲染.dim 支持 — 无 dim 参数（§B6）难度 M
+45. Permission 对话框.边框样式 — 使用 Plain 而非 round（§C1）难度 M
+46. Permission 对话框.标题行 — 标题格式 `[!] Tool Permission`（§C1）难度 S
+47. AskQuestion 对话框.边框样式 — 使用 Plain 而无 borderTop（§C3）难度 M
+48. Slash 补全浮层.数字键直选提示 — 缺少 `${i}.` 前缀（§C5）难度 S
+49. @ 文件补全浮层.数字键直选提示 — 缺少 `${i}.` 前缀（§C6）难度 S
+50. Markdown 标题.H1 样式 — 缺少 italic/underline（§D2）难度 S
+51. Markdown 标题.H3 样式 — 缺少 underline（§D2）难度 S
+52. Markdown 标题.H4-H6 样式 — 无 H4-H6 实现（§D2）难度 M
+53. 列表.有序列表标记 — 固定 `1.` 而非递增数字（§D3）难度 M
+54. 列表.嵌套缩进 — 无嵌套列表（§D3）难度 M
+55. 列表.checkbox 支持 — 无 checkbox（§D3）难度 M
+56. 代码块.行号显示 — 缺少 gutter（§D4）难度 M
+57. 表格.边框字符 — 缺少完整集合（§D5）难度 M
+58. 表格.单元格对齐 — 固定左对齐（§D5）难度 M
+59. 表格.列宽计算 — 固定 max_col_width=40（§D5）难度 M
+60. 表格.文本换行 — 简单截断而非 ANSI 感知换行（§D5）难度 M
+61. 引用块.前缀字符 — 无引用块实现（§D6）难度 M
+62. 引用块.文本样式 — 无 italic+dim（§D6）难度 M
+63. 引用块.多行处理 — 无引用块实现（§D6）难度 M
+64. 链接.Inline 链接 — 使用 Cyan+UNDERLINED 而非 hyperlink（§D7）难度 M
+65. 链接.mailto 链接 — 无 mailto 处理（§D7）难度 S
+66. 链接.自动链接 — 无自动链接（§D7）难度 S
+67. 水平分割线.字符 — 无水平分割线实现（§D8）难度 S
+68. 暗色主题.accent 色 — 使用 Cyan 而非 light blue-purple（§E1）难度 S
+69. 暗色主题.warning 色 — 使用 Yellow 而非 bright amber（§E1）难度 S
+70. 亮色主题.次要文本 — 使用 Gray 而非 light gray（§E2）难度 S
+71. 亮色主题.accent 色 — 使用 Blue 而非 medium blue（§E2）难度 S
+72. 亮色主题.warning 色 — 使用 Red 而非 amber（§E2）难度 S
+73. 选中高亮.选中行背景色（暗色） — 使用 White 而非 selection blue（§E3）难度 S
+74. 选中高亮.选中行背景色（亮色） — 使用 Black 而非 selection blue（§E3）难度 S
+75. 边框字符集.对话框边框样式 — 使用 Plain 而非 round（§E5）难度 S
+76. 边框字符集.单线边框字符 — 缺少 `├┤`（§E5）难度 S
+77. 边框字符集.虚线边框字符 — 无虚线实现（§E5）难度 M
+78. 边框字符集.圆角边框字符 — 无圆角边框（§E5）难度 M
+79. 边框字符集.双线边框字符 — 无双线边框（§E5）难度 M
+
+**再裁决（细微差距，逐条定性）**
+80. 整体布局.内 padding — 原版 paddingX={2}，codecoder 无（§A1）建议：保留
+81. 输入区.prompt 符号 — 原版无，codecoder 有 `> `（§A3）建议：回补
+82. 输入区.上分隔线颜色 — 使用 secondary_text 而非 swarmBanner（§A3）建议：保留
+83. 消息列表容器.容器边框类型 — 有 Plain 边框而原版无边框（§A4）建议：保留
+84. User 消息.多行缩进 — 有两空格缩进（§B1）建议：保留
+85. User 消息.文本颜色 — 使用 primary+BOLD（§B1）建议：保留
+86. User 消息.右内边距 — 无 paddingRight（§B1）建议：保留
+87. Assistant 消息.多行缩进 — 有两空格缩进（§B2）建议：保留
+88. Assistant 消息.文本颜色 — 使用 accent 色前缀（§B2）建议：保留
+89. Assistant 消息.选中态前缀色 — 使用 accent+BOLD（§B2）建议：保留
+90. System 消息.`[end]` 标记 — 使用 secondary 色而非 dim（§B3）建议：保留
+91. System 消息.`[error]` 标记 — 使用 secondary 色而非 dim（§B3）建议：保留
+92. Tool 调用.多行缩进 — 有两空格缩进（§B4）建议：保留
+93. Reasoning.前缀符颜色 — 使用 secondary 色（§B5）建议：保留
+94. Reasoning.dim 处理 — 使用 secondary dim 色（§B5）建议：保留
+95. Reasoning.背景色 — 无背景色（§B5）建议：保留
+96. 次要文本 dim 处理.dim 原语 — 使用 Color::DarkGray（§E4）建议：保留
+97. 次要文本 dim 处理.dim 颜色值（亮色） — 使用 Color::Gray（§E4）建议：保留
+98. 次要文本 dim 处理.`[end]`/`[error]` 标记 dim — 使用 secondary_text（§E4）建议：保留
+99. Markdown 行内格式.链接下划线 — 有 UNDERLINED（§D1）建议：保留
+
+**有意偏离（ADR 背书，仅需确认是否仍认可）**
+100. Markdown 与代码.语法高亮引擎 — 使用 syntect 而非 Shiki（ADR 0003 主题系统）
+101. Markdown 与代码.语法高亮实现 — 使用 syntect::easy::HighlightLines（ADR 0003）
+
+**缺失大件（L 难度，需另立 spec）**
+102. 输入区.多行渲染 — 固定 2 行高度，原版 TextInput 支持多行（§A3）。建议下一轮单独 brainstorm：输入区多行扩展管线。
+103. User 消息.thinking 高亮 — 无彩虹色高亮（§B1）。建议下一轮单独 brainstorm：thinking 触发词高亮管线。
+104. Tool 调用.input 折叠 — 无折叠机制（§B4）。建议下一轮单独 brainstorm：Tool input 折叠交互。
+105. Tool 调用.进度消息 — 无 HookProgressMessage（§B4）。建议下一轮单独 brainstorm：Tool 进度消息管线。
+106. Reasoning.折叠态 — 无 ThinkingToggle 控制展开/折叠（§B5）。建议下一轮单独 brainstorm：Reasoning 折叠交互。
+107. Reasoning.thinking 触发高亮 — 无彩虹色高亮（§B5）。建议下一轮单独 brainstorm：thinking 触发词高亮管线。
+108. Reasoning.ultrathink 模式 — 无 ultrathink 模式（§B5）。建议下一轮单独 brainstorm：ultrathink 特殊渲染管线。
+109. Diff 渲染.gutter 分栏 — 无 RawAnsi 双列渲染（§B6）。建议下一轮单独 brainstorm：Diff gutter 分栏渲染。
+110. Diff 渲染.语法高亮 — 无 ColorDiff Rust NAPI 语法高亮（§B6）。建议下一轮单独 brainstorm：Diff 语法高亮管线。
+111. 表格.垂直格式 — 窄终端自动切换（§D5）。建议下一轮单独 brainstorm：表格垂直格式渲染。
