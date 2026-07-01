@@ -23,8 +23,25 @@ pub const MAX_DIALOG_PREVIEW_LINES: usize = 20;
 /// Returns the diff with `--- a/{path}` / `+++ b/{path}` file headers so the
 /// markdown renderer detects it. Binary inputs (containing NUL bytes) yield
 /// the literal sentinel `"[binary file changed]"`.
-pub fn compute_unified_diff(_old: &str, _new: &str, _path: &str) -> String {
-    String::new() // Task 2 fills this in
+pub fn compute_unified_diff(old: &str, new: &str, path: &str) -> String {
+    if is_binary(old) || is_binary(new) {
+        return "[binary file changed]".to_string();
+    }
+
+    use similar::TextDiff;
+    let diff = TextDiff::from_lines(old, new);
+    let mut output = String::new();
+    output.push_str(&format!("--- a/{path}\n+++ b/{path}\n"));
+
+    // UnifiedDiff implements Display, so we can format it directly
+    output.push_str(&format!("{}", diff.unified_diff().context_radius(3)));
+
+    output
+}
+
+/// Detect binary content by NUL byte presence (same heuristic as git).
+fn is_binary(s: &str) -> bool {
+    s.contains('\0')
 }
 
 /// Render unified diff `text` into styled Lines with gutter and (if
