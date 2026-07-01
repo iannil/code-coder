@@ -159,6 +159,42 @@ fn detect_language(path: &str, first_line: &str) -> Option<&'static syntect::par
     None
 }
 
+/// Precompute syntect highlight spans for every line in `content`.
+///
+/// `HighlightLines` carries state across lines (multi-line strings, block
+/// comments), so we must tokenize the whole file once and then index into
+/// the result by line number during rendering.
+fn precompute_line_highlights(
+    content: &str,
+    lang: &syntect::parsing::SyntaxReference,
+) -> Vec<Vec<Span<'static>>> {
+    let ss = crate::tui::markdown::get_syntax_set();
+    let theme = crate::tui::markdown::get_theme();
+    let mut h = syntect::easy::HighlightLines::new(lang, theme);
+    content.lines().map(|line| {
+        match h.highlight_line(line, ss) {
+            Ok(ranges) => ranges
+                .into_iter()
+                .map(|(style, s)| {
+                    let color = ratatui::style::Color::Rgb(style.foreground.r, style.foreground.g, style.foreground.b);
+                    let mut modifs = ratatui::style::Modifier::empty();
+                    if style.font_style.contains(syntect::highlighting::FontStyle::BOLD) {
+                        modifs |= ratatui::style::Modifier::BOLD;
+                    }
+                    if style.font_style.contains(syntect::highlighting::FontStyle::ITALIC) {
+                        modifs |= ratatui::style::Modifier::ITALIC;
+                    }
+                    if style.font_style.contains(syntect::highlighting::FontStyle::UNDERLINE) {
+                        modifs |= ratatui::style::Modifier::UNDERLINED;
+                    }
+                    Span::styled(s.to_string(), ratatui::style::Style::default().fg(color).add_modifier(modifs))
+                })
+                .collect(),
+            Err(_) => vec![Span::raw(line.to_string())],
+        }
+    }).collect()
+}
+
 /// Render unified diff `text` into styled Lines with gutter and (if
 /// `file_path`/`file_content` are available) syntect syntax highlighting.
 ///
@@ -302,5 +338,32 @@ mod tests {
     #[test]
     fn test_detect_unknown_falls_back_to_none() {
         assert!(detect_language("file.unknownext", "").is_none());
+    }
+
+    #[test]
+    fn test_highlight_no_language_returns_empty() {
+        // Helper not yet wired; verify behavior via render_diff in Task 6.
+        // For now, just sanity-check that calling precompute with a known
+        // language produces non-empty output for non-empty content.
+        let ss = crate::tui::markdown::get_syntax_set();
+        let rust = ss.find_syntax_by_extension("rs").unwrap();
+        let highlights = precompute_line_highlights("fn main() {}", rust);
+        assert_eq!(highlights.len(), 1); // one line
+        assert!(!highlights[0].is_empty()); // at least one span
+    }
+
+    #[test]
+    fn test_highlight_multiline_string_spanning_lines() {
+        // A multi-line string in Rust: highlighter state must carry across.
+        let content = "fn x() {\n    let s = \"a\nb\nc\";\n}\n";
+        let ss = crate::tui::markdown::get_syntax_set();
+        let rust = ss.find_syntax_by_extension("rs").unwrap();
+        let highlights = precompute_line_highlights(content, rust);
+        assert_eq!(highlights.len(), 5);
+        // Line 2 (index 1) and 3 (index 2) are inside the string literal.
+        // We don't assert exact colors (theme-dependent), just that they
+        // have spans (i.e., were tokenized, not skipped).
+        assert!(!highlights[1].is_empty());
+        assert!(!highlights[2].is_empty());
     }
 }

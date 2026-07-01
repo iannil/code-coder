@@ -205,7 +205,7 @@ fn load_themes() -> &'static (syntect::highlighting::Theme, syntect::highlightin
     })
 }
 
-fn get_theme() -> &'static syntect::highlighting::Theme {
+pub fn get_theme() -> &'static syntect::highlighting::Theme {
     let themes = load_themes();
     if DARK_MODE.load(Ordering::Relaxed) {
         &themes.0
