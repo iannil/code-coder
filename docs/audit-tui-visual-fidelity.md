@@ -360,31 +360,49 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 6 填充 -->
+| 主文本色 | `rgb(255,255,255)` "white"（utils/theme.ts:453） | `Color::White`（src/tui/theme.rs:47） | ✅ | S |
+| 次要文本 | `rgb(80,80,80)` "dark gray"（utils/theme.ts:457） | `Color::DarkGray`（src/tui/theme.rs:48） | ✅ | S |
+| accent 色（模型名、提示符、标题） | `rgb(177,185,249)` "light blue-purple"（utils/theme.ts:458） | `Color::Cyan`（src/tui/theme.rs:49） | 🟡 | S |
+| warning 色（[!] 标记、破坏性操作） | `rgb(255,193,7)` "bright amber"（utils/theme.ts:463） | `Color::Yellow`（src/tui/theme.rs:50） | 🟡 | S |
+| success 色（✓ 当前模型标记） | `rgb(78,186,101)` "bright green"（utils/theme.ts:461） | `Color::Green`（src/tui/theme.rs:51） | ✅ | S |
 
 ### E2. 亮色主题 parity
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 6 填充 -->
+| 主文本色 | `rgb(0,0,0)` "black"（utils/theme.ts:128） | `Color::Black`（src/tui/theme.rs:64） | ✅ | S |
+| 次要文本 | `rgb(175,175,175)` "light gray"（utils/theme.ts:132） | `Color::Gray`（src/tui/theme.rs:65） | 🟡 | S |
+| accent 色 | `rgb(87,105,247)` "medium blue"（utils/theme.ts:133） | `Color::Blue`（src/tui/theme.rs:66） | 🟡 | S |
+| warning 色 | `rgb(150,108,30)` "amber"（utils/theme.ts:138） | `Color::Red`（src/tui/theme.rs:67） | 🔴 | S |
+| success 色 | `rgb(44,122,57)` "green"（utils/theme.ts:136） | `Color::Green`（src/tui/theme.rs:68） | ✅ | S |
 
 ### E3. 选中高亮
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 6 填充 -->
+| 选中行前景色（暗色） | `rgb(0,0,0)` "black" via `selectionBg`（utils/theme.ts:491） | `Color::Black`（src/tui/theme.rs:52） | ✅ | S |
+| 选中行背景色（暗色） | `rgb(38,79,120)` "selection blue"（utils/theme.ts:491） | `Color::White`（src/tui/theme.rs:53） | 🔴 | S |
+| 选中行前景色（亮色） | `rgb(255,255,255)` "white"（utils/theme.ts:166） | `Color::White`（src/tui/theme.rs:69） | ✅ | S |
+| 选中行背景色（亮色） | `rgb(180,213,255)` "selection blue"（utils/theme.ts:166） | `Color::Black`（src/tui/theme.rs:70） | 🔴 | S |
 
 ### E4. 次要文本 dim 处理
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 6 填充 -->
+| dim 原语（chalk） | `chalk.dim()`（ink/colorize.ts:77） | `Color::DarkGray`（src/tui/theme.rs:48） | 🟡 | S |
+| dim 颜色值（暗色） | `rgb(80,80,80)` "dark gray" + dim（utils/theme.ts:457） | `Color::DarkGray`（src/tui/theme.rs:48） | ✅ | S |
+| dim 颜色值（亮色） | `rgb(175,175,175)` "light gray" + dim（utils/theme.ts:132） | `Color::Gray`（src/tui/theme.rs:65） | 🟡 | S |
+| `[end]`/`[error]` 标记 dim | `dimColor={true}` 传给 Text（SystemTextMessage.tsx:236-238） | `secondary_text` 色（src/tui/message_list.rs:237-238） | 🟡 | S |
 
 ### E5. 边框字符集
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 6 填充 -->
+| 对话框边框样式 | `borderStyle="round"` 使用 `─│┌┐└┘`（ink/render-border.ts via cli-boxes） | `BorderType::Plain` 使用 `─│┌┐└┘`（src/tui/dialogs.rs:308,500） | 🔴 | S |
+| 单线边框字符 | `─│┌┐└┘├┤`（cli-boxes "single"） | `─│┌┐└┘`（ratatui BorderType::Plain） | 🔴 | S |
+| 虚线边框字符 | `╌╎`（ink/render-border.ts:17-22 CUSTOM_BORDER_STYLES.dashed） | 无虚线实现 | 🔴 | M |
+| 圆角边框字符 | `╭╮╰╯`（cli-boxes "round"） | 无圆角边框类型 | 🔴 | M |
+| 双线边框字符 | `══║╗╝╚╔`（cli-boxes "double"） | 无双线边框类型 | 🔴 | M |
 
 ---
 
