@@ -190,12 +190,19 @@ pub fn run_tui(
 fn render(frame: &mut Frame, app: &mut TuiApp, frame_count: u64) {
     let area = frame.area();
 
-    // 三段 Flex 布局：消息区（flex_grow=1）+ 输入区（2行）+ 状态栏（1行）
+    // V2: input area height is dynamic — grows with content, capped at
+    // half the terminal height. compute_input_height is pure (no I/O).
+    let input_height = crate::tui::input_area::compute_input_height(
+        &app.input,
+        area.height,
+        area.width,
+    );
+
     let [msg_area, input_area_rect, status_area] = ratatui::layout::Layout::new(
         ratatui::layout::Direction::Vertical,
         [
             ratatui::layout::Constraint::Min(1),
-            ratatui::layout::Constraint::Length(2),
+            ratatui::layout::Constraint::Length(input_height),
             ratatui::layout::Constraint::Length(1),
         ],
     )
