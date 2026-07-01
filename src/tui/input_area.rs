@@ -35,9 +35,52 @@ pub struct WrapLine {
 
 /// Wrap `input` to `width` columns (reserving 2 for `> ` prefix on line 1).
 /// Returns one `WrapLine` per visual line. Empty input yields a single empty
-/// `WrapLine`. Tasks 2 fills this in.
-pub fn compute_input_lines(_input: &str, _width: u16) -> Vec<WrapLine> {
-    Vec::new()
+/// `WrapLine`.
+pub fn compute_input_lines(input: &str, width: u16) -> Vec<WrapLine> {
+    let content_width = width.saturating_sub(2).max(1) as usize;
+    let mut out = Vec::new();
+
+    let mut line_start_byte = 0usize;
+    let mut line_text = String::new();
+    let mut line_width = 0usize;
+
+    for (byte_idx, ch) in input.char_indices() {
+        if ch == '\n' {
+            // Close current line at the \n boundary
+            out.push(WrapLine {
+                text: std::mem::take(&mut line_text),
+                start_byte: line_start_byte,
+                end_byte: byte_idx,
+                display_width: line_width,
+            });
+            line_start_byte = byte_idx + 1; // skip past \n
+            line_width = 0;
+            continue;
+        }
+        let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+        if line_width + w > content_width && !line_text.is_empty() {
+            // Wrap: flush current line, start new at this char
+            out.push(WrapLine {
+                text: std::mem::take(&mut line_text),
+                start_byte: line_start_byte,
+                end_byte: byte_idx,
+                display_width: line_width,
+            });
+            line_start_byte = byte_idx;
+            line_width = 0;
+        }
+        line_text.push(ch);
+        line_width += w;
+    }
+    // Flush final line (even if empty — preserves the "input has n+1 lines"
+    // invariant for n newlines).
+    out.push(WrapLine {
+        text: line_text,
+        start_byte: line_start_byte,
+        end_byte: input.len(),
+        display_width: line_width,
+    });
+    out
 }
 
 /// Dynamic input-area height: `lines + 2` (border + padding), capped at
@@ -1303,5 +1346,79 @@ mod tests {
         // send_message pushes User msg + clears input
         assert!(app.input.is_empty(), "Ctrl+Enter should submit and clear input");
         assert!(app.messages.iter().any(|m| matches!(m, MessageItem::User { text } if text == "hello")));
+    }
+
+    // ── compute_input_lines (V2 Task 2) ───────────────────────────────────────
+
+    #[test]
+    fn test_compute_lines_empty() {
+        let lines = compute_input_lines("", 80);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "");
+        assert_eq!(lines[0].start_byte, 0);
+        assert_eq!(lines[0].end_byte, 0);
+        assert_eq!(lines[0].display_width, 0);
+    }
+
+    #[test]
+    fn test_compute_lines_single_short() {
+        let lines = compute_input_lines("hello", 80);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "hello");
+        assert_eq!(lines[0].start_byte, 0);
+        assert_eq!(lines[0].end_byte, 5);
+        assert_eq!(lines[0].display_width, 5);
+    }
+
+    #[test]
+    fn test_compute_lines_newline() {
+        let lines = compute_input_lines("a\nb", 80);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].text, "a");
+        assert_eq!(lines[0].start_byte, 0);
+        assert_eq!(lines[0].end_byte, 1);
+        assert_eq!(lines[1].text, "b");
+        assert_eq!(lines[1].start_byte, 2);
+        assert_eq!(lines[1].end_byte, 3);
+    }
+
+    #[test]
+    fn test_compute_lines_long_wrap() {
+        // 50 chars, content width 30 (width 32 minus 2 for `> `).
+        let input = "a".repeat(50);
+        let lines = compute_input_lines(&input, 32);
+        assert!(lines.len() >= 2, "got {} lines", lines.len());
+        // Byte ranges should be contiguous and non-overlapping.
+        for i in 1..lines.len() {
+            assert_eq!(lines[i].start_byte, lines[i - 1].end_byte,
+                "gap/overlap at index {i}");
+        }
+        assert_eq!(lines[0].start_byte, 0);
+        assert_eq!(lines.last().unwrap().end_byte, 50);
+        // Each non-final line should be at most 30 display width.
+        for l in &lines {
+            assert!(l.display_width <= 30, "line {:?} exceeds content width", l.text);
+        }
+    }
+
+    #[test]
+    fn test_compute_lines_wide_chars() {
+        // Each 🚀 is display-width 2. content width 10 → 5 per line.
+        let input = "🚀".repeat(10);
+        let lines = compute_input_lines(&input, 12); // width 12 → content 10
+        assert_eq!(lines.len(), 2, "got {} lines", lines.len());
+        assert_eq!(lines[0].display_width, 10);
+        assert_eq!(lines[1].display_width, 10);
+    }
+
+    #[test]
+    fn test_compute_lines_narrow_width() {
+        // Width < 10 should not panic; content_width = max(width-2, 1) = 1.
+        let lines = compute_input_lines("abc", 3);
+        // Each character on its own line (content width 1).
+        assert_eq!(lines.len(), 3);
+        for l in &lines {
+            assert!(l.display_width <= 1);
+        }
     }
 }
