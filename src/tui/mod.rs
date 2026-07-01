@@ -11,6 +11,7 @@
 ///   commands     — 斜杠命令处理、会话持久化
 
 pub mod completion;
+pub mod diff;
 pub mod markdown;
 pub mod message_list;
 pub mod input_area;
