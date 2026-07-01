@@ -91,6 +91,40 @@ pub fn compute_input_height(input: &str, term_height: u16, width: u16) -> u16 {
     (lines + 2).min(cap)
 }
 
+/// Find cursor's (virtual_line_index, col_in_line) given wrap_lines.
+///
+/// Binary-searches wrap_lines for the one containing `cursor_pos`, then
+/// sums display widths from that line's start_byte to cursor_pos.
+/// Returns `(0, 0)` for empty input.
+fn find_cursor_position(
+    input: &str,
+    wrap_lines: &[WrapLine],
+    cursor_pos: usize,
+) -> (usize, usize) {
+    if wrap_lines.is_empty() {
+        return (0, 0);
+    }
+    let cursor_byte = cursor_pos.min(input.len());
+
+    // partition_point returns the first index where the predicate is false.
+    // Predicate `wl.end_byte <= cursor_byte` is monotonic (end_bytes grow).
+    // - If cursor_byte < wl[0].end_byte → returns 0 (cursor in first line)
+    // - If wl[i-1].end_byte <= cursor_byte < wl[i].end_byte → returns i
+    // - If cursor_byte >= wl[last].end_byte → returns len (cap to len-1)
+    let idx = wrap_lines
+        .partition_point(|wl| wl.end_byte <= cursor_byte)
+        .min(wrap_lines.len() - 1);
+
+    let line = &wrap_lines[idx];
+    let start = line.start_byte.min(input.len());
+    let end = cursor_byte.max(start).min(input.len());
+    let col: usize = input[start..end]
+        .chars()
+        .map(|c| unicode_width::UnicodeWidthChar::width(c).unwrap_or(0))
+        .sum();
+    (idx, col)
+}
+
 /// ─── Undo Snapshot ──────────────────────────────────────────────────────────
 
 /// Save the current input state to the undo stack (for Ctrl+Z)
@@ -1458,5 +1492,55 @@ mod tests {
     fn test_compute_height_min_cap_when_term_tiny() {
         // term_height = 4 → cap = max(2, 3) = 3
         assert_eq!(compute_input_height("a\nb\nc\nd\ne", 4, 80), 3);
+    }
+
+    // ── find_cursor_position (V2 Task 4) ───────────────────────────────────────
+
+    #[test]
+    fn test_cursor_start_of_input() {
+        let lines = compute_input_lines("hello", 80);
+        let (vline, col) = find_cursor_position("hello", &lines, 0);
+        assert_eq!(vline, 0);
+        assert_eq!(col, 0);
+    }
+
+    #[test]
+    fn test_cursor_end_of_short_line() {
+        let lines = compute_input_lines("hello", 80);
+        let (vline, col) = find_cursor_position("hello", &lines, 5);
+        assert_eq!(vline, 0);
+        assert_eq!(col, 5);
+    }
+
+    #[test]
+    fn test_cursor_across_newline() {
+        // Input "a\nb", cursor at byte 2 (just past \n, before 'b')
+        let lines = compute_input_lines("a\nb", 80);
+        let (vline, col) = find_cursor_position("a\nb", &lines, 2);
+        assert_eq!(vline, 1);
+        assert_eq!(col, 0);
+    }
+
+    #[test]
+    fn test_cursor_within_wrap() {
+        // 50 chars in width 32 → content_width 30 → 2 lines: [0..30) and [30..50)
+        let input = "a".repeat(50);
+        let lines = compute_input_lines(&input, 32);
+        assert!(lines.len() >= 2, "expected wrap, got {} lines", lines.len());
+        // Cursor at byte 35 → in second wrap line, col = 35 - 30 = 5
+        let (vline, col) = find_cursor_position(&input, &lines, 35);
+        assert_eq!(vline, 1);
+        assert_eq!(col, 5);
+    }
+
+    #[test]
+    fn test_cursor_at_emoji() {
+        // "🚀x" — 🚀 is 4 bytes (display 2), x is 1 byte (display 1).
+        // Cursor at byte 5 (after x) → col = 2 + 1 = 3
+        let input = "🚀x";
+        let lines = compute_input_lines(input, 80);
+        let (vline, col) = find_cursor_position(input, &lines, 5);
+        assert_eq!(vline, 0);
+        assert_eq!(col, 3);
     }
 }
