@@ -189,7 +189,7 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
 | 边框样式 | `borderStyle="round"` + `borderLeft={false}` + `borderRight={false}` + `borderBottom={false}` + `borderColor={color}`（PermissionDialog.tsx:62） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:307-308） | 🔴 | M |
-| 标题行 | `[!] Tool Permission` 黄色粗体（dialogs.rs:273） | `[!] Tool Permission` 黄色粗体（dialogs.rs:273） | ✅ | S |
+| 标题行 | `Tool use` 黄色粗体（FallbackPermissionRequest.tsx:323 → PermissionRequestTitle.tsx:23） | `[!] Tool Permission` 黄色粗体（dialogs.rs:273） | 🔴 | S |
 | 选项高亮 | 无选项列表（仅 Y/N/A 提示） | 无选项列表（仅 Y/N/A 提示） | ✅ | S |
 | 选项分隔符 | 无选项分隔符 | 无选项分隔符 | ✅ | S |
 | footer 提示行 | `Y=once  A=session  Shift+A=project  N=deny  Esc=cancel`（dialogs.rs:296） | `Y=once  A=session  Shift+A=project  N=deny  Esc=cancel`（dialogs.rs:296） | ✅ | S |
@@ -199,7 +199,7 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-| 边框样式 | 无明确定位（可能在 Dialog 或 CustomSelect） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:499-500） | 🟡 | M |
+| 边框样式 | `borderStyle="round" borderColor="planMode" borderLeft={false} borderRight={false} borderBottom={false}`（ExitPlanModePermissionRequest.tsx:535） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:499-500） | ✅ | M |
 | 标题行 | `[~] Ready to code?` 蓝色粗体（dialogs.rs:470） | `[~] Ready to code?` 蓝色粗体（dialogs.rs:470） | ✅ | S |
 | 选项高亮 | `figures.pointer`（`▸`）+ 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:480-482） | ✅ | S |
 | 选项分隔符 | 空行分隔（CustomSelect/select.tsx:403,450） | 空行分隔（dialogs.rs:477,491） | ✅ | S |
@@ -210,7 +210,7 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-| 边框样式 | 无明确定位（可能在 AskUserQuestionPermissionRequest） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:437-438） | 🟡 | M |
+| 边框样式 | `borderTop={true} borderColor="inactive"`（SubmitQuestionsView.tsx:135） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:437-438） | 🔴 | M |
 | 标题行 | `[?] Question` 蓝色粗体（dialogs.rs:396） | `[?] Question` 蓝色粗体（dialogs.rs:396） | ✅ | S |
 | 选项高亮 | `figures.pointer` + 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:409-412） | ✅ | S |
 | 选项分隔符 | 空行分隔（CustomSelect/select.tsx:403） | 空行分隔（dialogs.rs:404,422） | ✅ | S |
@@ -221,7 +221,6 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-| 边框样式 | 无明确定位（可能在 Dialog 组件） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:344-345） | 🟡 | M |
 | 标题行 | `⚠ Confirm` 黄色粗体（dialogs.rs:334） | `⚠ Confirm` 黄色粗体（dialogs.rs:334） | ✅ | S |
 | 选项高亮 | 无选项列表（仅 Y/N 提示） | 无选项列表（仅 Y/N 提示） | ✅ | S |
 | 选项分隔符 | 无选项分隔符 | 无选项分隔符 | ✅ | S |
@@ -243,7 +242,6 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-| 边框样式 | 无明确定位（可能在 file completion popup） | `Block::bordered()` + `BorderType::Plain`（dialogs.rs:534-535） | 🟡 | M |
 | 标题行 | `Files` 标题（dialogs.rs:536） | `Files` 标题（dialogs.rs:536） | ✅ | S |
 | 选项高亮 | `figures.pointer` + 颜色高亮（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:519-521） | ✅ | S |
 | 选项分隔符 | 空行分隔（CustomSelect 默认布局） | 空行分隔（dialogs.rs:533） | ✅ | S |
@@ -254,7 +252,6 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-| 边框样式 | 无明确定位（可能在 CustomSelect） | `Block::default()` 无边框（dialogs.rs:134） | ✅ | S |
 | 标题行 | `Model` 标题（dialogs.rs:135） | `Model` 标题（dialogs.rs:135） | ✅ | S |
 | 选项高亮 | `figures.pointer` + `suggestion` 色（CustomSelect/select.tsx:522） | `▸` 前缀 + `selected_fg` + `selected_bg` 反白（dialogs.rs:119-121） | ✅ | S |
 | 选项分隔符 | 空行分隔（CustomSelect 默认布局） | 空行分隔（dialogs.rs:133） | ✅ | S |
