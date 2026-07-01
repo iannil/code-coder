@@ -277,49 +277,80 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| Bold (`**text**`) | `chalk.bold()` 真粗体（markdown.ts:98-101） | `Modifier::BOLD` 真粗体（markdown.rs:503-518） | ✅ | S |
+| Italic (`*text*`) | `chalk.italic()` 真斜体（markdown.ts:92-95） | `Modifier::ITALIC` 真斜体（markdown.rs:521-540） | ✅ | S |
+| Inline code (`` `code` ``) | `color('permission')` Cyan 色（markdown.ts:88-91） | `Color::Cyan`（markdown.rs:478-500） | ✅ | S |
+| 链接下划线 | 无显式下划线（ hyperlink.ts 处理） | `Modifier::UNDERLINED`（markdown.rs:563-568） | 🟡 | S |
 
 ### D2. 标题 H1-H6
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| H1 样式 | `bold.italic.underline`（markdown.ts:106-115） | `BOLD` + `Color::White`（markdown.rs:84-87） | 🔴 | S |
+| H2 样式 | `bold`（markdown.ts:116-124） | `BOLD` + `Color::White`（markdown.rs:79-83） | 🟡 | S |
+| H3 样式 | `underline`（markdown.ts:125-133） | `BOLD` + `Color::White`（markdown.rs:74-78） | 🔴 | S |
+| H4-H6 样式 | 无特殊样式（默认文本） | 无 H4-H6 实现 | 🔴 | M |
+| 标题前缀/序号 | 无前缀序号 | 无前缀序号 | ✅ | S |
 
 ### D3. 列表（无序/有序/嵌套/checkbox）
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| 无序列表标记 | `-`（markdown.ts:202） | `-`（markdown.rs:91-96） | ✅ | S |
+| 有序列表标记 | 数字 + `.`（markdown.ts:169,347-358） | 固定 `1.`（markdown.rs:99-106） | 🔴 | M |
+| 嵌套缩进 | `'  '.repeat(listDepth)` 空格缩进（markdown.ts:180） | 无嵌套列表实现 | 🔴 | M |
+| checkbox 支持 | 无 checkbox 实现（原版 marked.js 可能支持） | 无 checkbox 实现 | 🔴 | M |
+| checkbox 字符 | N/A | N/A | ✅ | S |
 
 ### D4. 代码块（围栏/语言标签/语法高亮/行号/背景）
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| 代码块围栏 | `` ``` `` 标记（markdown.ts:72-90） | `` ``` `` 标记（markdown.rs:40-56） | ✅ | S |
+| 语言标签位置 | 顶行 `` ```lang ``（markdown.ts:82） | 顶行 `` ```lang ``（markdown.rs:53） | ✅ | S |
+| 语法高亮引擎 | `cliHighlight` + Shiki（HighlightedCode/Fallback.tsx:29,154） | `syntect`（markdown.rs:187-286,Cargo.toml:17） | 🟢 | S |
+| 语法高亮实现 | `hl.highlight(code, {language})`（Fallback.tsx:29） | `syntect::easy::HighlightLines::new()`（markdown.rs:249） | 🟢 | S |
+| 行号显示 | gutterWidth + CodeLine 组件（HighlightedCode.tsx:121,137-189） | 无行号列 | 🔴 | M |
+| 代码块背景色 | 无背景（仅 ANSI 色彩） | 无背景（仅 ratatui Color） | ✅ | S |
+| 边框样式 | 无边框（RawAnsi 直接渲染） | 无边框（仅 `"  "` 前缀缩进） | ✅ | S |
+
+> **原版蓝图**（原版语法高亮实现）：
+> 原版使用 Shiki 语法高亮库（`cliHighlight.ts`），通过 `getCliHighlightPromise()` 延迟加载（Markdown.tsx:106,HighlightedCode/Fallback.tsx:29）。代码块渲染优先使用 ColorFile Rust NAPI（`color-diff-n`），如果不可用则回退到 `HighlightedCodeFallback` 组件，该组件使用 `hl.highlight(code, {language})` 进行语法高亮（HighlightedCode.tsx:31,123;Fallback.tsx:29,154）。语言检测基于文件扩展名（Fallback.tsx:79-86），不支持的语言回退到 markdown 高亮（Fallback.tsx:145-152）。高亮结果为 ANSI 字符串，通过 `<Ansi>` 组件渲染（Fallback.tsx:185,90）。
 
 ### D5. 表格
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| 边框字符 | `│ ─ ┬ ┼ ┌ ┐ └ ┘ ├ ┤`（MarkdownTable.tsx:227-237） | `│ ─ ├ ┤`（markdown.rs:392,420-424） | 🔴 | M |
+| 表头样式 | `center` 对齐 + BOLD（MarkdownTable.tsx:217,403-407） | BOLD + `Color::White`（markdown.rs:403-407） | ✅ | S |
+| 单元格对齐 | 支持 `left`/`center`/`right`（MarkdownTable.tsx:217-218） | 固定左对齐（markdown.rs:无对齐逻辑） | 🔴 | M |
+| 列宽计算 | 动态分配 + min/ideal 宽度（MarkdownTable.tsx:108-156） | 固定 `max_col_width=40`（markdown.rs:371-374） | 🔴 | M |
+| 文本换行 | `wrapAnsi` ANSI 感知换行（MarkdownTable.tsx:52-62） | `take(width)` 简单截断（markdown.rs:396-397） | 🔴 | M |
+| 垂直格式 | 窄终端自动切换（MarkdownTable.tsx:183-288） | 无垂直格式 | 🔴 | L |
 
 ### D6. 引用块
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| 前缀字符 | `▎` (U+258E)（figures.ts:34,markdown.ts:64） | 无引用块实现 | 🔴 | M |
+| 文本样式 | `italic` + `dim` 前缀（markdown.ts:62-68） | 无引用块实现 | 🔴 | M |
+| 多行处理 | 每行前缀 + split(EOL)（markdown.ts:65-69） | 无引用块实现 | 🔴 | M |
 
 ### D7. 链接
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| Inline 链接 `[text](url)` | `createHyperlink(url, text)`（markdown.ts:141-160） | Cyan + UNDERLINED（markdown.rs:542-574） | 🔴 | M |
+| mailto 链接 | 提取 email 显示为纯文本（markdown.ts:143-146） | 无 mailto 特殊处理 | 🔴 | S |
+| 自动链接 | 支持（markdown.ts:156-160） | 无自动链接 | 🔴 | S |
+| URL 显示 | 隐藏 URL（仅显示文本）（hyperlink.ts） | 隐藏 URL（仅显示文本）（markdown.rs:563-568） | ✅ | S |
 
 ### D8. 水平分割线
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 5 填充 -->
+| 字符 | `---`（markdown.ts:137-138） | 无水平分割线实现 | 🔴 | S |
+| 样式 | 纯文本 `---` | 无实现 | 🔴 | S |
 
 ---
 
