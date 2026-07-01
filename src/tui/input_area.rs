@@ -1421,4 +1421,40 @@ mod tests {
             assert!(l.display_width <= 1);
         }
     }
+
+    // ── compute_input_height (V2 Task 3) ───────────────────────────────────────
+
+    #[test]
+    fn test_compute_height_empty() {
+        // Empty input: 1 line + 2 = 3
+        assert_eq!(compute_input_height("", 20, 80), 3);
+    }
+
+    #[test]
+    fn test_compute_height_single_line() {
+        // 1 line + 2 = 3
+        assert_eq!(compute_input_height("hello", 20, 80), 3);
+    }
+
+    #[test]
+    fn test_compute_height_multiline() {
+        // 3 lines + 2 = 5
+        assert_eq!(compute_input_height("a\nb\nc", 20, 80), 5);
+    }
+
+    #[test]
+    fn test_compute_height_capped_at_half_term() {
+        // 50 chars in width 32 → 2 wrap lines per logical line × 1 logical line = 2.
+        // But if we make input huge: 50 lines × 5 chars each = 50 lines + 2 = 52,
+        // term_height=10 → cap=5.
+        let input: String = (0..50).map(|_| "x\n").collect();
+        let h = compute_input_height(&input, 10, 80);
+        assert_eq!(h, 5, "expected cap at term_height/2 = 5");
+    }
+
+    #[test]
+    fn test_compute_height_min_cap_when_term_tiny() {
+        // term_height = 4 → cap = max(2, 3) = 3
+        assert_eq!(compute_input_height("a\nb\nc\nd\ne", 4, 80), 3);
+    }
 }
