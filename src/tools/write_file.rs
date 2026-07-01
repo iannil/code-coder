@@ -31,10 +31,23 @@ impl Tool for WriteFile {
                 .map_err(|e| anyhow::anyhow!("cannot create directory {parent:?}: {e}"))?;
         }
 
+        // Read before-content (if file exists) for diff computation.
+        let before = std::fs::read_to_string(path).unwrap_or_default();
+
         std::fs::write(path, content)
             .map_err(|e| anyhow::anyhow!("cannot write {path}: {e}"))?;
 
-        Ok(format!("wrote {} bytes to {path}", content.len()))
+        // V1: attach unified diff with file_path for renderer highlighting.
+        let diff_text = crate::tui::diff::compute_unified_diff(
+            &before,
+            content,
+            path,
+        );
+
+        Ok(format!(
+            "wrote {} bytes to {path}\n\n```diff path=\"{path}\"\n{diff_text}```",
+            content.len()
+        ))
     }
 }
 
@@ -63,5 +76,33 @@ mod tests {
     fn test_write_file_no_newline() {
         let result = WriteFile.execute("just-a-path");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_write_file_new_file_diff_all_additions() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("new.txt");
+        let path_str = path.to_str().unwrap();
+        let input = format!("{path_str}\nfirst\nsecond\n");
+        let result = WriteFile.execute(&input).unwrap();
+
+        assert!(result.contains("```diff"), "result: {result}");
+        // New file → all additions, no deletions
+        assert!(result.contains("+first"), "result: {result}");
+        assert!(result.contains("+second"), "result: {result}");
+    }
+
+    #[test]
+    fn test_write_file_overwrite_shows_minus_and_plus() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("existing.txt");
+        std::fs::write(&path, "old line 1\nold line 2\n").unwrap();
+        let path_str = path.to_str().unwrap();
+        let input = format!("{path_str}\nnew line 1\nnew line 2\n");
+        let result = WriteFile.execute(&input).unwrap();
+
+        assert!(result.contains("```diff"), "result: {result}");
+        assert!(result.contains("-old line 1"), "result: {result}");
+        assert!(result.contains("+new line 1"), "result: {result}");
     }
 }
