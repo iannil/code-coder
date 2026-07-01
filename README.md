@@ -29,7 +29,7 @@ cc> /exit      # 退出
 cargo run
 ```
 
-## 内置工具（11 个）
+## 内置工具（20 个）
 
 | 工具 | 功能 |
 |------|------|
@@ -37,24 +37,38 @@ cargo run
 | `write_file` | 写入文件（自动创建父目录） |
 | `run_command` | 执行 shell 命令 |
 | `list_directory` | 列出目录内容 |
-| `search_web` | 抓取 URL 内容（原生 Rust HTTP） |
+| `search_web` | 抓取 URL 内容 |
 | `search_github` | 搜索 GitHub 仓库 (`repos:`) 或代码 (`code:`) |
-| `reverse_api` | 抓取文档页面，提取 API endpoint 签名，保存到 `knowledge/` |
+| `reverse_api` | 抓取文档页面，提取 API endpoint 签名 |
 | `generate_skill` | 生成 skill 文件到 `skills/` |
-| `generate_prompt` | 生成 prompt 模板到 `prompts/` |
-| `generate_tool` | 生成可执行脚本到 `tools/` (自动 chmod +x) |
+| `generate_prompt` | 生成 prompt 模板 |
+| `generate_tool` | 生成可执行脚本（自动 chmod +x） |
 | `run_in_sandbox` | 在沙箱中运行代码（自动选择 WASM L1 / Docker L2） |
+| `glob` | 文件 glob 搜索（支持 ** 递归） |
+| `grep` | 文本搜索 + AST 查询（tree-sitter） |
+| `diff` | 文件差异比较 |
+| `edit_file` | 精确文本替换编辑 |
+| `commit` | Git 提交 |
+| `review` | 代码审查 |
+| `plan` | 任务计划 |
+| `ask_user` | 用户交互 |
+| `agent` | 子代理调用 |
 
 ## 文件系统即自我
 
 ```
 project/
 ├── AGENTS.md     ← 系统身份声明 → 自动注入 LLM system prompt
+├── CONTEXT.md    ← 项目术语表
 ├── skills/       ← .md 文件自动注册为技能
-├── prompts/      ← 系统生成的 prompt 模板
-├── tools/        ← 系统生成的 shell 脚本
 ├── memory/       ← 系统持久化的 key-value 记忆
-└── knowledge/    ← reverse_api 保存的 API 参考文档
+├── sessions/     ← 对话历史 JSON 文件
+├── docs/         ← 设计文档、ADR、审计报告
+│   ├── adr/      ← 架构决策记录
+│   ├── audit/    ← TUI 保真度审计
+│   └── design/   ← 设计规格
+├── archived/     ← 参考项目存档
+└── target/       ← 编译产物
 ```
 
 ## REPL 命令
@@ -96,10 +110,10 @@ project/
 
 ```bash
 cargo build      # 编译
-cargo test       # 运行 56 个测试
-cargo run        # 启动 REPL
+cargo test       # 运行 696 个测试
+cargo run        # 启动 TUI / REPL
 ```
 
 ## 架构
 
-Phase 1-6 设计在 [[codecoder-design]] 中记录。
+参考 `docs/` 目录下的 ADR 和设计文档。
