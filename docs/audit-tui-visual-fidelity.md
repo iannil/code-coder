@@ -22,7 +22,22 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 ## 0. 必须先看：V1/V2/V3 视觉硬伤
 
-<!-- TASK 7 填充 -->
+| # | 问题 | 位置 | 级别 | 状态 |
+|---|---|---|---|---|
+| V1 | **Diff 缺少行号 gutter 与语法高亮**：原版有行号列 + ColorDiff 语法高亮（StructuredDiff.tsx:43-66），codecoder 无行号、无高亮（markdown.rs:314-323） | `src/tui/markdown.rs:314-323` vs `archived/claude-code/src/components/StructuredDiff.tsx:43-66` | 🔴 | 待修 |
+| V2 | **输入区缺少边框与多行支持**：原版有 round 边框 + 多行渲染（PromptInput.tsx:2237,2268），codecoder 无边框、固定 2 行（input_area.rs:40, mod.rs:197） | `src/tui/input_area.rs:40` vs `archived/claude-code/src/components/PromptInput.tsx:2237,2268` | 🔴 | 待修 |
+| V3 | **User/Assistant 消息缺少背景色与上边距**：原版有 userMessageBackground/messageActionsBackground + 上边距（UserPromptMessage.tsx:76, AssistantTextMessage.tsx:228），codecoder 无背景、无边距（message_list.rs:171,185） | `src/tui/message_list.rs:171,185` vs `archived/claude-code/src/components/{UserPromptMessage,AssistantTextMessage}.tsx:76,228` | 🔴 | 待修 |
+| V4 | **System 消息缺少级别颜色与图标**：原版有 warning/error 颜色 + BLACK_CIRCLE(●)/TEARDROP_ASTERISK(✵)（SystemTextMessage.tsx:73,103,235），codecoder 无颜色、无图标（message_list.rs:242） | `src/tui/message_list.rs:242` vs `archived/claude-code/src/components/SystemTextMessage.tsx:73,103,235` | 🔴 | 待修 |
+| V5 | **Tool 调用缺少状态图标与进度消息**：原版有 ToolUseLoader 动画 + HookProgressMessage（AssistantToolUseMessage.tsx:186,240,328-358），codecoder 无图标、无进度（message_list.rs:216-234） | `src/tui/message_list.rs:216-234` vs `archived/claude-code/src/components/AssistantToolUseMessage.tsx:186,240,328-358` | 🔴 | 待修 |
+
+> **影响面分析**：
+> - V1（Diff）影响所有代码差异显示（Edit、Read 结果），是阅读体验核心
+> - V2（输入区）影响每次输入交互，是视觉识别关键
+> - V3（消息背景）影响所有消息渲染，导致消息堆叠难以区分
+> - V4（System 颜色）降低错误/警告可见性
+> - V5（Tool 进度）消除异步操作反馈，用户无法感知工具执行状态
+>
+> **修复优先级**：V1 > V2 > V3 > V5 > V4。V1/V2/V3 为基础布局层，影响全局视觉一致性；V4/V5 为信息层，影响可读性但不破布局。
 
 ---
 
