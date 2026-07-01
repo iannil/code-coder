@@ -32,25 +32,45 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 2 填充 -->
+| 三段 Flex 布局（消息区 flex_grow=1 + 输入区固定 + 状态栏固定） | `flexGrow={1}` 消息区 + 固定高度输入/状态区（FullscreenLayout.tsx:271,362） | `Constraint::Min(1)` 消息区 + `Length(2)` 输入 + `Length(1)` 状态（src/tui/mod.rs:193-199） | ✅ | S |
+| 外边框 | 无外边框（全屏填充） | 无外边框（全屏填充） | ✅ | S |
+| 内 padding | `paddingX={2}` 在模态框中（FullscreenLayout.tsx:427） | 无显式 padding（布局直接使用 area） | 🟡 | S |
+| 终端尺寸自适应 | `useTerminalSize()` 动态重渲染（ink hooks） | 帧渲染时自动读取 `frame.area()` | ✅ | S |
 
 ### A2. 状态栏
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 2 填充 -->
+| 模型名颜色 | Cyan Bold（StatusLine.tsx:152, 通过 renderModelName） | `Color::Cyan` + `Modifier::BOLD`（src/tui/status_bar.rs:29-32） | ✅ | S |
+| 边框 | 无边框（纯文本行） | 无边框（纯文本行） | ✅ | S |
+| token 显示格式 | `{}t ~${:.2}`（StatusLine.tsx:10, 通过 getTotalCost） | `{}t ~${:.2}`（src/tui/status_bar.rs:38-40） | ✅ | S |
+| 右侧 CWD 显示 | `compact_cwd()` 显示 basename 或短路径（StatusLine.tsx） | `compact_cwd()` 显示 basename 或短路径（src/tui/status_bar.rs:125-146） | ✅ | S |
+| context 进度条字符 | `▓`（filled） + `░`（empty）（format_context_bar） | `▓`（filled） + `░`（empty）（src/tui/status_bar.rs:158-159） | ✅ | S |
+| spinner 字符 | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`（StatusLine.tsx 或 CoordinatorAgentStatus.tsx） | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`（src/tui/status_bar.rs:19） | ✅ | S |
 
 ### A3. 输入区
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 2 填充 -->
+| prompt 符号 | 无显式 `>` 符号（TextInput 组件直接渲染） | `"> "`（src/tui/input_area.rs:51） | 🟡 | S |
+| 占位文字 | `usePromptInputPlaceholder()` 返回动态提示（usePromptInputPlaceholder.ts:25-60） | 无占位文字（空时仅显示 `"> "`）（src/tui/input_area.rs:52-53） | 🔴 | M |
+| 上分隔线字符 | `'─'.repeat(columns)`（PromptInput.tsx:2253,2259,2267） | `"─".repeat(area.width.saturating_sub(1))`（src/tui/input_area.rs:40） | ✅ | S |
+| 上分隔线颜色 | `swarmBanner.bgColor` 或 `promptBorder`（PromptInput.tsx:2252,2267） | `app.theme.secondary_text`（src/tui/input_area.rs:41） | 🟡 | S |
+| 边框样式 | `borderStyle="round"` + `borderLeft={false}` + `borderRight={false}` + `borderBottom`（PromptInput.tsx:2237,2268） | 无边框（仅分隔线） | 🔴 | M |
+| 边框颜色 | `promptBorder` → `rgb(153,153,153)`（theme.ts:126） | N/A（无边框） | 🔴 | M |
+| 多行渲染 | TextInput 组件支持多行（TextInput.tsx） | 固定 2 行高度（src/tui/mod.rs:197） | 🔴 | L |
 
 ### A4. 消息列表容器
 
 | 维度 | 原版 | codecoder | 状态 | 难度 |
 |---|---|---|---|---|
-<!-- TASK 2 填充 -->
+| 滚动条形态 | ScrollBox 组件内置滚动条（ink/ScrollBox.tsx） | `Scrollbar::new(ScrollbarOrientation::VerticalRight)`（src/tui/message_list.rs:344） | ✅ | S |
+| 滚动条 thumb 颜色 | 主题色（ScrollBox 内部） | `app.theme.primary_text`（src/tui/message_list.rs:343） | ✅ | S |
+| 滚动条 track 符号 | `begin_symbol(None)` + `end_symbol(None)`（src/tui/message_list.rs:345-346） | 无显式 track 符号 | ✅ | S |
+| 容器边框 | 无边框（ScrollBox 直接填充） | `Borders::TOP | Borders::BOTTOM`（src/tui/message_list.rs:277） | 🟡 | S |
+| 容器边框类型 | 无边框 | `BorderType::Plain`（src/tui/message_list.rs:278） | 🟡 | S |
+| 消息间分隔 | 消息行之间无显式分隔符 | 消息行之间无显式分隔符 | ✅ | S |
+| user 头像/角色标记 | `▶` 前缀（Messages.tsx 或 MessageRow.tsx） | `▶` 前缀（需在 B1 节确认） | ✅ | S |
 
 ---
 
