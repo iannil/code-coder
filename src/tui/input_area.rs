@@ -13,6 +13,39 @@ use super::completion;
 use super::{MessageItem, TuiApp};
 use crate::agent::AgentCommand;
 
+/// ─── Multiline Wrap Helpers (V2) ───────────────────────────────────────────
+///
+/// Self-contained wrap algorithm. Single source of truth: same `Vec<WrapLine>`
+/// feeds height calculation, content rendering, and cursor positioning — so
+/// they can never drift apart.
+
+/// One visual line after wrapping. Byte ranges map back into the original
+/// input (no character splitting, no word-boundary surprises).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WrapLine {
+    /// The wrapped text (no `\n`).
+    pub text: String,
+    /// Byte offset in original input where this line starts (inclusive).
+    pub start_byte: usize,
+    /// Byte offset where this line ends (exclusive).
+    pub end_byte: usize,
+    /// Display width in terminal columns (emoji/CJK = 2).
+    pub display_width: usize,
+}
+
+/// Wrap `input` to `width` columns (reserving 2 for `> ` prefix on line 1).
+/// Returns one `WrapLine` per visual line. Empty input yields a single empty
+/// `WrapLine`. Tasks 2 fills this in.
+pub fn compute_input_lines(_input: &str, _width: u16) -> Vec<WrapLine> {
+    Vec::new()
+}
+
+/// Dynamic input-area height: `lines + 2` (border + padding), capped at
+/// `term_height / 2`, minimum 3. Task 3 fills this in.
+pub fn compute_input_height(_input: &str, _term_height: u16, _width: u16) -> u16 {
+    3
+}
+
 /// ─── Undo Snapshot ──────────────────────────────────────────────────────────
 
 /// Save the current input state to the undo stack (for Ctrl+Z)
