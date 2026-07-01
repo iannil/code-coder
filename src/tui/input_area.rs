@@ -83,10 +83,12 @@ pub fn compute_input_lines(input: &str, width: u16) -> Vec<WrapLine> {
     out
 }
 
-/// Dynamic input-area height: `lines + 2` (border + padding), capped at
-/// `term_height / 2`, minimum 3. Task 3 fills this in.
-pub fn compute_input_height(_input: &str, _term_height: u16, _width: u16) -> u16 {
-    3
+/// Dynamic input-area height: `lines + 2` (top border + bottom padding),
+/// capped at `term_height / 2`, minimum 3.
+pub fn compute_input_height(input: &str, term_height: u16, width: u16) -> u16 {
+    let lines = compute_input_lines(input, width).len() as u16;
+    let cap = (term_height / 2).max(3);
+    (lines + 2).min(cap)
 }
 
 /// ─── Undo Snapshot ──────────────────────────────────────────────────────────
