@@ -61,7 +61,6 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 | token 显示格式 | `{}t ~${:.2}`（StatusLine.tsx:10, 通过 getTotalCost） | `{}t ~${:.2}`（src/tui/status_bar.rs:38-40） | ✅ | S |
 | 右侧 CWD 显示 | `compact_cwd()` 显示 basename 或短路径（StatusLine.tsx） | `compact_cwd()` 显示 basename 或短路径（src/tui/status_bar.rs:125-146） | ✅ | S |
 | context 进度条字符 | `▓`（filled） + `░`（empty）（format_context_bar） | `▓`（filled） + `░`（empty）（src/tui/status_bar.rs:158-159） | ✅ | S |
-| spinner 字符 | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`（StatusLine.tsx 或 CoordinatorAgentStatus.tsx） | `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`（src/tui/status_bar.rs:19） | ✅ | S |
 
 ### A3. 输入区
 
@@ -85,7 +84,7 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 | 容器边框 | 无边框（ScrollBox 直接填充） | `Borders::TOP | Borders::BOTTOM`（src/tui/message_list.rs:277） | 🟡 | S |
 | 容器边框类型 | 无边框 | `BorderType::Plain`（src/tui/message_list.rs:278） | 🟡 | S |
 | 消息间分隔 | 消息行之间无显式分隔符 | 消息行之间无显式分隔符 | ✅ | S |
-| user 头像/角色标记 | `▶` 前缀（Messages.tsx 或 MessageRow.tsx） | `▶` 前缀（需在 B1 节确认） | ✅ | S |
+| user 头像/角色标记 | 无显式前缀（UserPromptMessage.tsx 仅渲染文本） | `▶` 前缀（src/tui/message_list.rs:168） | 🔴 | S |
 
 ---
 
@@ -194,6 +193,9 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 | 折叠机制 | 无折叠（完整 diff 显示） | 无折叠 | ✅ | S |
 | dim 支持 | `dim` 参数控制整体 dim（StructuredDiff.tsx:99） | 无 dim 参数 | 🔴 | M |
 | 等宽字体 | RawAnsi 等宽渲染 | 等宽渲染 | ✅ | S |
+
+> **原版蓝图**（原版 Diff 渲染实现）：
+> 原版使用 `StructuredDiff` 组件渲染 diff，通过 `ColorDiff` Rust NAPI 进行语法高亮（StructuredDiff.tsx:51-66）。Diff 行颜色由 `colorDiff` 函数分配：绿色用于 `+` 行，红色用于 `-` 行，蓝色用于 `@@` hunk header（StructuredDiff.tsx:65）。行号 gutter 通过 `computeGutterWidth()` 动态计算宽度（StructuredDiff.tsx:46-49），使用 `RawAnsi` 组件进行双列渲染（gutter + content）（StructuredDiff.tsx:148-177）。文件名通过 `firstLine` 和 `filePath` 传递给 ColorDiff（StructuredDiff.tsx:65,101）。边框样式为 `borderStyle="dashed"`（FileEditToolDiff.tsx:98）。支持 `dim` 参数控制整体 dim（StructuredDiff.tsx:99）。
 
 ---
 
@@ -323,8 +325,8 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 |---|---|---|---|---|
 | 代码块围栏 | `` ``` `` 标记（markdown.ts:72-90） | `` ``` `` 标记（markdown.rs:40-56） | ✅ | S |
 | 语言标签位置 | 顶行 `` ```lang ``（markdown.ts:82） | 顶行 `` ```lang ``（markdown.rs:53） | ✅ | S |
-| 语法高亮引擎 | `cliHighlight` + Shiki（HighlightedCode/Fallback.tsx:29,154） | `syntect`（markdown.rs:187-286,Cargo.toml:17） | 🟢 | S |
-| 语法高亮实现 | `hl.highlight(code, {language})`（Fallback.tsx:29） | `syntect::easy::HighlightLines::new()`（markdown.rs:249） | 🟢 | S |
+| 语法高亮引擎 | `cliHighlight` + Shiki（HighlightedCode/Fallback.tsx:29,154） | `syntect`（markdown.rs:187-286,Cargo.toml:17） | 🟢 ADR 0003 | S |
+| 语法高亮实现 | `hl.highlight(code, {language})`（Fallback.tsx:29） | `syntect::easy::HighlightLines::new()`（markdown.rs:249） | 🟢 ADR 0003 | S |
 | 行号显示 | gutterWidth + CodeLine 组件（HighlightedCode.tsx:121,137-189） | 无行号列 | 🔴 | M |
 | 代码块背景色 | 无背景（仅 ANSI 色彩） | 无背景（仅 ratatui Color） | ✅ | S |
 | 边框样式 | 无边框（RawAnsi 直接渲染） | 无边框（仅 `"  "` 前缀缩进） | ✅ | S |
@@ -438,7 +440,9 @@ codecoder 锚点：`src/tui/{mod,status_bar,input_area,message_list,dialogs,mark
 
 ## 附录 B — 待补条目
 
-本轮审计所有条目均已定位双侧锚点（codecoder TUI 文件与原版组件均有明确行号引用）。
+- **A2 状态栏 spinner 字符**：`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏` — codecoder 实现匹配（src/tui/status_bar.rs:19），原版锚点无法在 archived/claude-code/src/components/ 中定位（StatusLine.tsx 和 CoordinatorAgentStatus.tsx 均不包含此字符数组）。该 spinner 字符序列为标准 Unicode Braille Patterns，推测可能在原版 npm 依赖或运行时生成，本轮无法定位源码锚点。
+
+除上述条目外，本轮审计其他所有条目均已定位双侧锚点（codecoder TUI 文件与原版组件均有明确行号引用）。
 
 ---
 
