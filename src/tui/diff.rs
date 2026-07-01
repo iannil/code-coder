@@ -6,9 +6,7 @@
 ///   - compute_unified_diff: generate unified diff text from before/after
 ///   - render_diff: parse unified diff text and produce styled ratatui Lines
 
-#[allow(unused_imports)]
 use ratatui::style::{Color, Modifier, Style};
-#[allow(unused_imports)]
 use ratatui::text::{Line, Span};
 
 /// Maximum lines in a single hunk before truncation kicks in.
@@ -199,8 +197,105 @@ fn precompute_line_highlights(
 /// `file_path`/`file_content` are available) syntect syntax highlighting.
 ///
 /// Returns empty Vec if `text` is not a recognized diff.
-pub fn render_diff(_text: &str, _file_path: &str, _file_content: &str) -> Vec<Line<'static>> {
-    Vec::new() // Task 6 fills this in
+pub fn render_diff(text: &str, file_path: &str, file_content: &str) -> Vec<Line<'static>> {
+    let hunks = parse_hunks(text);
+    if hunks.is_empty() {
+        return Vec::new();
+    }
+
+    let gutter_w = compute_gutter_width(&hunks);
+    let first_line = file_content.lines().next().unwrap_or("");
+    let lang = detect_language(file_path, first_line);
+    let highlights = lang.map(|l| precompute_line_highlights(file_content, l));
+
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let mut total_lines: usize = 0;
+
+    for hunk in &hunks {
+        if total_lines >= MAX_TOTAL_LINES {
+            break;
+        }
+        // Hunk header
+        out.push(Line::styled(
+            hunk.header.clone(),
+            Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+        ));
+        total_lines += 1;
+
+        let mut line_no = hunk.new_start;
+        let mut hunk_lines_emitted: usize = 0;
+
+        for line in &hunk.lines {
+            if total_lines >= MAX_TOTAL_LINES || hunk_lines_emitted >= MAX_HUNK_LINES {
+                out.push(Line::styled(
+                    format!("... (diff truncated)"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                return out;
+            }
+            match line {
+                ParsedLine::Add(content) => {
+                    let content_spans = pick_highlight(&highlights, line_no, content);
+                    let prefix = format_gutter("+", Some(line_no), gutter_w);
+                    let mut spans = vec![Span::styled(prefix, Style::default().fg(Color::Green))];
+                    spans.extend(content_spans);
+                    out.push(Line::from(spans));
+                    line_no += 1;
+                }
+                ParsedLine::Del(content) => {
+                    let prefix = format_gutter("-", None, gutter_w);
+                    let mut spans = vec![Span::styled(prefix, Style::default().fg(Color::Red))];
+                    spans.push(Span::styled(
+                        content.clone(),
+                        Style::default().fg(Color::Red),
+                    ));
+                    out.push(Line::from(spans));
+                }
+                ParsedLine::Context(content) => {
+                    let content_spans = pick_highlight(&highlights, line_no, content);
+                    let prefix = format_gutter(" ", Some(line_no), gutter_w);
+                    let mut spans = vec![Span::styled(prefix, Style::default().fg(Color::DarkGray))];
+                    spans.extend(content_spans);
+                    out.push(Line::from(spans));
+                    line_no += 1;
+                }
+                ParsedLine::FileHeader(s) => {
+                    out.push(Line::styled(
+                        s.clone(),
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                    ));
+                }
+            }
+            total_lines += 1;
+            hunk_lines_emitted += 1;
+        }
+    }
+    out
+}
+
+/// Pull pre-computed syntect spans for `line_no` (1-based, file-content index).
+/// Falls back to a single plain span if highlights are unavailable.
+fn pick_highlight(
+    highlights: &Option<Vec<Vec<Span<'static>>>>,
+    line_no: usize,
+    fallback_content: &str,
+) -> Vec<Span<'static>> {
+    if let Some(h) = highlights {
+        // line_no is 1-based; highlights index is 0-based.
+        if line_no > 0 && line_no <= h.len() {
+            return h[line_no - 1].clone();
+        }
+    }
+    vec![Span::raw(fallback_content.to_string())]
+}
+
+/// Format the gutter: marker + space + right-aligned (or blank) line number + space.
+fn format_gutter(marker: &str, line_no: Option<usize>, width: usize) -> String {
+    let digits_part = match line_no {
+        Some(n) => format!("{n:>width$}", n = n, width = width.saturating_sub(3)),
+        None => " ".repeat(width.saturating_sub(3)),
+    };
+    format!("{marker} {digits_part} ")
 }
 
 #[cfg(test)]
@@ -365,5 +460,74 @@ mod tests {
         // have spans (i.e., were tokenized, not skipped).
         assert!(!highlights[1].is_empty());
         assert!(!highlights[2].is_empty());
+    }
+
+    fn sample_diff() -> &'static str {
+        "--- a/sample.rs\n+++ b/sample.rs\n@@ -1,3 +1,4 @@\n fn main() {\n-    println!(\"old\");\n+    println!(\"new\");\n+    println!(\"added\");\n }\n"
+    }
+
+    #[test]
+    fn test_render_addition_marker_green() {
+        let lines = render_diff(sample_diff(), "sample.rs", "");
+        // At least one line should contain "+" prefix and have green styling.
+        let has_green_add = lines.iter().any(|l| {
+            l.spans.iter().any(|s| {
+                s.content.starts_with('+')
+                    && matches!(s.style.fg, Some(Color::Green))
+            })
+        });
+        assert!(has_green_add, "expected at least one green + marker");
+    }
+
+    #[test]
+    fn test_render_deletion_marker_red() {
+        let lines = render_diff(sample_diff(), "sample.rs", "");
+        let has_red_del = lines.iter().any(|l| {
+            l.spans.iter().any(|s| {
+                s.content.starts_with('-')
+                    && matches!(s.style.fg, Some(Color::Red))
+            })
+        });
+        assert!(has_red_del, "expected at least one red - marker");
+    }
+
+    #[test]
+    fn test_render_gutter_alignment() {
+        // Construct a diff where max line is 100+ → 3 digits → gutter width 6.
+        let diff = "--- a/f\n+++ b/f\n@@ -1,1 +100,1 @@\n+new\n";
+        let lines = render_diff(diff, "f.txt", "");
+        // First content line (after hunk header) should start with gutter spaces.
+        let body_line = lines.iter().find(|l| {
+            l.spans.first().map_or(false, |s| s.content.starts_with('+'))
+        });
+        assert!(body_line.is_some(), "expected an addition line");
+    }
+
+    #[test]
+    fn test_render_no_language_falls_back() {
+        // Empty file_path → no language → just +/- marker coloring, no crash.
+        let lines = render_diff(sample_diff(), "", "");
+        assert!(!lines.is_empty());
+    }
+
+    #[test]
+    fn test_render_truncates_large_diff() {
+        // Build a diff with 2500 additions.
+        let mut diff = String::from("--- a/big\n+++ b/big\n@@ -1,1 +1,2500 @@\n");
+        for _ in 0..2500 {
+            diff.push_str("+line\n");
+        }
+        let lines = render_diff(&diff, "big.txt", "");
+        assert!(lines.len() <= MAX_TOTAL_LINES + 5, "got {} lines", lines.len());
+        let has_truncation_note = lines.iter().any(|l| {
+            l.spans.iter().any(|s| s.content.contains("truncated"))
+        });
+        assert!(has_truncation_note);
+    }
+
+    #[test]
+    fn test_render_non_diff_returns_empty() {
+        assert!(render_diff("not a diff", "f.txt", "").is_empty());
+        assert!(render_diff("", "f.txt", "").is_empty());
     }
 }
