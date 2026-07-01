@@ -5,7 +5,7 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, BorderType, Borders, Paragraph};
 use ratatui::Frame;
 use std::time::Instant;
 
@@ -143,64 +143,93 @@ pub fn save_undo_snapshot(app: &mut TuiApp) {
 
 /// ─── Render ─────────────────────────────────────────────────────────────────
 
-/// Render the input area (separator line + input line + cursor).
+/// Render the input area: rounded top border + multiline content (with
+/// `> ` prefix on line 1, 2-space indent on continuation lines) +
+/// placeholder when empty + scroll-to-bottom when overflowing.
+///
+/// Dynamic height is computed in `mod.rs::render` via `compute_input_height`
+/// and used to size the Layout — this function just renders into the given
+/// `area`, which is already correctly sized.
 pub fn render(frame: &mut Frame, area: Rect, app: &TuiApp, frame_count: u64) {
     let _ = frame_count; // reserved for future cursor blink animation
 
-    // ADR 0003: read colors from app.theme.
-    let separator_line = Line::from(Span::styled(
-        "─".repeat(area.width.saturating_sub(1) as usize),
-        Style::default().fg(app.theme.secondary_text),
-    ));
-    frame.render_widget(
-        Paragraph::new(separator_line),
-        Rect::new(area.x, area.y, area.width, 1),
-    );
+    let block = Block::default()
+        .borders(Borders::TOP)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.accent_text));
 
-    // Input content on line 2
-    let input_content_y = area.y + 1;
-    let cursor_pos = app.cursor_pos.min(app.input.len());
-    let prefix_span = Span::styled("> ", Style::default().fg(app.theme.accent_text));
-    let input_display = if app.input.is_empty() {
-        Line::from(prefix_span)
+    if app.input.is_empty() {
+        // Placeholder
+        let placeholder = Line::from(vec![
+            Span::styled("> ", Style::default().fg(app.theme.accent_text)),
+            Span::styled(
+                "Type your message… (Shift+Enter for newline)",
+                Style::default().fg(app.theme.secondary_text),
+            ),
+        ]);
+        frame.render_widget(Paragraph::new(placeholder).block(block), area);
     } else {
-        let mut line = Line::from(vec![prefix_span]);
-        line.spans.push(Span::raw(&app.input));
-        line
-    };
-    let input_content_area = Rect::new(area.x, input_content_y, area.width, 1);
-    let input_paragraph = Paragraph::new(input_display)
-        .style(Style::default().fg(app.theme.primary_text));
-    frame.render_widget(input_paragraph, input_content_area);
+        // Multiline content
+        let lines = compute_input_lines(&app.input, area.width);
+        let ratatui_lines: Vec<Line> = lines
+            .iter()
+            .enumerate()
+            .map(|(i, wl)| {
+                let prefix: &str = if i == 0 { "> " } else { "  " };
+                Line::from(vec![
+                    Span::styled(prefix, Style::default().fg(app.theme.accent_text)),
+                    Span::styled(
+                        wl.text.clone(),
+                        Style::default().fg(app.theme.primary_text),
+                    ),
+                ])
+            })
+            .collect();
 
-    // Cursor position
-    let safe_cursor = if app.input.is_char_boundary(cursor_pos) {
-        cursor_pos
-    } else {
-        let mut i = cursor_pos.min(app.input.len());
-        while i > 0 && !app.input.is_char_boundary(i) {
-            i -= 1;
+        // content_height = area.height minus top border (1)
+        let content_height = (area.height.saturating_sub(1)) as usize;
+        let visible: Vec<Line> = if ratatui_lines.len() > content_height {
+            // Scroll to bottom
+            ratatui_lines[ratatui_lines.len() - content_height..].to_vec()
+        } else {
+            ratatui_lines
+        };
+        frame.render_widget(Paragraph::new(visible).block(block), area);
+    }
+
+    // Cursor position (only meaningful when input is non-empty)
+    if !app.input.is_empty() {
+        let cursor_pos = app.cursor_pos.min(app.input.len());
+        let lines = compute_input_lines(&app.input, area.width);
+        let (vline, col) = find_cursor_position(&app.input, &lines, cursor_pos);
+        // y offset: +1 to skip top border, +vline for virtual line within content
+        // x offset: +2 to skip `> ` or `  ` prefix, +col for cursor within line
+        let y = area.y
+            .saturating_add(1)
+            .saturating_add(vline as u16);
+        // If cursor is scrolled off (vline beyond content_height), don't draw it
+        let content_height = area.height.saturating_sub(1) as u16;
+        let scroll_offset = if lines.len() as u16 > content_height {
+            lines.len() as u16 - content_height
+        } else {
+            0
+        };
+        let visible_vline = vline as u16;
+        if visible_vline >= scroll_offset {
+            frame.set_cursor_position(ratatui::layout::Position {
+                x: area.x.saturating_add(2).saturating_add(col as u16),
+                y: y.saturating_sub(scroll_offset),
+            });
         }
-        i
-    };
-    let input_lines = app.input[..safe_cursor].lines().count().max(1) - 1;
-    let last_line_start = if input_lines == 0 {
-        0
+        // If cursor is in the scrolled-off region, skip set_cursor_position
+        // (cursor simply isn't drawn that frame).
     } else {
-        app.input[..safe_cursor]
-            .char_indices()
-            .filter(|(_, c)| *c == '\n')
-            .last()
-            .map(|(i, _)| i + 1)
-            .unwrap_or(0)
-    };
-    let col_offset = safe_cursor - last_line_start;
-    let row_offset = input_lines;
-
-    frame.set_cursor_position(ratatui::layout::Position {
-        x: area.x + col_offset as u16 + 2,
-        y: input_content_y + row_offset as u16,
-    });
+        // Empty input: cursor right after "> "
+        frame.set_cursor_position(ratatui::layout::Position {
+            x: area.x.saturating_add(2),
+            y: area.y.saturating_add(1),
+        });
+    }
 }
 
 /// ─── Input Key Handling ──────────────────────────────────────────────────────
