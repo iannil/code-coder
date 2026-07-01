@@ -184,7 +184,7 @@ pub fn is_dark_mode() -> bool {
     DARK_MODE.load(Ordering::Relaxed)
 }
 
-fn get_syntax_set() -> &'static syntect::parsing::SyntaxSet {
+pub fn get_syntax_set() -> &'static syntect::parsing::SyntaxSet {
     static SS: OnceLock<syntect::parsing::SyntaxSet> = OnceLock::new();
     SS.get_or_init(|| {
         syntect::parsing::SyntaxSet::load_defaults_newlines()

@@ -31,6 +31,7 @@ struct Hunk {
 
 /// A single line inside a hunk.
 #[allow(dead_code)] // FileHeader only fires on multi-file diffs
+#[derive(Clone)]
 enum ParsedLine {
     Add(String),
     Del(String),
@@ -117,6 +118,45 @@ fn extract_new_start(header: &str) -> Option<usize> {
     let rest = &header[plus + 1..];
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     digits.parse().ok()
+}
+
+/// Compute the gutter width needed for `hunks`. Format is
+/// `marker(1) + space(1) + line_no_digits + space(1)` = digits + 3.
+fn compute_gutter_width(hunks: &[Hunk]) -> usize {
+    let max_line = hunks.iter()
+        .flat_map(|h| {
+            let mut n = h.new_start;
+            h.lines.iter().filter_map(move |l| {
+                let val = match l {
+                    ParsedLine::Add(_) | ParsedLine::Context(_) => {
+                        let v = n;
+                        n += 1;
+                        Some(v)
+                    }
+                    _ => None,
+                };
+                val
+            })
+        })
+        .max()
+        .unwrap_or(1);
+    max_line.to_string().len() + 3
+}
+
+/// Detect syntect language from file extension, falling back to shebang.
+fn detect_language(path: &str, first_line: &str) -> Option<&'static syntect::parsing::SyntaxReference> {
+    let ss = crate::tui::markdown::get_syntax_set();
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        if let Some(syntax) = ss.find_syntax_by_extension(ext) {
+            return Some(syntax);
+        }
+    }
+    if !first_line.is_empty() {
+        if let Some(syntax) = ss.find_syntax_by_first_line(first_line) {
+            return Some(syntax);
+        }
+    }
+    None
 }
 
 /// Render unified diff `text` into styled Lines with gutter and (if
@@ -216,5 +256,51 @@ mod tests {
     fn test_parse_non_diff_returns_empty() {
         assert!(parse_hunks("just some\ntext").is_empty());
         assert!(parse_hunks("").is_empty());
+    }
+
+    #[test]
+    fn test_gutter_single_digit() {
+        // max line = 9, width = 1 + 3 = 4
+        let hunks = vec![Hunk {
+            new_start: 1,
+            header: "@@ -1,3 +1,9 @@".to_string(),
+            lines: vec![ParsedLine::Context("x".to_string()); 9],
+        }];
+        assert_eq!(compute_gutter_width(&hunks), 4);
+    }
+
+    #[test]
+    fn test_gutter_triple_digit() {
+        // max line = 100, width = 3 + 3 = 6
+        let hunks = vec![Hunk {
+            new_start: 100,
+            header: "@@ -1,1 +100,1 @@".to_string(),
+            lines: vec![ParsedLine::Context("x".to_string())],
+        }];
+        assert_eq!(compute_gutter_width(&hunks), 6);
+    }
+
+    #[test]
+    fn test_gutter_empty() {
+        assert_eq!(compute_gutter_width(&[]), 4);
+    }
+
+    #[test]
+    fn test_detect_by_extension_rs() {
+        let syntax = detect_language("foo.rs", "");
+        assert!(syntax.is_some());
+        assert_eq!(syntax.unwrap().name, "Rust");
+    }
+
+    #[test]
+    fn test_detect_by_extension_py() {
+        let syntax = detect_language("script.py", "");
+        assert!(syntax.is_some());
+        assert_eq!(syntax.unwrap().name, "Python");
+    }
+
+    #[test]
+    fn test_detect_unknown_falls_back_to_none() {
+        assert!(detect_language("file.unknownext", "").is_none());
     }
 }
